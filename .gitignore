@@ -10,3 +10,47 @@ build/
 venv/
 *.egg-info/
 .pytest_cache/
+# ==============================================================================
+# Obsidian & Knowledge Base Overrides
+# ==============================================================================
+
+# Matrix_dev/ is Aditya's local Obsidian vault that drives the LLM
+# knowledge engine. It is intentionally per-user and is NEVER pushed to
+# the team repo. Notes, plans, schema-rationale docs live here; anything
+# the team needs to act on gets surfaced as a separate file at the repo
+# root (e.g. left_out_tasks.md) or as code.
+Matrix_dev/
+
+# Ignore Obsidian's visual UI state, workspace layouts, and local plugin caches
+**/Matrix_dev/.obsidian/
+
+# OPTIONAL: If you ever add an immutable 'sources/' folder for heavy web clips,
+# raw PDFs, or long YouTube transcripts that you don't want bloating GitHub:
+# **/Matrix_dev/sources/
+
+# ==============================================================================
+# Standard Python & Frontend Ignores
+# ==============================================================================
+backend/.venv/
+**/__pycache__/
+*.pyc
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+.DS_Store
+
+# ==============================================================================
+# Claude Code / agent runtime — local state, never push to repo
+# Note: .claude/artifacts/ (refactor-plan, routes-manifest) is intentionally
+# tracked from the initial commit. Only the per-user runtime paths below are
+# ignored.
+# ==============================================================================
+.claude/agents/
+.claude/settings.json
+.claude/settings.local.json
+.claude/skills/
+.claude/plans/
+.claude/cache/
+.claude/sessions/
+.agents/
+skills-lock.json
