@@ -1,0 +1,1592 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Z-Matrix BD Landing Page Demo</title>
+  <style>
+    :root {
+      --bg: #0b1114;
+      --bg-2: #111b1d;
+      --paper: #f5efe3;
+      --paper-2: #ebe3d2;
+      --ink: #f9f1df;
+      --muted: #b9c2bb;
+      --soft: rgba(255, 248, 229, 0.72);
+      --line: rgba(255, 248, 229, 0.18);
+      --line-dark: rgba(13, 20, 20, 0.14);
+      --teal: #46ead1;
+      --teal-2: #0e7f78;
+      --orange: #ef9c6c;
+      --green: #9de38f;
+      --danger: #de756f;
+      --blue: #80a9ff;
+      --panel: rgba(16, 27, 29, 0.76);
+      --panel-strong: rgba(7, 12, 14, 0.88);
+      --radius: 28px;
+      --shadow: 0 28px 90px rgba(0, 0, 0, 0.46);
+      --serif: Georgia, "Times New Roman", serif;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      background:
+        radial-gradient(circle at 14% 18%, rgba(70, 234, 209, 0.16), transparent 30%),
+        radial-gradient(circle at 82% 8%, rgba(239, 156, 108, 0.13), transparent 30%),
+        linear-gradient(180deg, #0b1114 0%, #10181a 54%, #f5efe3 54%, #f5efe3 100%);
+      color: var(--ink);
+      overflow-x: hidden;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    .nav {
+      position: fixed;
+      inset: 0 0 auto 0;
+      z-index: 50;
+      height: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 clamp(18px, 4vw, 64px);
+      background: linear-gradient(180deg, rgba(7, 12, 14, 0.78), rgba(7, 12, 14, 0));
+      backdrop-filter: blur(12px);
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 176px;
+    }
+
+    .brand-mark {
+      width: 38px;
+      height: 38px;
+      border: 1px solid rgba(70, 234, 209, 0.55);
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      color: var(--teal);
+      font-family: var(--serif);
+      font-style: italic;
+      font-weight: 700;
+      background: linear-gradient(145deg, rgba(70, 234, 209, 0.18), rgba(239, 156, 108, 0.11));
+      box-shadow: 0 0 32px rgba(70, 234, 209, 0.22);
+    }
+
+    .brand-name {
+      display: grid;
+      gap: 0;
+      letter-spacing: 0;
+    }
+
+    .brand-name strong {
+      font-family: var(--serif);
+      font-size: 24px;
+      font-style: italic;
+      line-height: 1;
+    }
+
+    .brand-name span {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 26px;
+      color: rgba(249, 241, 223, 0.78);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn {
+      border: 0;
+      cursor: pointer;
+      border-radius: 999px;
+      min-height: 44px;
+      padding: 0 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      font-weight: 900;
+      letter-spacing: 0;
+      transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #62ffe9, #28d1bd);
+      color: #061112;
+      box-shadow: 0 18px 48px rgba(70, 234, 209, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.65);
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 24px 62px rgba(70, 234, 209, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.75);
+    }
+
+    .btn-ghost {
+      border: 1px solid var(--line);
+      color: var(--ink);
+      background: rgba(255, 248, 229, 0.08);
+      backdrop-filter: blur(10px);
+    }
+
+    .btn-dark {
+      background: #0b1114;
+      color: var(--ink);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
+    }
+
+    .hero {
+      position: relative;
+      min-height: 100svh;
+      padding: 132px clamp(18px, 4vw, 64px) 70px;
+      display: block;
+      overflow: hidden;
+    }
+
+    .hero:before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255, 248, 229, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 248, 229, 0.055) 1px, transparent 1px);
+      background-size: 52px 52px;
+      mask-image: radial-gradient(circle at 64% 44%, black 0%, transparent 64%);
+      pointer-events: none;
+    }
+
+    .hero:after {
+      content: "Z";
+      position: absolute;
+      z-index: 0;
+      right: -6vw;
+      top: 88px;
+      color: rgba(70, 234, 209, 0.055);
+      font-family: var(--serif);
+      font-size: clamp(420px, 46vw, 820px);
+      font-style: italic;
+      font-weight: 700;
+      line-height: 0.78;
+      text-shadow:
+        0 0 80px rgba(70, 234, 209, 0.26),
+        0 0 180px rgba(70, 234, 209, 0.16);
+      pointer-events: none;
+      animation: ghostMark 8s ease-in-out infinite;
+    }
+
+    .hero-copy {
+      position: relative;
+      z-index: 3;
+      max-width: 840px;
+      padding-top: clamp(18px, 5vh, 76px);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--teal);
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+
+    .eyebrow:before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--teal);
+      box-shadow: 0 0 20px rgba(70, 234, 209, 0.8);
+    }
+
+    h1 {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: clamp(48px, 7.2vw, 96px);
+      line-height: 0.9;
+      letter-spacing: 0;
+      font-weight: 500;
+      max-width: 700px;
+    }
+
+    .hero-copy p {
+      margin: 24px 0 0;
+      max-width: 560px;
+      color: rgba(249, 241, 223, 0.78);
+      font-size: clamp(16px, 1.7vw, 20px);
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 30px;
+    }
+
+    .proof-line {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-top: 34px;
+      color: rgba(249, 241, 223, 0.66);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+
+    .proof-line span {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .proof-line span:before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--orange);
+    }
+
+    .stage-visual {
+      position: absolute;
+      inset: 80px 0 0 38%;
+      z-index: 1;
+      min-height: 0;
+      perspective: 1800px;
+      pointer-events: none;
+    }
+
+    .logo-constellation {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: start center;
+      padding-top: clamp(44px, 8vh, 96px);
+      transform-style: preserve-3d;
+    }
+
+    .logo-depth {
+      position: relative;
+      width: min(760px, 54vw);
+      min-width: 560px;
+      aspect-ratio: 1;
+      transform-style: preserve-3d;
+      transform: rotateX(58deg) rotateZ(-28deg) translate3d(0, -220px, 0);
+      animation: brandDrift 9s ease-in-out infinite;
+    }
+
+    .logo-depth:before {
+      content: "";
+      position: absolute;
+      inset: 12%;
+      border-radius: 28%;
+      background:
+        linear-gradient(135deg, rgba(70, 234, 209, 0.16), rgba(239, 156, 108, 0.08)),
+        rgba(255, 248, 229, 0.035);
+      border: 1px solid rgba(255, 248, 229, 0.12);
+      box-shadow:
+        0 60px 120px rgba(0, 0, 0, 0.42),
+        inset 0 0 0 1px rgba(70, 234, 209, 0.12);
+      transform: translateZ(-34px);
+    }
+
+    .mega-mark {
+      position: absolute;
+      inset: 14%;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(70, 234, 209, 0.36);
+      border-radius: 30%;
+      color: rgba(249, 241, 223, 0.96);
+      font-family: var(--serif);
+      font-size: clamp(220px, 28vw, 420px);
+      font-style: italic;
+      font-weight: 700;
+      text-shadow:
+        0 0 22px rgba(70, 234, 209, 0.45),
+        0 0 86px rgba(70, 234, 209, 0.28);
+      background:
+        radial-gradient(circle at 50% 44%, rgba(255, 248, 229, 0.08), transparent 38%),
+        linear-gradient(145deg, rgba(70, 234, 209, 0.14), rgba(4, 9, 11, 0.2));
+      box-shadow:
+        inset 0 0 50px rgba(70, 234, 209, 0.16),
+        0 0 90px rgba(70, 234, 209, 0.18);
+      transform: translateZ(62px);
+      animation: logoPulse 4.8s ease-in-out infinite;
+    }
+
+    .mark-echo {
+      position: absolute;
+      inset: 14%;
+      display: grid;
+      place-items: center;
+      border-radius: 30%;
+      color: transparent;
+      -webkit-text-stroke: 1px rgba(70, 234, 209, 0.18);
+      font-family: var(--serif);
+      font-size: clamp(220px, 28vw, 420px);
+      font-style: italic;
+      font-weight: 700;
+      transform: translateZ(var(--z)) translate(var(--x), var(--y));
+    }
+
+    .echo-one { --z: 18px; --x: -18px; --y: 16px; }
+    .echo-two { --z: -18px; --x: 22px; --y: -20px; }
+
+    .brand-wordmark-ghost {
+      position: absolute;
+      left: -4%;
+      right: -4%;
+      top: 46%;
+      text-align: center;
+      color: rgba(249, 241, 223, 0.08);
+      font-family: var(--serif);
+      font-size: clamp(70px, 10vw, 132px);
+      font-style: italic;
+      font-weight: 700;
+      transform: translateZ(-72px) rotateZ(2deg);
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    .ring {
+      position: absolute;
+      inset: var(--inset);
+      border: 1px solid rgba(70, 234, 209, var(--alpha));
+      border-radius: 50%;
+      transform: translateZ(var(--z));
+      animation: ringSpin var(--speed) linear infinite;
+    }
+
+    .ring:after {
+      content: "";
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      top: 12%;
+      left: 17%;
+      background: var(--dot);
+      box-shadow: 0 0 24px var(--dot);
+    }
+
+    .ring-one { --inset: -4%; --alpha: 0.2; --z: 86px; --speed: 18s; --dot: rgba(70, 234, 209, 0.95); }
+    .ring-two { --inset: 8%; --alpha: 0.15; --z: 26px; --speed: 24s; --dot: rgba(239, 156, 108, 0.9); animation-direction: reverse; }
+    .ring-three { --inset: 22%; --alpha: 0.24; --z: 126px; --speed: 14s; --dot: rgba(157, 227, 143, 0.88); }
+
+    .scan-beam {
+      position: absolute;
+      left: 6%;
+      right: 6%;
+      top: 50%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(70, 234, 209, 0.88), transparent);
+      filter: drop-shadow(0 0 18px rgba(70, 234, 209, 0.74));
+      transform: translateZ(170px);
+      animation: scanBeam 3.8s ease-in-out infinite;
+    }
+
+    .signal-node {
+      position: absolute;
+      z-index: 8;
+      min-width: 154px;
+      border: 1px solid rgba(255, 248, 229, 0.22);
+      border-radius: 18px;
+      padding: 13px 14px;
+      background: rgba(7, 12, 14, 0.62);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 24px 62px rgba(0, 0, 0, 0.36);
+      transform: translate3d(var(--x), var(--y), var(--z));
+      animation: nodeFloat 5.8s ease-in-out infinite;
+      animation-delay: var(--delay);
+    }
+
+    .signal-node strong {
+      display: block;
+      color: var(--ink);
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .signal-node span {
+      color: rgba(249, 241, 223, 0.6);
+      font-size: 11px;
+      font-weight: 950;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .node-a { --x: -240px; --y: -178px; --z: 190px; --delay: -0.2s; }
+    .node-b { --x: 236px; --y: -112px; --z: 142px; --delay: -1.3s; }
+    .node-c { --x: -230px; --y: 178px; --z: 154px; --delay: -2.1s; }
+    .node-d { --x: 216px; --y: 190px; --z: 198px; --delay: -3s; }
+
+    .visual-caption {
+      position: absolute;
+      right: clamp(0px, 2vw, 24px);
+      bottom: 28px;
+      max-width: 420px;
+      padding: 16px 18px;
+      border: 1px solid rgba(255, 248, 229, 0.16);
+      border-radius: 18px;
+      color: rgba(249, 241, 223, 0.72);
+      background: rgba(7, 12, 14, 0.48);
+      backdrop-filter: blur(14px);
+      font-size: 13px;
+      font-weight: 750;
+      line-height: 1.45;
+    }
+
+    .auth-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 120;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 220ms ease;
+    }
+
+    .auth-modal.is-open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .auth-backdrop {
+      position: absolute;
+      inset: 0;
+      border: 0;
+      background:
+        radial-gradient(circle at 50% 24%, rgba(70, 234, 209, 0.18), transparent 34%),
+        rgba(4, 8, 10, 0.78);
+      backdrop-filter: blur(18px);
+      cursor: pointer;
+    }
+
+    .auth-dialog {
+      position: relative;
+      z-index: 2;
+      width: min(480px, calc(100vw - 32px));
+      border: 1px solid rgba(255, 248, 229, 0.22);
+      border-radius: 30px;
+      padding: 22px;
+      background:
+        linear-gradient(145deg, rgba(255, 248, 229, 0.08), rgba(70, 234, 209, 0.06)),
+        rgba(7, 12, 14, 0.92);
+      backdrop-filter: blur(24px);
+      box-shadow:
+        0 38px 110px rgba(0, 0, 0, 0.58),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      transform: translateY(18px) scale(0.96);
+      transition: transform 240ms cubic-bezier(.2, .8, .2, 1);
+      overflow: hidden;
+    }
+
+    .auth-modal.is-open .auth-dialog {
+      transform: translateY(0) scale(1);
+    }
+
+    .auth-dialog:before {
+      content: "Z";
+      position: absolute;
+      right: -18px;
+      top: -58px;
+      color: rgba(70, 234, 209, 0.06);
+      font-family: var(--serif);
+      font-size: 260px;
+      font-style: italic;
+      font-weight: 700;
+      pointer-events: none;
+    }
+
+    .modal-brand-row {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .modal-close {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 248, 229, 0.16);
+      background: rgba(255, 248, 229, 0.08);
+      color: var(--ink);
+      cursor: pointer;
+      font-size: 22px;
+      line-height: 1;
+      transition: transform 180ms ease, background 180ms ease;
+    }
+
+    .modal-close:hover {
+      transform: rotate(90deg);
+      background: rgba(255, 248, 229, 0.14);
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 5px;
+      background: rgba(255, 248, 229, 0.08);
+      border: 1px solid rgba(255, 248, 229, 0.12);
+      border-radius: 18px;
+      margin-bottom: 18px;
+    }
+
+    .tab {
+      min-height: 38px;
+      border: 0;
+      border-radius: 13px;
+      color: rgba(249, 241, 223, 0.68);
+      background: transparent;
+      cursor: pointer;
+      font-weight: 900;
+    }
+
+    .tab.active {
+      background: var(--paper);
+      color: #111817;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+    }
+
+    .form-panel {
+      display: none;
+    }
+
+    .form-panel.active {
+      display: grid;
+      gap: 12px;
+    }
+
+    .auth-dialog h2 {
+      margin: 2px 0 0;
+      font-size: 21px;
+      letter-spacing: 0;
+    }
+
+    .auth-dialog p {
+      margin: 0 0 5px;
+      color: rgba(249, 241, 223, 0.62);
+      font-size: 13px;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+    }
+
+    .field label {
+      color: rgba(249, 241, 223, 0.72);
+      font-size: 12px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .field input,
+    .field select {
+      width: 100%;
+      min-height: 46px;
+      border: 1px solid rgba(255, 248, 229, 0.18);
+      border-radius: 14px;
+      padding: 0 13px;
+      color: var(--ink);
+      background: rgba(255, 248, 229, 0.08);
+      outline: none;
+      transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+    }
+
+    .field input:focus,
+    .field select:focus {
+      border-color: rgba(70, 234, 209, 0.72);
+      box-shadow: 0 0 0 4px rgba(70, 234, 209, 0.12);
+      background: rgba(255, 248, 229, 0.12);
+    }
+
+    .field select option {
+      color: #111817;
+      background: var(--paper);
+    }
+
+    .mini-link {
+      color: var(--teal);
+      font-size: 13px;
+      font-weight: 850;
+      text-align: right;
+    }
+
+    .security-note {
+      display: flex;
+      gap: 10px;
+      padding: 11px 12px;
+      border: 1px solid rgba(70, 234, 209, 0.18);
+      border-radius: 16px;
+      color: rgba(249, 241, 223, 0.62);
+      font-size: 12px;
+      background: rgba(70, 234, 209, 0.08);
+    }
+
+    .section-dark {
+      position: relative;
+      padding: 84px clamp(18px, 4vw, 64px) 92px;
+      background: linear-gradient(180deg, rgba(10, 17, 19, 0), #10181a 24%, #10181a 100%);
+    }
+
+    .metric-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      border: 1px solid var(--line);
+      background: var(--line);
+      border-radius: 26px;
+      overflow: hidden;
+      max-width: 1180px;
+      margin: 0 auto;
+      box-shadow: var(--shadow);
+    }
+
+    .metric {
+      min-height: 160px;
+      background: rgba(255, 248, 229, 0.07);
+      padding: 26px;
+      display: grid;
+      align-content: space-between;
+    }
+
+    .metric span {
+      color: rgba(249, 241, 223, 0.62);
+      font-size: 12px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 8px;
+      font-family: var(--serif);
+      font-size: 58px;
+      font-weight: 500;
+      line-height: 0.9;
+    }
+
+    .metric small {
+      color: var(--green);
+      font-weight: 850;
+    }
+
+    .section-light {
+      color: #111817;
+      background: var(--paper);
+      padding: 96px clamp(18px, 4vw, 64px);
+    }
+
+    .section-head {
+      max-width: 1140px;
+      margin: 0 auto 42px;
+      display: grid;
+      grid-template-columns: minmax(280px, 0.75fr) minmax(320px, 1.25fr);
+      gap: 44px;
+      align-items: end;
+    }
+
+    .section-kicker {
+      color: var(--teal-2);
+      font-size: 12px;
+      font-weight: 950;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      margin-bottom: 14px;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: clamp(42px, 6vw, 72px);
+      line-height: 0.94;
+      font-weight: 500;
+      letter-spacing: 0;
+    }
+
+    .section-head p {
+      margin: 0;
+      color: rgba(17, 24, 23, 0.68);
+      font-size: 18px;
+    }
+
+    .workflow {
+      max-width: 1140px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      border: 1px solid var(--line-dark);
+      border-radius: 30px;
+      overflow: hidden;
+      background: #fff9eb;
+    }
+
+    .workflow-step {
+      min-height: 238px;
+      padding: 22px;
+      border-right: 1px solid var(--line-dark);
+      display: grid;
+      align-content: space-between;
+      position: relative;
+    }
+
+    .workflow-step:last-child {
+      border-right: 0;
+    }
+
+    .workflow-step:before {
+      content: attr(data-step);
+      color: var(--teal-2);
+      font-size: 12px;
+      font-weight: 950;
+      letter-spacing: 0.12em;
+    }
+
+    .workflow-step h3 {
+      margin: 20px 0 10px;
+      font-size: 20px;
+      letter-spacing: 0;
+    }
+
+    .workflow-step p {
+      margin: 0;
+      color: rgba(17, 24, 23, 0.62);
+      font-size: 14px;
+    }
+
+    .step-chip {
+      width: max-content;
+      border: 1px solid var(--line-dark);
+      border-radius: 999px;
+      padding: 7px 10px;
+      color: rgba(17, 24, 23, 0.72);
+      font-size: 11px;
+      font-weight: 950;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      background: rgba(255, 255, 255, 0.58);
+    }
+
+    .deep-dive {
+      max-width: 1180px;
+      margin: 84px auto 0;
+      display: grid;
+      grid-template-columns: 0.92fr 1.08fr;
+      gap: 42px;
+      align-items: center;
+    }
+
+    .feature-list {
+      display: grid;
+      gap: 18px;
+    }
+
+    .feature-item {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 14px;
+      align-items: start;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--line-dark);
+    }
+
+    .feature-num {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: #111817;
+      color: var(--paper);
+      font-size: 13px;
+      font-weight: 950;
+    }
+
+    .feature-item h3 {
+      margin: 0 0 5px;
+      font-size: 20px;
+    }
+
+    .feature-item p {
+      margin: 0;
+      color: rgba(17, 24, 23, 0.64);
+    }
+
+    .product-stack {
+      position: relative;
+      min-height: 520px;
+      perspective: 1400px;
+    }
+
+    .screen-card {
+      position: absolute;
+      inset: 60px 0 auto auto;
+      width: min(680px, 100%);
+      height: 390px;
+      border-radius: 26px;
+      overflow: hidden;
+      background: #121a1d;
+      border: 1px solid rgba(17, 24, 23, 0.14);
+      box-shadow: 0 38px 100px rgba(17, 24, 23, 0.2);
+      transform: rotateX(56deg) rotateZ(-22deg);
+      transform-style: preserve-3d;
+    }
+
+    .screen-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: saturate(0.94) contrast(1.04);
+    }
+
+    .screen-card.secondary {
+      inset: 0 auto auto 0;
+      width: 440px;
+      height: 260px;
+      transform: rotateX(56deg) rotateZ(-22deg) translateZ(96px);
+      opacity: 0.92;
+    }
+
+    .timeline-float {
+      position: absolute;
+      right: 46px;
+      bottom: 34px;
+      width: 360px;
+      border: 1px solid rgba(17, 24, 23, 0.12);
+      border-radius: 24px;
+      background: rgba(255, 252, 242, 0.84);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 24px 80px rgba(17, 24, 23, 0.18);
+      padding: 18px;
+      transform: translateZ(140px);
+    }
+
+    .timeline-float h3 {
+      margin: 0 0 13px;
+      font-size: 15px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .timeline-row {
+      display: grid;
+      grid-template-columns: 90px 1fr 48px;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 0;
+      border-top: 1px solid rgba(17, 24, 23, 0.1);
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    .bar {
+      height: 8px;
+      border-radius: 999px;
+      background: #d8d0bd;
+      overflow: hidden;
+    }
+
+    .bar i {
+      display: block;
+      height: 100%;
+      width: var(--w);
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--teal-2), var(--orange));
+    }
+
+    .final-cta {
+      position: relative;
+      min-height: 620px;
+      padding: 96px clamp(18px, 4vw, 64px);
+      display: grid;
+      place-items: center;
+      background:
+        linear-gradient(180deg, rgba(245, 239, 227, 0) 0%, rgba(245, 239, 227, 0.88) 20%, #0b1114 20%, #0b1114 100%);
+      color: var(--ink);
+      overflow: hidden;
+    }
+
+    .cta-inner {
+      width: min(1080px, 100%);
+      text-align: center;
+      position: relative;
+      z-index: 2;
+      padding: 80px 26px;
+      border-radius: 38px;
+      border: 1px solid rgba(255, 248, 229, 0.16);
+      background:
+        linear-gradient(135deg, rgba(255, 248, 229, 0.08), rgba(70, 234, 209, 0.08)),
+        rgba(11, 17, 20, 0.82);
+      box-shadow: var(--shadow);
+    }
+
+    .cta-inner h2 {
+      margin: 0 auto;
+      max-width: 760px;
+      font-family: var(--serif);
+      font-size: clamp(42px, 7vw, 86px);
+      line-height: 0.95;
+      font-weight: 500;
+    }
+
+    .cta-inner p {
+      max-width: 640px;
+      margin: 18px auto 28px;
+      color: rgba(249, 241, 223, 0.7);
+      font-size: 17px;
+    }
+
+    .floating-cube {
+      position: absolute;
+      width: 150px;
+      height: 150px;
+      transform-style: preserve-3d;
+      animation: cubeDrift 10s ease-in-out infinite;
+      opacity: 0.75;
+    }
+
+    .cube-left {
+      left: 9vw;
+      top: 90px;
+    }
+
+    .cube-right {
+      right: 8vw;
+      bottom: 88px;
+      animation-delay: -3s;
+      transform: scale(0.72);
+    }
+
+    .cube-face {
+      position: absolute;
+      inset: 0;
+      border: 1px solid rgba(70, 234, 209, 0.3);
+      background: rgba(70, 234, 209, 0.06);
+      backdrop-filter: blur(6px);
+    }
+
+    .cube-face:nth-child(1) { transform: rotateY(0deg) translateZ(75px); }
+    .cube-face:nth-child(2) { transform: rotateY(90deg) translateZ(75px); }
+    .cube-face:nth-child(3) { transform: rotateY(180deg) translateZ(75px); }
+    .cube-face:nth-child(4) { transform: rotateY(-90deg) translateZ(75px); }
+    .cube-face:nth-child(5) { transform: rotateX(90deg) translateZ(75px); }
+    .cube-face:nth-child(6) { transform: rotateX(-90deg) translateZ(75px); }
+
+    .footer {
+      background: #0b1114;
+      color: rgba(249, 241, 223, 0.58);
+      padding: 24px clamp(18px, 4vw, 64px) 42px;
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      flex-wrap: wrap;
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    .mobile-open-auth {
+      display: none;
+    }
+
+    @keyframes brandDrift {
+      0%, 100% { transform: rotateX(58deg) rotateZ(-28deg) translate3d(0, -220px, 0); }
+      50% { transform: rotateX(54deg) rotateZ(-22deg) translate3d(-10px, -248px, 42px); }
+    }
+
+    @keyframes logoPulse {
+      0%, 100% {
+        box-shadow:
+          inset 0 0 50px rgba(70, 234, 209, 0.16),
+          0 0 90px rgba(70, 234, 209, 0.18);
+      }
+      50% {
+        box-shadow:
+          inset 0 0 82px rgba(70, 234, 209, 0.28),
+          0 0 140px rgba(70, 234, 209, 0.3);
+      }
+    }
+
+    @keyframes ringSpin {
+      to { transform: translateZ(var(--z)) rotate(360deg); }
+    }
+
+    @keyframes scanBeam {
+      0%, 100% { opacity: 0; transform: translateZ(170px) translateY(-150px) rotate(-4deg); }
+      18%, 70% { opacity: 1; }
+      50% { transform: translateZ(170px) translateY(130px) rotate(4deg); }
+    }
+
+    @keyframes nodeFloat {
+      0%, 100% { transform: translate3d(var(--x), var(--y), var(--z)); }
+      50% { transform: translate3d(var(--x), calc(var(--y) - 14px), calc(var(--z) + 24px)); }
+    }
+
+    @keyframes ghostMark {
+      0%, 100% { transform: translate3d(0, 0, 0) rotate(-2deg); opacity: 0.82; }
+      50% { transform: translate3d(-18px, 18px, 0) rotate(1deg); opacity: 1; }
+    }
+
+    @keyframes cubeDrift {
+      0%, 100% { transform: rotateX(-18deg) rotateY(24deg) rotateZ(8deg) translateY(0); }
+      50% { transform: rotateX(12deg) rotateY(54deg) rotateZ(-8deg) translateY(-24px); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *:before,
+      *:after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+      }
+    }
+
+    @media (max-width: 1180px) {
+      .hero {
+        grid-template-columns: 1fr;
+        padding-top: 118px;
+      }
+
+      .stage-visual {
+        position: relative;
+        inset: auto;
+        min-height: 620px;
+        margin-top: 34px;
+      }
+
+      .logo-constellation {
+        inset: 0;
+      }
+
+      .logo-depth {
+        width: min(660px, 86vw);
+        min-width: 0;
+      }
+
+      .metric-strip,
+      .workflow,
+      .section-head,
+      .deep-dive {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .workflow-step:nth-child(2n) {
+        border-right: 0;
+      }
+
+      .workflow-step:last-child {
+        grid-column: span 2;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .nav {
+        height: 68px;
+      }
+
+      .nav-links,
+      .nav-actions .btn-ghost {
+        display: none;
+      }
+
+      .brand-name strong {
+        font-size: 21px;
+      }
+
+      .hero {
+        min-height: auto;
+        padding: 102px 18px 48px;
+      }
+
+      h1 {
+        font-size: clamp(52px, 17vw, 76px);
+      }
+
+      .hero-copy p {
+        font-size: 16px;
+      }
+
+      .stage-visual {
+        min-height: 520px;
+        margin-top: 18px;
+      }
+
+      .logo-depth {
+        width: 500px;
+      }
+
+      .signal-node {
+        min-width: 126px;
+        padding: 10px 11px;
+      }
+
+      .node-a { --x: -146px; --y: -138px; --z: 160px; }
+      .node-b { --x: 140px; --y: -92px; --z: 138px; }
+      .node-c { --x: -138px; --y: 138px; --z: 148px; }
+      .node-d { display: none; }
+
+      .visual-caption {
+        left: 12px;
+        right: 12px;
+        bottom: 0;
+      }
+
+      .metric-strip,
+      .workflow,
+      .section-head,
+      .deep-dive {
+        grid-template-columns: 1fr;
+      }
+
+      .metric {
+        min-height: 130px;
+      }
+
+      .workflow-step,
+      .workflow-step:nth-child(2n),
+      .workflow-step:last-child {
+        border-right: 0;
+        border-bottom: 1px solid var(--line-dark);
+        grid-column: span 1;
+      }
+
+      .workflow-step:last-child {
+        border-bottom: 0;
+      }
+
+      .screen-card,
+      .screen-card.secondary {
+        position: relative;
+        inset: auto;
+        width: 100%;
+        height: 260px;
+        transform: none;
+        margin-bottom: 18px;
+      }
+
+      .timeline-float {
+        position: relative;
+        right: auto;
+        bottom: auto;
+        width: 100%;
+      }
+
+      .product-stack {
+        min-height: auto;
+      }
+
+      .floating-cube {
+        opacity: 0.28;
+      }
+
+      .footer {
+        display: grid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="nav">
+    <a href="#" class="brand" aria-label="Z-Matrix home">
+      <span class="brand-mark">Z</span>
+      <span class="brand-name">
+        <strong>z-matrix</strong>
+        <span>BD pipeline OS</span>
+      </span>
+    </a>
+    <nav class="nav-links" aria-label="Primary navigation">
+      <a href="#workflow">Workflow</a>
+      <a href="#security">Tenant safety</a>
+      <a href="#company-setup">Company setup</a>
+    </nav>
+    <div class="nav-actions">
+      <button class="btn btn-ghost" type="button" data-open-auth="login">Sign in</button>
+      <button class="btn btn-primary" type="button" data-open-auth="register">Create workspace</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" id="top">
+      <div class="hero-copy">
+        <div class="eyebrow">Tenant-safe expansion command center</div>
+        <h1>Z-Matrix keeps every store opening accountable.</h1>
+        <p>
+          Qualify sites, route approvals, track LOIs, and hand off to finance with a clean timestamped trail for every company workspace.
+        </p>
+        <div class="hero-actions">
+          <button class="btn btn-primary" type="button" data-open-auth="register">Start company workspace</button>
+          <button class="btn btn-ghost" type="button" data-open-auth="login">Enter workspace</button>
+          <a class="btn btn-ghost" href="#workflow">Explore workflow</a>
+        </div>
+        <div class="proof-line" aria-label="Platform highlights">
+          <span>Live pipeline control</span>
+          <span>LOI commitment tracking</span>
+          <span>Tenant-isolated workspaces</span>
+          <span>MCP-ready knowledge layer</span>
+        </div>
+      </div>
+
+      <div class="stage-visual" aria-label="Animated Z-Matrix identity system">
+        <div class="logo-constellation">
+          <div class="logo-depth" aria-hidden="true">
+            <span class="ring ring-one"></span>
+            <span class="ring ring-two"></span>
+            <span class="ring ring-three"></span>
+            <span class="brand-wordmark-ghost">z-matrix</span>
+            <span class="mark-echo echo-one">Z</span>
+            <span class="mark-echo echo-two">Z</span>
+            <span class="mega-mark">Z</span>
+            <span class="scan-beam"></span>
+            <div class="signal-node node-a"><strong>Drafts</strong><span>captured</span></div>
+            <div class="signal-node node-b"><strong>Approvals</strong><span>routed</span></div>
+            <div class="signal-node node-c"><strong>LOIs</strong><span>tracked</span></div>
+            <div class="signal-node node-d"><strong>Payments</strong><span>ready</span></div>
+          </div>
+        </div>
+        <p class="visual-caption">
+          The logo becomes the operating map: every orbit is a stage, every pulse is a timestamp, and every workspace stays sealed to its tenant.
+        </p>
+      </div>
+    </section>
+
+    <section class="section-dark" aria-label="Operational metrics">
+      <div class="metric-strip">
+        <div class="metric">
+          <span>Active opportunities</span>
+          <strong>142</strong>
+          <small>Visible by tenant and city</small>
+        </div>
+        <div class="metric">
+          <span>New site drafts</span>
+          <strong>09</strong>
+          <small>Ready for supervisor review</small>
+        </div>
+        <div class="metric">
+          <span>Approval queue</span>
+          <strong>03</strong>
+          <small>Oldest decision is 3 days</small>
+        </div>
+        <div class="metric">
+          <span>LOI watchlist</span>
+          <strong>04</strong>
+          <small>Contracts past target date</small>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-light" id="workflow">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Workflow intelligence</div>
+          <h2>One disciplined path from site visit to finance handoff.</h2>
+        </div>
+        <p>
+          Z-Matrix gives every company a clear operating rhythm: collect the right evidence, move only through valid stages, and preserve the full decision story.
+        </p>
+      </div>
+
+      <div class="workflow" aria-label="BD workflow stages">
+        <article class="workflow-step" data-step="01">
+          <div>
+            <h3>Draft request</h3>
+            <p>Executives capture the first site signal with visit context, owner, location, and commercial basics.</p>
+          </div>
+          <span class="step-chip">draft_submitted</span>
+        </article>
+        <article class="workflow-step" data-step="02">
+          <div>
+            <h3>Shortlist</h3>
+            <p>Supervisors qualify the opportunity and move strong candidates into detailed evaluation.</p>
+          </div>
+          <span class="step-chip">shortlisted</span>
+        </article>
+        <article class="workflow-step" data-step="03">
+          <div>
+            <h3>Approval</h3>
+            <p>BD heads review rent terms, photos, remarks, and risk before committing the company.</p>
+          </div>
+          <span class="step-chip">approved</span>
+        </article>
+        <article class="workflow-step" data-step="04">
+          <div>
+            <h3>LOI tracking</h3>
+            <p>Signed LOIs are stored, timestamped, and measured against expected closure timelines.</p>
+          </div>
+          <span class="step-chip">loi_uploaded</span>
+        </article>
+        <article class="workflow-step" data-step="05">
+          <div>
+            <h3>Module push</h3>
+            <p>Approved sites move to payments or downstream modules with their complete event trail intact.</p>
+          </div>
+          <span class="step-chip">pushed_to_payments</span>
+        </article>
+      </div>
+
+      <div class="deep-dive" id="security">
+        <div class="feature-list">
+          <div class="feature-item">
+            <span class="feature-num">01</span>
+            <div>
+              <h3>Company-first onboarding</h3>
+              <p>Create the tenant workspace once, then invite executives, supervisors, BD heads, and admins under one governed company boundary.</p>
+            </div>
+          </div>
+          <div class="feature-item">
+            <span class="feature-num">02</span>
+            <div>
+              <h3>Tenant-safe by design</h3>
+              <p>Every site, file, approval, notification, and event is scoped to a company tenant before it reaches analytics or AI tools.</p>
+            </div>
+          </div>
+          <div class="feature-item">
+            <span class="feature-num">03</span>
+            <div>
+              <h3>Stage ledger for truth</h3>
+              <p>Each transition writes a timestamped event, so dashboards, audits, and ontology tools all read from the same history.</p>
+            </div>
+          </div>
+          <div class="feature-item">
+            <span class="feature-num">04</span>
+            <div>
+              <h3>MCP-ready knowledge layer</h3>
+              <p>Agents can explain stuck LOIs, approval aging, city performance, and data relationships without bypassing backend rules.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="product-stack" aria-label="Layered product screens">
+          <div class="screen-card secondary">
+            <img src="matrix_landing_assets/staging_loi.jpeg" alt="LOI staging dashboard preview">
+          </div>
+          <div class="screen-card">
+            <img src="matrix_landing_assets/pipeline_decision.jpeg" alt="Pipeline decision dashboard preview">
+          </div>
+          <div class="timeline-float">
+            <h3>Stage timing</h3>
+            <div class="timeline-row">
+              <span>Draft</span>
+              <span class="bar"><i style="--w: 96%;"></i></span>
+              <span>01d</span>
+            </div>
+            <div class="timeline-row">
+              <span>Review</span>
+              <span class="bar"><i style="--w: 54%;"></i></span>
+              <span>03d</span>
+            </div>
+            <div class="timeline-row">
+              <span>LOI</span>
+              <span class="bar"><i style="--w: 82%;"></i></span>
+              <span>13d</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="final-cta">
+      <div class="floating-cube cube-left" aria-hidden="true">
+        <i class="cube-face"></i><i class="cube-face"></i><i class="cube-face"></i>
+        <i class="cube-face"></i><i class="cube-face"></i><i class="cube-face"></i>
+      </div>
+      <div class="floating-cube cube-right" aria-hidden="true">
+        <i class="cube-face"></i><i class="cube-face"></i><i class="cube-face"></i>
+        <i class="cube-face"></i><i class="cube-face"></i><i class="cube-face"></i>
+      </div>
+      <div class="cta-inner">
+        <div class="section-kicker" id="company-setup">Company workspace</div>
+        <h2>Launch the first pipeline, then scale the operating model.</h2>
+        <p>
+          Bring teams, approvals, files, timelines, and reporting into one secure workspace built for expansion discipline.
+        </p>
+        <div class="hero-actions" style="justify-content: center;">
+          <button class="btn btn-primary" type="button" data-open-auth="register">Create workspace</button>
+          <button class="btn btn-ghost" type="button" data-open-auth="login">Sign in</button>
+          <a class="btn btn-ghost" href="#top">Back to preview</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="auth-modal" id="onboard" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Z-Matrix account access">
+    <button class="auth-backdrop" type="button" data-close-auth aria-label="Close login dialog"></button>
+    <section class="auth-dialog">
+      <div class="modal-brand-row">
+        <a href="#" class="brand" aria-label="Z-Matrix">
+          <span class="brand-mark">Z</span>
+          <span class="brand-name">
+            <strong>z-matrix</strong>
+            <span>Secure tenant access</span>
+          </span>
+        </a>
+        <button class="modal-close" type="button" data-close-auth aria-label="Close">x</button>
+      </div>
+
+      <div class="tabs" role="tablist" aria-label="Authentication mode">
+        <button class="tab active" type="button" data-tab="login" role="tab" aria-selected="true">Login</button>
+        <button class="tab" type="button" data-tab="register" role="tab" aria-selected="false">Register</button>
+      </div>
+
+      <form class="form-panel active" data-panel="login">
+        <div>
+          <h2>Enter your workspace</h2>
+          <p>Pick up the pipeline exactly where your team left it.</p>
+        </div>
+        <div class="field">
+          <label for="login-email">Work email</label>
+          <input id="login-email" type="email" placeholder="riya@company.com" autocomplete="email">
+        </div>
+        <div class="field">
+          <label for="login-password">Password</label>
+          <input id="login-password" type="password" placeholder="Enter password" autocomplete="current-password">
+        </div>
+        <a class="mini-link" href="#">Forgot password?</a>
+        <button class="btn btn-primary" type="button">Continue to dashboard</button>
+        <div class="security-note">
+          <span>Sessions are tenant scoped, role aware, and backed by audit logs for every sensitive action.</span>
+        </div>
+      </form>
+
+      <form class="form-panel" data-panel="register">
+        <div>
+          <h2>Create company workspace</h2>
+          <p>Set up the tenant, invite the first operators, and open the first expansion pipeline.</p>
+        </div>
+        <div class="field">
+          <label for="company-name">Company name</label>
+          <input id="company-name" type="text" placeholder="Blue Tokai Coffee">
+        </div>
+        <div class="field">
+          <label for="admin-email">Admin work email</label>
+          <input id="admin-email" type="email" placeholder="admin@company.com">
+        </div>
+        <div class="field">
+          <label for="company-size">Team size</label>
+          <select id="company-size">
+            <option>1 to 10 users</option>
+            <option>11 to 50 users</option>
+            <option>51 to 200 users</option>
+            <option>200+ users</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" type="button">Request workspace</button>
+      </form>
+    </section>
+  </div>
+
+  <footer class="footer">
+    <span>Z-Matrix BD pipeline OS</span>
+    <span>Login -> tenant workspace -> Sites in motion</span>
+    <span>Designed as a static demo for the Matrix BD frontend.</span>
+  </footer>
+
+  <script>
+    const authModal = document.querySelector(".auth-modal");
+    const authOpeners = document.querySelectorAll("[data-open-auth]");
+    const authClosers = document.querySelectorAll("[data-close-auth]");
+    const tabs = document.querySelectorAll("[data-tab]");
+    const panels = document.querySelectorAll("[data-panel]");
+
+    const setAuthMode = (mode) => {
+      tabs.forEach((item) => {
+        const active = item.getAttribute("data-tab") === mode;
+        item.classList.toggle("active", active);
+        item.setAttribute("aria-selected", String(active));
+      });
+
+      panels.forEach((panel) => {
+        panel.classList.toggle("active", panel.getAttribute("data-panel") === mode);
+      });
+    };
+
+    const openAuth = (mode = "login") => {
+      setAuthMode(mode);
+      authModal.classList.add("is-open");
+      authModal.setAttribute("aria-hidden", "false");
+      document.body.style.overflow = "hidden";
+      const firstField = authModal.querySelector(".form-panel.active input");
+      window.setTimeout(() => firstField?.focus(), 180);
+    };
+
+    const closeAuth = () => {
+      authModal.classList.remove("is-open");
+      authModal.setAttribute("aria-hidden", "true");
+      document.body.style.overflow = "";
+    };
+
+    authOpeners.forEach((button) => {
+      button.addEventListener("click", () => {
+        openAuth(button.getAttribute("data-open-auth"));
+      });
+    });
+
+    authClosers.forEach((button) => {
+      button.addEventListener("click", closeAuth);
+    });
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => setAuthMode(tab.getAttribute("data-tab")));
+    });
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && authModal.classList.contains("is-open")) {
+        closeAuth();
+      }
+    });
+  </script>
+</body>
+</html>
