@@ -1,11 +1,15 @@
 """Audit router — tenant-wide and per-site activity feeds."""
+from __future__ import annotations
+
 from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query
 
-from app.core.deps import CurrentUser, DbDep, TenantId
+from app.core.deps import DbDep, TenantId
+from app.domain.schemas.audit import AuditListResponse
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
-from app.domain.schemas.audit import AuditListResponse
+from app.services.query_service import list_site_activity, list_tenant_audit
 
 router = APIRouter(prefix="/audit", tags=["Audit"])
 
@@ -13,9 +17,7 @@ router = APIRouter(prefix="/audit", tags=["Audit"])
 @router.get(
     "",
     response_model=AuditListResponse,
-    summary="Tenant-wide audit feed",
-    description="Returns all audit events for the tenant. Supervisor only. "
-                "Paginated by cursor.",
+    summary="Tenant-wide audit feed (supervisor only, paginated)",
 )
 async def list_audit_events(
     db: DbDep,
@@ -24,24 +26,20 @@ async def list_audit_events(
     page: int = Query(1, ge=1),
     limit: int = Query(50, le=200),
 ) -> AuditListResponse:
-    """Tenant-wide audit log (supervisor only, paginated)."""
-    # TODO(db): SELECT * FROM audit_events WHERE tenant_id=tenant_id ORDER BY created_at DESC LIMIT limit OFFSET (page-1)*limit
-    return AuditListResponse(items=[], total=0)
+    return await list_tenant_audit(db, tenant_id=tenant_id, page=page, limit=limit)
 
 
 @router.get(
     "/site/{site_id}",
     response_model=AuditListResponse,
-    summary="Per-site audit feed",
-    description="Returns the ordered audit log for a specific site. "
-                "Exec sees their own sites only.",
+    summary="Per-site audit feed (all authenticated roles, tenant-scoped)",
 )
 async def get_site_audit(
     site_id: str,
     db: DbDep,
-    current_user: CurrentUser,
+    current_user: Annotated[
+        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR, Role.SUB_SUPERVISOR))
+    ],
     tenant_id: TenantId,
 ) -> AuditListResponse:
-    """Per-site audit feed (role scoped)."""
-    # TODO(db): SELECT * FROM audit_events WHERE site_id=site_id ORDER BY created_at DESC
-    return AuditListResponse(items=[], total=0)
+    return await list_site_activity(db, tenant_id=tenant_id, site_id=site_id)

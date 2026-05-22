@@ -1,36 +1,103 @@
-"""Audit service — writes an audit row on every state transition.
-
-TODO(db): replace stub with real DB insert via SQLAlchemy/SQLModel session.
+"""Audit service — inserts a row in `audit_logs` on every state transition
+or field edit. Reads `Matrix_dev/02_Data_&_State/Proposed_Schema_Additions.md`
+for the column set we depend on (site_id + field_name + from_value/to_value).
 """
-from datetime import datetime, timezone
-import uuid
+from __future__ import annotations
+
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db import models
 
 
 async def write_audit_event(
-    db,  # TODO(db): type as AsyncSession once SQLModel is wired
+    session: AsyncSession,
     *,
-    site_id: str,
-    actor: str,
+    tenant_id: str | UUID,
+    site_id: str | UUID | None,
+    actor_id: str | UUID | None,
+    actor_name: str | None,
     action: str,
     from_status: str | None = None,
     to_status: str | None = None,
     detail: str | None = None,
-) -> dict:
-    """Write an audit row and return it.
+    field_name: str | None = None,
+    from_value: str | None = None,
+    to_value: str | None = None,
+    entity_id: str | UUID | None = None,
+    entity_type: str | None = None,
+) -> models.AuditLog:
+    """Persist an audit row. The caller's transaction is reused.
 
-    Currently a stub that prints to stdout.
-    When DB is wired, insert into the audit_events table.
+    `actor_name` is denormalised so the activity tab can render without a join.
     """
-    event = {
-        "id": str(uuid.uuid4()),
-        "site_id": site_id,
-        "actor": actor,
-        "action": action,
-        "from_status": from_status,
-        "to_status": to_status,
-        "detail": detail,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    # TODO(db): await db.execute(insert(AuditEvent).values(**event))
-    print(f"[AUDIT] {event}")
-    return event
+    row = models.AuditLog(
+        tenant_id=tenant_id,
+        site_id=site_id,
+        actor_id=actor_id,
+        actor_name=actor_name,
+        action=action,
+        from_status=from_status,
+        to_status=to_status,
+        detail=detail,
+        field_name=field_name,
+        from_value=from_value,
+        to_value=to_value,
+        entity_id=entity_id,
+        entity_type=entity_type,
+    )
+    session.add(row)
+    await session.flush()  # ensure id is populated
+    return row
+
+
+PIPELINE_FIELDS = ("model", "spoc_name", "google_pin", "expected_rent", "rent_type")
+
+# Map the public/incoming key → the audit field_name we want to record.
+# Special-case: `google_pin` is what the UI calls it; the DB column is google_maps_pin.
+_FIELD_AUDIT_LABEL = {
+    "model": "model",
+    "spoc_name": "spoc_name",
+    "google_pin": "google_pin",
+    "expected_rent": "expected_rent",
+    "rent_type": "rent_type",
+}
+
+
+async def diff_and_log_pipeline_fields(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    site_id: str | UUID,
+    actor_id: str | UUID | None,
+    actor_name: str | None,
+    before: dict,
+    after: dict,
+) -> int:
+    """Compare pipeline-stage fields before/after; emit one row per change.
+
+    `before` is the current state pulled from the sites row; `after` is the
+    incoming payload. Skips fields whose new value is None (partial-save).
+    """
+    written = 0
+    for field in PIPELINE_FIELDS:
+        new_val = after.get(field)
+        if new_val is None or new_val == "":
+            continue
+        old_val = before.get(field)
+        if str(old_val) == str(new_val):
+            continue
+        await write_audit_event(
+            session,
+            tenant_id=tenant_id,
+            site_id=site_id,
+            actor_id=actor_id,
+            actor_name=actor_name,
+            action="pipeline_field_edited",
+            field_name=_FIELD_AUDIT_LABEL[field],
+            from_value=None if old_val is None else str(old_val),
+            to_value=str(new_val),
+        )
+        written += 1
+    return written

@@ -1,144 +1,84 @@
 """BD (Business Development) router.
 
-Covers the pipeline (drafts), shortlist, detail form, and reassignment flows.
-Every mutating route:
-  1. Asserts the state transition is valid.
-  2. Persists via Depends(get_db)  — marked # TODO(db).
-  3. Writes an audit row via audit_service.
-  4. Emits a notification via notification_service.
+Pipeline (drafts), shortlist, detail form, reassignment. Thin alias layer over
+`app.services.bd_service`; no SQL or audit logic lives here.
 """
+from __future__ import annotations
+
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, status
+
+from fastapi import APIRouter, Depends, status
 
 from app.core.deps import CurrentUser, DbDep, TenantId
+from app.domain.schemas.common import OkResponse
+from app.domain.schemas.site import (
+    ApproveShortlistRequest,
+    ArchiveSiteRequest,
+    AssignSubSupervisorRequest,
+    CreateDraftRequest,
+    ReassignSiteRequest,
+    RejectSiteRequest,
+    SaveDetailsRequest,
+    SiteListResponse,
+    SiteResponse,
+    SubmitDetailsRequest,
+)
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
-from app.domain.state_machine import SiteStatus, assert_transition
-from app.domain.schemas.site import (
-    CreateDraftRequest,
-    RejectSiteRequest,
-    ArchiveSiteRequest,
-    SaveDetailsRequest,
-    SubmitDetailsRequest,
-    ApproveShortlistRequest,
-    ReassignSiteRequest,
-    AssignSubSupervisorRequest,
-    SiteResponse,
-    SiteListResponse,
-)
-from app.domain.schemas.common import OkResponse
+from app.services.audit_service import write_audit_event
 from app.services.bd_service import (
+    svc_approve_shortlist,
+    svc_archive_site,
+    svc_create_draft,
+    svc_reassign_site,
+    svc_reject_site,
+    svc_save_details,
     svc_shortlist_draft,
     svc_submit_details,
-    svc_approve_shortlist,
-    svc_push_to_payments,
-    svc_reject_site,
-    svc_archive_site,
-    svc_reassign_site,
-    svc_save_details,
 )
-from app.services.audit_service import write_audit_event
-from app.services.notification_service import send as notify
+from app.services.query_service import list_sites
 
 router = APIRouter(prefix="/bd", tags=["BD"])
 
 
-# ── Drafts ─────────────────────────────────────────────────────────────────────
+# ── Drafts ─────────────────────────────────────────────────────────────────
 
-@router.post(
-    "/drafts",
-    response_model=SiteResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a pipeline draft",
-    description="BD exec submits a new site for supervisor review. "
-                "Status transitions: null -> draft_submitted.",
-)
+@router.post("/drafts", response_model=SiteResponse, status_code=status.HTTP_201_CREATED,
+             summary="Create a pipeline draft")
 async def create_draft(
     body: CreateDraftRequest,
     db: DbDep,
     current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE))],
     tenant_id: TenantId,
 ) -> SiteResponse:
-    """Create a pipeline draft (exec action, null -> draft_submitted)."""
-    import uuid
-
-    site_id = str(uuid.uuid4())
-    city_code = body.city[:3].upper()
-    site_code = f"BT-{city_code}-{str(uuid.uuid4())[:4].upper()}"
-
-    # TODO(db): insert into sites table
-    mock_site = SiteResponse(
-        id=site_id,
-        code=site_code,
-        name=body.name,
-        city=body.city,
-        tenant_id=tenant_id,
-        status=SiteStatus.DRAFT_SUBMITTED,
-        created_by=current_user["name"],
-        visit_date=body.visit_date,
-        days=0,
-        stage="draft",
+    return await svc_create_draft(
+        db, tenant_id=tenant_id, actor=current_user,
+        name=body.name, city=body.city, visit_date=body.visit_date,
+        model=body.model, spoc_name=body.spoc_name, google_pin=body.google_pin,
+        expected_rent=body.expected_rent, rent_type=body.rent_type,
     )
 
-    await write_audit_event(
-        db,
-        site_id=site_id,
-        actor=current_user["name"],
-        action="create_draft",
-        from_status=None,
-        to_status=SiteStatus.DRAFT_SUBMITTED,
-    )
-    await notify(
-        event="draft_submitted",
-        recipient_ids=["supervisor-in-tenant"],  # TODO(db): resolve real supervisor IDs
-        channels=["email", "slack", "in_app"],
-        payload={"site_id": site_id, "site_name": body.name, "city": body.city},
-    )
-    return mock_site
 
-
-@router.get(
-    "/drafts",
-    response_model=SiteListResponse,
-    summary="List pipeline drafts",
-    description="Returns drafts scoped by role: exec sees own, supervisor sees all in tenant.",
-)
+@router.get("/drafts", response_model=SiteListResponse, summary="List pipeline drafts")
 async def list_drafts(
     db: DbDep,
-    current_user: CurrentUser,
+    current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR, Role.SUB_SUPERVISOR))],
     tenant_id: TenantId,
 ) -> SiteListResponse:
-    """List drafts (role-scoped)."""
-    # TODO(db): query sites where status=draft_submitted, scoped by role
-    return SiteListResponse(items=[], total=0)
+    return await list_sites(db, tenant_id=tenant_id, user=current_user, status="draft_submitted")
 
 
-@router.post(
-    "/drafts/{site_id}/shortlist",
-    response_model=SiteResponse,
-    summary="Shortlist a draft",
-    description="Supervisor approves a draft, advancing it to shortlisted status. "
-                "Notifies the originating exec.",
-)
+@router.post("/drafts/{site_id}/shortlist", response_model=SiteResponse, summary="Shortlist a draft")
 async def shortlist_draft(
     site_id: str,
     db: DbDep,
     current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.SUB_SUPERVISOR))],
     tenant_id: TenantId,
 ) -> SiteResponse:
-    """Supervisor shortlists a draft (draft_submitted -> shortlisted)."""
-    # TODO(db): fetch site, assert tenant ownership
-    assert_transition(SiteStatus.DRAFT_SUBMITTED, SiteStatus.SHORTLISTED)
-    return await svc_shortlist_draft(db, site_id=site_id, actor=current_user["name"], tenant_id=tenant_id)
+    return await svc_shortlist_draft(db, tenant_id=tenant_id, actor=current_user, site_id=site_id)
 
 
-@router.post(
-    "/drafts/{site_id}/reject",
-    response_model=OkResponse,
-    summary="Reject a draft",
-    description="Supervisor rejects a draft with reasons. Draft is archived. "
-                "Notifies the originating exec.",
-)
+@router.post("/drafts/{site_id}/reject", response_model=OkResponse, summary="Reject a draft")
 async def reject_draft(
     site_id: str,
     body: RejectSiteRequest,
@@ -146,17 +86,13 @@ async def reject_draft(
     current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.SUB_SUPERVISOR))],
     tenant_id: TenantId,
 ) -> OkResponse:
-    """Supervisor rejects a draft (* -> rejected)."""
-    # TODO(db): fetch site, validate current status allows rejection
-    return await svc_reject_site(db, site_id=site_id, actor=current_user["name"], reasons=body.reasons, comment=body.note)
+    return await svc_reject_site(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
+        reasons=body.reasons, comment=body.note,
+    )
 
 
-@router.post(
-    "/drafts/{site_id}/archive",
-    response_model=OkResponse,
-    summary="Archive a site",
-    description="Supervisor archives a site for future reference without rejecting it explicitly.",
-)
+@router.post("/drafts/{site_id}/archive", response_model=OkResponse, summary="Archive a site")
 async def archive_draft(
     site_id: str,
     body: ArchiveSiteRequest,
@@ -164,35 +100,28 @@ async def archive_draft(
     current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.SUB_SUPERVISOR))],
     tenant_id: TenantId,
 ) -> OkResponse:
-    """Supervisor archives a site (* -> archived)."""
-    return await svc_archive_site(db, site_id=site_id, actor=current_user["name"], note=body.note)
+    return await svc_archive_site(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id, note=body.note,
+    )
 
 
-# ── Shortlist ──────────────────────────────────────────────────────────────────
+# ── Shortlist ──────────────────────────────────────────────────────────────
 
-@router.get(
-    "/shortlist",
-    response_model=SiteListResponse,
-    summary="List shortlisted sites",
-    description="Returns shortlisted sites scoped by role.",
-)
+@router.get("/shortlist", response_model=SiteListResponse, summary="List shortlisted sites")
 async def list_shortlist(
     db: DbDep,
-    current_user: CurrentUser,
+    current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR, Role.SUB_SUPERVISOR))],
     tenant_id: TenantId,
 ) -> SiteListResponse:
-    """List shortlist (role-scoped)."""
-    # TODO(db): query sites where status in (shortlisted, details_submitted)
-    return SiteListResponse(items=[], total=0)
+    # Two statuses; cheaper as two queries unioned in app code (or use the
+    # general list endpoint with no status filter; UI filters client-side).
+    a = await list_sites(db, tenant_id=tenant_id, user=current_user, status="shortlisted")
+    b = await list_sites(db, tenant_id=tenant_id, user=current_user, status="details_submitted")
+    return SiteListResponse(items=a.items + b.items, total=a.total + b.total)
 
 
-@router.post(
-    "/shortlist/{site_id}/details/save",
-    response_model=OkResponse,
-    summary="Save partial details (draft save)",
-    description="BD exec saves partial 17-field form. Status stays shortlisted; "
-                "sets details_completion=partial. Supervisor cannot act until exec submits.",
-)
+@router.post("/shortlist/{site_id}/details/save", response_model=OkResponse,
+             summary="Save partial details (draft save)")
 async def save_draft_details(
     site_id: str,
     body: SaveDetailsRequest,
@@ -200,17 +129,13 @@ async def save_draft_details(
     current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE))],
     tenant_id: TenantId,
 ) -> OkResponse:
-    """Exec saves partial details (shortlisted -> shortlisted, completion=partial)."""
-    return await svc_save_details(db, site_id=site_id, actor=current_user["name"], details=body.model_dump())
+    return await svc_save_details(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id, details=body.model_dump(),
+    )
 
 
-@router.post(
-    "/shortlist/{site_id}/details/submit",
-    response_model=SiteResponse,
-    summary="Submit details for supervisor review",
-    description="BD exec submits the completed 17-field form. "
-                "Status transitions: shortlisted -> details_submitted. Notifies supervisor.",
-)
+@router.post("/shortlist/{site_id}/submit", response_model=SiteResponse,
+             summary="Submit details for supervisor review")
 async def submit_details_for_review(
     site_id: str,
     body: SubmitDetailsRequest,
@@ -218,19 +143,13 @@ async def submit_details_for_review(
     current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE))],
     tenant_id: TenantId,
 ) -> SiteResponse:
-    """Exec submits details (shortlisted -> details_submitted)."""
-    assert_transition(SiteStatus.SHORTLISTED, SiteStatus.DETAILS_SUBMITTED)
-    # TODO(db): save body to site_details before transitioning
-    return await svc_submit_details(db, site_id=site_id, actor=current_user["name"], tenant_id=tenant_id)
+    return await svc_submit_details(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id, details=body.model_dump(),
+    )
 
 
-@router.post(
-    "/shortlist/{site_id}/approve",
-    response_model=SiteResponse,
-    summary="Approve shortlist and set LOI timeline",
-    description="Supervisor approves site details, sets expected_loi_days, and moves site to "
-                "approved. Status: details_submitted -> approved. Notifies exec.",
-)
+@router.post("/shortlist/{site_id}/approve", response_model=SiteResponse,
+             summary="Approve shortlist and set LOI timeline")
 async def approve_shortlist(
     site_id: str,
     body: ApproveShortlistRequest,
@@ -238,24 +157,14 @@ async def approve_shortlist(
     current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.SUB_SUPERVISOR))],
     tenant_id: TenantId,
 ) -> SiteResponse:
-    """Supervisor approves shortlist (details_submitted -> approved)."""
-    assert_transition(SiteStatus.DETAILS_SUBMITTED, SiteStatus.APPROVED)
     return await svc_approve_shortlist(
-        db,
-        site_id=site_id,
-        actor=current_user["name"],
-        tenant_id=tenant_id,
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
         expected_loi_days=body.expected_loi_days,
     )
 
 
-@router.post(
-    "/shortlist/{site_id}/reassign",
-    response_model=OkResponse,
-    summary="Reassign site to another exec",
-    description="Supervisor reassigns a shortlisted site from one exec to another. "
-                "Writes audit row; does not change status.",
-)
+@router.post("/shortlist/{site_id}/reassign", response_model=OkResponse,
+             summary="Reassign site to another exec")
 async def reassign_site(
     site_id: str,
     body: ReassignSiteRequest,
@@ -263,29 +172,35 @@ async def reassign_site(
     current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
     tenant_id: TenantId,
 ) -> OkResponse:
-    """Supervisor reassigns a site to a different exec (supervisor only)."""
-    return await svc_reassign_site(db, site_id=site_id, actor=current_user["name"], new_owner_id=body.new_owner_id)
+    return await svc_reassign_site(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
+        new_owner_id=body.new_owner_id,
+    )
 
 
-@router.post(
-    "/assign-sub-supervisor",
-    response_model=OkResponse,
-    summary="Assign sub-supervisor to a city",
-    description="Supervisor assigns a sub_supervisor role to a user for a specific city.",
-)
+@router.post("/assign-sub-supervisor", response_model=OkResponse,
+             summary="Assign sub-supervisor to a city")
 async def assign_sub_supervisor(
     body: AssignSubSupervisorRequest,
     db: DbDep,
     current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
     tenant_id: TenantId,
 ) -> OkResponse:
-    """Supervisor assigns sub-supervisor (supervisor only)."""
-    # TODO(db): update users set role=sub_supervisor, assigned_city=body.city where id=body.user_id
-    await write_audit_event(
-        db,
-        site_id="N/A",
-        actor=current_user["name"],
-        action="assign_sub_supervisor",
-        detail=f"user={body.user_id} city={body.city}",
-    )
+    from app.db import models as m
+    from sqlalchemy import update
+    from app.db.session import transaction
+
+    async with transaction(db):
+        await db.execute(
+            update(m.User)
+            .where(m.User.id == body.user_id, m.User.tenant_id == tenant_id)
+            .values(role=Role.SUB_SUPERVISOR.value, assigned_city=body.city)
+        )
+        await write_audit_event(
+            db, tenant_id=tenant_id, site_id=None,
+            actor_id=current_user["sub"], actor_name=current_user["name"],
+            action="assign_sub_supervisor",
+            entity_id=body.user_id, entity_type="user",
+            detail=f"city={body.city}",
+        )
     return OkResponse(message=f"User {body.user_id} assigned as sub-supervisor for {body.city}")

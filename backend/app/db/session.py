@@ -1,16 +1,76 @@
-"""Database session placeholder.
+"""Async SQLAlchemy engine + sessionmaker for Supabase Postgres.
 
-TODO(db): teammate wires SQLAlchemy / SQLModel here.
-Replace the stub generator below with a real async session factory.
+The engine is built once at import time using settings from `app.core.config`.
+Routes consume sessions through the `get_db` dependency.
+
+Notes on Supabase:
+- Use the *transaction pooler* URL (port 6543), not the direct connection,
+  for serverless/long-running workloads. Set DATABASE_URL accordingly.
+- The driver MUST be `postgresql+asyncpg`. Supabase URIs come as
+  `postgres://…` — swap the scheme manually in your .env.
+- Tenant scoping is enforced in application code (see services). RLS can be
+  layered on top if you also want database-side enforcement; the queries we
+  emit are RLS-safe (always include tenant_id in the WHERE clause).
 """
-from typing import AsyncGenerator
+from __future__ import annotations
+
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+
+from app.core.config import settings
 
 
-async def get_db() -> AsyncGenerator[None, None]:
-    """Stub DB session dependency.
+def _make_engine() -> AsyncEngine:
+    return create_async_engine(
+        settings.database_url,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_pre_ping=True,
+        pool_recycle=settings.db_pool_recycle_seconds,
+        echo=settings.debug,
+    )
 
-    Yields None for now.  Every route that calls Depends(get_db)
-    receives None and must guard all persistence operations with
-    # TODO(db): comments so they are easy to find.
+
+engine: AsyncEngine = _make_engine()
+
+SessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(
+    bind=engine,
+    expire_on_commit=False,
+    autoflush=False,
+    autocommit=False,
+)
+
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI dependency yielding an `AsyncSession`.
+
+    The session is rolled back if an exception escapes the route and is closed
+    in all cases. Services either commit at their own boundary or use the
+    `transaction()` helper below.
     """
-    yield None  # TODO(db): yield real AsyncSession
+    session = SessionLocal()
+    try:
+        yield session
+    except Exception:
+        await session.rollback()
+        raise
+    finally:
+        await session.close()
+
+
+@asynccontextmanager
+async def transaction(session: AsyncSession) -> AsyncGenerator[AsyncSession, None]:
+    """Begin a (nested-safe) transaction. Commits on exit if no exception."""
+    if session.in_transaction():
+        async with session.begin_nested():
+            yield session
+    else:
+        async with session.begin():
+            yield session

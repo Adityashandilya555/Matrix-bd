@@ -12,6 +12,14 @@ class CreateDraftRequest(BaseModel):
     name: str
     city: str
     visit_date: date
+    # Pipeline-stage data lifted from the shortlist form so the BE captures it upfront.
+    # All optional — BE can leave them empty and fill at shortlist; values are editable later.
+    # Edits to any of these post-create are diff-logged into the activity feed.
+    model: Optional[str] = None
+    spoc_name: Optional[str] = None
+    google_pin: Optional[str] = None
+    expected_rent: Optional[float] = None
+    rent_type: Optional[str] = None  # 'fixed' | 'revshare'
 
 
 class ShortlistDraftRequest(BaseModel):
@@ -95,6 +103,12 @@ class SiteResponse(BaseModel):
     days: Optional[int] = None
     stage: Optional[str] = None
     details_completion: Optional[str] = None
+    # Pipeline-stage fields (also editable at shortlist; diff-logged on change)
+    model: Optional[str] = None
+    spoc_name: Optional[str] = None
+    google_pin: Optional[str] = None
+    expected_rent: Optional[float] = None
+    rent_type: Optional[str] = None
 
 
 class SiteListResponse(BaseModel):

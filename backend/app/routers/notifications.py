@@ -1,48 +1,52 @@
-"""Notifications router — stub in-app feed and send endpoint."""
-from typing import Annotated
-from fastapi import APIRouter, Depends
+"""Notifications router — read-only feed for the current user.
 
-from app.core.deps import CurrentUser, DbDep
-from app.rbac.guards import require_role
-from app.rbac.roles import Role
-from app.services.notification_service import send as notify_send
-from app.domain.schemas.common import OkResponse
+Writes happen via the outbox (`app.services.notification_service.enqueue`)
+inside each business service, never via a public HTTP endpoint. The old
+`POST /notifications/send` endpoint has been removed — it was a foot-gun that
+could write rows without going through the state machine.
+"""
+from __future__ import annotations
+
+from fastapi import APIRouter, Query
+from sqlalchemy import desc, select
+
+from app.core.deps import CurrentUser, DbDep, TenantId
+from app.db import models
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
 
-@router.get(
-    "",
-    summary="List in-app notifications",
-    description="Returns in-app notifications for the current user.",
-)
+@router.get("", summary="List in-app notifications for the current user")
 async def list_notifications(
     db: DbDep,
     current_user: CurrentUser,
+    tenant_id: TenantId,
+    limit: int = Query(50, le=200),
 ) -> dict:
-    """In-app notification feed for current user."""
-    # TODO(db): SELECT * FROM notifications WHERE recipient_id=current_user.sub ORDER BY created_at DESC
-    return {"items": [], "total": 0}
-
-
-@router.post(
-    "/send",
-    response_model=OkResponse,
-    summary="Send a notification (system use)",
-    description="Internal endpoint to trigger a notification. "
-                "Called by other services; not intended for direct client use. "
-                "TODO(mcp): teammate plugs real email/Slack via MCP here.",
-)
-async def send_notification(
-    payload: dict,
-    db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.SYSTEM))],
-) -> OkResponse:
-    """System: send notification (stub)."""
-    await notify_send(
-        event=payload.get("event", "unknown"),
-        recipient_ids=payload.get("recipient_ids", []),
-        channels=payload.get("channels", ["in_app"]),
-        payload=payload,
+    stmt = (
+        select(models.NotificationOutbox)
+        .where(
+            models.NotificationOutbox.tenant_id == tenant_id,
+            models.NotificationOutbox.recipient_id == current_user["sub"],
+            models.NotificationOutbox.channel == "in_app",
+        )
+        .order_by(desc(models.NotificationOutbox.created_at))
+        .limit(limit)
     )
-    return OkResponse(message="Notification queued (stub)")
+    rows = (await db.execute(stmt)).scalars().all()
+    return {
+        "items": [
+            {
+                "id": str(r.id),
+                "type": r.type,
+                "subject": r.subject,
+                "body": r.body,
+                "payload": r.payload,
+                "status": r.status,
+                "site_id": str(r.site_id) if r.site_id else None,
+                "created_at": r.created_at.isoformat(),
+            }
+            for r in rows
+        ],
+        "total": len(rows),
+    }
