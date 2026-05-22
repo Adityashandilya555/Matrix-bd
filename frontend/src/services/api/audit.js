@@ -1,11 +1,61 @@
-import { api } from './client.js';
+import { adapter } from './adapters/index.js';
 
-export async function listAuditEvents({ page = 1, limit = 50 } = {}) {
-  // TODO(db): return api.get(`/audit?page=${page}&limit=${limit}`);
-  throw new Error('listAuditEvents: not yet implemented');
+// Public site-activity service.
+// `getSiteActivity` returns a list of canonical activity entries (see below).
+// Components must NOT inline-hardcode mock activity data — go through this.
+//
+// Canonical activity entry shape:
+//   { id, siteId, actor, action, fromStatus?, toStatus?, fieldName?, fromValue?, toValue?, detail?, createdAt }
+//
+// The frontend derives a render `tag` (create | submit | edit | approve | doc) from `action`
+// at render time so all colour/icon decisions live in one place.
+
+const ACTION_TO_TAG = {
+  create_draft: 'create',
+  shortlist: 'submit',
+  submit_details_for_review: 'submit',
+  pipeline_field_edited: 'edit',
+  approve_details: 'approve',
+  set_loi_timeline: 'edit',
+  upload_loi: 'doc',
+  push_to_payments: 'approve',
+  reject: 'edit',
+  archive: 'edit',
+  reassign_site: 'edit',
+};
+
+const TAG_TO_COLOR = {
+  create: '#6B7280',
+  submit: '#1E40AF',
+  edit: '#005F60',
+  approve: '#047857',
+  doc: '#1E40AF',
+};
+
+export function tagForAction(action) { return ACTION_TO_TAG[action] || 'edit'; }
+export function colorForAction(action) { return TAG_TO_COLOR[tagForAction(action)]; }
+
+// Human-readable label per action. Field edits get their field_name suffixed.
+export function labelForEntry(e) {
+  switch (e.action) {
+    case 'create_draft':              return 'created pipeline draft';
+    case 'shortlist':                 return 'submitted pipeline for shortlist';
+    case 'submit_details_for_review': return 'completed site detail form';
+    case 'approve_details':           return 'approved site shortlist';
+    case 'set_loi_timeline':          return e.detail ? `set LOI timeline (${e.detail})` : 'set LOI timeline';
+    case 'upload_loi':                return 'uploaded LOI document';
+    case 'push_to_payments':          return 'pushed site to payments';
+    case 'reject':                    return 'rejected site';
+    case 'archive':                   return 'archived site';
+    case 'reassign_site':             return 'reassigned site';
+    case 'pipeline_field_edited':
+      return `updated ${e.fieldName || 'field'}${e.toValue ? ` to ${e.toValue}` : ''}`;
+    default:
+      return e.action.replace(/_/g, ' ');
+  }
 }
 
-export async function getSiteAudit(siteId) {
-  // TODO(db): return api.get(`/audit/site/${siteId}`);
-  throw new Error('getSiteAudit: not yet implemented');
+export async function getSiteActivity(siteId) {
+  // Adapter contract: returns { items: [...], total: N } where items are canonical entries.
+  return adapter.getSiteActivity(siteId);
 }

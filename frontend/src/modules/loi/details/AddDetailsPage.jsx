@@ -65,7 +65,20 @@ function FormSection({ title, n, children }) {
 }
 
 export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft }) {
-  const init = item.details || { name: item.name, visitDate: item.visitDate, city: item.city, model: '', spocName: '', googlePin: '', photos: [], score: '', estSales: '', nearestStarbucks: '', nearestTWC: '', carpet: '', cam: '', rentType: '', rent: '', escalation: '', rentFreeDays: '', cadex: '', deposit: '', brokerage: '', lockin: '', tenure: '' };
+  // Pipeline-stage fields (model, spocName, googlePin, rentType, expectedRent) are now
+  // captured at draft creation. Prefill them here so the BE picks up where they left off;
+  // any edit before submit/save is diff-logged into the activity feed by the backend.
+  const init = item.details || {
+    name: item.name, visitDate: item.visitDate, city: item.city,
+    model: item.model || '',
+    spocName: item.spocName || '',
+    googlePin: item.googlePin || '',
+    rentType: item.rentType || '',
+    rent: item.expectedRent != null ? String(item.expectedRent) : '',
+    photos: [], score: '', estSales: '', nearestStarbucks: '', nearestTWC: '',
+    carpet: '', cam: '', escalation: '', rentFreeDays: '',
+    cadex: '', deposit: '', brokerage: '', lockin: '', tenure: '',
+  };
   const [f, setF] = React.useState(init);
   const upd = (k) => (v) => setF(prev => ({ ...prev, [k]: v }));
   const rentNum = parseFloat(f.rent) || 0; const camNum = parseFloat(f.cam) || 0;

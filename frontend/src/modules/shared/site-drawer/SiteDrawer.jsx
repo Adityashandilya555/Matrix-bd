@@ -1,7 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Icon from '../primitives/Icon.jsx';
 import Avatar from '../primitives/Avatar.jsx';
 import StatusPill from '../primitives/StatusPill.jsx';
+import { getSiteActivity, colorForAction, labelForEntry } from '../../../services/api/audit.js';
+
+// Relative time formatter for the activity tab. Keeps the rendering format from
+// the mock data ("12 min ago", "3 days ago") so the visual identity is preserved.
+function relativeTime(iso) {
+  if (!iso) return '';
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const sec = Math.max(0, Math.round(diffMs / 1000));
+  if (sec < 60)            return `${sec} sec ago`;
+  const min = Math.round(sec / 60);
+  if (min < 60)            return `${min} min ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 24)             return `${hr} hr ago`;
+  const day = Math.round(hr / 24);
+  if (day < 30)            return `${day} day${day === 1 ? '' : 's'} ago`;
+  const mo = Math.round(day / 30);
+  return `${mo} mo ago`;
+}
 
 // All render bodies preserved exactly from SiteDrawer.jsx.
 
@@ -162,31 +180,45 @@ function SiteOverviewTab({ site }) {
 }
 
 function SiteActivityTab({ site }) {
-  const entries = [
-    { t: '12 min ago',  who: 'Riya Sharma',    act: 'uploaded LOI document',            tag: 'doc',    color: '#1E40AF' },
-    { t: '2 hr ago',    who: 'Aman Verma',     act: 'set LOI signing date to 2026-05-19', tag: 'edit',   color: '#005F60' },
-    { t: '1 day ago',   who: 'Nikhil Iyer',    act: 'approved site shortlist',          tag: 'approve', color: '#047857' },
-    { t: '3 days ago',  who: 'Riya Sharma',    act: 'completed 20-field site form',     tag: 'edit',   color: '#005F60' },
-    { t: '5 days ago',  who: 'Riya Sharma',    act: 'submitted pipeline for shortlist', tag: 'submit', color: '#1E40AF' },
-    { t: '6 days ago',  who: 'Riya Sharma',    act: 'created pipeline draft',           tag: 'create', color: '#6B7280' },
-  ];
+  const [entries, setEntries] = useState(null); // null = loading
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setEntries(null);
+    setError(null);
+    getSiteActivity(site.id)
+      .then(res => { if (!cancelled) setEntries(res.items || []); })
+      .catch(err => { if (!cancelled) setError(err?.message || 'Failed to load activity'); });
+    return () => { cancelled = true; };
+  }, [site.id]);
+
+  const wrapStyle = { background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 10, overflow: 'hidden' };
+
+  if (entries === null && !error) {
+    return <div style={{ ...wrapStyle, padding: 20, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>Loading activity…</div>;
+  }
+  if (error) {
+    return <div style={{ ...wrapStyle, padding: 20, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: '#B91C1C' }}>{error}</div>;
+  }
+  if (entries.length === 0) {
+    return <div style={{ ...wrapStyle, padding: 20, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>No activity yet for this site.</div>;
+  }
+
   return (
-    <div style={{
-      background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 10,
-      overflow: 'hidden',
-    }}>
+    <div style={wrapStyle}>
       {entries.map((e, i) => (
-        <div key={i} style={{
+        <div key={e.id || i} style={{
           display: 'grid', gridTemplateColumns: '110px 1fr', alignItems: 'center', gap: 16,
           padding: '14px 20px',
           borderBottom: i < entries.length - 1 ? '1px solid var(--zm-line-faint)' : 'none',
         }}>
-          <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{e.t}</span>
+          <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{relativeTime(e.createdAt)}</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: e.color, flex: '0 0 6px' }}/>
-            <Avatar name={e.who} size={24}/>
+            <span style={{ width: 6, height: 6, borderRadius: 999, background: colorForAction(e.action), flex: '0 0 6px' }}/>
+            <Avatar name={e.actor} size={24}/>
             <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>
-              <strong style={{ fontWeight: 600 }}>{e.who}</strong> <span style={{ color: 'var(--zm-fg-2)' }}>{e.act}</span>
+              <strong style={{ fontWeight: 600 }}>{e.actor}</strong> <span style={{ color: 'var(--zm-fg-2)' }}>{labelForEntry(e)}</span>
             </span>
           </div>
         </div>

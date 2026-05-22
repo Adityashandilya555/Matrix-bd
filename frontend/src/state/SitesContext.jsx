@@ -216,10 +216,18 @@ export function SitesProvider({ children }) {
   }, [refresh]);
 
   const createDraft = useCallback(async (form, createdByName) => {
+    // Pipeline-stage fields (model, spocName, googlePin, rentType, expectedRent) are
+    // forwarded so they land on the sites row at creation; they stay editable at
+    // shortlist and any subsequent edit is diff-logged into the activity feed.
     await siteService.createSite({
       name: form.name,
       city: form.city,
       visitDate: form.visitDate,
+      model: form.model || null,
+      spocName: form.spocName || null,
+      googlePin: form.googlePin || null,
+      rentType: form.rentType || null,
+      expectedRent: form.expectedRent ? Number(form.expectedRent) : null,
       createdBy: { id: 'user_riya', name: createdByName },
       tenantId: 'bt-tenant-001',
     });

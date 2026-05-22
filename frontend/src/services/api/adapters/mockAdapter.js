@@ -58,8 +58,18 @@ export async function createSite(payload) {
     archiveNote: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    auditTrail: [],
-    score: '', estSales: '', carpet: '', rent: '', rentType: '', totalOpCost: 0,
+    auditTrail: [
+      { id: 'a_' + Math.random().toString(36).slice(2, 8), action: 'create_draft',
+        actor: payload.createdBy?.name || 'unknown',
+        toStatus: SiteStatus.DRAFT_SUBMITTED, createdAt: new Date().toISOString() },
+    ],
+    // Pipeline-stage fields — also rendered into the shortlist edit form.
+    model: payload.model ?? '',
+    spocName: payload.spocName ?? '',
+    googlePin: payload.googlePin ?? '',
+    rentType: payload.rentType ?? '',
+    expectedRent: payload.expectedRent ?? null,
+    score: '', estSales: '', carpet: '', rent: payload.expectedRent ?? '', totalOpCost: 0,
     hue: Math.round(Math.random() * 360),
   };
   return upsertSite(site);
@@ -168,18 +178,83 @@ export async function assignSite(id, execId) {
   return upsertSite(updated);
 }
 
-// Patch details in place without transitioning status (for save-draft-details)
+// Patch details in place without transitioning status (for save-draft-details).
+// Emits one `pipeline_field_edited` audit row per changed pipeline-stage field so the
+// site activity tab can render the diff (mirrors the backend service contract).
+const PIPELINE_FIELDS_FE = [
+  ['model', 'model'],
+  ['spocName', 'spoc_name'],
+  ['googlePin', 'google_pin'],
+  ['rentType', 'rent_type'],
+  // In the form the rent number lives in `rent`; on the site it lives on `expectedRent`.
+  ['rent', 'expected_rent'],
+];
+
+function diffPipelineEntries(site, incoming, actor) {
+  const entries = [];
+  for (const [formKey, fieldName] of PIPELINE_FIELDS_FE) {
+    const nextRaw = incoming[formKey];
+    if (nextRaw === undefined || nextRaw === '' || nextRaw === null) continue;
+    const prevRaw = fieldName === 'expected_rent' ? site.expectedRent : site[formKey];
+    const next = String(nextRaw);
+    const prev = prevRaw == null ? null : String(prevRaw);
+    if (prev === next) continue;
+    entries.push({
+      id: 'a_' + Math.random().toString(36).slice(2, 8),
+      at: new Date().toISOString(),
+      by: actor,
+      action: 'pipeline_field_edited',
+      fieldName, fromValue: prev, toValue: next,
+    });
+  }
+  return entries;
+}
+
 export async function patchSiteDetails(id, details) {
   await delay(150, 400);
   maybeFail();
   const site = getSiteById(id);
   if (!site) throw new Error(`Site not found: ${id}`);
+  const actor = details._actor || site.createdBy?.name || 'exec';
+  const diffEntries = diffPipelineEntries(site, details, actor);
   const updated = {
     ...site,
     details: { ...(site.details || {}), ...details },
+    // Promote the 5 pipeline-stage fields back onto the site row (single source of truth).
+    model: details.model ?? site.model,
+    spocName: details.spocName ?? site.spocName,
+    googlePin: details.googlePin ?? site.googlePin,
+    rentType: details.rentType ?? site.rentType,
+    expectedRent: details.rent != null && details.rent !== '' ? Number(details.rent) : site.expectedRent,
+    auditTrail: [...(site.auditTrail || []), ...diffEntries],
     updatedAt: new Date().toISOString(),
   };
   return upsertSite(updated);
+}
+
+// Activity feed for one site — canonical entry shape consumed by SiteActivityTab.
+// See frontend/src/services/api/audit.js for the canonical contract.
+export async function getSiteActivity(siteId) {
+  await delay(80, 200);
+  const site = getSiteById(siteId);
+  if (!site) return { items: [], total: 0 };
+  const items = (site.auditTrail || [])
+    .slice()
+    .reverse()
+    .map(e => ({
+      id: e.id,
+      siteId,
+      actor: e.by || e.actor || 'system',
+      action: e.action || 'edit',
+      fromStatus: e.fromStatus || null,
+      toStatus: e.toStatus || null,
+      fieldName: e.fieldName || null,
+      fromValue: e.fromValue ?? null,
+      toValue: e.toValue ?? null,
+      detail: e.note || e.detail || null,
+      createdAt: e.at || e.createdAt || new Date().toISOString(),
+    }));
+  return { items, total: items.length };
 }
 
 // ---- Users ----
