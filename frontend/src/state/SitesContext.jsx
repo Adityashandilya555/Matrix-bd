@@ -121,6 +121,7 @@ export function SitesProvider({ children }) {
   const [sites, setSites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const { user, session } = useSession();
 
   // Initial load from service
   useEffect(() => {
@@ -179,8 +180,21 @@ export function SitesProvider({ children }) {
     await refresh();
   }, [refresh]);
 
-  const archiveDraft = useCallback(async (draft) => {
-    await siteService.archiveSite(draft.id, 'Archived for future reference', 'supervisor');
+  const archiveDraft = useCallback(async (draft, note) => {
+    // Note is mandatory at the backend (see svc_archive_site). We don't paper
+    // over a missing reason here — surface the validation error to the UI so
+    // the user knows why their click did nothing.
+    if (!note || !String(note).trim()) {
+      throw new Error('A reason is required to archive a site.');
+    }
+    await siteService.archiveSite(draft.id, String(note).trim(), 'supervisor');
+    await refresh();
+  }, [refresh]);
+
+  const reviveSite = useCallback(async (site, note) => {
+    // Supervisor-only path on the backend; revives an archived site back to
+    // the stage it was at when archived (see backend.bd_service.svc_revive_site).
+    await siteService.reviveSite(site.id, note);
     await refresh();
   }, [refresh]);
 
@@ -219,6 +233,13 @@ export function SitesProvider({ children }) {
     // Pipeline-stage fields (model, spocName, googlePin, rentType, expectedRent) are
     // forwarded so they land on the sites row at creation; they stay editable at
     // shortlist and any subsequent edit is diff-logged into the activity feed.
+    //
+    // createdBy / tenantId: the HTTP backend derives both from the bearer JWT
+    // (sub → submitted_by, tenant_id claim → tenant_id). The mock adapter, on
+    // the other hand, persists whatever is passed. So we send the session
+    // user's identity to keep mock fixtures consistent with the logged-in
+    // role switcher, and the HTTP adapter simply ignores these two fields.
+    const sessionDisplayName = createdByName || user?.name || session?.email || 'unknown';
     await siteService.createSite({
       name: form.name,
       city: form.city,
@@ -228,11 +249,11 @@ export function SitesProvider({ children }) {
       googlePin: form.googlePin || null,
       rentType: form.rentType || null,
       expectedRent: form.expectedRent ? Number(form.expectedRent) : null,
-      createdBy: { id: 'user_riya', name: createdByName },
-      tenantId: 'bt-tenant-001',
+      createdBy: { id: session?.id || session?.sub || undefined, name: sessionDisplayName },
+      tenantId: user?.tenantId,
     });
     await refresh();
-  }, [refresh]);
+  }, [refresh, user, session]);
 
   return (
     <SitesContext.Provider value={{
@@ -241,7 +262,7 @@ export function SitesProvider({ children }) {
       // Loading/error state
       loading, error,
       // Action methods — all async, all go through siteService
-      moveDraftToShortlist, rejectDraft, archiveDraft,
+      moveDraftToShortlist, rejectDraft, archiveDraft, reviveSite,
       saveDraftDetails, submitDetailsForReview, approveShortlistToStaging,
       uploadLOI, pushSite, createDraft,
       // Raw sites array for advanced use

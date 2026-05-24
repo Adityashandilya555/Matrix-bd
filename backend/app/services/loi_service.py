@@ -12,6 +12,8 @@ from app.db.session import transaction
 from app.domain.schemas.common import OkResponse
 from app.domain.schemas.loi import LOIUploadResponse, LOIViewResponse
 from app.domain.state_machine import SiteStatus, assert_transition
+from fastapi import HTTPException, status as http_status
+
 from app.services._common import fetch_site_or_404
 from app.services.audit_service import write_audit_event
 from app.services.notification_service import enqueue as notify_enqueue, recipients_for_supervisors
@@ -32,6 +34,17 @@ async def svc_upload_loi(
     file in Supabase Storage, persists a site_files row, writes audit + outbox."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        # Site owner restriction (Todo #6). Only the executive who originally
+        # captured the site may upload the LOI. Supervisor and sub_supervisor
+        # roles are explicitly allowed (they can backfill on behalf of the
+        # owner when the owner is off-rotation), but a *different* executive
+        # cannot. This protects the field-team accountability chain.
+        actor_role = (actor.get("role") or "").lower()
+        if actor_role == "executive" and str(site.submitted_by) != str(actor["sub"]):
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail="Only the executive who submitted this site can upload its LOI.",
+            )
         assert_transition(SiteStatus(site.status), SiteStatus.LOI_UPLOADED)
 
         storage_path = f"loi/{tenant_id}/{site_id}/{filename}"

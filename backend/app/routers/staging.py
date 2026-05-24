@@ -48,12 +48,16 @@ async def list_supervisor_staging(
     "/{site_id}/push",
     response_model=OkResponse,
     status_code=status.HTTP_200_OK,
-    summary="Push site to Payments module",
+    summary="Push site to Payments module (supervisor only)",
 )
 async def push_to_payments(
     site_id: str,
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.SUB_SUPERVISOR))],
+    # SUPERVISOR ONLY (Todo #7). Pushing into Payments hands off ownership to
+    # Finance and stops the BD pipeline from being able to revise anything on
+    # the site. The product owner asked that this final hand-off be reserved
+    # to the supervisor, regardless of who set up the LOI.
+    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
     tenant_id: TenantId,
 ) -> OkResponse:
     return await svc_push_to_payments(db, tenant_id=tenant_id, actor=current_user, site_id=site_id)

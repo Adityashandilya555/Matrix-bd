@@ -16,7 +16,7 @@ import {
 //      (b) activates the public.users row, and (c) returns an invite link.
 
 const ROLE_OPTIONS = [
-  { value: 'bd_person',      label: 'BD executive' },
+  { value: 'executive',      label: 'BD executive' },
   { value: 'sub_supervisor', label: 'Sub-supervisor (city lead)' },
 ];
 

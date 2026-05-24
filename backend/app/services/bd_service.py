@@ -42,6 +42,57 @@ from app.services.notification_service import (
 )
 
 
+# ── Authorisation guards ──────────────────────────────────────────────────
+#
+# Two cross-cutting rules every state-changing action goes through.
+#
+#   1. City scope (sub_supervisor only). Sub-supervisors own a city. They are
+#      *not* allowed to act on a site that lives in another city. Supervisors
+#      have no city restriction. Executives reach these paths only through
+#      their own submissions and so are implicitly already in-scope.
+#
+#   2. Self-approval. Whoever submitted the draft cannot also be the one who
+#      approves / rejects it. The supervisor's own drafts skip approval
+#      entirely via the auto-promote rule (see Todo #10) — they never reach
+#      these guards as a self-approval. This is purely defensive.
+#
+
+def _city_eq(a: str | None, b: str | None) -> bool:
+    return (a or "").strip().lower() == (b or "").strip().lower()
+
+
+def _assert_actor_can_act_on_site(actor: dict, site: models.Site) -> None:
+    """City-scope guard. Raises 403 if sub_supervisor is acting outside their
+    assigned city. Supervisor / executive pass through untouched."""
+    if (actor.get("role") or "").lower() != "sub_supervisor":
+        return
+    actor_city = actor.get("city")
+    if not actor_city:
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Sub-supervisor has no assigned city. Ask the supervisor to set one on /team.",
+        )
+    if not _city_eq(actor_city, site.city):
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"You can only act on sites in your assigned city "
+                f"({actor_city}). This site is in {site.city}."
+            ),
+        )
+
+
+def _assert_not_self_approval(actor: dict, site: models.Site) -> None:
+    """Self-approval guard. The submitter cannot also be the approver/rejecter
+    of the same draft. A supervisor draft never reaches here because it
+    auto-promotes — see svc_create_draft."""
+    if str(site.submitted_by) == str(actor["sub"]):
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="You cannot approve or reject a draft you submitted.",
+        )
+
+
 # ── Create draft ──────────────────────────────────────────────────────────
 
 async def svc_create_draft(
@@ -58,13 +109,23 @@ async def svc_create_draft(
     expected_rent: float | None = None,
     rent_type: str | None = None,
 ) -> SiteResponse:
-    """Create a pipeline draft (executive). One canonical implementation used
-    by both `POST /api/bd/drafts` and `POST /api/sites`."""
+    """Create a pipeline draft. One canonical implementation used by both
+    `POST /api/bd/drafts` and `POST /api/sites`.
+
+    Auto-promote rule (Todo #10): when the *supervisor* submits the draft
+    themselves we skip the queue and put it straight into SHORTLISTED with
+    themselves as the supervising party. The product spec is explicit:
+    supervisor drafts must not need their own approval.
+    """
+    is_supervisor = (actor.get("role") or "").lower() == "supervisor"
+    now = datetime.now(timezone.utc)
+    initial_status = SiteStatus.SHORTLISTED if is_supervisor else SiteStatus.DRAFT_SUBMITTED
+
     async with transaction(session):
         site = models.Site(
             tenant_id=tenant_id,
             code=make_site_code(city),
-            status=SiteStatus.DRAFT_SUBMITTED.value,
+            status=initial_status.value,
             name=name,
             city=city,
             visit_date=visit_date,
@@ -73,8 +134,10 @@ async def svc_create_draft(
             google_maps_pin=google_pin,
             expected_rent=expected_rent,
             rent_type=rent_type,
-            rent_set_at=datetime.now(timezone.utc) if expected_rent is not None else None,
+            rent_set_at=now if expected_rent is not None else None,
             submitted_by=actor["sub"],
+            shortlisted_at=now if is_supervisor else None,
+            supervisor_id=actor["sub"] if is_supervisor else None,
         )
         session.add(site)
         await session.flush()
@@ -85,20 +148,24 @@ async def svc_create_draft(
             site_id=site.id,
             actor_id=actor["sub"],
             actor_name=actor["name"],
-            action="create_draft",
+            action="create_draft_auto_shortlist" if is_supervisor else "create_draft",
             from_status=None,
-            to_status=SiteStatus.DRAFT_SUBMITTED.value,
+            to_status=initial_status.value,
+            detail="supervisor auto-promote" if is_supervisor else None,
         )
-        recipients = await recipients_for_supervisors(session, tenant_id=tenant_id, city=city)
-        await notify_enqueue(
-            session,
-            tenant_id=tenant_id,
-            event="draft_submitted",
-            recipient_ids=recipients,
-            site_id=site.id,
-            channels=("email", "slack", "in_app"),
-            payload={"site_id": str(site.id), "site_name": name, "city": city},
-        )
+        # Supervisors don't need to notify themselves; for executives the
+        # supervisor cohort gets the email/slack ping.
+        if not is_supervisor:
+            recipients = await recipients_for_supervisors(session, tenant_id=tenant_id, city=city)
+            await notify_enqueue(
+                session,
+                tenant_id=tenant_id,
+                event="draft_submitted",
+                recipient_ids=recipients,
+                site_id=site.id,
+                channels=("email", "slack", "in_app"),
+                payload={"site_id": str(site.id), "site_name": name, "city": city},
+            )
 
     return site_to_response(site, created_by_name=actor["name"])
 
@@ -114,6 +181,8 @@ async def svc_shortlist_draft(
 ) -> SiteResponse:
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        _assert_actor_can_act_on_site(actor, site)
+        _assert_not_self_approval(actor, site)
         assert_transition(SiteStatus(site.status), SiteStatus.SHORTLISTED)
         site.status = SiteStatus.SHORTLISTED.value
         site.shortlisted_at = datetime.now(timezone.utc)
@@ -268,19 +337,30 @@ async def svc_approve_shortlist(
 ) -> SiteResponse:
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        _assert_actor_can_act_on_site(actor, site)
+        _assert_not_self_approval(actor, site)
         assert_transition(SiteStatus(site.status), SiteStatus.APPROVED)
+        approved_at = datetime.now(timezone.utc)
         site.status = SiteStatus.APPROVED.value
-        site.approved_at = datetime.now(timezone.utc)
+        site.approved_at = approved_at
 
-        # Persist a row in `approvals` so the supervisor decision has its own
-        # auditable record (previously the table was defined but unused).
+        # Pre-compute the LOI deadline. The product spec calls for a soft
+        # countdown / highlight on overdue sites — the cheapest source of
+        # truth is a stored DATE column on the approval row rather than
+        # recomputing in every read. Stored as DATE (not timestamp) because
+        # business deadlines are end-of-day in local time, not a precise
+        # instant.
+        from datetime import timedelta
+        loi_deadline = (approved_at + timedelta(days=int(expected_loi_days))).date()
+
         session.add(models.Approval(
             tenant_id=tenant_id,
             site_id=site.id,
             approver_id=actor["sub"],
             status="approved",
             expected_loi_days=expected_loi_days,
-            decided_at=datetime.now(timezone.utc),
+            loi_deadline=loi_deadline,
+            decided_at=approved_at,
         ))
 
         await write_audit_event(
@@ -309,6 +389,7 @@ async def svc_push_to_payments(
 ) -> OkResponse:
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        _assert_actor_can_act_on_site(actor, site)
         assert_transition(SiteStatus(site.status), SiteStatus.PUSHED_TO_PAYMENTS)
         site.status = SiteStatus.PUSHED_TO_PAYMENTS.value
         site.pushed_to_payments_at = datetime.now(timezone.utc)
@@ -337,6 +418,8 @@ async def svc_reject_site(
 ) -> OkResponse:
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        _assert_actor_can_act_on_site(actor, site)
+        _assert_not_self_approval(actor, site)
         assert_transition(SiteStatus(site.status), SiteStatus.REJECTED)
         site.status = SiteStatus.REJECTED.value
         site.rejected_at = datetime.now(timezone.utc)
@@ -366,16 +449,78 @@ async def svc_archive_site(
 ) -> OkResponse:
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        _assert_actor_can_act_on_site(actor, site)
+        # Archive note is mandatory — see Todo #9. Per the product spec every
+        # archived site must carry a reason so the Archive tab is browsable.
+        clean_note = (note or "").strip()
+        if not clean_note:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="An archive note is required so the archived site stays browsable.",
+            )
         assert_transition(SiteStatus(site.status), SiteStatus.ARCHIVED)
+        # Remember the status we came from so Revive (Todo #11) can restore
+        # the site to its prior stage rather than dumping it into drafts.
+        site.archived_from_status = site.status
         site.status = SiteStatus.ARCHIVED.value
         site.archived_at = datetime.now(timezone.utc)
-        site.archive_note = note
+        site.archive_note = clean_note
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor["name"],
-            action="archive", to_status=SiteStatus.ARCHIVED.value, detail=note,
+            action="archive", to_status=SiteStatus.ARCHIVED.value,
+            detail=f"from={site.archived_from_status} note={clean_note}",
         )
     return OkResponse(message=f"Site {site_id} archived")
+
+
+# ── Revive (un-archive) ───────────────────────────────────────────────────
+
+async def svc_revive_site(
+    session: AsyncSession, *, tenant_id: str | UUID, actor: dict,
+    site_id: str | UUID, note: Optional[str] = None,
+) -> OkResponse:
+    """Revive an archived site back to the stage it was at when archived.
+
+    Only the supervisor can revive — sub-supervisors and executives must ask
+    for it. The site's `archived_from_status` field is the source of truth
+    for where to put it back. If it's missing (older archives that predate
+    the column), we fall back to draft_submitted so the site is at least
+    re-visible in the pipeline.
+    """
+    if (actor.get("role") or "").lower() != "supervisor":
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Only the supervisor can revive an archived site.",
+        )
+    async with transaction(session):
+        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        if site.status != SiteStatus.ARCHIVED.value:
+            raise HTTPException(
+                status_code=http_status.HTTP_409_CONFLICT,
+                detail=f"Site is not archived (current status={site.status}).",
+            )
+        prev = site.archived_from_status or SiteStatus.DRAFT_SUBMITTED.value
+        site.status = prev
+        site.archived_at = None
+        site.archived_from_status = None
+        # Keep the archive_note as historical context — Revive doesn't erase
+        # the reason a site was once archived.
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=site.id,
+            actor_id=actor["sub"], actor_name=actor["name"],
+            action="revive",
+            from_status=SiteStatus.ARCHIVED.value, to_status=prev,
+            detail=f"reason={(note or '').strip() or 'n/a'}",
+        )
+        owners = await recipients_for_site_owner(session, site=site)
+        await notify_enqueue(
+            session, tenant_id=tenant_id, event="site_revived",
+            recipient_ids=owners, site_id=site.id,
+            channels=("email", "in_app"),
+            payload={"site_id": str(site.id), "revived_to": prev},
+        )
+    return OkResponse(message=f"Site {site_id} revived to {prev}")
 
 
 # ── Reassign ──────────────────────────────────────────────────────────────

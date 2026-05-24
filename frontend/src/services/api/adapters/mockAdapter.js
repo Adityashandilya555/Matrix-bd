@@ -155,7 +155,39 @@ export async function uploadLoi(id, file) {
 export async function archiveSite(id, note) {
   await delay(200, 400);
   maybeFail();
-  return patchSiteStatus(id, SiteStatus.ARCHIVED, { archiveNote: note, note });
+  const site = getSiteById(id);
+  // Capture where the site came from so Revive can restore it. Mirrors the
+  // backend `archived_from_status` column.
+  return patchSiteStatus(id, SiteStatus.ARCHIVED, {
+    archiveNote: note,
+    note,
+    archivedFromStatus: site?.status,
+  });
+}
+
+export async function reviveSite(id, note) {
+  await delay(200, 400);
+  maybeFail();
+  const site = getSiteById(id);
+  if (!site) throw new Error(`Site not found: ${id}`);
+  // Restore to whichever stage the site was at when it was archived. If the
+  // bookkeeping was lost, fall back to DRAFT_SUBMITTED so the site re-enters
+  // the pipeline at the top instead of staying stuck.
+  const restoreTo = site._archivedFromStatus || site.archivedFromStatus || SiteStatus.DRAFT_SUBMITTED;
+  const updated = {
+    ...site,
+    status: restoreTo,
+    archiveNote: null,
+    _archivedFromStatus: null,
+    archivedFromStatus: null,
+    _archivedAt: null,
+    updatedAt: new Date().toISOString(),
+    auditTrail: [
+      ...(site.auditTrail || []),
+      { actor: 'supervisor', action: 'revive_site', timestamp: new Date().toISOString(), note: note || null },
+    ],
+  };
+  return upsertSite(updated);
 }
 
 export async function rejectSite(id, reasons, comment) {
@@ -262,6 +294,59 @@ export async function getSiteActivity(siteId) {
 export async function listUsers() {
   await delay();
   return [...MOCK_USERS];
+}
+
+// ---- Delegations (mock) ----
+// In-memory store keyed by siteId. Mock mode doesn't need to persist these
+// across reloads — the page just needs the grant/revoke loop to be visible.
+const _mockDelegations = new Map(); // siteId -> [{ id, ... }]
+
+export async function listSiteDelegations(siteId) {
+  await delay(80, 160);
+  return [...(_mockDelegations.get(siteId) || [])];
+}
+
+export async function grantDelegation(siteId, { delegateUserId, notes }) {
+  await delay(120, 240);
+  const delegate = MOCK_USERS.find(u => u.id === delegateUserId);
+  if (!delegate) throw new Error('Delegate user not found in workspace.');
+  const list = _mockDelegations.get(siteId) || [];
+  if (list.some(d => d.delegateUserId === delegateUserId)) {
+    const err = new Error('Active delegation for this user already exists.');
+    err.status = 409;
+    throw err;
+  }
+  const row = {
+    id: 'dlg_' + Math.random().toString(36).slice(2, 9),
+    siteId,
+    delegateUserId,
+    delegateEmail: delegate.email,
+    delegateName: delegate.name,
+    grantedBy: 'supervisor',
+    grantedAt: new Date().toISOString(),
+    notes: notes || null,
+  };
+  _mockDelegations.set(siteId, [...list, row]);
+  return row;
+}
+
+export async function revokeDelegation(delegationId) {
+  await delay(80, 160);
+  for (const [siteId, list] of _mockDelegations.entries()) {
+    const next = list.filter(d => d.id !== delegationId);
+    if (next.length !== list.length) {
+      _mockDelegations.set(siteId, next);
+      return { ok: true, message: 'Delegation revoked.' };
+    }
+  }
+  const err = new Error('Delegation not found.');
+  err.status = 404;
+  throw err;
+}
+
+export async function listMyDelegations() {
+  await delay(60, 140);
+  return [];
 }
 
 export async function me() {

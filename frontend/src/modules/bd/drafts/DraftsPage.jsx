@@ -58,6 +58,34 @@ function RejectReasonDialog({ draft, onCancel, onSubmit }) {
   );
 }
 
+function ArchiveNoteDialog({ draft, onCancel, onConfirm }) {
+  const [note, setNote] = React.useState('');
+  const ready = note.trim().length > 0;
+  if (!draft) return null;
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'zm-fade 200ms var(--zm-ease)' }}>
+      <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 14, width: 520, padding: 26, boxShadow: 'var(--zm-shadow-pop)', display: 'flex', flexDirection: 'column', gap: 18, animation: 'zm-rise 240ms var(--zm-ease-emp)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>Archiving · {draft.code}</span>
+            <h2 style={{ margin: '4px 0 6px', fontFamily: 'var(--zm-font-display)', fontWeight: 700, fontSize: 20, letterSpacing: '-0.02em', color: 'var(--zm-fg)' }}>Park this draft — why?</h2>
+            <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>Archive = not-a-No, just on the shelf. The note appears in Archive and can guide a future Revive.</p>
+          </div>
+          <button onClick={onCancel} className="zm-icon-btn" style={{ background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)', borderRadius: 8, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--zm-fg-2)', cursor: 'pointer' }}><Icon name="x" size={14}/></button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)' }}>Reason for archiving <span style={{ color: '#B91C1C', fontWeight: 700 }}>*</span></label>
+          <textarea autoFocus value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. landlord undecided — revisit in Q3, or saving for the next franchise wave…" style={{ width: '100%', minHeight: 90, padding: 10, resize: 'vertical', border: '1px solid var(--zm-line)', borderRadius: 8, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', outline: 'none', background: 'var(--zm-bg)' }}/>
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onCancel} className="zm-btn" style={{ height: 36, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+          <button disabled={!ready} onClick={() => onConfirm(draft, note.trim())} className="zm-btn-primary" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: '1px solid var(--zm-line)', background: ready ? 'var(--zm-accent)' : 'var(--zm-surface)', color: ready ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: ready ? 'pointer' : 'not-allowed' }}>Archive draft</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DraftsFilterBar({ filters, onFilters, drafts }) {
   const cities = ['All', ...Array.from(new Set(drafts.map(d => d.city)))];
   return (
@@ -80,10 +108,10 @@ function applyDraftFilters(drafts, f) {
   });
 }
 
-function DraftRow({ draft, role, onApprove, onReject, onArchive, onOpen }) {
-  const overdue = role === 'supervisor' && draft.days > 7;
+function DraftRow({ draft, role, canDecide, onApprove, onReject, onArchive, onOpen }) {
+  const overdue = canDecide && draft.days > 7;
   return (
-    <div className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1fr 0.8fr 0.7fr ' + (role === 'supervisor' ? '230px' : '90px'), alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: overdue ? 'rgba(185,28,28,0.05)' : 'transparent', position: 'relative' }}>
+    <div className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1fr 0.8fr 0.7fr ' + (canDecide ? '230px' : '90px'), alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: overdue ? 'rgba(185,28,28,0.05)' : 'transparent', position: 'relative' }}>
       {overdue && <span style={{ position: 'absolute', left: 0, top: 12, bottom: 12, width: 2, background: '#B91C1C', borderRadius: 2 }}/>}
       <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{draft.code}</span>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 600, color: 'var(--zm-fg)' }}>{draft.name}</span><span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 10.5, color: 'var(--zm-fg-3)' }}>{draft.id}</span></div>
@@ -91,7 +119,7 @@ function DraftRow({ draft, role, onApprove, onReject, onArchive, onOpen }) {
       <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{draft.city}</span>
       <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{draft.visitDate}</span>
       <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 13, fontWeight: 600, color: overdue ? '#B91C1C' : 'var(--zm-fg)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>{overdue && <Icon name="alert" size={12}/>}{String(draft.days).padStart(2,'0')}d</span>
-      {role === 'supervisor' ? (
+      {canDecide ? (
         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
           <button onClick={() => onOpen(draft)} title="View" className="zm-icon-btn" style={{ width: 32, height: 32, padding: 0, border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><EyeIcon/></button>
           <button onClick={() => onArchive(draft)} title="Archive" className="zm-icon-btn" style={{ width: 32, height: 32, padding: 0, border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="folder" size={14}/></button>
@@ -113,38 +141,111 @@ export default function DraftsPage({ onOpenSite: onOpenSiteProp, showToast: show
   const { drafts, moveDraftToShortlist, rejectDraft, archiveDraft } = useSites();
   const [filters, setFilters] = React.useState({ q: '', city: 'All', month: 'All', days: 'all' });
   const [rejecting, setRejecting] = React.useState(null);
+  const [archiving, setArchiving] = React.useState(null);
 
   const ME = user.name;
+  const MY_CITY = user.city || user.assignedCity || null;
   // RBAC: use can() for permission checks. isExec kept as derived alias for render body compat.
   const isExec = !can(role, 'shortlist'); // exec cannot shortlist; supervisor can
-  const visibleDrafts = isExec ? drafts.filter(d => d.createdBy === ME) : drafts;
+  const isSubSup = role === 'sub_supervisor';
+
+  // Sub-supervisors juggle two views: their own drafts (they're also BD execs in
+  // their city) vs. the rest of their city's team. Default to Team so they see
+  // what needs their decision first.
+  const [scope, setScope] = React.useState('team');
+  React.useEffect(() => { if (!isSubSup) setScope('all'); }, [isSubSup]);
+
+  const visibleDrafts = React.useMemo(() => {
+    if (isExec) return drafts.filter(d => d.createdBy === ME);
+    if (isSubSup) {
+      const inCity = MY_CITY ? drafts.filter(d => d.city === MY_CITY) : drafts;
+      if (scope === 'mine') return inCity.filter(d => d.createdBy === ME);
+      if (scope === 'team') return inCity.filter(d => d.createdBy !== ME);
+      return inCity;
+    }
+    return drafts; // supervisor sees everything
+  }, [drafts, isExec, isSubSup, MY_CITY, ME, scope]);
+
+  // Sub-supervisor counts drive the scope toggle copy so the user can see at a
+  // glance whether their inbox or their own drafts need attention.
+  const myCityDrafts   = isSubSup && MY_CITY ? drafts.filter(d => d.city === MY_CITY) : drafts;
+  const mineCount      = isSubSup ? myCityDrafts.filter(d => d.createdBy === ME).length : 0;
+  const teamCount      = isSubSup ? myCityDrafts.filter(d => d.createdBy !== ME).length : 0;
+
   const filtered = applyDraftFilters(visibleDrafts, filters);
-  const overdueCount = role === 'supervisor' ? visibleDrafts.filter(d => d.days > 7).length : 0;
+  const overdueCount = role === 'supervisor' || isSubSup ? visibleDrafts.filter(d => d.days > 7).length : 0;
 
   const onApprove = (d) => { moveDraftToShortlist(d); showToast?.(`Shortlisted · ${d.name} moved to shortlist queue`); };
   const onReject = (d) => setRejecting(d);
   const onRejectConfirm = (d, reasons, comment) => { setRejecting(null); rejectDraft(d, reasons, comment); showToast?.(`Rejected · ${d.name} · archived with ${reasons.length} reason${reasons.length === 1 ? '' : 's'}`, 'danger'); };
-  const onArchive = (d) => { archiveDraft(d); showToast?.(`Archived · ${d.name}. Available in Archive view.`); };
+  const onArchive = (d) => setArchiving(d);
+  const onArchiveConfirm = async (d, note) => {
+    setArchiving(null);
+    try {
+      await archiveDraft(d, note);
+      showToast?.(`Archived · ${d.name}. Available in Archive view.`);
+    } catch (err) {
+      showToast?.(err?.message || 'Could not archive draft', 'danger');
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <PageHeader
         file="№ 02" eyebrow="Workflow · Pipeline"
-        title={role === 'supervisor' ? <>Drafts <em>awaiting</em> shortlist</> : <>Your drafts <em>in flight</em></>}
-        lede={role === 'supervisor'
-          ? `${visibleDrafts.length} draft${visibleDrafts.length === 1 ? '' : 's'} from all your BD execs. Supervisor SLA: 7 days. Tap Yes, No, or Archive.`
-          : `${visibleDrafts.length} of your own draft${visibleDrafts.length === 1 ? '' : 's'} awaiting supervisor decision — you only see what you created.`}
+        title={role === 'supervisor' || isSubSup ? <>Drafts <em>awaiting</em> shortlist</> : <>Your drafts <em>in flight</em></>}
+        lede={
+          role === 'supervisor'
+            ? `${visibleDrafts.length} draft${visibleDrafts.length === 1 ? '' : 's'} from all your BD execs. Supervisor SLA: 7 days. Tap Yes, No, or Archive.`
+            : isSubSup
+              ? `${visibleDrafts.length} draft${visibleDrafts.length === 1 ? '' : 's'} ${scope === 'mine' ? 'you created' : scope === 'team' ? `from your ${MY_CITY || 'city'} team` : `across ${MY_CITY || 'your city'}`}. You can shortlist or reject anything in your city — except your own drafts, which the supervisor decides.`
+              : `${visibleDrafts.length} of your own draft${visibleDrafts.length === 1 ? '' : 's'} awaiting supervisor decision — you only see what you created.`
+        }
         right={overdueCount > 0 ? <HeaderTag icon="alert" label={`${overdueCount} PAST SLA`} tone="accent"/> : <HeaderTag icon="check" label="SLA CLEAR"/>}
       />
+      {isSubSup && (
+        <div role="tablist" aria-label="Drafts scope" style={{ display: 'inline-flex', alignSelf: 'flex-start', padding: 4, background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)', borderRadius: 999, gap: 4 }}>
+          {[
+            { id: 'team', label: 'Team', count: teamCount, sub: MY_CITY ? `${MY_CITY} · others' drafts` : "Others' drafts" },
+            { id: 'mine', label: 'Mine', count: mineCount, sub: 'Drafts I created' },
+            { id: 'all',  label: 'All',  count: teamCount + mineCount, sub: MY_CITY ? `Everything in ${MY_CITY}` : 'Everything' },
+          ].map(t => {
+            const active = scope === t.id;
+            return (
+              <button key={t.id} role="tab" aria-selected={active} onClick={() => setScope(t.id)} title={t.sub}
+                style={{
+                  height: 32, padding: '0 14px', borderRadius: 999, border: 'none',
+                  background: active ? 'var(--zm-surface)' : 'transparent',
+                  color: active ? 'var(--zm-fg)' : 'var(--zm-fg-2)',
+                  fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600,
+                  cursor: 'pointer', boxShadow: active ? 'var(--zm-shadow-1)' : 'none',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                }}>
+                {t.label}
+                <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11, color: active ? 'var(--zm-fg-3)' : 'var(--zm-fg-4)' }}>{t.count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <DraftsFilterBar filters={filters} onFilters={setFilters} drafts={visibleDrafts}/>
       <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1fr 0.8fr 0.7fr ' + (role === 'supervisor' ? '230px' : '90px'), gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
-          <span>Code</span><span>Pipeline name</span><span>Created by</span><span>City</span><span>Visit date</span><span>Days</span><span style={{ textAlign: 'right' }}>{role === 'supervisor' ? 'Decision' : 'Action'}</span>
+        <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1fr 0.8fr 0.7fr ' + (can(role, 'shortlist') ? '230px' : '90px'), gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
+          <span>Code</span><span>Pipeline name</span><span>Created by</span><span>City</span><span>Visit date</span><span>Days</span><span style={{ textAlign: 'right' }}>{can(role, 'shortlist') ? 'Decision' : 'Action'}</span>
         </div>
-        {filtered.map(d => <DraftRow key={d.id} draft={d} role={role} onApprove={onApprove} onReject={onReject} onArchive={onArchive} onOpen={onOpenSite || (() => {})}/>)}
+        {filtered.map(d => {
+          // Sub-supervisors can decide on team drafts in their city but NOT on
+          // drafts they created themselves — the spec leaves self-approval to
+          // the supervisor. Supervisors decide everything; execs decide nothing.
+          const canDecideHere = role === 'supervisor' || (isSubSup && d.createdBy !== ME);
+          return (
+            <DraftRow key={d.id} draft={d} role={role} canDecide={canDecideHere} onApprove={onApprove} onReject={onReject} onArchive={onArchive} onOpen={onOpenSite || (() => {})}/>
+          );
+        })}
         {filtered.length === 0 && (<div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>No drafts match these filters.</div>)}
       </div>
       {rejecting && <RejectReasonDialog draft={rejecting} onCancel={() => setRejecting(null)} onSubmit={onRejectConfirm}/>}
+      {archiving && <ArchiveNoteDialog draft={archiving} onCancel={() => setArchiving(null)} onConfirm={onArchiveConfirm}/>}
     </div>
   );
 }

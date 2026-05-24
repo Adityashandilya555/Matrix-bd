@@ -15,6 +15,7 @@ import SupervisorStagingPage from '../modules/staging/supervisor/SupervisorStagi
 import ArchivePage           from '../modules/archive/ArchivePage.jsx';
 import AddDetailsPage        from '../modules/loi/details/AddDetailsPage.jsx';
 import TeamPage              from '../modules/team/TeamPage.jsx';
+import AdminPortalPage       from '../modules/admin/AdminPortalPage.jsx';
 
 // In HTTP (non-mock) mode the landing page is the unauthenticated entry. The
 // existing app chrome only renders after a Supabase session is established.
@@ -39,6 +40,11 @@ export default function AppRouter() {
   return (
     <Routes>
       <Route path={LANDING_PATH} element={<LandingRedirectIfAuthed/>}/>
+
+      {/* Platform admin portal lives OUTSIDE the workspace auth tree — its
+          users are platform operators, not tenant members. The page itself
+          gates access via X-Platform-Admin-Key. */}
+      <Route path="/admin" element={<AdminPortalPage/>}/>
 
       <Route element={<RequireAuth><App/></RequireAuth>}>
         <Route index                  element={<OverviewPage/>}/>

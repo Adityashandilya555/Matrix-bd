@@ -42,6 +42,8 @@ class Tenant(Base):
     slug: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     plan: Mapped[str] = mapped_column(Text, nullable=False, server_default="standard")
+    seat_limit: Mapped[int] = mapped_column(Integer, nullable=False, server_default="10")
+    workspace_code: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -50,11 +52,9 @@ class User(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4())
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
-    # Role is a Postgres enum (`user_role`). We treat it as a string at the ORM layer.
-    role: Mapped[str] = mapped_column(Text, nullable=False, server_default="bd_person")
+    role: Mapped[str] = mapped_column(Text, nullable=False, server_default="executive")
     email: Mapped[str] = mapped_column(Text, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    password_hash: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     # ADDED (run_alter_table §users): city scope for sub_supervisor role
     assigned_city: Mapped[Optional[str]] = mapped_column(Text)
@@ -113,6 +113,8 @@ class Site(Base):
     # Soft-delete / rejection metadata
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
     archive_note: Mapped[Optional[str]] = mapped_column(Text)
+    # Snapshot of sites.status taken at archive time so Revive can restore exactly.
+    archived_from_status: Mapped[Optional[str]] = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -135,13 +137,9 @@ class SiteDetail(Base):
     site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id"), unique=True, nullable=False)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
     carpet_area_sqft: Mapped[Optional[float]] = mapped_column(Numeric)
-    total_area_sqft: Mapped[Optional[float]] = mapped_column(Numeric)
     estimated_monthly_sales: Mapped[Optional[float]] = mapped_column(Numeric)
     score: Mapped[Optional[float]] = mapped_column(Numeric)
-    score_notes: Mapped[Optional[str]] = mapped_column(Text)
-    rent_type: Mapped[Optional[str]] = mapped_column(Text)  # legacy duplicate; sites.rent_type is canonical
-    # `fixed_rent_amt` is tombstoned by run_alter_table §sites; we leave it on the
-    # model so older rows still load, but services write `sites.expected_rent`.
+    rent_type: Mapped[Optional[str]] = mapped_column(Text)
     fixed_rent_amt: Mapped[Optional[float]] = mapped_column(Numeric)
     escalation_pct: Mapped[Optional[float]] = mapped_column(Numeric)
     brokerage: Mapped[Optional[float]] = mapped_column(Numeric)
@@ -152,14 +150,8 @@ class SiteDetail(Base):
     lock_in_months: Mapped[Optional[int]] = mapped_column(Integer)
     tenure_months: Mapped[Optional[int]] = mapped_column(Integer)
     rent_free_days: Mapped[Optional[int]] = mapped_column(Integer)
-    is_corner_property: Mapped[Optional[bool]] = mapped_column(Boolean)
-    has_parking: Mapped[Optional[bool]] = mapped_column(Boolean)
-    has_outdoor_seating: Mapped[Optional[bool]] = mapped_column(Boolean)
     nearest_starbucks_m: Mapped[Optional[int]] = mapped_column(Integer)
     nearest_twc_m: Mapped[Optional[int]] = mapped_column(Integer)
-    nearest_competitor_m: Mapped[Optional[int]] = mapped_column(Integer)
-    nearest_competitor_name: Mapped[Optional[str]] = mapped_column(Text)
-    floor_number: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False,
@@ -290,3 +282,19 @@ class NotificationOutbox(Base):
         CheckConstraint("status IN ('pending','sent','failed','skipped')", name="chk_notification_status"),
         Index("idx_notification_outbox_status", "status"),
     )
+
+
+# ── Shortlist delegation ──────────────────────────────────────────────────
+
+class ShortlistDelegation(Base):
+    __tablename__ = "shortlist_delegations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4())
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id"), nullable=False)
+    delegate_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    granted_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    revoked_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    notes: Mapped[Optional[str]] = mapped_column(Text)

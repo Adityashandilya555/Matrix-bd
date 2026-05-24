@@ -10,6 +10,7 @@ Surfaces:
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import secrets
@@ -69,12 +70,19 @@ def _generate_workspace_code(slug_hint: Optional[str] = None) -> str:
     return f"{base}-{secrets.token_hex(2).upper()}"
 
 
+def _json_string(s: Optional[str]) -> str:
+    """Serialise a Python string to a JSON-escaped string fragment so we can
+    splice it into the JSONB literal that goes into notification_outbox.payload.
+    Defending against quotes/newlines in the company name."""
+    return json.dumps(s or "")
+
+
 def _require_platform_admin(provided: Optional[str]) -> None:
-    expected = settings.platform_admin_token
+    expected = settings.effective_platform_admin_token
     if not expected:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Approve endpoint disabled — PLATFORM_ADMIN_TOKEN is unset.",
+            detail="Admin portal disabled — PLATFORM_ADMIN_PASSWORD is unset.",
         )
     # secrets.compare_digest avoids timing leaks on the secret length.
     if not provided or not secrets.compare_digest(str(provided), expected):
@@ -82,6 +90,44 @@ def _require_platform_admin(provided: Optional[str]) -> None:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing X-Platform-Admin-Key.",
         )
+
+
+# ── Platform admin login ───────────────────────────────────────────────────
+
+class AdminLoginIn(BaseModel):
+    email:    str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class AdminLoginOut(BaseModel):
+    token: str
+    email: str
+
+
+@router.post(
+    "/admin/login",
+    response_model=AdminLoginOut,
+    summary="Platform admin login — exchange email+password for the portal token",
+)
+async def admin_login(payload: AdminLoginIn) -> AdminLoginOut:
+    expected_email    = (settings.platform_admin_email or "").strip().lower()
+    expected_password = settings.platform_admin_password or ""
+    if not expected_email or not expected_password:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Admin portal disabled — PLATFORM_ADMIN_EMAIL/PASSWORD unset.",
+        )
+    email_ok = secrets.compare_digest(payload.email.strip().lower(), expected_email)
+    pw_ok    = secrets.compare_digest(payload.password, expected_password)
+    if not (email_ok and pw_ok):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password.",
+        )
+    return AdminLoginOut(
+        token=settings.effective_platform_admin_token,
+        email=expected_email,
+    )
 
 
 # ── Existing reads ────────────────────────────────────────────────────────
@@ -237,6 +283,75 @@ async def request_workspace(
     )
 
 
+# ── Platform-admin: list pending workspace requests ───────────────────────
+
+
+class WorkspaceRequestRow(BaseModel):
+    id:           str
+    company:      str
+    admin_email:  str
+    team_size:    Optional[str] = None
+    seat_limit:   int
+    status:       str
+    created_at:   Optional[str] = None
+    decided_at:   Optional[str] = None
+    source_ip:    Optional[str] = None
+
+
+class WorkspaceRequestListOut(BaseModel):
+    items: list[WorkspaceRequestRow]
+    total: int
+
+
+@router.get(
+    "/requests",
+    response_model=WorkspaceRequestListOut,
+    summary="Platform admin: list workspace requests (pending by default)",
+)
+async def list_workspace_requests(
+    db: DbDep,
+    x_platform_admin_key: Annotated[Optional[str], Header(alias="X-Platform-Admin-Key")] = None,
+    status_filter: Optional[str] = "pending",
+    limit: int = 100,
+) -> WorkspaceRequestListOut:
+    """Powers the admin portal page. Defaults to `status=pending` because that's
+    the queue the admin actually acts on; pass `status=all` to include
+    approved/rejected for audit views."""
+    _require_platform_admin(x_platform_admin_key)
+    limit = max(1, min(limit, 500))
+    where = ""
+    params: dict = {"lim": limit}
+    if status_filter and status_filter != "all":
+        where = "WHERE status = :status"
+        params["status"] = status_filter
+    rows = (await db.execute(
+        text(f"""
+            SELECT id, company, admin_email, team_size, seat_limit, status,
+                   created_at, decided_at, source_ip::text AS source_ip
+              FROM workspace_requests
+              {where}
+             ORDER BY created_at DESC
+             LIMIT :lim
+        """),
+        params,
+    )).mappings().all()
+    items = [
+        WorkspaceRequestRow(
+            id=str(r["id"]),
+            company=r["company"],
+            admin_email=r["admin_email"],
+            team_size=r["team_size"],
+            seat_limit=r["seat_limit"],
+            status=r["status"],
+            created_at=r["created_at"].isoformat() if r["created_at"] else None,
+            decided_at=r["decided_at"].isoformat() if r["decided_at"] else None,
+            source_ip=r["source_ip"],
+        )
+        for r in rows
+    ]
+    return WorkspaceRequestListOut(items=items, total=len(items))
+
+
 # ── Platform-admin approve ─────────────────────────────────────────────────
 
 
@@ -379,6 +494,44 @@ async def approve_workspace_request(
         {"tid": tenant_id, "rid": request_id},
     )
 
+    # 6. Enqueue a "workspace_provisioned" outbox row. The email worker drains
+    #    notification_outbox and ships the credentials email out-of-band; the
+    #    workspace_code travels in the payload (NOT the body) so a future
+    #    template change can re-render without re-issuing the secret. This is
+    #    the only place workspace_code appears outside the tenants table.
+    outbox_subject = f"Your {req_company} workspace is ready"
+    outbox_body = (
+        f"Hi {payload.admin_name or req_admin_email.split('@')[0]},\n\n"
+        f"Your workspace '{req_company}' has been provisioned. "
+        f"Sign in at the landing page with:\n\n"
+        f"  Email: {req_admin_email}\n"
+        f"  Workspace code: {workspace_code}\n\n"
+        f"Seats: {seat_limit}. Add team members by sharing the workspace code "
+        f"and assigning roles from /team.\n"
+    )
+    await db.execute(
+        text("""
+            INSERT INTO notification_outbox
+                (tenant_id, type, channel, status, recipient_email,
+                 subject, body, payload)
+            VALUES
+                (:tid, 'workspace_provisioned', 'email', 'pending', :email,
+                 :subject, :body, CAST(:payload AS jsonb))
+        """),
+        {
+            "tid":     tenant_id,
+            "email":   req_admin_email,
+            "subject": outbox_subject,
+            "body":    outbox_body,
+            "payload": (
+                '{"tenant_id":"' + str(tenant_id) + '",'
+                '"workspace_code":"' + workspace_code + '",'
+                '"company":' + _json_string(req_company) + ','
+                '"city":' + _json_string(payload.city) + '}'
+            ),
+        },
+    )
+
     await db.commit()
 
     return ApproveOut(
@@ -487,7 +640,7 @@ async def join_workspace(payload: JoinIn, db: DbDep) -> JoinOut:
     await db.execute(
         text("""
             INSERT INTO users (id, tenant_id, role, email, name, is_active)
-            VALUES (:id, :tenant_id, 'bd_person', :email, :name, false)
+            VALUES (:id, :tenant_id, 'executive', :email, :name, false)
         """),
         {
             "id":        uuid.uuid4(),

@@ -52,11 +52,24 @@ class Settings(BaseSettings):
     supabase_storage_bucket: str = "site-files"
 
     # ── Platform admin (workspace-request approval) ─────────────────────────
-    # Shared secret for the X-Platform-Admin-Key header on
-    # POST /api/tenancy/requests/{id}/approve. Generate with
-    # `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
-    # Leave empty in production to disable the approve endpoint entirely.
-    platform_admin_token: str = ""
+    # The portal at /admin uses a baked-in email + password pair (overridable
+    # via env). On successful login the backend hands back `platform_admin_token`
+    # and the SPA puts it in the X-Platform-Admin-Key header on every subsequent
+    # request. So one set of env vars covers both the human-typed credentials
+    # and the machine-checked secret behind the routes.
+    #
+    # Defaults are stable but easily rotatable — set PLATFORM_ADMIN_PASSWORD in
+    # production env to anything else.
+    platform_admin_email:    str = "admin@matrix.bluetokai.com"
+    platform_admin_password: str = "BlueTokai-Matrix-2026"
+    # If left blank, the runtime falls back to platform_admin_password so the
+    # whole flow works out of the box. Set explicitly only if you want the
+    # human-typed password to differ from the per-request header token.
+    platform_admin_token:    str = ""
+
+    @property
+    def effective_platform_admin_token(self) -> str:
+        return self.platform_admin_token or self.platform_admin_password
 
 
 settings = Settings()

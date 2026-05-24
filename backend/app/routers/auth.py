@@ -131,7 +131,7 @@ async def login(payload: LoginIn, db: DbDep):
         await db.execute(
             text("""
                 INSERT INTO users (id, tenant_id, role, email, name, is_active)
-                VALUES (:id, :tid, 'bd_person', :email, :name, false)
+                VALUES (:id, :tid, 'executive', :email, :name, false)
             """),
             {
                 "id":    new_id,

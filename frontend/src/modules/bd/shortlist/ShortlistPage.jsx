@@ -7,6 +7,7 @@ import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Icon from '../../shared/primitives/Icon.jsx';
 import StatusPill from '../../shared/primitives/StatusPill.jsx';
 import AddDetailsPage from '../../loi/details/AddDetailsPage.jsx';
+import * as siteService from '../../../services/api/siteService.js';
 
 // All render bodies preserved exactly from Shortlist.jsx.
 
@@ -56,7 +57,129 @@ function LOITimelineModal({ site, onCancel, onSubmit }) {
   );
 }
 
-function ShortlistCard({ item, role, onView, onAddDetails, onApprove }) {
+// Supervisor-only side panel for granting / revoking shortlist delegations on
+// a specific site. Sub-supervisors who get a grant can act on that site even
+// if it's outside their assigned city.
+function DelegationModal({ site, onClose, onChanged, showToast }) {
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+  const [delegations, setDelegations] = React.useState([]);
+  const [candidates, setCandidates] = React.useState([]);
+  const [pickedUserId, setPickedUserId] = React.useState('');
+  const [notes, setNotes] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+
+  const load = React.useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const [list, users] = await Promise.all([
+        siteService.listSiteDelegations(site.id),
+        siteService.listUsers(),
+      ]);
+      setDelegations(list);
+      // Only sub-supervisors are eligible delegates per the product rules.
+      setCandidates(users.filter(u => u.role === 'sub_supervisor'));
+    } catch (err) {
+      setError(err?.message || 'Failed to load delegations');
+    } finally {
+      setLoading(false);
+    }
+  }, [site.id]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const alreadyDelegated = new Set(delegations.map(d => d.delegateUserId));
+  const eligible = candidates.filter(u => !alreadyDelegated.has(u.id));
+
+  async function grant() {
+    if (!pickedUserId) return;
+    setBusy(true);
+    try {
+      await siteService.grantDelegation(site.id, { delegateUserId: pickedUserId, notes: notes.trim() || null });
+      setPickedUserId(''); setNotes('');
+      await load();
+      onChanged?.();
+      showToast?.('Delegation granted.');
+    } catch (err) {
+      showToast?.(err?.message || 'Could not grant delegation', 'danger');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revoke(d) {
+    setBusy(true);
+    try {
+      await siteService.revokeDelegation(d.id);
+      await load();
+      onChanged?.();
+      showToast?.(`Revoked · ${d.delegateName || d.delegateEmail}`);
+    } catch (err) {
+      showToast?.(err?.message || 'Could not revoke delegation', 'danger');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 14, width: 560, maxWidth: '94%', padding: 26, boxShadow: 'var(--zm-shadow-pop)', display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-accent)' }}>Delegate · {site.code}</span>
+            <h2 style={{ margin: '4px 0 6px', fontFamily: 'var(--zm-font-display)', fontWeight: 700, fontSize: 20, letterSpacing: '-0.02em', color: 'var(--zm-fg)' }}>Let a sub-supervisor act on this site</h2>
+            <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>Grants are additive — you keep your own approval power. Sub-supervisors with a delegation can shortlist/approve this site even if it's outside their assigned city.</p>
+          </div>
+          <button onClick={onClose} className="zm-icon-btn" style={{ background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)', borderRadius: 8, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--zm-fg-2)', cursor: 'pointer' }}><Icon name="x" size={14}/></button>
+        </div>
+
+        {error && <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(185,28,28,0.08)', color: '#B91C1C', fontSize: 12.5 }}>{error}</div>}
+
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>Active delegations</span>
+          {loading
+            ? <span style={{ fontSize: 13, color: 'var(--zm-fg-3)' }}>Loading…</span>
+            : delegations.length === 0
+              ? <span style={{ fontSize: 13, color: 'var(--zm-fg-3)' }}>None yet — you're the only approver.</span>
+              : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {delegations.map(d => (
+                    <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid var(--zm-line)', borderRadius: 10, background: 'var(--zm-surface-2)' }}>
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{d.delegateName || d.delegateEmail}</span>
+                        <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11, color: 'var(--zm-fg-3)' }}>{d.delegateEmail}</span>
+                        {d.notes && <span style={{ marginTop: 4, fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{d.notes}</span>}
+                      </div>
+                      <button disabled={busy} onClick={() => revoke(d)} style={{ height: 30, padding: '0 12px', borderRadius: 7, border: '1px solid #F2B6B6', background: '#fff', color: '#B91C1C', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>Revoke</button>
+                    </div>
+                  ))}
+                </div>
+              )
+          }
+        </section>
+
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>Grant a new delegation</span>
+          {eligible.length === 0 && !loading
+            ? <span style={{ fontSize: 12.5, color: 'var(--zm-fg-3)' }}>{candidates.length === 0 ? 'No sub-supervisors in this workspace yet — assign someone the sub_supervisor role from /team.' : 'All eligible sub-supervisors already have an active delegation here.'}</span>
+            : (
+              <>
+                <select value={pickedUserId} onChange={(e) => setPickedUserId(e.target.value)} disabled={busy || loading} style={{ height: 36, padding: '0 10px', background: 'var(--zm-bg)', border: '1px solid var(--zm-line)', borderRadius: 6, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', outline: 'none' }}>
+                  <option value="">Pick a sub-supervisor…</option>
+                  {eligible.map(u => (<option key={u.id} value={u.id}>{u.name} · {u.email}{u.assignedCity ? ` · ${u.assignedCity}` : ''}</option>))}
+                </select>
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional note (why this site is being delegated)…" style={{ width: '100%', minHeight: 60, padding: 10, resize: 'vertical', border: '1px solid var(--zm-line)', borderRadius: 8, fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg)', outline: 'none', background: 'var(--zm-bg)' }}/>
+                <button onClick={grant} disabled={!pickedUserId || busy} style={{ height: 36, padding: '0 16px', alignSelf: 'flex-end', borderRadius: 8, border: 'none', background: pickedUserId ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: pickedUserId ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: pickedUserId && !busy ? 'pointer' : 'not-allowed' }}>{busy ? 'Saving…' : 'Grant delegation'}</button>
+              </>
+            )
+          }
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function ShortlistCard({ item, role, onView, onAddDetails, onApprove, onDelegate }) {
   const supervisor = role === 'supervisor';
   const reviewable = item.inReview === true;
   const hasDraft = !!item.details && !reviewable;
@@ -78,7 +201,7 @@ function ShortlistCard({ item, role, onView, onAddDetails, onApprove }) {
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0, padding: '10px 0', borderTop: '1px solid var(--zm-line-faint)', borderBottom: '1px solid var(--zm-line-faint)' }}>
-        {[['Est. sales', item.estSales ? `₹${item.estSales}L` : '—'], ['Carpet', item.carpet ? `${item.carpet} sqft` : '—'], ['Total op', item.totalOpCost ? `₹${Math.round(item.totalOpCost/1000)}k/mo` : '—'], ['Rent type', item.rentType === 'fixed' ? 'Fixed + esc.' : item.rentType === 'revshare' ? 'Rev share' : '—']].map(([k, v]) => (
+        {[['Est. sales', item.estSales ? `₹${(Number(item.estSales) / 100000).toFixed(1)} L/mo` : '—'], ['Carpet', item.carpet ? `${item.carpet} sqft` : '—'], ['Total op', item.totalOpCost ? `₹${Math.round(Number(item.totalOpCost) / 1000)} k/mo` : '—'], ['Rent type', item.rentType === 'fixed' ? 'Fixed + esc.' : item.rentType === 'revshare' ? 'Rev share' : '—']].map(([k, v]) => (
           <div key={k} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 10.5, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>{k}</span><span style={{ fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 14, fontWeight: 600, color: 'var(--zm-fg)' }}>{v}</span></div>
         ))}
       </div>
@@ -88,7 +211,10 @@ function ShortlistCard({ item, role, onView, onAddDetails, onApprove }) {
         {hasDraft && !supervisor && (<span style={{ padding: '4px 8px', borderRadius: 999, background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-mono)', fontSize: 10.5, color: 'var(--zm-fg-3)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Draft saved</span>)}
         <span style={{ flex: 1 }}/>
         {supervisor ? (
-          <button onClick={() => onApprove(item)} disabled={!reviewable} className="zm-btn-primary" title={!reviewable ? 'BD exec must Send for review before approving' : 'Approve and advance to staging'} style={{ height: 34, padding: '0 14px', border: 'none', borderRadius: 7, background: reviewable ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: reviewable ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: reviewable ? 'pointer' : 'not-allowed', boxShadow: reviewable ? 'var(--zm-shadow-1)' : 'none', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="check" size={13}/> Approve shortlist</button>
+          <>
+            <button onClick={() => onDelegate(item)} className="zm-btn" title="Let a sub-supervisor act on this site" style={{ height: 34, padding: '0 12px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="user" size={13}/> Delegate</button>
+            <button onClick={() => onApprove(item)} disabled={!reviewable} className="zm-btn-primary" title={!reviewable ? 'BD exec must Send for review before approving' : 'Approve and advance to staging'} style={{ height: 34, padding: '0 14px', border: 'none', borderRadius: 7, background: reviewable ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: reviewable ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: reviewable ? 'pointer' : 'not-allowed', boxShadow: reviewable ? 'var(--zm-shadow-1)' : 'none', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="check" size={13}/> Approve shortlist</button>
+          </>
         ) : reviewable ? (
           <span style={{ padding: '6px 10px', borderRadius: 7, background: 'var(--zm-accent-soft)', border: '1px solid var(--zm-accent-line)', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-accent)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="clock" size={12}/> Awaiting supervisor approval</span>
         ) : (
@@ -107,6 +233,7 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
   const { shortlist, saveDraftDetails, submitDetailsForReview, approveShortlistToStaging } = useSites();
   const [approving, setApproving] = React.useState(null);
   const [detailing, setDetailing] = React.useState(null);
+  const [delegating, setDelegating] = React.useState(null);
 
   const ME = user.name;
   // RBAC: isExec = cannot approve shortlist (only supervisor/sub_supervisor can)
@@ -143,7 +270,8 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
       />
       {visibleShortlist.map(item => (
         <ShortlistCard key={item.code} item={item} role={role}
-          onView={onOpenSite || (() => {})} onAddDetails={onAddDetails} onApprove={onApprove}/>
+          onView={onOpenSite || (() => {})} onAddDetails={onAddDetails} onApprove={onApprove}
+          onDelegate={setDelegating}/>
       ))}
       {visibleShortlist.length === 0 && (
         <div style={{ padding: 48, textAlign: 'center', background: 'var(--zm-surface)', border: '1px dashed var(--zm-line)', borderRadius: 12 }}>
@@ -153,6 +281,7 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
       )}
       {approving && <LOITimelineModal site={approving} onCancel={() => setApproving(null)} onSubmit={onTimelineSubmit}/>}
       {detailing && <AddDetailsPage item={detailing} onClose={() => setDetailing(null)} onSubmit={(formData) => onDetailsSubmit(detailing, formData)} onSaveDraft={(formData) => onDetailsSaveDraft(detailing, formData)}/>}
+      {delegating && <DelegationModal site={delegating} onClose={() => setDelegating(null)} showToast={showToast}/>}
     </div>
   );
 }

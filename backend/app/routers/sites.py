@@ -34,6 +34,7 @@ from app.services.bd_service import (
     svc_push_to_payments,
     svc_reassign_site,
     svc_reject_site,
+    svc_revive_site,
     svc_save_details,
     svc_shortlist_draft,
     svc_submit_details,
@@ -187,6 +188,15 @@ async def patch_site_status(
             expected_loi_days=int(payload.get("expectedLoiDays", 30)),
         )
     if new_status == SiteStatus.PUSHED_TO_PAYMENTS:
+        # Mirror the /staging/{id}/push role-gate (Todo #7). The generic
+        # status patcher is open to any authed role, but Push-to-Payments is
+        # supervisor-only and we want both entry points to enforce the same
+        # rule. Sub-supervisors + executives have to call the supervisor.
+        if (current_user.get("role") or "").lower() != "supervisor":
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail="Only the supervisor can push a site to Payments.",
+            )
         return await svc_push_to_payments(db, tenant_id=tenant_id, actor=current_user, site_id=site_id)
     if new_status == SiteStatus.LOI_UPLOADED:
         raise HTTPException(
@@ -227,6 +237,27 @@ async def archive_site(
     tenant_id: TenantId,
 ) -> OkResponse:
     return await svc_archive_site(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id, note=body.note,
+    )
+
+
+class _ReviveSiteBody(BaseModel):
+    note: Optional[str] = None
+
+
+@router.post(
+    "/{site_id}/revive",
+    response_model=OkResponse,
+    summary="Revive an archived site (supervisor only)",
+)
+async def revive_site(
+    site_id: str,
+    body: _ReviveSiteBody,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
+    tenant_id: TenantId,
+) -> OkResponse:
+    return await svc_revive_site(
         db, tenant_id=tenant_id, actor=current_user, site_id=site_id, note=body.note,
     )
 

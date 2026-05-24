@@ -3,6 +3,7 @@ import Icon from '../primitives/Icon.jsx';
 import Avatar from '../primitives/Avatar.jsx';
 import StatusPill from '../primitives/StatusPill.jsx';
 import { getSiteActivity, colorForAction, labelForEntry } from '../../../services/api/audit.js';
+import { SiteStatus } from '../../../lib/stateMachine.js';
 
 // Relative time formatter for the activity tab. Keeps the rendering format from
 // the mock data ("12 min ago", "3 days ago") so the visual identity is preserved.
@@ -58,8 +59,37 @@ function Tab({ active, label, count, onClick }) {
   );
 }
 
+// Render an LOI tracker that reflects the *real* staging timeline:
+//   APPROVED              → countdown (days since approval / expected window)
+//   LOI_UPLOADED          → LOI received, days-to-LOI tagged, awaiting push to payments
+//   PUSHED_TO_PAYMENTS    → terminal in staging, payments owns the rest
+// Anything pre-approval renders nothing — there is no LOI clock yet.
 function LOITracker({ site }) {
-  const overdue = site.days > 14;
+  if (
+    site.status !== SiteStatus.APPROVED
+    && site.status !== SiteStatus.LOI_UPLOADED
+    && site.status !== SiteStatus.PUSHED_TO_PAYMENTS
+  ) {
+    return null;
+  }
+
+  const expected = Number(site.expectedLoiDays) || 14;
+  const daysSinceApproval = Number(site._daysSinceApproval ?? site.daysSinceApproval ?? 0);
+  const daysToLOI         = site._daysToLOI ?? site.daysToLOI ?? null;
+  const loiUploadedAt     = site._loiUploadedAt || site.loiUploadedAt || null;
+  const approvedDate      = site._approvedDate || site.approvedDate || null;
+
+  const uploaded = site.status === SiteStatus.LOI_UPLOADED || site.status === SiteStatus.PUSHED_TO_PAYMENTS;
+  const pushed   = site.status === SiteStatus.PUSHED_TO_PAYMENTS;
+
+  // Overdue only applies while we're still waiting for the LOI — once it's
+  // uploaded, the clock stops and going past the deadline is just history.
+  const daysShown = uploaded ? (daysToLOI ?? daysSinceApproval) : daysSinceApproval;
+  const overdue   = !uploaded && daysShown > expected;
+  const remaining = Math.max(0, expected - daysSinceApproval);
+
+  const formatDate = (iso) => iso ? new Date(iso).toLocaleDateString('en', { day: '2-digit', month: 'short' }) : '—';
+
   return (
     <div style={{
       border: '1px solid ' + (overdue ? 'rgba(217,119,6,0.4)' : 'var(--zm-line)'),
@@ -68,24 +98,37 @@ function LOITracker({ site }) {
       display: 'flex', alignItems: 'center', gap: 18,
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>LOI tracker</span>
+        <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
+          {pushed ? 'LOI · pushed to payments' : uploaded ? 'LOI uploaded' : 'LOI countdown'}
+        </span>
         <span style={{ fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 28, fontWeight: 600, color: overdue ? '#B45309' : 'var(--zm-fg)', letterSpacing: '-0.02em' }}>
-          {String(site.days).padStart(2, '0')} days
+          {String(daysShown).padStart(2, '0')} days
+          {!uploaded && (
+            <span style={{ marginLeft: 8, fontSize: 13, color: 'var(--zm-fg-3)', fontWeight: 500 }}>
+              / {expected} expected
+            </span>
+          )}
         </span>
         <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)' }}>
-          signed {site.loiSignedAt} · submitted {site.loiSubmittedAt}
+          {approvedDate && <>approved {formatDate(approvedDate)}</>}
+          {approvedDate && (loiUploadedAt || !uploaded) && ' · '}
+          {uploaded && loiUploadedAt
+            ? <>LOI received {formatDate(loiUploadedAt)}</>
+            : !uploaded && <>{remaining} day{remaining === 1 ? '' : 's'} until SLA</>}
         </span>
       </div>
       <div style={{ flex: 1 }}/>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontFamily: 'var(--zm-font-body)', fontSize: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#047857' }}>
-          <Icon name="check" size={13}/> Signed
+          <Icon name="check" size={13}/> Approved by supervisor
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#047857' }}>
-          <Icon name="check" size={13}/> Uploaded to drive
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: uploaded ? '#047857' : overdue ? '#B45309' : 'var(--zm-fg-3)' }}>
+          <Icon name={uploaded ? 'check' : overdue ? 'alert' : 'clock'} size={13}/>
+          {uploaded ? 'LOI uploaded' : 'Awaiting LOI from BD'}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: overdue ? '#B45309' : 'var(--zm-fg-3)' }}>
-          <Icon name={overdue ? "alert" : "clock"} size={13}/> Awaiting supervisor approval
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: pushed ? '#047857' : 'var(--zm-fg-3)' }}>
+          <Icon name={pushed ? 'check' : 'clock'} size={13}/>
+          {pushed ? 'Pushed to payments' : 'Awaiting push to payments'}
         </div>
       </div>
     </div>

@@ -19,17 +19,17 @@ router = APIRouter(prefix="/users", tags=["Users"])
 
 # Roles a supervisor is allowed to assign to a pending user. NOT exposed:
 #   - 'supervisor' (only the platform admin creates supervisors at workspace approval)
-#   - 'executive'  (reserved for cross-tenant ops if/when introduced)
 #   - 'system'     (internal)
-_ASSIGNABLE_ROLES = {"sub_supervisor", "bd_person"}
-# Alias the landing-page nomenclature into the DB enum values.
+_ASSIGNABLE_ROLES = {"sub_supervisor", "executive"}
+# Alias the landing-page nomenclature into the canonical role values.
 _ROLE_ALIASES = {
     "sub-supervisor": "sub_supervisor",
     "subsupervisor":  "sub_supervisor",
-    "bd_executive":   "bd_person",
-    "bd-executive":   "bd_person",
-    "bdexecutive":    "bd_person",
-    "bd_person":      "bd_person",
+    "executive":      "executive",
+    "bd_executive":   "executive",
+    "bd-executive":   "executive",
+    "bdexecutive":    "executive",
+    "bd_person":      "executive",  # legacy alias
 }
 
 
@@ -111,7 +111,7 @@ class AssignRoleRequest(BaseModel):
         normalized = _ROLE_ALIASES.get(v.strip().lower(), v.strip().lower())
         if normalized not in _ASSIGNABLE_ROLES:
             raise ValueError(
-                "role must be one of: sub_supervisor, bd_person "
+                "role must be one of: sub_supervisor, executive "
                 "(aliases: sub-supervisor, bd_executive)"
             )
         return normalized

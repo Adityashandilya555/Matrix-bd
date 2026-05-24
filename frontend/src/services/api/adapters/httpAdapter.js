@@ -170,6 +170,7 @@ export async function uploadLoi(id, file) {
 }
 
 export async function archiveSite(id, note)               { return post(`/sites/${id}/archive`, { note }); }
+export async function reviveSite(id, note)                { return post(`/sites/${id}/revive`, { note: note || null }); }
 export async function rejectSite(id, reasons, comment)    { return post(`/sites/${id}/reject`, { reasons, comment }); }
 export async function assignSite(id, execId)              { return post(`/sites/${id}/assign`, { exec_id: execId }); }
 
@@ -228,4 +229,44 @@ export async function assignUserRole(userId, { role, city, name }) {
     city:    d.city,
     message: d.message,
   };
+}
+
+// ── Delegations ────────────────────────────────────────────────────────────
+
+function delegationFromServer(d) {
+  return {
+    id:              d.id,
+    siteId:          d.site_id,
+    delegateUserId:  d.delegate_user_id,
+    delegateEmail:   d.delegate_email,
+    delegateName:    d.delegate_name,
+    grantedBy:       d.granted_by,
+    grantedAt:       d.granted_at,
+    notes:           d.notes,
+    siteCode:        d.site_code,
+    siteName:        d.site_name,
+    siteCity:        d.site_city,
+  };
+}
+
+export async function listSiteDelegations(siteId) {
+  const d = await get(`/sites/${siteId}/delegations`);
+  return (d?.items || []).map(delegationFromServer);
+}
+
+export async function grantDelegation(siteId, { delegateUserId, notes }) {
+  const d = await post(`/sites/${siteId}/delegations`, {
+    delegate_user_id: delegateUserId,
+    notes: notes || null,
+  });
+  return delegationFromServer(d);
+}
+
+export async function revokeDelegation(delegationId) {
+  return client.delete(`/delegations/${delegationId}`).then(r => r.data);
+}
+
+export async function listMyDelegations() {
+  const d = await get('/delegations/mine');
+  return (d?.items || []).map(delegationFromServer);
 }
