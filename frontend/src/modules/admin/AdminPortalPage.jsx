@@ -109,21 +109,23 @@ function GateScreen({ onUnlock }) {
 }
 
 function ApproveDialog({ request, busy, onCancel, onConfirm }) {
+  // Supervisors see every site in the workspace — they're not city-scoped at
+  // the permission layer. The "primary city" field below is purely metadata
+  // for outbound emails / Slack templates, and is fully optional.
   const [city, setCity] = React.useState('');
   const [adminName, setAdminName] = React.useState(request?.admin_email?.split('@')[0] || '');
   if (!request) return null;
-  const ready = city.trim().length > 0;
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: 480, background: '#13141B', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: 24, color: '#fff', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div>
           <div style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', opacity: 0.55 }}>Approve · {request.company}</div>
           <h2 style={{ margin: '4px 0 2px', fontSize: 19, fontWeight: 700 }}>Provision workspace</h2>
-          <p style={{ margin: 0, fontSize: 12.5, opacity: 0.7, lineHeight: 1.5 }}>Creates the tenant, the supervisor user, and the workspace code. An email is queued in the outbox to {request.admin_email}.</p>
+          <p style={{ margin: 0, fontSize: 12.5, opacity: 0.7, lineHeight: 1.5 }}>Creates the tenant, the supervisor user, and the workspace code. The supervisor sees every site across all cities — city scope only applies to sub-supervisors. An email is queued in the outbox to {request.admin_email}.</p>
         </div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, opacity: 0.85 }}>
-          Default supervisor city <span style={{ color: '#F87171' }}>*</span>
-          <input autoFocus value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Mumbai" style={{ height: 36, padding: '0 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(0,0,0,0.35)', color: '#fff', fontSize: 13, outline: 'none' }}/>
+          Primary city (optional)
+          <input autoFocus value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Mumbai — used only as label metadata" style={{ height: 36, padding: '0 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(0,0,0,0.35)', color: '#fff', fontSize: 13, outline: 'none' }}/>
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, opacity: 0.85 }}>
           Admin display name (optional)
@@ -131,7 +133,7 @@ function ApproveDialog({ request, busy, onCancel, onConfirm }) {
         </label>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
           <button onClick={onCancel} disabled={busy} style={{ height: 34, padding: '0 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.18)', background: 'transparent', color: '#fff', fontSize: 13, fontWeight: 600, cursor: busy ? 'wait' : 'pointer' }}>Cancel</button>
-          <button onClick={() => onConfirm({ city: city.trim(), admin_name: adminName.trim() || null })} disabled={!ready || busy} style={{ height: 34, padding: '0 16px', borderRadius: 8, border: 'none', background: ready ? '#fff' : 'rgba(255,255,255,0.2)', color: ready ? '#0B0C10' : 'rgba(255,255,255,0.5)', fontSize: 13, fontWeight: 700, cursor: busy ? 'wait' : ready ? 'pointer' : 'not-allowed' }}>{busy ? 'Provisioning…' : 'Approve & provision'}</button>
+          <button onClick={() => onConfirm({ city: city.trim() || null, admin_name: adminName.trim() || null })} disabled={busy} style={{ height: 34, padding: '0 16px', borderRadius: 8, border: 'none', background: '#fff', color: '#0B0C10', fontSize: 13, fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>{busy ? 'Provisioning…' : 'Approve & provision'}</button>
         </div>
       </div>
     </div>

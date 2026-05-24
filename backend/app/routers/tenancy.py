@@ -356,7 +356,11 @@ async def list_workspace_requests(
 
 
 class ApproveIn(BaseModel):
-    city:       str = Field(min_length=1, max_length=80, description="Default city scope for the supervisor")
+    # Supervisors are NOT city-scoped at the permission layer — they see and
+    # act on every site in the tenant. This field is metadata only: it travels
+    # in the workspace_provisioned outbox payload for any email/Slack template
+    # that wants to greet the customer with their primary territory. Optional.
+    city:       Optional[str] = Field(default=None, max_length=80, description="Primary city for the workspace (metadata only — supervisors are not city-scoped).")
     admin_name: Optional[str] = Field(default=None, max_length=120)
 
 
@@ -527,7 +531,7 @@ async def approve_workspace_request(
                 '{"tenant_id":"' + str(tenant_id) + '",'
                 '"workspace_code":"' + workspace_code + '",'
                 '"company":' + _json_string(req_company) + ','
-                '"city":' + _json_string(payload.city) + '}'
+                '"city":' + _json_string(payload.city or "") + '}'
             ),
         },
     )
