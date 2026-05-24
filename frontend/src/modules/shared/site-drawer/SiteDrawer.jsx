@@ -327,7 +327,7 @@ export default function SiteDrawer({ site, onClose }) {
             <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>
               {site.city} · {site.model} · created by {site.createdBy} · {site.createdAt}
             </span>
-            <div style={{ marginTop: 10, display: 'flex', gap: 0, borderTop: '1px solid var(--zm-line)', marginTop: 18 }}>
+            <div style={{ marginTop: 18, display: 'flex', gap: 0, borderTop: '1px solid var(--zm-line)' }}>
               <Tab label="Overview"  active={tab === 'overview'}  onClick={() => setTab('overview')}/>
               <Tab label="Activity"  count={6} active={tab === 'activity'} onClick={() => setTab('activity')}/>
               <Tab label="Documents" count={5} active={tab === 'docs'}     onClick={() => setTab('docs')}/>
