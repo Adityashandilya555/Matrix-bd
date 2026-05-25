@@ -8,6 +8,11 @@ export const SiteStatus = {
   DETAILS_SUBMITTED:  'details_submitted',
   APPROVED:           'approved',
   LOI_UPLOADED:       'loi_uploaded',
+  // ── Legal workflow ──────────────────────────────────────────────────────
+  LEGAL_REVIEW:       'legal_review',    // BD pushed → awaiting legal supervisor
+  LEGAL_APPROVED:     'legal_approved',  // legal cleared → ready for payments
+  LEGAL_REJECTED:     'legal_rejected',  // legal rejected → BD notified; terminal
+  // ── Payments (terminal until Payments module is built) ──────────────────
   PUSHED_TO_PAYMENTS: 'pushed_to_payments',
   REJECTED:           'rejected',
   ARCHIVED:           'archived',
@@ -15,11 +20,15 @@ export const SiteStatus = {
 
 // Allowed transitions: { fromStatus: [toStatus, ...] }
 export const ALLOWED_TRANSITIONS = {
-  [SiteStatus.DRAFT_SUBMITTED]:    [SiteStatus.SHORTLISTED, SiteStatus.REJECTED, SiteStatus.ARCHIVED],
+  [SiteStatus.DRAFT_SUBMITTED]:    [SiteStatus.SHORTLISTED,    SiteStatus.REJECTED, SiteStatus.ARCHIVED],
   [SiteStatus.SHORTLISTED]:        [SiteStatus.DETAILS_SUBMITTED, SiteStatus.REJECTED, SiteStatus.ARCHIVED],
-  [SiteStatus.DETAILS_SUBMITTED]:  [SiteStatus.APPROVED, SiteStatus.REJECTED, SiteStatus.ARCHIVED],
-  [SiteStatus.APPROVED]:           [SiteStatus.LOI_UPLOADED, SiteStatus.REJECTED, SiteStatus.ARCHIVED],
-  [SiteStatus.LOI_UPLOADED]:       [SiteStatus.PUSHED_TO_PAYMENTS, SiteStatus.REJECTED, SiteStatus.ARCHIVED],
+  [SiteStatus.DETAILS_SUBMITTED]:  [SiteStatus.APPROVED,       SiteStatus.REJECTED, SiteStatus.ARCHIVED],
+  [SiteStatus.APPROVED]:           [SiteStatus.LOI_UPLOADED,   SiteStatus.REJECTED, SiteStatus.ARCHIVED],
+  // BD supervisor "Push" now sends to Legal Review
+  [SiteStatus.LOI_UPLOADED]:       [SiteStatus.LEGAL_REVIEW,   SiteStatus.REJECTED, SiteStatus.ARCHIVED],
+  [SiteStatus.LEGAL_REVIEW]:       [SiteStatus.LEGAL_APPROVED, SiteStatus.LEGAL_REJECTED],
+  [SiteStatus.LEGAL_APPROVED]:     [SiteStatus.PUSHED_TO_PAYMENTS],
+  [SiteStatus.LEGAL_REJECTED]:     [], // terminal
   [SiteStatus.PUSHED_TO_PAYMENTS]: [], // terminal
   [SiteStatus.REJECTED]:           [], // terminal
   [SiteStatus.ARCHIVED]:           [], // terminal
@@ -39,15 +48,18 @@ export function assertTransition(fromStatus, toStatus) {
 // LEGACY_STAGE_MAP: maps legacy display stage strings to canonical SiteStatus values.
 // Used by SitesContext to back-compat components reading site.stage === 'draft' etc.
 export const LEGACY_STAGE_MAP = {
-  draft:       SiteStatus.DRAFT_SUBMITTED,
-  shortlist:   SiteStatus.SHORTLISTED,
-  inReview:    SiteStatus.DETAILS_SUBMITTED,
-  staging:     SiteStatus.APPROVED,
-  overdue:     SiteStatus.APPROVED,
-  uploaded:    SiteStatus.LOI_UPLOADED,
-  completed:   SiteStatus.PUSHED_TO_PAYMENTS,
-  rejected:    SiteStatus.REJECTED,
-  archived:    SiteStatus.ARCHIVED,
+  draft:          SiteStatus.DRAFT_SUBMITTED,
+  shortlist:      SiteStatus.SHORTLISTED,
+  inReview:       SiteStatus.DETAILS_SUBMITTED,
+  staging:        SiteStatus.APPROVED,
+  overdue:        SiteStatus.APPROVED,
+  uploaded:       SiteStatus.LOI_UPLOADED,
+  legal_review:   SiteStatus.LEGAL_REVIEW,
+  legal_approved: SiteStatus.LEGAL_APPROVED,
+  legal_rejected: SiteStatus.LEGAL_REJECTED,
+  completed:      SiteStatus.PUSHED_TO_PAYMENTS,
+  rejected:       SiteStatus.REJECTED,
+  archived:       SiteStatus.ARCHIVED,
 };
 
 // Reverse map: canonical SiteStatus -> legacy stage string used by page components.
@@ -57,6 +69,9 @@ const STATUS_TO_LEGACY = {
   [SiteStatus.DETAILS_SUBMITTED]:  'shortlist', // inReview is derived separately via inReview boolean
   [SiteStatus.APPROVED]:           'staging',
   [SiteStatus.LOI_UPLOADED]:       'uploaded',
+  [SiteStatus.LEGAL_REVIEW]:       'legal_review',
+  [SiteStatus.LEGAL_APPROVED]:     'legal_approved',
+  [SiteStatus.LEGAL_REJECTED]:     'legal_rejected',
   [SiteStatus.PUSHED_TO_PAYMENTS]: 'completed',
   [SiteStatus.REJECTED]:           'rejected',
   [SiteStatus.ARCHIVED]:           'archived',

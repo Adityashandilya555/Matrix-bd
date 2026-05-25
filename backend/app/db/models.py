@@ -109,6 +109,10 @@ class Site(Base):
     pushed_to_payments_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     rejected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # Legal workflow timestamps (added by migration add_legal_workflow)
+    legal_review_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    legal_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    legal_rejected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     # Soft-delete / rejection metadata
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
@@ -298,3 +302,39 @@ class ShortlistDelegation(Base):
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     revoked_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     notes: Mapped[Optional[str]] = mapped_column(Text)
+
+
+# ── Legal Review (temporary — replaced by 3-table model in refactor commit) ──
+
+class LegalReview(Base):
+    """One row per site that enters the legal workflow."""
+    __tablename__ = "legal_reviews"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4())
+    site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    reviewer_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    title_check: Mapped[Optional[bool]] = mapped_column(Boolean)
+    sanctioned_plan_check: Mapped[Optional[bool]] = mapped_column(Boolean)
+    oc_cc_check: Mapped[Optional[bool]] = mapped_column(Boolean)
+    commercial_uses_check: Mapped[Optional[bool]] = mapped_column(Boolean)
+    property_tax_check: Mapped[Optional[bool]] = mapped_column(Boolean)
+    electricity_check: Mapped[Optional[bool]] = mapped_column(Boolean)
+    fire_noc_verification_check: Mapped[Optional[bool]] = mapped_column(Boolean)
+    due_diligence_status: Mapped[Optional[str]] = mapped_column(Text)
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
+    agreement_signed: Mapped[Optional[bool]] = mapped_column(Boolean)
+    agreement_registered: Mapped[Optional[bool]] = mapped_column(Boolean)
+    fssai_check: Mapped[Optional[bool]] = mapped_column(Boolean)
+    health_trade_license_check: Mapped[Optional[bool]] = mapped_column(Boolean)
+    shops_license_check: Mapped[Optional[bool]] = mapped_column(Boolean)
+    fire_noc_licensing_check: Mapped[Optional[bool]] = mapped_column(Boolean)
+    storage_license_check: Mapped[Optional[bool]] = mapped_column(Boolean)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    verification_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    due_diligence_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    agreement_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    licensing_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

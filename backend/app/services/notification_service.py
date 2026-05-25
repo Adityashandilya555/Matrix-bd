@@ -40,6 +40,21 @@ async def recipients_for_supervisors(
     return [r for r in (await session.execute(stmt)).scalars().all()]
 
 
+async def recipients_for_legal_supervisors(
+    session: AsyncSession, *, tenant_id: str | UUID,
+) -> list[UUID]:
+    """All legal supervisors in the tenant."""
+    stmt = (
+        select(models.User.id)
+        .where(
+            models.User.tenant_id == tenant_id,
+            models.User.is_active.is_(True),
+            models.User.role == Role.LEGAL_SUPERVISOR.value,
+        )
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
 async def recipients_for_site_owner(
     session: AsyncSession, *, site: models.Site,
 ) -> list[UUID]:

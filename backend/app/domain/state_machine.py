@@ -14,6 +14,11 @@ class SiteStatus(str, Enum):
     DETAILS_SUBMITTED  = "details_submitted"
     APPROVED           = "approved"
     LOI_UPLOADED       = "loi_uploaded"
+    # ── Legal workflow (inserted between LOI and Payments) ──────────────────
+    LEGAL_REVIEW       = "legal_review"    # BD pushed → awaiting legal supervisor
+    LEGAL_APPROVED     = "legal_approved"  # legal cleared → ready for payments
+    LEGAL_REJECTED     = "legal_rejected"  # legal rejected → BD notified; terminal
+    # ── Payments (terminal until Payments module is built) ──────────────────
     PUSHED_TO_PAYMENTS = "pushed_to_payments"
     REJECTED           = "rejected"
     ARCHIVED           = "archived"
@@ -21,11 +26,17 @@ class SiteStatus(str, Enum):
 
 # Allowed transitions: from_status -> [to_status, ...]
 ALLOWED_TRANSITIONS: dict[SiteStatus, list[SiteStatus]] = {
-    SiteStatus.DRAFT_SUBMITTED:    [SiteStatus.SHORTLISTED,        SiteStatus.REJECTED, SiteStatus.ARCHIVED],
-    SiteStatus.SHORTLISTED:        [SiteStatus.DETAILS_SUBMITTED,  SiteStatus.REJECTED, SiteStatus.ARCHIVED],
-    SiteStatus.DETAILS_SUBMITTED:  [SiteStatus.APPROVED,           SiteStatus.REJECTED, SiteStatus.ARCHIVED],
-    SiteStatus.APPROVED:           [SiteStatus.LOI_UPLOADED,       SiteStatus.REJECTED, SiteStatus.ARCHIVED],
-    SiteStatus.LOI_UPLOADED:       [SiteStatus.PUSHED_TO_PAYMENTS, SiteStatus.REJECTED, SiteStatus.ARCHIVED],
+    SiteStatus.DRAFT_SUBMITTED:    [SiteStatus.SHORTLISTED,       SiteStatus.REJECTED, SiteStatus.ARCHIVED],
+    SiteStatus.SHORTLISTED:        [SiteStatus.DETAILS_SUBMITTED, SiteStatus.REJECTED, SiteStatus.ARCHIVED],
+    SiteStatus.DETAILS_SUBMITTED:  [SiteStatus.APPROVED,          SiteStatus.REJECTED, SiteStatus.ARCHIVED],
+    SiteStatus.APPROVED:           [SiteStatus.LOI_UPLOADED,      SiteStatus.REJECTED, SiteStatus.ARCHIVED],
+    # BD supervisor "Push" now sends to Legal Review (not directly to Payments)
+    SiteStatus.LOI_UPLOADED:       [SiteStatus.LEGAL_REVIEW,      SiteStatus.REJECTED, SiteStatus.ARCHIVED],
+    # Legal supervisor works through the 4-step checklist
+    SiteStatus.LEGAL_REVIEW:       [SiteStatus.LEGAL_APPROVED,    SiteStatus.LEGAL_REJECTED],
+    # Legal approved → Payments module (terminal until Payments is built)
+    SiteStatus.LEGAL_APPROVED:     [SiteStatus.PUSHED_TO_PAYMENTS],
+    SiteStatus.LEGAL_REJECTED:     [],  # terminal — BD notified via notification_outbox
     SiteStatus.PUSHED_TO_PAYMENTS: [],  # terminal
     SiteStatus.REJECTED:           [],  # terminal
     SiteStatus.ARCHIVED:           [],  # terminal

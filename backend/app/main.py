@@ -11,7 +11,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.db.session import engine
-from app.routers import audit, auth, bd, business_admin, delegations, loi, notifications, sites, staging, supervisor_codes, tenancy, users
+from app.routers import audit, auth, bd, business_admin, delegations, legal, loi, notifications, sites, staging, supervisor_codes, tenancy, users
 
 
 log = logging.getLogger("matrix.api")
@@ -60,7 +60,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
-for router_module in (auth, bd, loi, staging, sites, audit, notifications, tenancy, users, delegations, business_admin, supervisor_codes):
+for router_module in (auth, bd, legal, loi, staging, sites, audit, notifications, tenancy, users, delegations, business_admin, supervisor_codes):
     app.include_router(router_module.router, prefix=settings.api_prefix)
 
 

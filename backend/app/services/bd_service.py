@@ -36,6 +36,7 @@ from app.services._common import (
 from app.services.audit_service import diff_and_log_pipeline_fields, write_audit_event
 from app.services.notification_service import (
     enqueue as notify_enqueue,
+    recipients_for_legal_supervisors,
     recipients_for_site_owner,
     recipients_for_supervisors,
 )
@@ -347,31 +348,60 @@ async def svc_approve_shortlist(
     return site_to_response(site, created_by_name=created_by_name)
 
 
-# ── Push to payments ──────────────────────────────────────────────────────
+# ── Send to Legal Review (replaces the old "push to payments" terminal action) ─
 
 async def svc_push_to_payments(
     session: AsyncSession, *, tenant_id: str | UUID, actor: dict, site_id: str | UUID,
 ) -> OkResponse:
+    """BD Supervisor action: LOI_UPLOADED → LEGAL_REVIEW.
+
+    Previously this was a terminal "push to payments" step. It now hands the site
+    off to the Legal Department for their 4-step checklist. The route path
+    `/staging/{site_id}/push` is kept unchanged for frontend back-compat.
+    """
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        assert_transition(SiteStatus(site.status), SiteStatus.PUSHED_TO_PAYMENTS)
-        site.status = SiteStatus.PUSHED_TO_PAYMENTS.value
-        site.pushed_to_payments_at = datetime.now(timezone.utc)
+        assert_transition(SiteStatus(site.status), SiteStatus.LEGAL_REVIEW)
+        site.status = SiteStatus.LEGAL_REVIEW.value
+        site.legal_review_at = datetime.now(timezone.utc)
+
+        # Create the legal_review record so legal supervisor can start immediately
+        legal_review = models.LegalReview(
+            site_id=site.id,
+            tenant_id=tenant_id,
+            status="pending",
+        )
+        session.add(legal_review)
+
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor["name"],
-            action="push_to_payments",
+            action="send_to_legal",
             from_status=SiteStatus.LOI_UPLOADED.value,
-            to_status=SiteStatus.PUSHED_TO_PAYMENTS.value,
+            to_status=SiteStatus.LEGAL_REVIEW.value,
         )
+        # Notify all legal supervisors in the tenant
+        legal_recipients = await recipients_for_legal_supervisors(session, tenant_id=tenant_id)
+        await notify_enqueue(
+            session, tenant_id=tenant_id, event="site_sent_to_legal",
+            recipient_ids=legal_recipients, site_id=site.id,
+            channels=("email", "in_app"),
+            payload={"site_id": str(site.id), "site_name": site.name, "city": site.city},
+            subject=f"New site for legal review: {site.name}",
+            body=(
+                f"The site '{site.name}' ({site.code or ''}) in {site.city} has been "
+                f"submitted for legal review. Please open your Legal Dashboard to proceed."
+            ),
+        )
+        # Acknowledge to BD exec/supervisor that it has been sent
         owners = await recipients_for_site_owner(session, site=site)
         await notify_enqueue(
-            session, tenant_id=tenant_id, event="site_pushed_to_payments",
+            session, tenant_id=tenant_id, event="site_sent_to_legal_ack",
             recipient_ids=owners, site_id=site.id,
-            channels=("email", "slack", "in_app"),
+            channels=("in_app",),
             payload={"site_id": str(site.id)},
         )
-    return OkResponse(message=f"Site {site_id} pushed to Payments")
+    return OkResponse(message=f"Site {site_id} sent to Legal Review")
 
 
 # ── Reject ────────────────────────────────────────────────────────────────
