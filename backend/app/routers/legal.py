@@ -1,12 +1,16 @@
 """Legal Department workflow router.
 
+Access control: caller must be role=supervisor OR role=executive AND module=legal.
+The two Annotated deps are composed per-route so finalize/agreement/licensing
+are supervisor-only while viewing and saving DD items allows executives too.
+
 Endpoints:
-  GET  /legal/queue                      → legal supervisor queue (LEGAL_REVIEW sites)
-  GET  /legal/{site_id}                  → get full legal review for a site
-  POST /legal/{site_id}/verification     → Step 1 · save verification checklist
-  POST /legal/{site_id}/due-diligence    → Step 2 · positive continues; negative rejects + notifies BD
-  POST /legal/{site_id}/agreement        → Step 3 · save agreement fields
-  POST /legal/{site_id}/licensing        → Step 4 · save licensing → auto-approves → LEGAL_APPROVED
+  GET  /legal/queue                      → legal queue (LEGAL_REVIEW sites)
+  GET  /legal/{site_id}                  → full legal review for a site
+  POST /legal/{site_id}/dd/items         → Step 1 · save DD checklist items
+  POST /legal/{site_id}/dd/finalize      → Step 2 · stamp final_verdict (supervisor only)
+  POST /legal/{site_id}/agreement        → Step 3 · save agreement (supervisor only)
+  POST /legal/{site_id}/licensing        → Step 4 · save licensing → LEGAL_APPROVED
 """
 from __future__ import annotations
 
@@ -24,7 +28,7 @@ from app.domain.schemas.legal import (
     SaveLicensingRequest,
     SaveVerificationRequest,
 )
-from app.rbac.guards import require_role
+from app.rbac.guards import require_module, require_role
 from app.rbac.roles import Role
 from app.services.legal_service import (
     svc_get_legal_review,
@@ -37,7 +41,11 @@ from app.services.legal_service import (
 
 router = APIRouter(prefix="/legal", tags=["Legal"])
 
-LegalUser = Annotated[dict, Depends(require_role(Role.LEGAL_SUPERVISOR))]
+# Both supervisor and executive in the legal module can access legal routes.
+# Finalize / agreement / licensing are further restricted to supervisor below.
+LegalMember  = Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.EXECUTIVE))]
+LegalSupervisor = Annotated[dict, Depends(require_role(Role.SUPERVISOR))]
+InLegalModule = Annotated[dict, Depends(require_module("legal"))]
 
 
 # ── Queue ─────────────────────────────────────────────────────────────────────
@@ -49,7 +57,8 @@ LegalUser = Annotated[dict, Depends(require_role(Role.LEGAL_SUPERVISOR))]
 )
 async def legal_queue(
     db: DbDep,
-    current_user: LegalUser,
+    current_user: LegalMember,
+    _module: InLegalModule,
     tenant_id: TenantId,
 ) -> LegalQueueResponse:
     return await svc_legal_queue(db, tenant_id=tenant_id)
@@ -58,29 +67,31 @@ async def legal_queue(
 @router.get(
     "/{site_id}",
     response_model=LegalReviewResponse,
-    summary="Get legal review details for a site",
+    summary="Get full legal review state for a site",
 )
 async def get_legal_review(
     site_id: str,
     db: DbDep,
-    current_user: LegalUser,
+    current_user: LegalMember,
+    _module: InLegalModule,
     tenant_id: TenantId,
 ) -> LegalReviewResponse:
     return await svc_get_legal_review(db, site_id=site_id, tenant_id=tenant_id)
 
 
-# ── Step 1 · Verification Checklist ──────────────────────────────────────────
+# ── Step 1 · DD checklist items (supervisor OR executive) ─────────────────────
 
 @router.post(
-    "/{site_id}/verification",
+    "/{site_id}/dd/items",
     response_model=LegalReviewResponse,
-    summary="Step 1 · Save verification checklist",
+    summary="Step 1 · Save due-diligence checklist items",
 )
-async def save_verification(
+async def save_dd_items(
     site_id: str,
     body: SaveVerificationRequest,
     db: DbDep,
-    current_user: LegalUser,
+    current_user: LegalMember,
+    _module: InLegalModule,
     tenant_id: TenantId,
 ) -> LegalReviewResponse:
     return await svc_save_verification(
@@ -88,18 +99,19 @@ async def save_verification(
     )
 
 
-# ── Step 2 · Due Diligence ────────────────────────────────────────────────────
+# ── Step 2 · Finalize DD verdict (supervisor only) ────────────────────────────
 
 @router.post(
-    "/{site_id}/due-diligence",
+    "/{site_id}/dd/finalize",
     response_model=LegalReviewResponse,
-    summary="Step 2 · Submit due diligence decision (positive → continue; negative → reject)",
+    summary="Step 2 · Stamp final DD verdict (positive → continue; negative → reject)",
 )
-async def save_due_diligence(
+async def finalize_dd(
     site_id: str,
     body: SaveDueDiligenceRequest,
     db: DbDep,
-    current_user: LegalUser,
+    current_user: LegalSupervisor,
+    _module: InLegalModule,
     tenant_id: TenantId,
 ) -> LegalReviewResponse:
     return await svc_save_due_diligence(
@@ -107,18 +119,19 @@ async def save_due_diligence(
     )
 
 
-# ── Step 3 · Agreement ────────────────────────────────────────────────────────
+# ── Step 3 · Agreement (supervisor only) ─────────────────────────────────────
 
 @router.post(
     "/{site_id}/agreement",
     response_model=LegalReviewResponse,
-    summary="Step 3 · Save agreement checklist",
+    summary="Step 3 · Save agreement signed/registered",
 )
 async def save_agreement(
     site_id: str,
     body: SaveAgreementRequest,
     db: DbDep,
-    current_user: LegalUser,
+    current_user: LegalSupervisor,
+    _module: InLegalModule,
     tenant_id: TenantId,
 ) -> LegalReviewResponse:
     return await svc_save_agreement(
@@ -126,7 +139,7 @@ async def save_agreement(
     )
 
 
-# ── Step 4 · Licensing ────────────────────────────────────────────────────────
+# ── Step 4 · Licensing (supervisor only) ─────────────────────────────────────
 
 @router.post(
     "/{site_id}/licensing",
@@ -137,7 +150,8 @@ async def save_licensing(
     site_id: str,
     body: SaveLicensingRequest,
     db: DbDep,
-    current_user: LegalUser,
+    current_user: LegalSupervisor,
+    _module: InLegalModule,
     tenant_id: TenantId,
 ) -> LegalReviewResponse:
     return await svc_save_licensing(

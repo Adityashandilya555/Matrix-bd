@@ -1,23 +1,20 @@
 """Legal Department workflow service.
 
-Implements the 4-step checklist:
-  Step 1 · Verification Checklist  (7 boolean fields)
-  Step 2 · Due Diligence Decision  (positive → continue; negative → reject + notify BD)
-  Step 3 · Agreement               (2 boolean fields)
-  Step 4 · Licensing               (5 boolean fields → auto-approves on completion)
+Three-table model (aligns with Module_State_Transitions_Handover spec):
+  Step 1 · DD checklist items  → legal_dd_checklist (exec or supervisor updates items)
+  Step 2 · Finalize DD verdict → legal_dd_checklist.final_verdict (supervisor only)
+  Step 3 · Agreement           → site_agreement (supervisor only)
+  Step 4 · Licensing           → site_licensing (supervisor; triggers LEGAL_APPROVED)
 
-Each public `svc_legal_*` function follows the same pattern as bd_service:
-  1. Open / reuse transaction
-  2. Fetch + tenant-scope the legal_review row
-  3. Validate workflow state
-  4. Mutate
-  5. Write audit event
-  6. Write notification outbox rows
-  7. Commit
+Cross-module status mirrors on sites that BD reads for dashboard chips:
+  sites.legal_dd_status    → 'pending' | 'in_review' | 'positive' | 'negative'
+  sites.agreement_status   → 'pending' | 'signed' | 'registered'
+  sites.licensing_status   → 'pending' | 'partial' | 'complete'
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
@@ -26,11 +23,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
 from app.db.session import transaction
-from app.domain.schemas.common import OkResponse
 from app.domain.schemas.legal import (
+    AgreementResponse,
+    DdChecklistResponse,
     LegalQueueItem,
     LegalQueueResponse,
     LegalReviewResponse,
+    LicensingResponse,
     SaveAgreementRequest,
     SaveDueDiligenceRequest,
     SaveLicensingRequest,
@@ -48,52 +47,98 @@ from app.services.notification_service import (
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-async def _fetch_review_or_404(
-    session: AsyncSession, *, site_id: str | UUID, tenant_id: str | UUID,
-) -> models.LegalReview:
-    stmt = select(models.LegalReview).where(
-        models.LegalReview.site_id == site_id,
-        models.LegalReview.tenant_id == tenant_id,
-    )
-    review = (await session.execute(stmt)).scalar_one_or_none()
-    if review is None:
+async def _fetch_dd_or_none(
+    session: AsyncSession, *, site_id: str | UUID,
+) -> Optional[models.LegalDdChecklist]:
+    return (await session.execute(
+        select(models.LegalDdChecklist).where(models.LegalDdChecklist.site_id == site_id)
+    )).scalar_one_or_none()
+
+
+async def _fetch_dd_or_404(
+    session: AsyncSession, *, site_id: str | UUID,
+) -> models.LegalDdChecklist:
+    row = await _fetch_dd_or_none(session, site_id=site_id)
+    if row is None:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,
-            detail=f"No legal review found for site {site_id}",
+            detail=f"No DD checklist found for site {site_id}. Push the site to Legal Review first.",
         )
-    return review
+    return row
 
 
-def _review_to_response(r: models.LegalReview) -> LegalReviewResponse:
+async def _fetch_agreement_or_none(
+    session: AsyncSession, *, site_id: str | UUID,
+) -> Optional[models.SiteAgreement]:
+    return (await session.execute(
+        select(models.SiteAgreement).where(models.SiteAgreement.site_id == site_id)
+    )).scalar_one_or_none()
+
+
+async def _fetch_licensing_or_none(
+    session: AsyncSession, *, site_id: str | UUID,
+) -> Optional[models.SiteLicensing]:
+    return (await session.execute(
+        select(models.SiteLicensing).where(models.SiteLicensing.site_id == site_id)
+    )).scalar_one_or_none()
+
+
+def _dd_to_response(dd: models.LegalDdChecklist) -> DdChecklistResponse:
+    return DdChecklistResponse(
+        title_doc=dd.title_doc,
+        sanctioned_plan=dd.sanctioned_plan,
+        oc_cc=dd.oc_cc,
+        commercial_use=dd.commercial_use,
+        property_tax=dd.property_tax,
+        electricity=dd.electricity,
+        fire_noc=dd.fire_noc,
+        other_1=dd.other_1,
+        other_2=dd.other_2,
+        final_verdict=dd.final_verdict,
+        rejection_reason=dd.rejection_reason,
+        reviewed_by=str(dd.reviewed_by) if dd.reviewed_by else None,
+        approved_by=str(dd.approved_by) if dd.approved_by else None,
+        updated_at=dd.updated_at,
+    )
+
+
+def _agreement_to_response(ag: models.SiteAgreement) -> AgreementResponse:
+    return AgreementResponse(
+        signed=ag.signed,
+        signed_at=ag.signed_at,
+        registered=ag.registered,
+        registered_at=ag.registered_at,
+        document_url=ag.document_url,
+    )
+
+
+def _licensing_to_response(lic: models.SiteLicensing) -> LicensingResponse:
+    return LicensingResponse(
+        fssai=lic.fssai,
+        health_trade=lic.health_trade,
+        shops_estab_reg=lic.shops_estab_reg,
+        fire_noc=lic.fire_noc,
+        storage_license=lic.storage_license,
+        updated_at=lic.updated_at,
+    )
+
+
+async def _build_review_response(
+    session: AsyncSession, site: models.Site,
+) -> LegalReviewResponse:
+    dd  = await _fetch_dd_or_none(session, site_id=site.id)
+    ag  = await _fetch_agreement_or_none(session, site_id=site.id)
+    lic = await _fetch_licensing_or_none(session, site_id=site.id)
     return LegalReviewResponse(
-        id=str(r.id),
-        site_id=str(r.site_id),
-        tenant_id=str(r.tenant_id),
-        reviewer_id=str(r.reviewer_id) if r.reviewer_id else None,
-        status=r.status,
-        title_check=r.title_check,
-        sanctioned_plan_check=r.sanctioned_plan_check,
-        oc_cc_check=r.oc_cc_check,
-        commercial_uses_check=r.commercial_uses_check,
-        property_tax_check=r.property_tax_check,
-        electricity_check=r.electricity_check,
-        fire_noc_verification_check=r.fire_noc_verification_check,
-        due_diligence_status=r.due_diligence_status,
-        rejection_reason=r.rejection_reason,
-        agreement_signed=r.agreement_signed,
-        agreement_registered=r.agreement_registered,
-        fssai_check=r.fssai_check,
-        health_trade_license_check=r.health_trade_license_check,
-        shops_license_check=r.shops_license_check,
-        fire_noc_licensing_check=r.fire_noc_licensing_check,
-        storage_license_check=r.storage_license_check,
-        verification_completed_at=r.verification_completed_at,
-        due_diligence_completed_at=r.due_diligence_completed_at,
-        agreement_completed_at=r.agreement_completed_at,
-        licensing_completed_at=r.licensing_completed_at,
-        completed_at=r.completed_at,
-        created_at=r.created_at,
-        updated_at=r.updated_at,
+        site_id=str(site.id),
+        tenant_id=str(site.tenant_id),
+        site_status=site.status,
+        legal_dd_status=site.legal_dd_status,
+        agreement_status=site.agreement_status,
+        licensing_status=site.licensing_status,
+        dd=_dd_to_response(dd) if dd else None,
+        agreement=_agreement_to_response(ag) if ag else None,
+        licensing=_licensing_to_response(lic) if lic else None,
     )
 
 
@@ -102,28 +147,28 @@ def _review_to_response(r: models.LegalReview) -> LegalReviewResponse:
 async def svc_legal_queue(
     session: AsyncSession, *, tenant_id: str | UUID,
 ) -> LegalQueueResponse:
-    """Return all sites currently in LEGAL_REVIEW, with their review record status."""
+    """Return all sites currently in LEGAL_REVIEW with their DD checklist status."""
     stmt = (
-        select(models.Site, models.LegalReview)
-        .join(models.LegalReview, models.LegalReview.site_id == models.Site.id)
+        select(models.Site)
         .where(
             models.Site.tenant_id == tenant_id,
             models.Site.status == SiteStatus.LEGAL_REVIEW.value,
         )
         .order_by(models.Site.legal_review_at.asc())
     )
-    rows = (await session.execute(stmt)).all()
+    sites = (await session.execute(stmt)).scalars().all()
 
     items: list[LegalQueueItem] = []
-    for site, review in rows:
+    for site in sites:
+        dd = await _fetch_dd_or_none(session, site_id=site.id)
         submitted_by_name = await fetch_user_name(session, site.submitted_by)
         items.append(LegalQueueItem(
             site_id=str(site.id),
             site_code=site.code or "",
             site_name=site.name,
             city=site.city,
-            legal_review_id=str(review.id),
-            review_status=review.status,
+            legal_dd_status=site.legal_dd_status or "pending",
+            dd_final_verdict=dd.final_verdict if dd else "pending",
             legal_review_at=site.legal_review_at,
             submitted_by_name=submitted_by_name,
         ))
@@ -134,11 +179,11 @@ async def svc_legal_queue(
 async def svc_get_legal_review(
     session: AsyncSession, *, site_id: str | UUID, tenant_id: str | UUID,
 ) -> LegalReviewResponse:
-    review = await _fetch_review_or_404(session, site_id=site_id, tenant_id=tenant_id)
-    return _review_to_response(review)
+    site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+    return await _build_review_response(session, site)
 
 
-# ── Step 1 · Verification Checklist ──────────────────────────────────────────
+# ── Step 1 · Save DD checklist items ─────────────────────────────────────────
 
 async def svc_save_verification(
     session: AsyncSession,
@@ -148,37 +193,46 @@ async def svc_save_verification(
     site_id: str | UUID,
     body: SaveVerificationRequest,
 ) -> LegalReviewResponse:
+    """Create or update the DD checklist row; set sites.legal_dd_status = 'in_review'."""
     async with transaction(session):
-        review = await _fetch_review_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
 
-        if review.status not in ("pending", "verification_saved"):
+        if site.status != SiteStatus.LEGAL_REVIEW.value:
             raise HTTPException(
                 status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Cannot save verification at review status '{review.status}'",
+                detail=f"Site is not in legal_review (current: {site.status})",
             )
 
-        review.reviewer_id = actor["sub"]
-        review.title_check = body.title_check
-        review.sanctioned_plan_check = body.sanctioned_plan_check
-        review.oc_cc_check = body.oc_cc_check
-        review.commercial_uses_check = body.commercial_uses_check
-        review.property_tax_check = body.property_tax_check
-        review.electricity_check = body.electricity_check
-        review.fire_noc_verification_check = body.fire_noc_verification_check
-        review.status = "verification_saved"
-        review.verification_completed_at = datetime.now(timezone.utc)
+        dd = await _fetch_dd_or_none(session, site_id=site.id)
+        if dd is None:
+            dd = models.LegalDdChecklist(site_id=site.id)
+            session.add(dd)
+
+        # Only overwrite fields that were explicitly supplied
+        for field in (
+            "title_doc", "sanctioned_plan", "oc_cc", "commercial_use",
+            "property_tax", "electricity", "fire_noc", "other_1", "other_2",
+        ):
+            val = getattr(body, field)
+            if val is not None:
+                setattr(dd, field, val)
+
+        dd.reviewed_by = actor["sub"]
+
+        # Mirror to sites
+        site.legal_dd_status = "in_review"
 
         await write_audit_event(
-            session, tenant_id=tenant_id, site_id=site_id,
+            session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor["name"],
-            action="legal_save_verification",
-            detail="Verification checklist saved",
+            action="legal_dd_items_saved",
+            detail="DD checklist items updated",
         )
 
-    return _review_to_response(review)
+    return await _build_review_response(session, site)
 
 
-# ── Step 2 · Due Diligence ────────────────────────────────────────────────────
+# ── Step 2 · Finalize DD verdict ──────────────────────────────────────────────
 
 async def svc_save_due_diligence(
     session: AsyncSession,
@@ -188,77 +242,63 @@ async def svc_save_due_diligence(
     site_id: str | UUID,
     body: SaveDueDiligenceRequest,
 ) -> LegalReviewResponse:
-    if body.due_diligence_status not in ("positive", "negative"):
-        raise HTTPException(
-            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="due_diligence_status must be 'positive' or 'negative'",
-        )
-    if body.due_diligence_status == "negative" and not body.rejection_reason:
-        raise HTTPException(
-            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="rejection_reason is required when due_diligence_status is 'negative'",
-        )
-
+    """Supervisor stamps the final verdict on the DD checklist."""
     async with transaction(session):
-        review = await _fetch_review_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        dd   = await _fetch_dd_or_404(session, site_id=site.id)
 
-        if review.status != "verification_saved":
+        if site.status != SiteStatus.LEGAL_REVIEW.value:
             raise HTTPException(
                 status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Complete the verification checklist (Step 1) before submitting Due Diligence",
+                detail=f"Site is not in legal_review (current: {site.status})",
             )
 
-        review.due_diligence_status = body.due_diligence_status
-        review.rejection_reason = body.rejection_reason
-        review.due_diligence_completed_at = datetime.now(timezone.utc)
+        dd.final_verdict   = body.final_verdict
+        dd.rejection_reason = body.rejection_reason
+        dd.approved_by     = actor["sub"]
 
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-
-        if body.due_diligence_status == "negative":
-            # ── Reject path ─────────────────────────────────────────────────
-            review.status = "rejected"
-            review.completed_at = datetime.now(timezone.utc)
-
+        if body.final_verdict == "negative":
+            # ── Reject path ──────────────────────────────────────────────────
+            site.legal_dd_status = "negative"
             assert_transition(SiteStatus(site.status), SiteStatus.LEGAL_REJECTED)
             site.status = SiteStatus.LEGAL_REJECTED.value
             site.legal_rejected_at = datetime.now(timezone.utc)
 
             await write_audit_event(
-                session, tenant_id=tenant_id, site_id=site_id,
+                session, tenant_id=tenant_id, site_id=site.id,
                 actor_id=actor["sub"], actor_name=actor["name"],
-                action="legal_reject",
+                action="legal_dd_rejected",
                 from_status=SiteStatus.LEGAL_REVIEW.value,
                 to_status=SiteStatus.LEGAL_REJECTED.value,
                 detail=f"Negative DD: {body.rejection_reason}",
             )
-            # Notify the BD executive + supervisor who submitted the site
             bd_recipients = await recipients_for_site_owner(session, site=site)
             await notify_enqueue(
                 session, tenant_id=tenant_id, event="legal_rejected",
-                recipient_ids=bd_recipients, site_id=site_id,
+                recipient_ids=bd_recipients, site_id=site.id,
                 channels=("email", "in_app"),
                 payload={
-                    "site_id": str(site_id),
+                    "site_id": str(site.id),
                     "site_name": site.name,
                     "rejection_reason": body.rejection_reason,
                 },
                 subject=f"Legal rejected: {site.name}",
                 body=(
-                    f"The site '{site.name}' ({site.code}) has been rejected by the Legal "
-                    f"team after Due Diligence.\n\nReason: {body.rejection_reason}"
+                    f"The site '{site.name}' ({site.code}) was rejected by the Legal team "
+                    f"after Due Diligence.\n\nReason: {body.rejection_reason}"
                 ),
             )
         else:
             # ── Positive path ────────────────────────────────────────────────
-            review.status = "due_diligence_done"
+            site.legal_dd_status = "positive"
             await write_audit_event(
-                session, tenant_id=tenant_id, site_id=site_id,
+                session, tenant_id=tenant_id, site_id=site.id,
                 actor_id=actor["sub"], actor_name=actor["name"],
-                action="legal_due_diligence_positive",
+                action="legal_dd_positive",
                 detail="Positive DD — proceeding to Agreement",
             )
 
-    return _review_to_response(review)
+    return await _build_review_response(session, site)
 
 
 # ── Step 3 · Agreement ────────────────────────────────────────────────────────
@@ -271,28 +311,44 @@ async def svc_save_agreement(
     site_id: str | UUID,
     body: SaveAgreementRequest,
 ) -> LegalReviewResponse:
+    """Create or update the agreement row; mirror to sites.agreement_status."""
     async with transaction(session):
-        review = await _fetch_review_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        dd   = await _fetch_dd_or_404(session, site_id=site.id)
 
-        if review.status != "due_diligence_done":
+        if dd.final_verdict != "positive":
             raise HTTPException(
                 status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Complete Due Diligence with a positive result (Step 2) before saving Agreement",
+                detail="Complete Due Diligence with a positive verdict (Step 2) before saving Agreement",
             )
 
-        review.agreement_signed = body.agreement_signed
-        review.agreement_registered = body.agreement_registered
-        review.status = "agreement_done"
-        review.agreement_completed_at = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
+        ag  = await _fetch_agreement_or_none(session, site_id=site.id)
+        if ag is None:
+            ag = models.SiteAgreement(site_id=site.id)
+            session.add(ag)
+
+        if body.document_url is not None:
+            ag.document_url = body.document_url
+
+        if body.signed and not ag.signed:
+            ag.signed    = True
+            ag.signed_at = now
+            site.agreement_status = "signed"
+
+        if body.registered and not ag.registered:
+            ag.registered    = True
+            ag.registered_at = now
+            site.agreement_status = "registered"
 
         await write_audit_event(
-            session, tenant_id=tenant_id, site_id=site_id,
+            session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor["name"],
-            action="legal_save_agreement",
-            detail=f"Signed={body.agreement_signed} Registered={body.agreement_registered}",
+            action="legal_agreement_saved",
+            detail=f"signed={body.signed} registered={body.registered}",
         )
 
-    return _review_to_response(review)
+    return await _build_review_response(session, site)
 
 
 # ── Step 4 · Licensing → auto-approve ────────────────────────────────────────
@@ -305,51 +361,73 @@ async def svc_save_licensing(
     site_id: str | UUID,
     body: SaveLicensingRequest,
 ) -> LegalReviewResponse:
-    async with transaction(session):
-        review = await _fetch_review_or_404(session, site_id=site_id, tenant_id=tenant_id)
+    """Create or update the licensing row.
 
-        if review.status != "agreement_done":
+    When all five items are 'yes':
+      - sites.licensing_status → 'complete'
+      - sites.status → LEGAL_APPROVED (legal workflow done)
+      - BD notified via email + in_app
+    """
+    async with transaction(session):
+        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        ag   = await _fetch_agreement_or_none(session, site_id=site.id)
+
+        if ag is None or not ag.registered:
             raise HTTPException(
                 status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Complete the Agreement section (Step 3) before saving Licensing",
+                detail="Agreement must be registered (Step 3) before saving Licensing",
             )
 
-        review.fssai_check = body.fssai_check
-        review.health_trade_license_check = body.health_trade_license_check
-        review.shops_license_check = body.shops_license_check
-        review.fire_noc_licensing_check = body.fire_noc_licensing_check
-        review.storage_license_check = body.storage_license_check
-        review.status = "approved"
-        review.licensing_completed_at = datetime.now(timezone.utc)
-        review.completed_at = datetime.now(timezone.utc)
+        lic = await _fetch_licensing_or_none(session, site_id=site.id)
+        if lic is None:
+            lic = models.SiteLicensing(site_id=site.id)
+            session.add(lic)
 
-        # Auto-approve: transition site LEGAL_REVIEW → LEGAL_APPROVED
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        assert_transition(SiteStatus(site.status), SiteStatus.LEGAL_APPROVED)
-        site.status = SiteStatus.LEGAL_APPROVED.value
-        site.legal_approved_at = datetime.now(timezone.utc)
+        for field in ("fssai", "health_trade", "shops_estab_reg", "fire_noc", "storage_license"):
+            val = getattr(body, field)
+            if val is not None:
+                setattr(lic, field, val)
 
-        await write_audit_event(
-            session, tenant_id=tenant_id, site_id=site_id,
-            actor_id=actor["sub"], actor_name=actor["name"],
-            action="legal_approve",
-            from_status=SiteStatus.LEGAL_REVIEW.value,
-            to_status=SiteStatus.LEGAL_APPROVED.value,
-            detail="All 4 checklist steps completed — Legal Approved",
+        # Check if all five are now 'yes'
+        all_done = all(
+            getattr(lic, f) == "yes"
+            for f in ("fssai", "health_trade", "shops_estab_reg", "fire_noc", "storage_license")
         )
 
-        # Notify BD executive/supervisor that legal cleared the site
-        bd_recipients = await recipients_for_site_owner(session, site=site)
-        await notify_enqueue(
-            session, tenant_id=tenant_id, event="legal_approved",
-            recipient_ids=bd_recipients, site_id=site_id,
-            channels=("email", "in_app"),
-            payload={"site_id": str(site_id), "site_name": site.name},
-            subject=f"Legal approved: {site.name}",
-            body=(
-                f"The site '{site.name}' ({site.code}) has been fully cleared by the Legal "
-                f"team and is now ready for the Payments module."
-            ),
-        )
+        if all_done:
+            site.licensing_status = "complete"
+            # Auto-approve: transition LEGAL_REVIEW → LEGAL_APPROVED
+            assert_transition(SiteStatus(site.status), SiteStatus.LEGAL_APPROVED)
+            site.status = SiteStatus.LEGAL_APPROVED.value
+            site.legal_approved_at = datetime.now(timezone.utc)
 
-    return _review_to_response(review)
+            await write_audit_event(
+                session, tenant_id=tenant_id, site_id=site.id,
+                actor_id=actor["sub"], actor_name=actor["name"],
+                action="legal_approved",
+                from_status=SiteStatus.LEGAL_REVIEW.value,
+                to_status=SiteStatus.LEGAL_APPROVED.value,
+                detail="All licensing checks done — Legal Approved",
+            )
+            bd_recipients = await recipients_for_site_owner(session, site=site)
+            await notify_enqueue(
+                session, tenant_id=tenant_id, event="legal_approved",
+                recipient_ids=bd_recipients, site_id=site.id,
+                channels=("email", "in_app"),
+                payload={"site_id": str(site.id), "site_name": site.name},
+                subject=f"Legal approved: {site.name}",
+                body=(
+                    f"The site '{site.name}' ({site.code}) has been fully cleared by Legal "
+                    f"and is now ready for the Payments module."
+                ),
+            )
+        else:
+            site.licensing_status = "partial"
+            await write_audit_event(
+                session, tenant_id=tenant_id, site_id=site.id,
+                actor_id=actor["sub"], actor_name=actor["name"],
+                action="legal_licensing_partial",
+                detail="Licensing items partially saved",
+            )
+
+    return await _build_review_response(session, site)

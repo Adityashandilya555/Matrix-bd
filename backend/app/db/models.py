@@ -109,10 +109,17 @@ class Site(Base):
     pushed_to_payments_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     rejected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    # Legal workflow timestamps (added by migration add_legal_workflow)
+    # Legal workflow timestamps
     legal_review_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     legal_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     legal_rejected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    # Cross-module status mirrors — BD reads these columns to render dashboard chips.
+    # Legal module writes legal_dd_status + agreement_status.
+    # Payment module writes licensing_status.
+    legal_dd_status: Mapped[Optional[str]] = mapped_column(Text, server_default="pending")
+    agreement_status: Mapped[Optional[str]] = mapped_column(Text, server_default="pending")
+    licensing_status: Mapped[Optional[str]] = mapped_column(Text, server_default="pending")
 
     # Soft-delete / rejection metadata
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
@@ -304,37 +311,109 @@ class ShortlistDelegation(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
 
-# ── Legal Review (temporary — replaced by 3-table model in refactor commit) ──
+# ── Legal workflow child tables ───────────────────────────────────────────────
+# Three separate 1:1 tables owned by the Legal module.
+# The parent `sites` row carries mirror status columns (legal_dd_status,
+# agreement_status, licensing_status) that BD reads for dashboard chips.
+# Never let BD read these child tables directly — that creates coupling.
 
-class LegalReview(Base):
-    """One row per site that enters the legal workflow."""
-    __tablename__ = "legal_reviews"
+class LegalDdChecklist(Base):
+    """Due-diligence checklist. site_id is the PK (one row per site).
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4())
-    site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), nullable=False)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
-    reviewer_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
-    title_check: Mapped[Optional[bool]] = mapped_column(Boolean)
-    sanctioned_plan_check: Mapped[Optional[bool]] = mapped_column(Boolean)
-    oc_cc_check: Mapped[Optional[bool]] = mapped_column(Boolean)
-    commercial_uses_check: Mapped[Optional[bool]] = mapped_column(Boolean)
-    property_tax_check: Mapped[Optional[bool]] = mapped_column(Boolean)
-    electricity_check: Mapped[Optional[bool]] = mapped_column(Boolean)
-    fire_noc_verification_check: Mapped[Optional[bool]] = mapped_column(Boolean)
-    due_diligence_status: Mapped[Optional[str]] = mapped_column(Text)
+    Checklist items use a three-value text enum: 'pending' | 'yes' | 'no'.
+    final_verdict is set by the legal supervisor: 'pending' | 'positive' | 'negative'.
+    """
+    __tablename__ = "legal_dd_checklist"
+
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True,
+    )
+
+    # 7 standard checks + 2 overflow slots
+    title_doc: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    sanctioned_plan: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    oc_cc: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    commercial_use: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    property_tax: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    electricity: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    fire_noc: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    other_1: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    other_2: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+
+    final_verdict: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
-    agreement_signed: Mapped[Optional[bool]] = mapped_column(Boolean)
-    agreement_registered: Mapped[Optional[bool]] = mapped_column(Boolean)
-    fssai_check: Mapped[Optional[bool]] = mapped_column(Boolean)
-    health_trade_license_check: Mapped[Optional[bool]] = mapped_column(Boolean)
-    shops_license_check: Mapped[Optional[bool]] = mapped_column(Boolean)
-    fire_noc_licensing_check: Mapped[Optional[bool]] = mapped_column(Boolean)
-    storage_license_check: Mapped[Optional[bool]] = mapped_column(Boolean)
-    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
-    verification_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    due_diligence_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    agreement_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    licensing_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Who worked on it
+    reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))   # legal exec
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))   # legal supervisor
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "title_doc IN ('pending','yes','no') AND sanctioned_plan IN ('pending','yes','no') "
+            "AND oc_cc IN ('pending','yes','no') AND commercial_use IN ('pending','yes','no') "
+            "AND property_tax IN ('pending','yes','no') AND electricity IN ('pending','yes','no') "
+            "AND fire_noc IN ('pending','yes','no') AND other_1 IN ('pending','yes','no') "
+            "AND other_2 IN ('pending','yes','no')",
+            name="chk_dd_checklist_values",
+        ),
+        CheckConstraint(
+            "final_verdict IN ('pending','positive','negative')",
+            name="chk_dd_final_verdict",
+        ),
+    )
+
+
+class SiteAgreement(Base):
+    """Agreement record for a site. site_id is the PK (one row per site).
+
+    Mirrors sites.agreement_status:
+      signed=true   → 'signed'
+      registered=true → 'registered'
+    """
+    __tablename__ = "site_agreement"
+
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True,
+    )
+
+    signed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    signed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    registered: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    registered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    document_url: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class SiteLicensing(Base):
+    """Licensing checklist. site_id is the PK (one row per site).
+
+    Owned by the Payment module. Legal workflow creates the row; Payment fills it.
+    Mirrors sites.licensing_status: all 'yes' → 'complete'.
+    """
+    __tablename__ = "site_licensing"
+
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True,
+    )
+
+    fssai: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    health_trade: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    shops_estab_reg: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    fire_noc: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    storage_license: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "fssai IN ('pending','yes','no') AND health_trade IN ('pending','yes','no') "
+            "AND shops_estab_reg IN ('pending','yes','no') AND fire_noc IN ('pending','yes','no') "
+            "AND storage_license IN ('pending','yes','no')",
+            name="chk_licensing_values",
+        ),
+    )

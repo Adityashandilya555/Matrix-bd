@@ -365,13 +365,9 @@ async def svc_push_to_payments(
         site.status = SiteStatus.LEGAL_REVIEW.value
         site.legal_review_at = datetime.now(timezone.utc)
 
-        # Create the legal_review record so legal supervisor can start immediately
-        legal_review = models.LegalReview(
-            site_id=site.id,
-            tenant_id=tenant_id,
-            status="pending",
-        )
-        session.add(legal_review)
+        # Seed the DD checklist row so legal team can start filling items immediately
+        legal_dd = models.LegalDdChecklist(site_id=site.id)
+        session.add(legal_dd)
 
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,

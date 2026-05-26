@@ -1,103 +1,144 @@
-"""Pydantic schemas for the Legal Department workflow."""
+"""Pydantic schemas for the Legal Department workflow.
+
+Three child tables:
+  LegalDdChecklist  — due-diligence (Steps 1 + 2)
+  SiteAgreement     — agreement signed/registered (Step 3)
+  SiteLicensing     — licensing checklist (Step 4 / Payment module)
+
+Checklist field values: 'pending' | 'yes' | 'no'
+DD final_verdict:       'pending' | 'positive' | 'negative'
+"""
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+ChecklistValue = Literal["pending", "yes", "no"]
 
 
-# ── Step 1 · Verification Checklist ───────────────────────────────────────────
+# ── Step 1 · Save DD checklist items ─────────────────────────────────────────
 
 class SaveVerificationRequest(BaseModel):
-    """All 7 checklist items must be answered (True = Yes, False = No)."""
-    title_check: bool
-    sanctioned_plan_check: bool
-    oc_cc_check: bool
-    commercial_uses_check: bool
-    property_tax_check: bool
-    electricity_check: bool
-    fire_noc_verification_check: bool
+    """Save one or more due-diligence checklist items.
+
+    All fields are optional so an exec can update a single item at a time.
+    Fields not supplied are left unchanged.
+    """
+    title_doc:       Optional[ChecklistValue] = None
+    sanctioned_plan: Optional[ChecklistValue] = None
+    oc_cc:           Optional[ChecklistValue] = None
+    commercial_use:  Optional[ChecklistValue] = None
+    property_tax:    Optional[ChecklistValue] = None
+    electricity:     Optional[ChecklistValue] = None
+    fire_noc:        Optional[ChecklistValue] = None
+    other_1:         Optional[ChecklistValue] = None
+    other_2:         Optional[ChecklistValue] = None
 
 
-# ── Step 2 · Due Diligence ────────────────────────────────────────────────────
+# ── Step 2 · Finalize DD verdict ─────────────────────────────────────────────
 
 class SaveDueDiligenceRequest(BaseModel):
-    """'positive' continues the workflow; 'negative' triggers rejection + BD notification."""
-    due_diligence_status: str           # 'positive' | 'negative'
-    rejection_reason: Optional[str] = None   # required when status = 'negative'
+    """Supervisor stamps the final verdict.
+
+    'positive' continues the workflow to Agreement.
+    'negative' triggers LEGAL_REJECTED and notifies BD.
+    rejection_reason is required when final_verdict == 'negative'.
+    """
+    final_verdict: Literal["positive", "negative"]
+    rejection_reason: Optional[str] = None
+
+    @field_validator("rejection_reason")
+    @classmethod
+    def reason_required_on_negative(cls, v: Optional[str], info) -> Optional[str]:
+        if info.data.get("final_verdict") == "negative" and not v:
+            raise ValueError("rejection_reason is required when final_verdict is 'negative'")
+        return v
 
 
 # ── Step 3 · Agreement ────────────────────────────────────────────────────────
 
 class SaveAgreementRequest(BaseModel):
-    agreement_signed: bool
-    agreement_registered: bool
+    """Mark agreement as signed and/or registered."""
+    signed:     bool
+    registered: bool
+    document_url: Optional[str] = None
 
 
 # ── Step 4 · Licensing ────────────────────────────────────────────────────────
 
 class SaveLicensingRequest(BaseModel):
-    """Saving all 5 licensing fields auto-completes the review → LEGAL_APPROVED."""
-    fssai_check: bool
-    health_trade_license_check: bool
-    shops_license_check: bool
-    fire_noc_licensing_check: bool
-    storage_license_check: bool
+    """Save one or more licensing checklist items.
+
+    When all five are 'yes', sites.licensing_status → 'complete' automatically.
+    """
+    fssai:          Optional[ChecklistValue] = None
+    health_trade:   Optional[ChecklistValue] = None
+    shops_estab_reg: Optional[ChecklistValue] = None
+    fire_noc:       Optional[ChecklistValue] = None
+    storage_license: Optional[ChecklistValue] = None
 
 
 # ── Response models ───────────────────────────────────────────────────────────
 
-class LegalReviewResponse(BaseModel):
-    """Full state of a legal review record."""
-    id: str
-    site_id: str
-    tenant_id: str
-    reviewer_id: Optional[str] = None
-    status: str
-
-    # Step 1
-    title_check: Optional[bool] = None
-    sanctioned_plan_check: Optional[bool] = None
-    oc_cc_check: Optional[bool] = None
-    commercial_uses_check: Optional[bool] = None
-    property_tax_check: Optional[bool] = None
-    electricity_check: Optional[bool] = None
-    fire_noc_verification_check: Optional[bool] = None
-
-    # Step 2
-    due_diligence_status: Optional[str] = None
+class DdChecklistResponse(BaseModel):
+    """State of the due-diligence checklist row."""
+    title_doc:       str
+    sanctioned_plan: str
+    oc_cc:           str
+    commercial_use:  str
+    property_tax:    str
+    electricity:     str
+    fire_noc:        str
+    other_1:         str
+    other_2:         str
+    final_verdict:   str
     rejection_reason: Optional[str] = None
+    reviewed_by:     Optional[str] = None
+    approved_by:     Optional[str] = None
+    updated_at:      datetime
 
-    # Step 3
-    agreement_signed: Optional[bool] = None
-    agreement_registered: Optional[bool] = None
 
-    # Step 4
-    fssai_check: Optional[bool] = None
-    health_trade_license_check: Optional[bool] = None
-    shops_license_check: Optional[bool] = None
-    fire_noc_licensing_check: Optional[bool] = None
-    storage_license_check: Optional[bool] = None
+class AgreementResponse(BaseModel):
+    signed:       bool
+    signed_at:    Optional[datetime] = None
+    registered:   bool
+    registered_at: Optional[datetime] = None
+    document_url: Optional[str] = None
 
-    # Timestamps
-    verification_completed_at: Optional[datetime] = None
-    due_diligence_completed_at: Optional[datetime] = None
-    agreement_completed_at: Optional[datetime] = None
-    licensing_completed_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
+
+class LicensingResponse(BaseModel):
+    fssai:           str
+    health_trade:    str
+    shops_estab_reg: str
+    fire_noc:        str
+    storage_license: str
+    updated_at:      datetime
+
+
+class LegalReviewResponse(BaseModel):
+    """Combined view of all three legal child tables for a site."""
+    site_id:        str
+    tenant_id:      str
+    site_status:    str          # current sites.status value
+    legal_dd_status: Optional[str] = None    # sites mirror column
+    agreement_status: Optional[str] = None  # sites mirror column
+    licensing_status: Optional[str] = None  # sites mirror column (Payment)
+
+    dd:          Optional[DdChecklistResponse] = None
+    agreement:   Optional[AgreementResponse] = None
+    licensing:   Optional[LicensingResponse] = None
 
 
 class LegalQueueItem(BaseModel):
-    """Lightweight row shown in the Legal Supervisor queue list."""
-    site_id: str
-    site_code: str
-    site_name: str
-    city: str
-    legal_review_id: str
-    review_status: str
+    """Lightweight row shown in the Legal queue list."""
+    site_id:        str
+    site_code:      str
+    site_name:      str
+    city:           str
+    legal_dd_status: str          # sites.legal_dd_status mirror
+    dd_final_verdict: str         # legal_dd_checklist.final_verdict
     legal_review_at: Optional[datetime] = None
     submitted_by_name: Optional[str] = None
 
