@@ -71,7 +71,7 @@ export default function AppRouter() {
         }/>
 
         <Route path={ROUTES.TEAM} element={
-          <RequireRole roles={['supervisor']}>
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <TeamPage/>
           </RequireRole>
         }/>

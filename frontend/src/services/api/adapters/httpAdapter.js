@@ -270,3 +270,46 @@ export async function listMyDelegations() {
   const d = await get('/delegations/mine');
   return (d?.items || []).map(delegationFromServer);
 }
+
+// ── Per-supervisor invite codes & pending-executive approvals ──────────────
+
+function inviteCodeFromServer(d) {
+  if (!d) return null;
+  return {
+    module:    d.module,
+    code:      d.code,
+    createdAt: d.created_at,
+    rotatedAt: d.rotated_at,
+  };
+}
+
+export async function getMyInviteCode(module) {
+  return inviteCodeFromServer(await get(`/supervisor-codes/me/${module}`));
+}
+
+export async function rotateMyInviteCode(module) {
+  return inviteCodeFromServer(await post(`/supervisor-codes/me/${module}/rotate`));
+}
+
+export async function listMyPendingExecutives(module) {
+  const d = await get(`/supervisor-codes/me/${module}/pending-executives`);
+  const items = Array.isArray(d) ? d : (d?.items || []);
+  return items.map(u => ({
+    id:        u.id,
+    email:     u.email,
+    module:    u.module,
+    createdAt: u.created_at,
+  }));
+}
+
+export async function approveMyPendingExecutive(userId, module) {
+  return client.post(
+    `/supervisor-codes/me/pending-executives/${userId}/approve`,
+    null,
+    { params: { module } },
+  ).then(r => r.data);
+}
+
+export async function rejectMyPendingExecutive(userId) {
+  return post(`/supervisor-codes/me/pending-executives/${userId}/reject`);
+}
