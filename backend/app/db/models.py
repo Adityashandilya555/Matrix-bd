@@ -94,6 +94,12 @@ class Site(Base):
     google_maps_url: Mapped[Optional[str]] = mapped_column(Text)
     expected_rent: Mapped[Optional[float]] = mapped_column(Numeric(12, 2))
     rent_type: Mapped[Optional[str]] = mapped_column(Text)
+    # Per rent_type, only a subset of these is meaningful:
+    #   fixed       → expected_rent + expected_escalation_pct
+    #   revshare    → expected_revshare_pct
+    #   mg_revshare → expected_rent (MG floor) + expected_revshare_pct
+    expected_escalation_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
+    expected_revshare_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
     rent_set_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     # Ownership

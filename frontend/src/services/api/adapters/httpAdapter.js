@@ -76,6 +76,8 @@ function siteFromServer(s) {
     googleMapsUrl: s.google_maps_url,
     expectedRent: s.expected_rent,
     rentType: s.rent_type,
+    expectedEscalationPct: s.expected_escalation_pct,
+    expectedRevsharePct: s.expected_revshare_pct,
   };
 }
 
@@ -109,6 +111,8 @@ export async function createSite(payload) {
     google_maps_url: payload.googleMapsUrl ?? null,
     expected_rent: payload.expectedRent ?? null,
     rent_type: payload.rentType ?? null,
+    expected_escalation_pct: payload.expectedEscalationPct ?? null,
+    expected_revshare_pct: payload.expectedRevsharePct ?? null,
   };
   return siteFromServer(await post('/sites', body));
 }

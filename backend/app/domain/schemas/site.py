@@ -21,6 +21,9 @@ class CreateDraftRequest(BaseModel):
     google_maps_url: Optional[str] = None  # original Maps link the user pasted
     expected_rent: Optional[float] = None
     rent_type: Optional[str] = None  # 'fixed' | 'revshare' | 'mg_revshare'
+    # Conditional, depending on rent_type. None for the rest.
+    expected_escalation_pct: Optional[float] = None
+    expected_revshare_pct: Optional[float] = None
 
 
 class ShortlistDraftRequest(BaseModel):
@@ -106,6 +109,8 @@ class SiteResponse(BaseModel):
     google_maps_url: Optional[str] = None
     expected_rent: Optional[float] = None
     rent_type: Optional[str] = None
+    expected_escalation_pct: Optional[float] = None
+    expected_revshare_pct: Optional[float] = None
 
 
 class SiteListResponse(BaseModel):

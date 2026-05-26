@@ -77,7 +77,10 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft })
     rentType: item.rentType || '',
     rent: item.expectedRent != null ? String(item.expectedRent) : '',
     photos: [], score: '', estSales: '', nearestStarbucks: '', nearestTWC: '',
-    carpet: '', cam: '', escalation: '', rentFreeDays: '',
+    carpet: '', cam: '',
+    escalation: item.expectedEscalationPct != null ? String(item.expectedEscalationPct) : '',
+    revshare: item.expectedRevsharePct != null ? String(item.expectedRevsharePct) : '',
+    rentFreeDays: '',
     cadex: '', deposit: '', brokerage: '', lockin: '', tenure: '',
   };
   const [f, setF] = React.useState(init);

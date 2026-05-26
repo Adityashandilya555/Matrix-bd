@@ -55,6 +55,8 @@ async def create_draft(
         model=body.model, spoc_name=body.spoc_name, google_pin=body.google_pin,
         google_maps_url=body.google_maps_url,
         expected_rent=body.expected_rent, rent_type=body.rent_type,
+        expected_escalation_pct=body.expected_escalation_pct,
+        expected_revshare_pct=body.expected_revshare_pct,
     )
 
 

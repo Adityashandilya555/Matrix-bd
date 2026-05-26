@@ -97,6 +97,12 @@ def site_to_response(site: models.Site, created_by_name: str | None = None) -> S
         google_maps_url=site.google_maps_url,
         expected_rent=float(site.expected_rent) if site.expected_rent is not None else None,
         rent_type=site.rent_type,
+        expected_escalation_pct=(
+            float(site.expected_escalation_pct) if site.expected_escalation_pct is not None else None
+        ),
+        expected_revshare_pct=(
+            float(site.expected_revshare_pct) if site.expected_revshare_pct is not None else None
+        ),
     )
 
 

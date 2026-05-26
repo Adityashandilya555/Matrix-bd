@@ -168,10 +168,17 @@ const PIPELINE_RENT_TYPES = [
   { id: 'mg_revshare', label: 'MG + Revenue share', sub: 'minimum guarantee + % of sales' },
 ];
 function NewPipelineModal({ onClose, onSubmit }) {
-  const [form, setForm] = useState({ name: '', visitDate: '', city: '', model: '', spocName: '', googlePin: '', googleMapsUrl: '', rentType: '', expectedRent: '' });
+  const [form, setForm] = useState({ name: '', visitDate: '', city: '', model: '', spocName: '', googlePin: '', googleMapsUrl: '', rentType: '', expectedRent: '', expectedEscalation: '', expectedRevshare: '' });
   const [pinStatus, setPinStatus] = useState(null); // { tone: 'info'|'ok'|'err', msg: string }
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-  const ready = form.name && form.visitDate && form.city && form.model && form.spocName && form.googlePin && form.rentType && form.expectedRent;
+  // Rent-type-specific essentials. Mirrors AddDetailsPage so the data captured
+  // upfront matches what the shortlist form expects to prefill from.
+  const rentReady =
+    form.rentType === 'revshare' ? !!form.expectedRevshare
+    : form.rentType === 'fixed' ? !!form.expectedRent && !!form.expectedEscalation
+    : form.rentType === 'mg_revshare' ? !!form.expectedRent && !!form.expectedRevshare
+    : false;
+  const ready = form.name && form.visitDate && form.city && form.model && form.spocName && form.googlePin && form.rentType && rentReady;
 
   // Resolve a pasted/typed Maps URL into coords, but keep the original URL too.
   // Both end up persisted: googlePin = "lat, lng", googleMapsUrl = the link.
@@ -290,14 +297,72 @@ function NewPipelineModal({ onClose, onSubmit }) {
               ))}
             </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={labelBase}>{form.rentType === 'mg_revshare' ? 'Expected MG / rent' : form.rentType === 'revshare' ? 'Expected share base' : 'Expected rent'}</label>
-            <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
-              <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderRight: '1px solid var(--zm-line)' }}>₹</span>
-              <input type="number" min="0" value={form.expectedRent} onChange={set('expectedRent')} placeholder="120000" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
-              <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>/mo</span>
+          {form.rentType === 'fixed' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={labelBase}>Expected rent</label>
+                <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
+                  <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderRight: '1px solid var(--zm-line)' }}>₹</span>
+                  <input type="number" min="0" value={form.expectedRent} onChange={set('expectedRent')} placeholder="120000" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
+                  <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>/mo</span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={labelBase}>Escalation</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[1, 3, 5].map(pct => {
+                    const selected = String(form.expectedEscalation) === String(pct);
+                    return (
+                      <button
+                        type="button"
+                        key={pct}
+                        onClick={() => setForm(prev => ({ ...prev, expectedEscalation: String(pct) }))}
+                        style={{
+                          flex: 1, height: 38, borderRadius: 6,
+                          border: '1px solid ' + (selected ? 'var(--zm-accent)' : 'var(--zm-line)'),
+                          background: selected ? 'var(--zm-accent-soft)' : 'var(--zm-bg)',
+                          color: selected ? 'var(--zm-accent)' : 'var(--zm-fg)',
+                          fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1",
+                          fontWeight: 600, fontSize: 13, cursor: 'pointer',
+                        }}
+                      >{pct}% / yr</button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
+          {form.rentType === 'revshare' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={labelBase}>Revenue share</label>
+              <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
+                <input type="number" min="0" step="0.1" value={form.expectedRevshare} onChange={set('expectedRevshare')} placeholder="12" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
+                <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>% of sales</span>
+              </div>
+            </div>
+          )}
+          {form.rentType === 'mg_revshare' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={labelBase}>Minimum guarantee</label>
+                <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
+                  <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderRight: '1px solid var(--zm-line)' }}>₹</span>
+                  <input type="number" min="0" value={form.expectedRent} onChange={set('expectedRent')} placeholder="80000" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
+                  <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>/mo</span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={labelBase}>Revenue share</label>
+                <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
+                  <input type="number" min="0" step="0.1" value={form.expectedRevshare} onChange={set('expectedRevshare')} placeholder="12" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
+                  <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>% above MG</span>
+                </div>
+              </div>
+            </div>
+          )}
+          {!form.rentType && (
+            <div style={{ padding: 14, background: 'var(--zm-surface-2)', borderRadius: 8, fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)', textAlign: 'center' }}>Pick a rent type above to reveal the rent fields.</div>
+          )}
         </div>
         <div style={{ padding: 12, background: 'var(--zm-accent-soft)', borderRadius: 8, fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-2)', display: 'flex', alignItems: 'flex-start', gap: 8 }}><span style={{ color: 'var(--zm-accent)', display: 'inline-flex', marginTop: 1 }}><Icon name="alert" size={14}/></span>Once submitted, your supervisor reviews the shortlist (Yes / No). All seven fields stay editable until then; edits at shortlist are logged into the site Activity feed.</div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
