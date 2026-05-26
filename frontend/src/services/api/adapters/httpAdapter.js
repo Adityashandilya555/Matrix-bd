@@ -270,3 +270,42 @@ export async function listMyDelegations() {
   const d = await get('/delegations/mine');
   return (d?.items || []).map(delegationFromServer);
 }
+
+// ── Business admin ─────────────────────────────────────────────────────────
+
+export async function getDeptCodes() {
+  const data = await get('/business-admin/dept-codes');
+  const items = data?.items || data || [];
+  return items.map(d => ({
+    id:        d.id,
+    module:    d.module,
+    code:      d.code,
+    createdAt: d.created_at,
+    rotatedAt: d.rotated_at,
+  }));
+}
+
+export async function rotateDeptCode(moduleKey) {
+  const d = await post(`/business-admin/dept-codes/${moduleKey}/rotate`);
+  return { module: d.module, code: d.code };
+}
+
+export async function listPendingSupervisors(moduleKey) {
+  const params = moduleKey ? { module: moduleKey } : undefined;
+  const data = await get('/business-admin/pending-supervisors', params);
+  const items = data?.items || data || [];
+  return items.map(u => ({
+    id:        u.id,
+    email:     u.email,
+    module:    u.module,
+    createdAt: u.created_at,
+  }));
+}
+
+export async function approveSupervisor(userId, moduleKey) {
+  return post(`/business-admin/pending-supervisors/${userId}/approve`, { module: moduleKey });
+}
+
+export async function rejectSupervisor(userId) {
+  return post(`/business-admin/pending-supervisors/${userId}/reject`);
+}
