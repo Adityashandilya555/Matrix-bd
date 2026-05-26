@@ -184,8 +184,8 @@ function SummaryStat({ label, value, tone = 'default' }) {
   );
 }
 
-function ContextPanel({ site, trail, complete, issueCount, totalChecks, moduleShort, canSubmit, submitBlockedText, onSave, onSubmit }) {
-  const ready = canSubmit && complete === totalChecks && totalChecks > 0;
+function ContextPanel({ site, trail, complete, issueCount, totalChecks, moduleShort, canSubmit, submitBlockedText, onSave, onSubmit, saving, submitting }) {
+  const ready = canSubmit && complete === totalChecks && totalChecks > 0 && !submitting;
 
   return (
     <aside
@@ -278,14 +278,16 @@ function ContextPanel({ site, trail, complete, issueCount, totalChecks, moduleSh
         <button
           className="zm-btn"
           onClick={onSave}
+          disabled={saving}
           style={{
             height: 38, borderRadius: 8, border: '1px solid var(--zm-line)',
             background: 'var(--zm-surface)', color: 'var(--zm-fg)',
             fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700,
-            cursor: 'pointer',
+            cursor: saving ? 'wait' : 'pointer',
+            opacity: saving ? 0.7 : 1,
           }}
         >
-          Save {moduleShort} draft
+          {saving ? 'Saving…' : `Save ${moduleShort} draft`}
         </button>
         <button
           className="zm-btn-primary"
@@ -300,7 +302,7 @@ function ContextPanel({ site, trail, complete, issueCount, totalChecks, moduleSh
             boxShadow: ready ? 'var(--zm-shadow-1)' : 'none',
           }}
         >
-          Submit {moduleShort}
+          {submitting ? `Submitting ${moduleShort}…` : `Submit ${moduleShort}`}
         </button>
       </div>
     </aside>
@@ -320,24 +322,52 @@ export default function ModuleChecklistPage({
   otherPlaceholder,
   otherTitle,
   otherDescription,
+  // Controlled state (optional). When provided, parent owns the values; useful
+  // for pages that hydrate from a server response (e.g. DdrPage / LicensingPage).
+  initialCoreStatuses,
+  initialOtherRows,
+  // Real action handlers — receive ({ coreStatuses, otherRows, issueCount,
+  // complete, totalChecks }). When omitted we fall back to a local toast so the
+  // checklist remains usable in mock previews.
+  onSave,
+  onSubmit,
+  saving = false,
+  submitting = false,
+  // Max number of free-form "Other" rows. Defaults to 2 to match the DB
+  // (legal_dd_checklist exposes only other_1 + other_2).
+  maxOtherRows = 2,
 }) {
   const { showToast } = usePageContext();
   const { role, session } = useSession();
   const canSubmit = role === 'supervisor';
   const [coreStatuses, setCoreStatuses] = React.useState(() =>
-    checks.reduce((acc, item) => ({ ...acc, [item.id]: null }), {})
+    checks.reduce((acc, item) => ({ ...acc, [item.id]: initialCoreStatuses?.[item.id] ?? null }), {})
   );
-  const [otherRows, setOtherRows] = React.useState([]);
+  const [otherRows, setOtherRows] = React.useState(() => initialOtherRows || []);
+
+  // Re-sync when the parent swaps in server-loaded data.
+  React.useEffect(() => {
+    if (!initialCoreStatuses) return;
+    setCoreStatuses(checks.reduce((acc, item) => ({ ...acc, [item.id]: initialCoreStatuses[item.id] ?? null }), {}));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCoreStatuses]);
+
+  React.useEffect(() => {
+    if (initialOtherRows) setOtherRows(initialOtherRows);
+  }, [initialOtherRows]);
 
   const setCoreStatus = (id, value) => {
     setCoreStatuses((prev) => ({ ...prev, [id]: value }));
   };
 
   const addOtherRow = () => {
-    setOtherRows((rows) => [
-      ...rows,
-      { id: `other-${Date.now()}-${rows.length}`, label: '', status: null },
-    ]);
+    setOtherRows((rows) => {
+      if (rows.length >= maxOtherRows) return rows;
+      return [
+        ...rows,
+        { id: `other-${Date.now()}-${rows.length}`, label: '', status: null },
+      ];
+    });
   };
 
   const updateOtherRow = (id, patch) => {
@@ -357,11 +387,27 @@ export default function ModuleChecklistPage({
     Object.values(coreStatuses).filter((value) => value === 'no').length +
     activeOtherRows.filter((row) => row.status === 'no').length;
 
+  const snapshot = () => ({
+    coreStatuses,
+    otherRows: activeOtherRows,
+    complete,
+    totalChecks,
+    issueCount,
+  });
+
   const saveDraft = () => {
+    if (onSave) {
+      onSave(snapshot());
+      return;
+    }
     showToast?.(`${moduleShort} draft saved locally for ${site.code}.`);
   };
 
   const submitReview = () => {
+    if (onSubmit) {
+      onSubmit(snapshot());
+      return;
+    }
     const message = issueCount
       ? `${moduleShort} submitted with ${issueCount} no flag${issueCount === 1 ? '' : 's'}.`
       : `${moduleShort} submitted with all checks marked yes.`;
@@ -369,6 +415,7 @@ export default function ModuleChecklistPage({
   };
 
   const currentModule = session?.module || moduleName;
+  const otherRowsExhausted = otherRows.length >= maxOtherRows;
 
   return (
     <div className="checklist-page" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -615,22 +662,24 @@ export default function ModuleChecklistPage({
                 className="zm-btn-primary"
                 type="button"
                 onClick={addOtherRow}
+                disabled={otherRowsExhausted}
+                title={otherRowsExhausted ? `Up to ${maxOtherRows} other rows allowed` : undefined}
                 style={{
                   height: 36,
                   padding: '0 14px',
                   border: 'none',
                   borderRadius: 8,
-                  background: 'var(--zm-accent)',
-                  color: '#fff',
+                  background: otherRowsExhausted ? 'var(--zm-surface-sunken)' : 'var(--zm-accent)',
+                  color: otherRowsExhausted ? 'var(--zm-fg-4)' : '#fff',
                   fontFamily: 'var(--zm-font-body)',
                   fontSize: 12.5,
                   fontWeight: 800,
-                  cursor: 'pointer',
+                  cursor: otherRowsExhausted ? 'not-allowed' : 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 7,
                   whiteSpace: 'nowrap',
-                  boxShadow: 'var(--zm-shadow-1)',
+                  boxShadow: otherRowsExhausted ? 'none' : 'var(--zm-shadow-1)',
                 }}
               >
                 <Icon name="plus" size={14}/>
@@ -651,6 +700,8 @@ export default function ModuleChecklistPage({
           submitBlockedText={`${roleLabel(role)}s can save checklist items. Final submission stays with the module supervisor.`}
           onSave={saveDraft}
           onSubmit={submitReview}
+          saving={saving}
+          submitting={submitting}
         />
       </div>
     </div>

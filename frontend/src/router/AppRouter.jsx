@@ -15,8 +15,10 @@ import SupervisorStagingPage from '../modules/staging/supervisor/SupervisorStagi
 import ArchivePage           from '../modules/archive/ArchivePage.jsx';
 import AddDetailsPage        from '../modules/loi/details/AddDetailsPage.jsx';
 import TeamPage              from '../modules/team/TeamPage.jsx';
+import LegalQueuePage       from '../modules/legal/LegalQueuePage.jsx';
 import DdrPage               from '../modules/legal/ddr/DdrPage.jsx';
 import LicensingPage         from '../modules/payment/licensing/LicensingPage.jsx';
+import PaymentStubPage       from '../modules/payment/PaymentStubPage.jsx';
 import AdminPortalPage       from '../modules/admin/AdminPortalPage.jsx';
 import BusinessAdminPortalPage from '../modules/business-admin/BusinessAdminPortalPage.jsx';
 
@@ -27,8 +29,8 @@ const LANDING_PATH = '/welcome';
 
 function homeForRoleModule(role, module) {
   if (role === 'business_admin') return '/business-admin';
-  if (module === 'legal')        return '/legal';
-  if (module === 'payment')      return '/payment';
+  if (module === 'legal')        return ROUTES.LEGAL;
+  if (module === 'payment')      return ROUTES.PAYMENT;
   return ROUTES.OVERVIEW; // BD (or unknown → default to BD)
 }
 
@@ -106,25 +108,37 @@ export default function AppRouter() {
           </RequireRole>
         }/>
 
-        <Route path={ROUTES.LEGAL} element={<Navigate to={ROUTES.LEGAL_DDR} replace/>}/>
-        <Route path={ROUTES.LEGAL_DDR} element={
+        <Route path={ROUTES.LEGAL} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['legal']}>
+              <LegalQueuePage/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.LEGAL_SITE_DDR} element={
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <RequireModule modules={['legal']}>
               <DdrPage/>
             </RequireModule>
           </RequireRole>
         }/>
-        <Route path="/legal/*" element={<Navigate to={ROUTES.LEGAL_DDR} replace/>}/>
+        <Route path="/legal/*" element={<Navigate to={ROUTES.LEGAL} replace/>}/>
 
-        <Route path={ROUTES.PAYMENT} element={<Navigate to={ROUTES.PAYMENT_LICENSING} replace/>}/>
-        <Route path={ROUTES.PAYMENT_LICENSING} element={
+        <Route path={ROUTES.PAYMENT} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['payment']}>
+              <PaymentStubPage/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.PAYMENT_SITE_LICENSING} element={
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <RequireModule modules={['payment']}>
               <LicensingPage/>
             </RequireModule>
           </RequireRole>
         }/>
-        <Route path="/payment/*" element={<Navigate to={ROUTES.PAYMENT_LICENSING} replace/>}/>
+        <Route path="/payment/*" element={<Navigate to={ROUTES.PAYMENT} replace/>}/>
 
         {/* Sub-path routes for shortlist details / timeline — rendered as full pages */}
         <Route path={ROUTES.ADD_DETAILS}   element={<ShortlistPage/>}/>

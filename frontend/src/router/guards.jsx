@@ -18,19 +18,26 @@ export function RequireRole({ roles, children }) {
   return children;
 }
 
-// RequireModule: soft-gates module routes by the JWT/session module claim.
-// In mock mode the module is usually absent, so absence is allowed for previews.
-// Once hydrated in HTTP mode, a legal user cannot browse payment pages, and vice versa.
+// RequireModule: gates module routes by the JWT/session module claim.
+// In mock mode (no session) we allow access so previews keep working; in HTTP
+// mode the session must carry the matching `module` claim. Business admins and
+// any user with a missing/mismatched module get bounced back to their home —
+// never silently shown a page that 403s on every request.
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true;
+
+function homeForSession(role, module) {
+  if (role === 'business_admin') return '/business-admin';
+  if (module === 'legal')        return ROUTES.LEGAL;
+  if (module === 'payment')      return ROUTES.PAYMENT;
+  return ROUTES.OVERVIEW;
+}
+
 export function RequireModule({ modules, children }) {
-  const { session } = useSession();
+  const { role, session } = useSession();
+  if (USE_MOCK) return children;
   const module = session?.module;
-  if (module && !modules.includes(module)) {
-    const fallback = module === 'legal'
-      ? ROUTES.LEGAL_DDR
-      : module === 'payment'
-        ? ROUTES.PAYMENT_LICENSING
-        : ROUTES.OVERVIEW;
-    return <Navigate to={fallback} replace />;
+  if (!module || !modules.includes(module)) {
+    return <Navigate to={homeForSession(role, module)} replace />;
   }
   return children;
 }

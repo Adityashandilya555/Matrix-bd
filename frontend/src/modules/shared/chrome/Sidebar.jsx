@@ -55,8 +55,10 @@ export default function Sidebar({ counts, role, onRole }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { session } = useSession();
-  // Unit 6 will start emitting `module` on the JWT/session. Until then default
-  // to the current route for mock previews, then to 'bd' for existing BD users.
+  // Prefer the JWT-borne module claim when it exists — that's the authoritative
+  // signal of which module a user actually belongs to. Only fall back to the
+  // current URL when the session has no module claim (mock-mode previews, where
+  // we still want the right menu to render based on where the user clicked).
   const path = location.pathname;
   const routeModule = path.startsWith('/legal') ? 'legal' : path.startsWith('/payment') ? 'payment' : 'bd';
   const userModule = session?.module || routeModule;
@@ -104,9 +106,9 @@ export default function Sidebar({ counts, role, onRole }) {
           <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Legal</div>
           <SidebarItem
             icon="shield"
-            label="DDR checklist"
+            label="Legal queue"
             active={activeView === 'legal-ddr'}
-            onClick={() => go(ROUTES.LEGAL_DDR)}
+            onClick={() => go(ROUTES.LEGAL)}
           />
         </>
       )}
@@ -116,9 +118,9 @@ export default function Sidebar({ counts, role, onRole }) {
           <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Payment</div>
           <SidebarItem
             icon="card"
-            label="Licensing"
+            label="Payment"
             active={activeView === 'payment-licensing'}
-            onClick={() => go(ROUTES.PAYMENT_LICENSING)}
+            onClick={() => go(ROUTES.PAYMENT)}
           />
         </>
       )}
