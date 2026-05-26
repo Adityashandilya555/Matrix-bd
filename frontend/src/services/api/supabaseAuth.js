@@ -61,6 +61,38 @@ export async function signInWithWorkspaceCode(email, workspaceCode) {
 // Back-compat alias for any caller that still imports the old name.
 export const signInWithPassword = signInWithWorkspaceCode;
 
+// Self-service join requests. Backend returns 202 + { message } when the
+// request is queued for review (the typical happy path) and a 4xx with a
+// detail payload when validation fails. We surface the queued case as a
+// PendingApprovalError so callers can render warm "we're on it" messaging
+// instead of an alarming red banner.
+async function postSignup(path, body) {
+  let res;
+  try {
+    res = await axios.post(`${API_BASE}${path}`, body, {
+      validateStatus: (s) => s === 200 || s === 202,
+    });
+  } catch (err) {
+    const detail = err.response?.data?.detail;
+    const message = Array.isArray(detail)
+      ? detail.map((d) => d.msg || JSON.stringify(d)).join('; ')
+      : detail || err.message || 'Signup failed';
+    throw new Error(message);
+  }
+  if (res.status === 202) {
+    throw new PendingApprovalError(res.data?.message || 'Request submitted.');
+  }
+  return res.data;
+}
+
+export function signupAsSupervisor(email, deptCode) {
+  return postSignup('/auth/signup/supervisor', { email, dept_code: deptCode });
+}
+
+export function signupAsExecutive(email, supervisorCode) {
+  return postSignup('/auth/signup/executive', { email, supervisor_code: supervisorCode });
+}
+
 export async function signOut() {
   try {
     await axios.post(`${API_BASE}/auth/logout`);
