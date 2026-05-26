@@ -71,7 +71,9 @@ export default function Sidebar({ counts, role, onRole }) {
     path === ROUTES.SHORTLIST || path.startsWith('/shortlist/') ? 'shortlist' :
     path.startsWith('/staging')                          ? 'staging'   :
     path === ROUTES.ARCHIVE                              ? 'archive'   :
+    path === ROUTES.DD_FAILED                            ? 'dd-failed' :
     path === ROUTES.TEAM                                 ? 'team'      :
+    path === ROUTES.LEGAL_CHANGE_REQUESTS                ? 'legal-change-requests' :
     path.startsWith('/legal')                            ? 'legal-ddr' :
     path.startsWith('/payment')                          ? 'payment-licensing' :
     'overview';
@@ -98,6 +100,7 @@ export default function Sidebar({ counts, role, onRole }) {
           {role === 'supervisor' && (
             <SidebarItem icon="folder" label="Archive" count={counts.archive} active={activeView === 'archive'} onClick={() => go(ROUTES.ARCHIVE)}/>
           )}
+          <SidebarItem icon="alert" label="DD failed" active={activeView === 'dd-failed'} onClick={() => go(ROUTES.DD_FAILED)}/>
         </>
       )}
 
@@ -109,6 +112,12 @@ export default function Sidebar({ counts, role, onRole }) {
             label="Legal queue"
             active={activeView === 'legal-ddr'}
             onClick={() => go(ROUTES.LEGAL)}
+          />
+          <SidebarItem
+            icon="alert"
+            label="Change requests"
+            active={activeView === 'legal-change-requests'}
+            onClick={() => go(ROUTES.LEGAL_CHANGE_REQUESTS)}
           />
         </>
       )}

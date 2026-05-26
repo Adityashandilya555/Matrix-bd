@@ -16,7 +16,10 @@ import ArchivePage           from '../modules/archive/ArchivePage.jsx';
 import AddDetailsPage        from '../modules/loi/details/AddDetailsPage.jsx';
 import TeamPage              from '../modules/team/TeamPage.jsx';
 import LegalQueuePage       from '../modules/legal/LegalQueuePage.jsx';
+import ChangeRequestsPage    from '../modules/legal/ChangeRequestsPage.jsx';
 import DdrPage               from '../modules/legal/ddr/DdrPage.jsx';
+import SiteStatusPage        from '../modules/bd/site-status/SiteStatusPage.jsx';
+import DdFailedPage          from '../modules/bd/dd-failed/DdFailedPage.jsx';
 import LicensingPage         from '../modules/payment/licensing/LicensingPage.jsx';
 import PaymentStubPage       from '../modules/payment/PaymentStubPage.jsx';
 import AdminPortalPage       from '../modules/admin/AdminPortalPage.jsx';
@@ -115,6 +118,13 @@ export default function AppRouter() {
             </RequireModule>
           </RequireRole>
         }/>
+        <Route path={ROUTES.LEGAL_CHANGE_REQUESTS} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['legal']}>
+              <ChangeRequestsPage/>
+            </RequireModule>
+          </RequireRole>
+        }/>
         <Route path={ROUTES.LEGAL_SITE_DDR} element={
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <RequireModule modules={['legal']}>
@@ -139,6 +149,17 @@ export default function AppRouter() {
           </RequireRole>
         }/>
         <Route path="/payment/*" element={<Navigate to={ROUTES.PAYMENT} replace/>}/>
+
+        <Route path={ROUTES.DD_FAILED} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <DdFailedPage/>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.BD_SITE_STATUS} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <SiteStatusPage/>
+          </RequireRole>
+        }/>
 
         {/* Sub-path routes for shortlist details / timeline — rendered as full pages */}
         <Route path={ROUTES.ADD_DETAILS}   element={<ShortlistPage/>}/>

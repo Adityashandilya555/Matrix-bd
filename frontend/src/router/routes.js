@@ -8,7 +8,10 @@ export const ROUTES = {
   STAGING:                '/staging',
   ARCHIVE:                '/archive',
   TEAM:                   '/team',
+  DD_FAILED:              '/dd-failed',
+  BD_SITE_STATUS:         '/sites/:siteId/status',
   LEGAL:                  '/legal',
+  LEGAL_CHANGE_REQUESTS:  '/legal/change-requests',
   LEGAL_SITE_DDR:         '/legal/sites/:siteId/ddr',
   PAYMENT:                '/payment',
   PAYMENT_SITE_LICENSING: '/payment/sites/:siteId/licensing',
@@ -35,4 +38,8 @@ export function legalSiteDdrRoute(siteId) {
 
 export function paymentSiteLicensingRoute(siteId) {
   return ROUTES.PAYMENT_SITE_LICENSING.replace(':siteId', siteId);
+}
+
+export function bdSiteStatusRoute(siteId) {
+  return ROUTES.BD_SITE_STATUS.replace(':siteId', siteId);
 }

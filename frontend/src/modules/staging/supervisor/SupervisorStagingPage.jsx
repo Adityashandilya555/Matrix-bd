@@ -1,9 +1,11 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSites } from '../../../state/SitesContext.jsx';
 import { usePageContext } from '../../../App.jsx';
 import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Icon from '../../shared/primitives/Icon.jsx';
 import StatusPill from '../../shared/primitives/StatusPill.jsx';
+import { bdSiteStatusRoute } from '../../../router/routes.js';
 
 // Render bodies preserved exactly from Staging.jsx — supervisor-only view.
 
@@ -60,13 +62,8 @@ function TimelineTracker({ site }) {
   );
 }
 
-function SupervisorRow({ site, onPush, onViewLOI, onOpen }) {
+function SupervisorRow({ site, onPush, onViewLOI, onOpen, onViewStatus }) {
   const pushed = site.pushed;
-  const pushedLabel = site.stage === 'legal_review'
-    ? 'In legal'
-    : site.stage === 'legal_approved'
-      ? 'Legal cleared'
-      : 'Pushed';
   return (
     <div className="zm-row" style={{ display: 'grid', gridTemplateColumns: '70px minmax(130px, 0.9fr) 70px 124px minmax(170px, 1.3fr) 170px', alignItems: 'center', gap: 10, padding: '14px 12px', borderBottom: '1px solid var(--zm-line-faint)', background: pushed ? 'rgba(4,120,87,0.04)' : 'transparent', opacity: pushed ? 0.85 : 1 }}>
       <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{site.code}</span>
@@ -77,7 +74,10 @@ function SupervisorRow({ site, onPush, onViewLOI, onOpen }) {
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', minWidth: 0 }}>
         <button onClick={() => onOpen(site)} title="View site" className="zm-icon-btn" style={{ width: 32, height: 32, padding: 0, border: '1px solid var(--zm-line)', borderRadius: 7, background: 'transparent', color: 'var(--zm-fg)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 32px' }}><EyeIcon size={14}/></button>
         <button onClick={() => onViewLOI(site)} title="View LOI" className="zm-icon-btn" style={{ width: 32, height: 32, padding: 0, border: '1px solid var(--zm-line)', borderRadius: 7, background: 'transparent', color: 'var(--zm-fg)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 32px' }}><Icon name="file" size={14}/></button>
-        {pushed ? (<button disabled style={{ height: 32, padding: '0 12px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'not-allowed', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1, flex: '0 0 auto' }}><Icon name="check" size={12}/> {pushedLabel}</button>) : (<button onClick={() => onPush(site)} className="zm-btn-primary" style={{ flex: '1 1 auto', minWidth: 100, height: 32, padding: '0 12px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1, boxShadow: 'var(--zm-shadow-1)' }}>Send legal <Icon name="arrow" size={12}/></button>)}
+        {pushed
+          ? (<button onClick={() => onViewStatus(site)} className="zm-btn-primary" style={{ flex: '1 1 auto', minWidth: 100, height: 32, padding: '0 12px', border: 'none', borderRadius: 7, background: 'var(--zm-fg)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}>View status <Icon name="arrow" size={12}/></button>)
+          : (<button onClick={() => onPush(site)} className="zm-btn-primary" style={{ flex: '1 1 auto', minWidth: 100, height: 32, padding: '0 12px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1, boxShadow: 'var(--zm-shadow-1)' }}>Send legal <Icon name="arrow" size={12}/></button>)
+        }
       </div>
     </div>
   );
@@ -97,6 +97,7 @@ function applyStagingFilters(sites, f) {
 
 export default function SupervisorStagingPage({ onOpenSite: onOpenSiteProp, showToast: showToastProp }) {
   const ctx = usePageContext();
+  const navigate = useNavigate();
   const onOpenSite = onOpenSiteProp || ctx.onOpenSite;
   const showToast = showToastProp || ctx.showToast;
   const { staging, pushSite } = useSites();
@@ -108,6 +109,7 @@ export default function SupervisorStagingPage({ onOpenSite: onOpenSiteProp, show
 
   const onPush = (site) => { pushSite(site); showToast?.(`Sent · ${site.name} moved to Legal review.`); };
   const onViewLOI = (site) => { showToast?.(`Opening LOI · ${site.name} (mock).`); };
+  const onViewStatus = (site) => { navigate(bdSiteStatusRoute(site.id)); };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -124,7 +126,7 @@ export default function SupervisorStagingPage({ onOpenSite: onOpenSiteProp, show
               <span>Code</span><span>Site</span><span>City</span><span>Status</span><span>Draft → LOI timeline</span>
               <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}><span aria-hidden="true" style={{ width: 32, flex: '0 0 32px' }}/><span aria-hidden="true" style={{ width: 32, flex: '0 0 32px' }}/><span style={{ flex: '1 1 auto', minWidth: 100, textAlign: 'center' }}>Action</span></div>
             </div>
-            {filtered.map(s => <SupervisorRow key={s.id} site={s} onPush={onPush} onViewLOI={onViewLOI} onOpen={onOpenSite || (() => {})}/>)}
+            {filtered.map(s => <SupervisorRow key={s.id} site={s} onPush={onPush} onViewLOI={onViewLOI} onOpen={onOpenSite || (() => {})} onViewStatus={onViewStatus}/>)}
           </div>
           {filtered.length === 0 && (<div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>No LOIs uploaded yet.</div>)}
         </div>

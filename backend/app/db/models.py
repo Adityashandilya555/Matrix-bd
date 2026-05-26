@@ -426,3 +426,56 @@ class SiteLicensing(Base):
             name="chk_licensing_values",
         ),
     )
+
+
+# ── Cross-module change requests ─────────────────────────────────────────────
+# BD opens a "please flip this No back to Yes" ticket against a specific
+# legal field; the legal supervisor approves (overwrites underlying value
+# immediately) or rejects (no change, reason recorded).
+
+class LegalChangeRequest(Base):
+    __tablename__ = "legal_change_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4(),
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False,
+    )
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), nullable=False,
+    )
+
+    target_table: Mapped[str] = mapped_column(Text, nullable=False)
+    field_name:   Mapped[str] = mapped_column(Text, nullable=False)
+    current_value:   Mapped[str] = mapped_column(Text, nullable=False)
+    requested_value: Mapped[str] = mapped_column(Text, nullable=False)
+    justification:   Mapped[Optional[str]] = mapped_column(Text)
+
+    requested_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False,
+    )
+
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    reviewed_by:   Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    reviewer_note: Mapped[Optional[str]] = mapped_column(Text)
+
+    created_at:  Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at:  Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False,
+    )
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "target_table IN ('legal_dd_checklist','site_agreement','site_licensing')",
+            name="chk_lcr_target_table",
+        ),
+        CheckConstraint(
+            "status IN ('pending','approved','rejected')",
+            name="chk_lcr_status",
+        ),
+        Index("idx_lcr_tenant_status", "tenant_id", "status"),
+        Index("idx_lcr_site", "site_id"),
+        Index("idx_lcr_requested_by", "requested_by"),
+    )

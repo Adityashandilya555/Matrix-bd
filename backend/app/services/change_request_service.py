@@ -1,0 +1,437 @@
+"""Cross-module change request service.
+
+BD opens a request against (site, target_table, field_name) to flip a legal
+field value (e.g. flip 'no' → 'yes' on dd.property_tax). Legal supervisor
+approves (applying the change to the underlying table immediately) or rejects.
+
+Approved changes overwrite the field value in-place. The original
+current_value snapshot stays on the request row so the audit trail is honest
+even if Legal flipped the value some other way in between.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Optional
+from uuid import UUID
+
+from fastapi import HTTPException, status as http_status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db import models
+from app.db.session import transaction
+from app.domain.schemas.legal_change_request import (
+    ChangeRequestListResponse,
+    ChangeRequestResponse,
+    CreateChangeRequestRequest,
+    ReviewChangeRequestRequest,
+)
+from app.services._common import fetch_site_or_404, fetch_user_name
+from app.services.audit_service import write_audit_event
+from app.services.notification_service import (
+    enqueue as notify_enqueue,
+    recipients_for_legal_supervisors,
+    recipients_for_site_owner,
+)
+
+
+# ── Field whitelists ─────────────────────────────────────────────────────────
+# Only certain columns are mutable through a change request. Anything else gets
+# a 422 — protects against e.g. flipping `final_verdict` directly via this path.
+
+_DD_FIELDS = {
+    "title_doc", "sanctioned_plan", "oc_cc", "commercial_use",
+    "property_tax", "electricity", "fire_noc", "other_1", "other_2",
+}
+_LICENSING_FIELDS = {
+    "fssai", "health_trade", "shops_estab_reg", "fire_noc", "storage_license",
+}
+_AGREEMENT_FIELDS = {"signed", "registered", "document_url"}
+
+
+def _allowed_field(target_table: str, field_name: str) -> bool:
+    if target_table == "legal_dd_checklist":
+        return field_name in _DD_FIELDS
+    if target_table == "site_licensing":
+        return field_name in _LICENSING_FIELDS
+    if target_table == "site_agreement":
+        return field_name in _AGREEMENT_FIELDS
+    return False
+
+
+async def _read_current_value(
+    session: AsyncSession, *, site_id: str | UUID, target_table: str, field_name: str,
+) -> Optional[str]:
+    model_cls = {
+        "legal_dd_checklist": models.LegalDdChecklist,
+        "site_agreement":     models.SiteAgreement,
+        "site_licensing":     models.SiteLicensing,
+    }[target_table]
+    row = (await session.execute(
+        select(model_cls).where(model_cls.site_id == site_id)
+    )).scalar_one_or_none()
+    if row is None:
+        return None
+    val = getattr(row, field_name, None)
+    if val is None:
+        return None
+    return str(val)
+
+
+async def _apply_change(
+    session: AsyncSession, *, site_id: str | UUID, target_table: str, field_name: str, new_value: str,
+) -> None:
+    """Overwrite the underlying field. Booleans are coerced from 'true'/'false'."""
+    model_cls = {
+        "legal_dd_checklist": models.LegalDdChecklist,
+        "site_agreement":     models.SiteAgreement,
+        "site_licensing":     models.SiteLicensing,
+    }[target_table]
+    row = (await session.execute(
+        select(model_cls).where(model_cls.site_id == site_id)
+    )).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"No {target_table} row exists for this site",
+        )
+
+    if target_table == "site_agreement" and field_name in ("signed", "registered"):
+        setattr(row, field_name, new_value.lower() == "true")
+    else:
+        setattr(row, field_name, new_value)
+
+
+def _to_response(
+    cr: models.LegalChangeRequest,
+    *,
+    site_code: str,
+    site_name: str,
+    requested_by_name: Optional[str],
+    reviewed_by_name: Optional[str],
+) -> ChangeRequestResponse:
+    return ChangeRequestResponse(
+        id=str(cr.id),
+        site_id=str(cr.site_id),
+        site_code=site_code,
+        site_name=site_name,
+        target_table=cr.target_table,
+        field_name=cr.field_name,
+        current_value=cr.current_value,
+        requested_value=cr.requested_value,
+        justification=cr.justification,
+        status=cr.status,
+        requested_by=str(cr.requested_by),
+        requested_by_name=requested_by_name,
+        reviewed_by=str(cr.reviewed_by) if cr.reviewed_by else None,
+        reviewed_by_name=reviewed_by_name,
+        reviewer_note=cr.reviewer_note,
+        created_at=cr.created_at,
+        reviewed_at=cr.reviewed_at,
+    )
+
+
+# ── BD opens a change request ────────────────────────────────────────────────
+
+async def svc_create_change_request(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    actor: dict,
+    body: CreateChangeRequestRequest,
+) -> ChangeRequestResponse:
+    if not _allowed_field(body.target_table, body.field_name):
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Field '{body.field_name}' on '{body.target_table}' is not change-requestable",
+        )
+
+    async with transaction(session):
+        site = await fetch_site_or_404(session, site_id=body.site_id, tenant_id=tenant_id)
+
+        current = await _read_current_value(
+            session, site_id=site.id, target_table=body.target_table, field_name=body.field_name,
+        )
+        if current is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"No {body.target_table} row exists for this site yet",
+            )
+
+        cr = models.LegalChangeRequest(
+            tenant_id=tenant_id,
+            site_id=site.id,
+            target_table=body.target_table,
+            field_name=body.field_name,
+            current_value=current,
+            requested_value=body.requested_value,
+            justification=body.justification,
+            requested_by=actor["sub"],
+        )
+        session.add(cr)
+        await session.flush()
+
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=site.id,
+            actor_id=actor["sub"], actor_name=actor["name"],
+            action="change_request_opened",
+            field_name=f"{body.target_table}.{body.field_name}",
+            from_value=current,
+            to_value=body.requested_value,
+            detail=body.justification or "",
+            entity_id=cr.id,
+            entity_type="legal_change_request",
+        )
+
+        legal_recipients = await recipients_for_legal_supervisors(session, tenant_id=tenant_id)
+        if legal_recipients:
+            await notify_enqueue(
+                session, tenant_id=tenant_id, event="change_request_opened",
+                recipient_ids=legal_recipients, site_id=site.id,
+                channels=("in_app",),
+                payload={
+                    "change_request_id": str(cr.id),
+                    "site_name": site.name,
+                    "field": f"{body.target_table}.{body.field_name}",
+                    "requested_value": body.requested_value,
+                },
+                subject=f"BD change request: {site.name}",
+                body=(
+                    f"BD has requested a change to {body.target_table}.{body.field_name} "
+                    f"on '{site.name}' ({site.code}). Current: {current} → Requested: "
+                    f"{body.requested_value}."
+                ),
+            )
+
+        requested_by_name = await fetch_user_name(session, actor["sub"])
+
+    return _to_response(
+        cr,
+        site_code=site.code or "",
+        site_name=site.name,
+        requested_by_name=requested_by_name,
+        reviewed_by_name=None,
+    )
+
+
+# ── Legal supervisor reviews ─────────────────────────────────────────────────
+
+async def _fetch_request_or_404(
+    session: AsyncSession, *, request_id: str | UUID, tenant_id: str | UUID,
+) -> models.LegalChangeRequest:
+    cr = (await session.execute(
+        select(models.LegalChangeRequest).where(
+            models.LegalChangeRequest.id == request_id,
+            models.LegalChangeRequest.tenant_id == tenant_id,
+        )
+    )).scalar_one_or_none()
+    if cr is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Change request not found",
+        )
+    return cr
+
+
+async def svc_approve_change_request(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    actor: dict,
+    request_id: str | UUID,
+    body: ReviewChangeRequestRequest,
+) -> ChangeRequestResponse:
+    async with transaction(session):
+        cr = await _fetch_request_or_404(session, request_id=request_id, tenant_id=tenant_id)
+
+        if cr.status != "pending":
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Change request is already {cr.status}",
+            )
+
+        site = await fetch_site_or_404(session, site_id=cr.site_id, tenant_id=tenant_id)
+
+        # Apply the change to the underlying table — overwrite immediately.
+        await _apply_change(
+            session,
+            site_id=cr.site_id,
+            target_table=cr.target_table,
+            field_name=cr.field_name,
+            new_value=cr.requested_value,
+        )
+
+        now = datetime.now(timezone.utc)
+        cr.status        = "approved"
+        cr.reviewed_by   = actor["sub"]
+        cr.reviewer_note = body.reviewer_note
+        cr.reviewed_at   = now
+
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=cr.site_id,
+            actor_id=actor["sub"], actor_name=actor["name"],
+            action="change_request_approved",
+            field_name=f"{cr.target_table}.{cr.field_name}",
+            from_value=cr.current_value,
+            to_value=cr.requested_value,
+            detail=body.reviewer_note or "",
+            entity_id=cr.id,
+            entity_type="legal_change_request",
+        )
+
+        bd_recipients = await recipients_for_site_owner(session, site=site)
+        if bd_recipients:
+            await notify_enqueue(
+                session, tenant_id=tenant_id, event="change_request_approved",
+                recipient_ids=bd_recipients, site_id=cr.site_id,
+                channels=("in_app",),
+                payload={
+                    "change_request_id": str(cr.id),
+                    "site_name": site.name,
+                    "field": f"{cr.target_table}.{cr.field_name}",
+                    "new_value": cr.requested_value,
+                },
+                subject=f"Legal approved your change: {site.name}",
+                body=(
+                    f"Legal has approved your change request on '{site.name}'. "
+                    f"{cr.target_table}.{cr.field_name} is now '{cr.requested_value}'."
+                ),
+            )
+
+        requested_by_name = await fetch_user_name(session, cr.requested_by)
+        reviewed_by_name  = await fetch_user_name(session, cr.reviewed_by)
+
+    return _to_response(
+        cr,
+        site_code=site.code or "",
+        site_name=site.name,
+        requested_by_name=requested_by_name,
+        reviewed_by_name=reviewed_by_name,
+    )
+
+
+async def svc_reject_change_request(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    actor: dict,
+    request_id: str | UUID,
+    body: ReviewChangeRequestRequest,
+) -> ChangeRequestResponse:
+    async with transaction(session):
+        cr = await _fetch_request_or_404(session, request_id=request_id, tenant_id=tenant_id)
+
+        if cr.status != "pending":
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Change request is already {cr.status}",
+            )
+
+        site = await fetch_site_or_404(session, site_id=cr.site_id, tenant_id=tenant_id)
+
+        now = datetime.now(timezone.utc)
+        cr.status        = "rejected"
+        cr.reviewed_by   = actor["sub"]
+        cr.reviewer_note = body.reviewer_note
+        cr.reviewed_at   = now
+
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=cr.site_id,
+            actor_id=actor["sub"], actor_name=actor["name"],
+            action="change_request_rejected",
+            field_name=f"{cr.target_table}.{cr.field_name}",
+            from_value=cr.current_value,
+            to_value=cr.requested_value,
+            detail=body.reviewer_note or "",
+            entity_id=cr.id,
+            entity_type="legal_change_request",
+        )
+
+        bd_recipients = await recipients_for_site_owner(session, site=site)
+        if bd_recipients:
+            await notify_enqueue(
+                session, tenant_id=tenant_id, event="change_request_rejected",
+                recipient_ids=bd_recipients, site_id=cr.site_id,
+                channels=("in_app",),
+                payload={
+                    "change_request_id": str(cr.id),
+                    "site_name": site.name,
+                    "field": f"{cr.target_table}.{cr.field_name}",
+                    "reviewer_note": body.reviewer_note,
+                },
+                subject=f"Legal rejected your change: {site.name}",
+                body=(
+                    f"Legal has rejected your change request on '{site.name}'. "
+                    f"Reason: {body.reviewer_note or '(no reason given)'}"
+                ),
+            )
+
+        requested_by_name = await fetch_user_name(session, cr.requested_by)
+        reviewed_by_name  = await fetch_user_name(session, cr.reviewed_by)
+
+    return _to_response(
+        cr,
+        site_code=site.code or "",
+        site_name=site.name,
+        requested_by_name=requested_by_name,
+        reviewed_by_name=reviewed_by_name,
+    )
+
+
+# ── Listings ─────────────────────────────────────────────────────────────────
+
+async def _list_with_status(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    status_filter: Optional[str] = None,
+    site_id: Optional[str | UUID] = None,
+    requested_by: Optional[str | UUID] = None,
+) -> ChangeRequestListResponse:
+    stmt = select(models.LegalChangeRequest).where(
+        models.LegalChangeRequest.tenant_id == tenant_id,
+    )
+    if status_filter:
+        stmt = stmt.where(models.LegalChangeRequest.status == status_filter)
+    if site_id:
+        stmt = stmt.where(models.LegalChangeRequest.site_id == site_id)
+    if requested_by:
+        stmt = stmt.where(models.LegalChangeRequest.requested_by == requested_by)
+    stmt = stmt.order_by(models.LegalChangeRequest.created_at.desc())
+
+    rows = (await session.execute(stmt)).scalars().all()
+
+    items: list[ChangeRequestResponse] = []
+    for cr in rows:
+        site = (await session.execute(
+            select(models.Site).where(models.Site.id == cr.site_id)
+        )).scalar_one_or_none()
+        requested_by_name = await fetch_user_name(session, cr.requested_by)
+        reviewed_by_name  = await fetch_user_name(session, cr.reviewed_by)
+        items.append(_to_response(
+            cr,
+            site_code=site.code if site else "",
+            site_name=site.name if site else "",
+            requested_by_name=requested_by_name,
+            reviewed_by_name=reviewed_by_name,
+        ))
+
+    return ChangeRequestListResponse(items=items, total=len(items))
+
+
+async def svc_list_pending_for_legal(
+    session: AsyncSession, *, tenant_id: str | UUID,
+) -> ChangeRequestListResponse:
+    return await _list_with_status(session, tenant_id=tenant_id, status_filter="pending")
+
+
+async def svc_list_for_site(
+    session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
+) -> ChangeRequestListResponse:
+    return await _list_with_status(session, tenant_id=tenant_id, site_id=site_id)
+
+
+async def svc_list_my_requests(
+    session: AsyncSession, *, tenant_id: str | UUID, actor: dict,
+) -> ChangeRequestListResponse:
+    return await _list_with_status(session, tenant_id=tenant_id, requested_by=actor["sub"])

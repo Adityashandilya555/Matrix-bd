@@ -28,8 +28,18 @@ from app.domain.schemas.legal import (
     SaveLicensingRequest,
     SaveVerificationRequest,
 )
+from app.domain.schemas.legal_change_request import (
+    ChangeRequestListResponse,
+    ChangeRequestResponse,
+    ReviewChangeRequestRequest,
+)
 from app.rbac.guards import require_module, require_role
 from app.rbac.roles import Role
+from app.services.change_request_service import (
+    svc_approve_change_request,
+    svc_list_pending_for_legal,
+    svc_reject_change_request,
+)
 from app.services.legal_service import (
     svc_get_legal_review,
     svc_legal_queue,
@@ -156,4 +166,56 @@ async def save_licensing(
 ) -> LegalReviewResponse:
     return await svc_save_licensing(
         db, tenant_id=tenant_id, actor=current_user, site_id=site_id, body=body,
+    )
+
+
+# ── Change requests opened by BD ─────────────────────────────────────────────
+
+@router.get(
+    "/change-requests/pending",
+    response_model=ChangeRequestListResponse,
+    summary="List BD-opened change requests awaiting legal review",
+)
+async def list_pending_change_requests(
+    db: DbDep,
+    current_user: LegalMember,
+    _module: InLegalModule,
+    tenant_id: TenantId,
+) -> ChangeRequestListResponse:
+    return await svc_list_pending_for_legal(db, tenant_id=tenant_id)
+
+
+@router.post(
+    "/change-requests/{request_id}/approve",
+    response_model=ChangeRequestResponse,
+    summary="Approve a BD change request — overwrites the underlying field",
+)
+async def approve_change_request(
+    request_id: str,
+    body: ReviewChangeRequestRequest,
+    db: DbDep,
+    current_user: LegalSupervisor,
+    _module: InLegalModule,
+    tenant_id: TenantId,
+) -> ChangeRequestResponse:
+    return await svc_approve_change_request(
+        db, tenant_id=tenant_id, actor=current_user, request_id=request_id, body=body,
+    )
+
+
+@router.post(
+    "/change-requests/{request_id}/reject",
+    response_model=ChangeRequestResponse,
+    summary="Reject a BD change request — no change applied",
+)
+async def reject_change_request(
+    request_id: str,
+    body: ReviewChangeRequestRequest,
+    db: DbDep,
+    current_user: LegalSupervisor,
+    _module: InLegalModule,
+    tenant_id: TenantId,
+) -> ChangeRequestResponse:
+    return await svc_reject_change_request(
+        db, tenant_id=tenant_id, actor=current_user, request_id=request_id, body=body,
     )

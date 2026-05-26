@@ -22,6 +22,12 @@ from app.domain.schemas.site import (
     SiteResponse,
     SubmitDetailsRequest,
 )
+from app.domain.schemas.bd_status import BdSiteStatusResponse, DdFailedListResponse
+from app.domain.schemas.legal_change_request import (
+    ChangeRequestListResponse,
+    ChangeRequestResponse,
+    CreateChangeRequestRequest,
+)
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
 from app.services.bd_service import (
@@ -33,6 +39,14 @@ from app.services.bd_service import (
     svc_save_details,
     svc_shortlist_draft,
     svc_submit_details,
+)
+from app.services.bd_status_service import (
+    svc_bd_dd_failed_queue,
+    svc_bd_site_status,
+)
+from app.services.change_request_service import (
+    svc_create_change_request,
+    svc_list_my_requests,
 )
 from app.services.query_service import list_sites
 
@@ -178,5 +192,66 @@ async def reassign_site(
         db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
         new_owner_id=body.new_owner_id,
     )
+
+
+# ── BD-facing legal status view (View status button) ────────────────────────
+
+@router.get(
+    "/sites/{site_id}/legal-status",
+    response_model=BdSiteStatusResponse,
+    summary="BD read-only view of the legal/licensing state for a site",
+)
+async def bd_site_legal_status(
+    site_id: str,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))],
+    tenant_id: TenantId,
+) -> BdSiteStatusResponse:
+    return await svc_bd_site_status(db, site_id=site_id, tenant_id=tenant_id)
+
+
+@router.get(
+    "/dd-failed",
+    response_model=DdFailedListResponse,
+    summary="Sites whose Due Diligence was rejected by Legal (separate BD tab)",
+)
+async def bd_dd_failed_queue(
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))],
+    tenant_id: TenantId,
+) -> DdFailedListResponse:
+    return await svc_bd_dd_failed_queue(db, tenant_id=tenant_id)
+
+
+# ── Change requests opened by BD against legal fields ───────────────────────
+
+@router.post(
+    "/change-requests",
+    response_model=ChangeRequestResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Open a change request asking Legal to flip a field value",
+)
+async def create_change_request(
+    body: CreateChangeRequestRequest,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))],
+    tenant_id: TenantId,
+) -> ChangeRequestResponse:
+    return await svc_create_change_request(
+        db, tenant_id=tenant_id, actor=current_user, body=body,
+    )
+
+
+@router.get(
+    "/change-requests/mine",
+    response_model=ChangeRequestListResponse,
+    summary="List change requests opened by the current user",
+)
+async def my_change_requests(
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))],
+    tenant_id: TenantId,
+) -> ChangeRequestListResponse:
+    return await svc_list_my_requests(db, tenant_id=tenant_id, actor=current_user)
 
 
