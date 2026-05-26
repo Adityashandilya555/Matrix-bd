@@ -161,7 +161,7 @@ function DelegationModal({ site, onClose, onChanged, showToast }) {
         <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>Grant a new delegation</span>
           {eligible.length === 0 && !loading
-            ? <span style={{ fontSize: 12.5, color: 'var(--zm-fg-3)' }}>{candidates.length === 0 ? 'No executives in this workspace yet — assign someone the executive role from /team.' : 'All eligible executives already have an active delegation here.'}</span>
+            ? <span style={{ fontSize: 12.5, color: 'var(--zm-fg-3)' }}>{candidates.length === 0 ? 'No executives in this workspace yet — approve a pending executive from /team.' : 'All eligible executives already have an active delegation here.'}</span>
             : (
               <>
                 <select value={pickedUserId} onChange={(e) => setPickedUserId(e.target.value)} disabled={busy || loading} style={{ height: 36, padding: '0 10px', background: 'var(--zm-bg)', border: '1px solid var(--zm-line)', borderRadius: 6, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', outline: 'none' }}>
@@ -236,7 +236,7 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
   const [delegating, setDelegating] = React.useState(null);
 
   const ME = user.name;
-  // RBAC: isExec = cannot approve shortlist (only supervisor can)
+  // RBAC: isExec = cannot approve shortlist (only supervisor can; executives need a delegation)
   const isExec = !can(role, 'shortlist');
   const visibleShortlist = isExec ? shortlist.filter(s => s.createdBy === ME) : shortlist;
 

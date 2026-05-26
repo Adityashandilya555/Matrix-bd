@@ -1,6 +1,24 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithWorkspaceCode, PendingApprovalError } from '../../services/api/supabaseAuth.js';
+import {
+  signInWithWorkspaceCode,
+  signupAsSupervisor,
+  signupAsExecutive,
+  PendingApprovalError,
+} from '../../services/api/supabaseAuth.js';
+
+// Decode a JWT payload without verifying the signature. Used to read the role
+// claim so we can route business_admin users to their dedicated portal. The
+// backend already signed and stamped the token; we trust it for routing only.
+function decodeJwtPayload(token) {
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return null;
+    return JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+  } catch {
+    return null;
+  }
+}
 
 // Mount the full static landing page (kept in /public/landing) as the
 // unauthenticated entry surface. We slot the demo's <style> block and <body>
@@ -90,6 +108,60 @@ export default function LandingPage() {
         securityNote.textContent =
           'First time signing in? You\'ll land in your supervisor\'s queue until they assign you a role.';
       }
+    }
+
+    // ── Inject the "Join" tab + panel ──
+    // The static HTML ships with Login + Register only. We add a third tab
+    // for self-service signup as supervisor or executive. Doing it here (vs.
+    // editing the HTML) keeps the static demo file design-only.
+    const tabsStrip = modal.querySelector('.tabs');
+    const dialog    = modal.querySelector('.auth-dialog');
+    if (tabsStrip && dialog && !tabsStrip.querySelector('[data-tab="join"]')) {
+      const joinTab = document.createElement('button');
+      joinTab.className = 'tab';
+      joinTab.type = 'button';
+      joinTab.setAttribute('data-tab', 'join');
+      joinTab.setAttribute('role', 'tab');
+      joinTab.setAttribute('aria-selected', 'false');
+      joinTab.textContent = 'Join';
+      tabsStrip.appendChild(joinTab);
+
+      const joinPanel = document.createElement('form');
+      joinPanel.className = 'form-panel';
+      joinPanel.setAttribute('data-panel', 'join');
+      joinPanel.innerHTML = `
+        <div>
+          <h2>Join an existing workspace</h2>
+          <p>Pick how you're joining — your request goes to whoever can approve it.</p>
+        </div>
+        <div class="tabs" role="tablist" aria-label="Join as" data-join-tabs>
+          <button class="tab active" type="button" data-join-tab="supervisor" role="tab" aria-selected="true">As supervisor</button>
+          <button class="tab" type="button" data-join-tab="executive" role="tab" aria-selected="false">As executive</button>
+        </div>
+        <div data-join-sub="supervisor">
+          <div class="field">
+            <label for="join-sup-email">Work email</label>
+            <input id="join-sup-email" type="email" placeholder="you@company.com" autocomplete="email">
+          </div>
+          <div class="field">
+            <label for="join-sup-dept">Department code</label>
+            <input id="join-sup-dept" type="text" placeholder="DEPT-AB12" autocomplete="off" spellcheck="false" style="text-transform:uppercase;letter-spacing:0.1em;">
+          </div>
+          <button class="btn btn-primary" type="submit" data-join-submit="supervisor">Request supervisor access</button>
+        </div>
+        <div data-join-sub="executive" style="display:none;">
+          <div class="field">
+            <label for="join-exec-email">Work email</label>
+            <input id="join-exec-email" type="email" placeholder="you@company.com" autocomplete="email">
+          </div>
+          <div class="field">
+            <label for="join-exec-code">Supervisor code</label>
+            <input id="join-exec-code" type="text" placeholder="SUP-AB12" autocomplete="off" spellcheck="false" style="text-transform:uppercase;letter-spacing:0.1em;">
+          </div>
+          <button class="btn btn-primary" type="submit" data-join-submit="executive">Request executive access</button>
+        </div>
+      `;
+      dialog.appendChild(joinPanel);
     }
 
     const tabs   = root.querySelectorAll('[data-tab]');
@@ -217,9 +289,13 @@ export default function LandingPage() {
         loginBtn.disabled    = true;
         loginBtn.textContent = 'Signing in…';
         try {
-          await signInWithWorkspaceCode(email, code);
-          // Token is stashed; useAuthToken bounces the route to / automatically.
+          const data = await signInWithWorkspaceCode(email, code);
           close();
+          // Route by role. /business-admin lands when Unit 9's router entry
+          // exists; until then the catch-all in AppRouter falls through to /.
+          const payload = decodeJwtPayload(data?.access_token);
+          if (payload?.role === 'business_admin') navigate('/business-admin');
+          else                                    navigate('/overview');
         } catch (err) {
           if (err && err.isPending) {
             // Special-case the "queued" response so the messaging is warm,
@@ -332,6 +408,114 @@ export default function LandingPage() {
       };
       registerForm.addEventListener('submit', onSubmit);
       cleanup.push(() => registerForm.removeEventListener('submit', onSubmit));
+    }
+
+    // ── Join panel ──
+    // Two flavors share one form: supervisor (email + dept_code) and executive
+    // (email + supervisor_code). The inner tabs swap which sub-form is visible
+    // and which submit handler runs.
+    const joinPanel = root.querySelector('[data-panel="join"]');
+    if (joinPanel) {
+      const joinForm    = joinPanel;
+      const joinSubTabs = joinPanel.querySelectorAll('[data-join-tab]');
+      const joinSubs    = joinPanel.querySelectorAll('[data-join-sub]');
+      const joinStatus  = (() => {
+        const el = document.createElement('div');
+        el.className = 'security-note';
+        el.style.display = 'none';
+        joinPanel.appendChild(el);
+        return el;
+      })();
+      const showJoinStatus = (msg, tone = 'success') => {
+        joinStatus.textContent = msg;
+        joinStatus.style.display = 'flex';
+        if (tone === 'error') {
+          joinStatus.style.borderColor = 'rgba(222, 117, 111, 0.5)';
+          joinStatus.style.background  = 'rgba(222, 117, 111, 0.12)';
+          joinStatus.style.color       = '#fcd5d2';
+        } else {
+          joinStatus.style.borderColor = 'rgba(70, 234, 209, 0.32)';
+          joinStatus.style.background  = 'rgba(70, 234, 209, 0.12)';
+          joinStatus.style.color       = 'rgba(249, 241, 223, 0.86)';
+        }
+      };
+
+      let joinMode = 'supervisor';
+      const setJoinMode = (mode) => {
+        joinMode = mode;
+        joinSubTabs.forEach((t) => {
+          const active = t.getAttribute('data-join-tab') === mode;
+          t.classList.toggle('active', active);
+          t.setAttribute('aria-selected', String(active));
+        });
+        joinSubs.forEach((s) => {
+          s.style.display = s.getAttribute('data-join-sub') === mode ? '' : 'none';
+        });
+        joinStatus.style.display = 'none';
+      };
+      joinSubTabs.forEach((t) => {
+        const handler = () => setJoinMode(t.getAttribute('data-join-tab'));
+        t.addEventListener('click', handler);
+        cleanup.push(() => t.removeEventListener('click', handler));
+      });
+
+      const EMAIL_RE_J = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const CODE_RE_J  = /^[A-Za-z0-9\-]{4,32}$/;
+
+      const onJoinSubmit = async (e) => {
+        e.preventDefault();
+        const btn = joinPanel.querySelector(`[data-join-submit="${joinMode}"]`);
+        if (!btn) return;
+        const isSup = joinMode === 'supervisor';
+        const emailEl = joinPanel.querySelector(isSup ? '#join-sup-email' : '#join-exec-email');
+        const codeEl  = joinPanel.querySelector(isSup ? '#join-sup-dept'  : '#join-exec-code');
+        const email   = emailEl ? emailEl.value.trim()                   : '';
+        const code    = codeEl  ? codeEl.value.trim().toUpperCase()      : '';
+
+        if (!email || !code) {
+          showJoinStatus('Enter your work email and the code from your team.', 'error');
+          return;
+        }
+        if (!EMAIL_RE_J.test(email)) {
+          showJoinStatus('Email looks invalid — use the form you@company.com.', 'error');
+          return;
+        }
+        if (!CODE_RE_J.test(code)) {
+          showJoinStatus('Code looks invalid. Ask your team for the exact value.', 'error');
+          return;
+        }
+
+        const successMsg = isSup
+          ? 'Request submitted, business admin will review.'
+          : 'Request submitted, your supervisor will review.';
+        const reportSuccess = () => {
+          showJoinStatus(successMsg, 'success');
+          if (emailEl) emailEl.value = '';
+          if (codeEl)  codeEl.value  = '';
+        };
+
+        const originalLabel = btn.textContent;
+        btn.disabled    = true;
+        btn.textContent = 'Submitting…';
+        try {
+          // 200 and 202 are both "received" — caller treats them identically.
+          if (isSup) await signupAsSupervisor(email, code);
+          else       await signupAsExecutive(email, code);
+          reportSuccess();
+        } catch (err) {
+          if (err && err.isPending) {
+            reportSuccess();
+          } else {
+            const msg = err && err.message ? err.message : String(err);
+            showJoinStatus(`Could not submit: ${msg}`, 'error');
+          }
+        } finally {
+          btn.disabled    = false;
+          btn.textContent = originalLabel;
+        }
+      };
+      joinForm.addEventListener('submit', onJoinSubmit);
+      cleanup.push(() => joinForm.removeEventListener('submit', onJoinSubmit));
     }
 
     return () => {

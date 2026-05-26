@@ -1,0 +1,117 @@
+"""Per-supervisor invite codes + pending-executive approvals.
+
+Each supervisor mints their own per-module invite code (`bd`, `legal`,
+`payment`). Executives sign up with that code; they land as inactive users
+whose `notes` column carries `pending_supervisor:<sid>|module:<m>`. The owning
+supervisor then approves or rejects from /team.
+
+Storage:
+    - `supervisor_invite_codes` is keyed by (supervisor_id, module). Rotating
+      regenerates `code` and stamps `rotated_at`.
+    - Pending-exec discovery scans `users` rows with role='executive',
+      is_active=false, and a matching notes marker. Approval clears `notes`,
+      flips `is_active`, and inserts a `user_module_memberships` row.
+"""
+from __future__ import annotations
+
+import secrets
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.session import transaction
+
+
+_PENDING_PREFIX = "pending_supervisor:"
+_MODULE_MARKER = "|module:"
+
+
+def _generate_code() -> str:
+    return secrets.token_urlsafe(8).upper()
+
+
+async def get_my_code(session: AsyncSession, supervisor_id: str, module: str) -> dict | None:
+    row = (await session.execute(
+        text(
+            "SELECT module, code, created_at, rotated_at "
+            "FROM supervisor_invite_codes "
+            "WHERE supervisor_id = :sid AND module = :m AND revoked_at IS NULL"
+        ),
+        {"sid": supervisor_id, "m": module},
+    )).mappings().first()
+    return dict(row) if row else None
+
+
+async def rotate_my_code(
+    session: AsyncSession, tenant_id: str, supervisor_id: str, module: str,
+) -> dict:
+    async with transaction(session):
+        row = (await session.execute(
+            text(
+                "INSERT INTO supervisor_invite_codes (tenant_id, supervisor_id, module, code) "
+                "VALUES (:tid, :sid, :m, :code) "
+                "ON CONFLICT (supervisor_id, module) DO UPDATE "
+                "SET code = EXCLUDED.code, rotated_at = now() "
+                "RETURNING module, code, created_at, rotated_at"
+            ),
+            {"tid": tenant_id, "sid": supervisor_id, "m": module, "code": _generate_code()},
+        )).mappings().first()
+    return dict(row)
+
+
+async def list_my_pending_execs(
+    session: AsyncSession, supervisor_id: str, module: str,
+) -> list[dict]:
+    # The marker is the exact `notes` value at signup time, so we can equality-
+    # match in SQL and skip a Python parse pass entirely.
+    marker = f"{_PENDING_PREFIX}{supervisor_id}{_MODULE_MARKER}{module}"
+    rows = (await session.execute(
+        text(
+            "SELECT id, email, created_at "
+            "FROM users "
+            "WHERE role = 'executive' AND is_active = false AND notes = :marker"
+        ),
+        {"marker": marker},
+    )).mappings().all()
+    return [
+        {"id": str(r["id"]), "email": r["email"], "module": module, "created_at": r["created_at"]}
+        for r in rows
+    ]
+
+
+async def approve_my_pending_exec(
+    session: AsyncSession,
+    tenant_id: str,
+    supervisor_id: str,
+    user_id: str,
+    module: str,
+) -> None:
+    async with transaction(session):
+        await session.execute(
+            text(
+                "UPDATE users SET is_active = true, notes = NULL "
+                "WHERE id = :uid AND tenant_id = :tid"
+            ),
+            {"uid": user_id, "tid": tenant_id},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO user_module_memberships "
+                "(user_id, tenant_id, module, role_in_module, supervisor_id) "
+                "VALUES (:uid, :tid, :module, 'executive', :sid)"
+            ),
+            {"uid": user_id, "tid": tenant_id, "module": module, "sid": supervisor_id},
+        )
+
+
+async def reject_my_pending_exec(
+    session: AsyncSession, tenant_id: str, user_id: str,
+) -> None:
+    async with transaction(session):
+        await session.execute(
+            text(
+                "DELETE FROM users "
+                "WHERE id = :uid AND tenant_id = :tid AND is_active = false"
+            ),
+            {"uid": user_id, "tid": tenant_id},
+        )
