@@ -5,7 +5,7 @@ Surfaces:
 - GET  /cities                        — authed:    distinct cities in own tenant
 - GET  /workspace-info                — authed:    own tenant's code + seat usage
 - POST /request-workspace             — PUBLIC:    capture a workspace request
-- POST /requests/{id}/approve         — platform:  provision tenant + supervisor
+- POST /requests/{id}/approve         — platform:  provision tenant + business_admin
 - POST /join                          — PUBLIC:    employee self-join via workspace_code
 """
 from __future__ import annotations
@@ -356,20 +356,22 @@ async def list_workspace_requests(
 
 
 class ApproveIn(BaseModel):
-    # Supervisors are NOT city-scoped at the permission layer — they see and
-    # act on every site in the tenant. This field is metadata only: it travels
-    # in the workspace_provisioned outbox payload for any email/Slack template
-    # that wants to greet the customer with their primary territory. Optional.
-    city:       Optional[str] = Field(default=None, max_length=80, description="Primary city for the workspace (metadata only — supervisors are not city-scoped).")
+    # Business admins are tenant-wide; not city-scoped at the permission layer.
+    # This field is metadata only: it travels in the workspace_provisioned outbox
+    # payload for any email/Slack template that wants to greet the customer with
+    # their primary territory. Optional.
+    city:       Optional[str] = Field(default=None, max_length=80, description="Primary city for the workspace (metadata only — business_admin is not city-scoped).")
     admin_name: Optional[str] = Field(default=None, max_length=120)
 
 
 class ApproveOut(BaseModel):
-    tenant_id:      str
-    workspace_code: str
-    seat_limit:     int
-    supervisor_id:  str
-    message:        str
+    tenant_id:         str
+    workspace_code:    str
+    seat_limit:        int
+    business_admin_id: str
+    # Legacy alias: older clients still read `supervisor_id`. Mirrors business_admin_id.
+    supervisor_id:     str
+    message:           str
 
 
 @router.post(
@@ -465,25 +467,35 @@ async def approve_workspace_request(
     workspace_code = tenant_row["workspace_code"]
     seat_limit     = tenant_row["seat_limit"]
 
-    # 3. Insert the supervisor row directly into public.users. No Supabase
+    # 3. Insert the business_admin row directly into public.users. No Supabase
     #    Auth dance — the user will sign in with their email + the workspace
     #    code (which the platform admin shares with them out-of-band).
-    supervisor_id = uuid.uuid4()
+    business_admin_id = uuid.uuid4()
     await db.execute(
         text("""
             INSERT INTO users (id, tenant_id, role, email, name, is_active)
-            VALUES (:id, :tenant_id, 'supervisor', :email, :name, true)
+            VALUES (:id, :tenant_id, 'business_admin', :email, :name, true)
             ON CONFLICT (id) DO UPDATE
               SET tenant_id = EXCLUDED.tenant_id,
-                  role      = 'supervisor',
+                  role      = 'business_admin',
                   is_active = true
         """),
         {
-            "id":        supervisor_id,
+            "id":        business_admin_id,
             "tenant_id": tenant_id,
             "email":     req_admin_email,
             "name":      payload.admin_name or req_admin_email.split("@")[0],
         },
+    )
+
+    # 4. Marker row in business_admins. Confers tenant-wide admin scope; no
+    #    user_module_memberships are seeded (business_admin is not a module member).
+    await db.execute(
+        text("""
+            INSERT INTO business_admins (user_id, tenant_id, promoted_at)
+            VALUES (:user_id, :tenant_id, now())
+        """),
+        {"user_id": business_admin_id, "tenant_id": tenant_id},
     )
 
     # 5. Mark the request approved.
@@ -503,11 +515,11 @@ async def approve_workspace_request(
     #    workspace_code travels in the payload (NOT the body) so a future
     #    template change can re-render without re-issuing the secret. This is
     #    the only place workspace_code appears outside the tenants table.
-    outbox_subject = f"Your {req_company} workspace is ready"
+    outbox_subject = f"Your {req_company} workspace is ready — sign into the admin portal"
     outbox_body = (
         f"Hi {payload.admin_name or req_admin_email.split('@')[0]},\n\n"
         f"Your workspace '{req_company}' has been provisioned. "
-        f"Sign in at the landing page with:\n\n"
+        f"Sign in at /business-admin with your workspace code to manage your team.\n\n"
         f"  Email: {req_admin_email}\n"
         f"  Workspace code: {workspace_code}\n\n"
         f"Seats: {seat_limit}. Add team members by sharing the workspace code "
@@ -530,6 +542,8 @@ async def approve_workspace_request(
             "payload": (
                 '{"tenant_id":"' + str(tenant_id) + '",'
                 '"workspace_code":"' + workspace_code + '",'
+                '"business_admin_id":"' + str(business_admin_id) + '",'
+                '"supervisor_id":"' + str(business_admin_id) + '",'
                 '"company":' + _json_string(req_company) + ','
                 '"city":' + _json_string(payload.city or "") + '}'
             ),
@@ -542,7 +556,8 @@ async def approve_workspace_request(
         tenant_id=str(tenant_id),
         workspace_code=workspace_code,
         seat_limit=seat_limit,
-        supervisor_id=str(supervisor_id),
+        business_admin_id=str(business_admin_id),
+        supervisor_id=str(business_admin_id),
         message=(
             f"Provisioned {req_company}. Tell {req_admin_email} to sign in at the "
             f"landing page using their email + workspace code: {workspace_code}"
