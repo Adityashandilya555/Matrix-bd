@@ -104,6 +104,34 @@ async def approve_my_pending_exec(
         )
 
 
+async def list_my_team(
+    session: AsyncSession, supervisor_id: str, module: str,
+) -> list[dict]:
+    """Active executives bound to this supervisor in this module."""
+    rows = (await session.execute(
+        text(
+            "SELECT u.id, u.email, u.name, umm.joined_at "
+            "FROM user_module_memberships umm "
+            "JOIN users u ON u.id = umm.user_id "
+            "WHERE umm.supervisor_id = :sid "
+            "  AND umm.module = :m "
+            "  AND umm.role_in_module = 'executive' "
+            "  AND u.is_active = true"
+        ),
+        {"sid": supervisor_id, "m": module},
+    )).mappings().all()
+    return [
+        {
+            "id": str(r["id"]),
+            "email": r["email"],
+            "name": r["name"],
+            "module": module,
+            "joined_at": r["joined_at"],
+        }
+        for r in rows
+    ]
+
+
 async def reject_my_pending_exec(
     session: AsyncSession, tenant_id: str, user_id: str,
 ) -> None:

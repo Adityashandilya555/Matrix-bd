@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.domain.schemas.supervisor_codes import InviteCodeOut, Module, PendingExecOut
+from app.domain.schemas.supervisor_codes import InviteCodeOut, Module, PendingExecOut, TeamMemberOut
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
 from app.services import supervisor_code_service as svc
@@ -45,6 +45,15 @@ async def list_my_pending_execs(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     return await svc.list_my_pending_execs(db, current_user["sub"], module)
+
+
+@router.get("/me/{module}/team", response_model=list[TeamMemberOut])
+async def list_my_team(
+    module: Module,
+    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    return await svc.list_my_team(db, current_user["sub"], module)
 
 
 @router.post("/me/pending-executives/{user_id}/approve", status_code=status.HTTP_204_NO_CONTENT)

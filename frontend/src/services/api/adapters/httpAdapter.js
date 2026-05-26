@@ -341,6 +341,18 @@ export async function listMyPendingExecutives(module) {
   }));
 }
 
+export async function listMyTeam(module) {
+  const d = await get(`/supervisor-codes/me/${module}/team`);
+  const items = Array.isArray(d) ? d : (d?.items || []);
+  return items.map(u => ({
+    id:       u.id,
+    email:    u.email,
+    name:     u.name,
+    module:   u.module,
+    joinedAt: u.joined_at,
+  }));
+}
+
 export async function approveMyPendingExecutive(userId, module) {
   return client.post(
     `/supervisor-codes/me/pending-executives/${userId}/approve`,

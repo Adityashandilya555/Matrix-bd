@@ -23,3 +23,12 @@ class PendingExecOut(BaseModel):
     email: EmailStr
     module: Module
     created_at: datetime
+
+
+class TeamMemberOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    email: EmailStr
+    name: str | None = None
+    module: Module
+    joined_at: datetime

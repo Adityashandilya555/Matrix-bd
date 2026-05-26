@@ -7,7 +7,7 @@ import {
   listMyPendingExecutives,
   approveMyPendingExecutive,
   rejectMyPendingExecutive,
-  listUsers,
+  listMyTeam,
 } from '../../services/api/adapters/httpAdapter.js';
 
 // TeamPage — supervisor surface for the per-supervisor invite-code flow.
@@ -58,14 +58,14 @@ function SupervisorView({ module }) {
     setLoading(true);
     setError(null);
     try {
-      const [code, pend, users] = await Promise.all([
+      const [code, pend, mine] = await Promise.all([
         getMyInviteCode(module).catch(() => null),
         listMyPendingExecutives(module).catch(() => []),
-        listUsers().catch(() => []),
+        listMyTeam(module).catch(() => []),
       ]);
       setInvite(code);
       setPending(pend);
-      setTeam(users.filter(u => normalizeRole(u.role) === 'executive'));
+      setTeam(mine);
     } catch (e) {
       setError(e?.message || String(e));
     } finally {
