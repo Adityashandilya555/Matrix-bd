@@ -209,7 +209,7 @@ CREATE TABLE public.tenants (
 );
 CREATE TABLE public.users (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  role text NOT NULL DEFAULT 'executive'::text CHECK (role IN ('executive','sub_supervisor','supervisor')),
+  role text NOT NULL DEFAULT 'executive'::text CHECK (role IN ('business_admin','supervisor','executive')),
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -237,4 +237,55 @@ CREATE TABLE public.shortlist_delegations (
   CONSTRAINT shortlist_delegations_delegate_user_id_fkey FOREIGN KEY (delegate_user_id) REFERENCES public.users(id) ON DELETE CASCADE,
   CONSTRAINT shortlist_delegations_granted_by_fkey FOREIGN KEY (granted_by) REFERENCES public.users(id),
   CONSTRAINT shortlist_delegations_revoked_by_fkey FOREIGN KEY (revoked_by) REFERENCES public.users(id)
+);
+CREATE TABLE IF NOT EXISTS public.business_admins (
+  user_id uuid NOT NULL,
+  tenant_id uuid NOT NULL,
+  promoted_at timestamp with time zone NOT NULL DEFAULT now(),
+  notes text,
+  CONSTRAINT business_admins_pkey PRIMARY KEY (user_id),
+  CONSTRAINT business_admins_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE,
+  CONSTRAINT business_admins_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS public.module_codes (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  tenant_id uuid NOT NULL,
+  module text NOT NULL CHECK (module IN ('bd','legal','payment')),
+  code text NOT NULL UNIQUE,
+  created_by uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  rotated_at timestamp with time zone,
+  revoked_at timestamp with time zone,
+  CONSTRAINT module_codes_pkey PRIMARY KEY (id),
+  CONSTRAINT module_codes_tenant_module_key UNIQUE (tenant_id, module),
+  CONSTRAINT module_codes_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
+  CONSTRAINT module_codes_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
+);
+CREATE TABLE IF NOT EXISTS public.supervisor_invite_codes (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  tenant_id uuid NOT NULL,
+  supervisor_id uuid NOT NULL,
+  module text NOT NULL CHECK (module IN ('bd','legal','payment')),
+  code text NOT NULL UNIQUE,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  rotated_at timestamp with time zone,
+  revoked_at timestamp with time zone,
+  CONSTRAINT supervisor_invite_codes_pkey PRIMARY KEY (id),
+  CONSTRAINT supervisor_invite_codes_supervisor_module_key UNIQUE (supervisor_id, module),
+  CONSTRAINT supervisor_invite_codes_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
+  CONSTRAINT supervisor_invite_codes_supervisor_id_fkey FOREIGN KEY (supervisor_id) REFERENCES public.users(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS public.user_module_memberships (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  tenant_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  module text NOT NULL CHECK (module IN ('bd','legal','payment')),
+  role_in_module text NOT NULL CHECK (role_in_module IN ('supervisor','executive')),
+  supervisor_id uuid,
+  joined_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT user_module_memberships_pkey PRIMARY KEY (id),
+  CONSTRAINT user_module_memberships_user_module_key UNIQUE (user_id, module),
+  CONSTRAINT user_module_memberships_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
+  CONSTRAINT user_module_memberships_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE,
+  CONSTRAINT user_module_memberships_supervisor_id_fkey FOREIGN KEY (supervisor_id) REFERENCES public.users(id) ON DELETE SET NULL
 );

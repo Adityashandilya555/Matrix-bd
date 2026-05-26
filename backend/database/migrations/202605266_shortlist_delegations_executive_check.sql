@@ -1,0 +1,9 @@
+-- shortlist_delegations: delegate role constraint is enforced in app layer.
+--
+-- No DB CHECK constraint pins shortlist_delegations.delegate_user_id to a
+-- particular role. The "delegate must be an executive" rule lives in
+-- backend/app/services/delegation_service.py, where it can read role +
+-- module membership together (a DB CHECK can only see the local row).
+--
+-- This migration is intentionally a no-op: it documents the decision so a
+-- future reader does not assume the check was forgotten.
