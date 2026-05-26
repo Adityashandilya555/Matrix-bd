@@ -58,8 +58,8 @@ function LOITimelineModal({ site, onCancel, onSubmit }) {
 }
 
 // Supervisor-only side panel for granting / revoking shortlist delegations on
-// a specific site. Sub-supervisors who get a grant can act on that site even
-// if it's outside their assigned city.
+// a specific site. Executives who get a grant can act on that site even if
+// it's outside their normal scope.
 function DelegationModal({ site, onClose, onChanged, showToast }) {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(null);
@@ -77,8 +77,8 @@ function DelegationModal({ site, onClose, onChanged, showToast }) {
         siteService.listUsers(),
       ]);
       setDelegations(list);
-      // Only sub-supervisors are eligible delegates per the product rules.
-      setCandidates(users.filter(u => u.role === 'sub_supervisor'));
+      // Only executives are eligible delegates per the product rules.
+      setCandidates(users.filter(u => u.role === 'executive'));
     } catch (err) {
       setError(err?.message || 'Failed to load delegations');
     } finally {
@@ -127,8 +127,8 @@ function DelegationModal({ site, onClose, onChanged, showToast }) {
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <div style={{ flex: 1 }}>
             <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-accent)' }}>Delegate · {site.code}</span>
-            <h2 style={{ margin: '4px 0 6px', fontFamily: 'var(--zm-font-display)', fontWeight: 700, fontSize: 20, letterSpacing: '-0.02em', color: 'var(--zm-fg)' }}>Let a sub-supervisor act on this site</h2>
-            <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>Grants are additive — you keep your own approval power. Sub-supervisors with a delegation can shortlist/approve this site even if it's outside their assigned city.</p>
+            <h2 style={{ margin: '4px 0 6px', fontFamily: 'var(--zm-font-display)', fontWeight: 700, fontSize: 20, letterSpacing: '-0.02em', color: 'var(--zm-fg)' }}>Let an executive act on this site</h2>
+            <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>Grants are additive — you keep your own approval power. Executives with a delegation can shortlist/approve this site even if it's outside their normal scope.</p>
           </div>
           <button onClick={onClose} className="zm-icon-btn" style={{ background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)', borderRadius: 8, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--zm-fg-2)', cursor: 'pointer' }}><Icon name="x" size={14}/></button>
         </div>
@@ -161,11 +161,11 @@ function DelegationModal({ site, onClose, onChanged, showToast }) {
         <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>Grant a new delegation</span>
           {eligible.length === 0 && !loading
-            ? <span style={{ fontSize: 12.5, color: 'var(--zm-fg-3)' }}>{candidates.length === 0 ? 'No sub-supervisors in this workspace yet — assign someone the sub_supervisor role from /team.' : 'All eligible sub-supervisors already have an active delegation here.'}</span>
+            ? <span style={{ fontSize: 12.5, color: 'var(--zm-fg-3)' }}>{candidates.length === 0 ? 'No executives in this workspace yet — assign someone the executive role from /team.' : 'All eligible executives already have an active delegation here.'}</span>
             : (
               <>
                 <select value={pickedUserId} onChange={(e) => setPickedUserId(e.target.value)} disabled={busy || loading} style={{ height: 36, padding: '0 10px', background: 'var(--zm-bg)', border: '1px solid var(--zm-line)', borderRadius: 6, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', outline: 'none' }}>
-                  <option value="">Pick a sub-supervisor…</option>
+                  <option value="">Pick an executive…</option>
                   {eligible.map(u => (<option key={u.id} value={u.id}>{u.name} · {u.email}{u.assignedCity ? ` · ${u.assignedCity}` : ''}</option>))}
                 </select>
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional note (why this site is being delegated)…" style={{ width: '100%', minHeight: 60, padding: 10, resize: 'vertical', border: '1px solid var(--zm-line)', borderRadius: 8, fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg)', outline: 'none', background: 'var(--zm-bg)' }}/>
@@ -212,7 +212,7 @@ function ShortlistCard({ item, role, onView, onAddDetails, onApprove, onDelegate
         <span style={{ flex: 1 }}/>
         {supervisor ? (
           <>
-            <button onClick={() => onDelegate(item)} className="zm-btn" title="Let a sub-supervisor act on this site" style={{ height: 34, padding: '0 12px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="user" size={13}/> Delegate</button>
+            <button onClick={() => onDelegate(item)} className="zm-btn" title="Let an executive act on this site" style={{ height: 34, padding: '0 12px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="user" size={13}/> Delegate</button>
             <button onClick={() => onApprove(item)} disabled={!reviewable} className="zm-btn-primary" title={!reviewable ? 'BD exec must Send for review before approving' : 'Approve and advance to staging'} style={{ height: 34, padding: '0 14px', border: 'none', borderRadius: 7, background: reviewable ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: reviewable ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: reviewable ? 'pointer' : 'not-allowed', boxShadow: reviewable ? 'var(--zm-shadow-1)' : 'none', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="check" size={13}/> Approve shortlist</button>
           </>
         ) : reviewable ? (
@@ -236,7 +236,7 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
   const [delegating, setDelegating] = React.useState(null);
 
   const ME = user.name;
-  // RBAC: isExec = cannot approve shortlist (only supervisor/sub_supervisor can)
+  // RBAC: isExec = cannot approve shortlist (only supervisor can)
   const isExec = !can(role, 'shortlist');
   const visibleShortlist = isExec ? shortlist.filter(s => s.createdBy === ME) : shortlist;
 

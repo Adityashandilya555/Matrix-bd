@@ -164,7 +164,6 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
                   background: role === 'supervisor' ? 'var(--zm-accent)' : 'var(--zm-fg-3)',
                 }}/>
                 {role === 'supervisor' ? 'Supervisor' :
-                 role === 'sub_supervisor' ? 'City lead' :
                  role === 'exec' || role === 'executive' ? 'BD executive' :
                  (role || 'BD executive')}
               </span>

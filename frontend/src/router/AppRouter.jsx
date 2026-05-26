@@ -57,7 +57,7 @@ export default function AppRouter() {
           </RequireRole>
         }/>
         <Route path={ROUTES.STAGING_SUPERVISOR} element={
-          <RequireRole roles={['supervisor', 'sub_supervisor']}>
+          <RequireRole roles={['supervisor']}>
             <SupervisorStagingPage/>
           </RequireRole>
         }/>
@@ -65,7 +65,7 @@ export default function AppRouter() {
         <Route path={ROUTES.STAGING} element={<StagingRedirect/>}/>
 
         <Route path={ROUTES.ARCHIVE} element={
-          <RequireRole roles={['supervisor', 'sub_supervisor']}>
+          <RequireRole roles={['supervisor']}>
             <ArchivePage/>
           </RequireRole>
         }/>

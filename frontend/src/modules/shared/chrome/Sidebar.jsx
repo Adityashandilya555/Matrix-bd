@@ -7,8 +7,7 @@ import { ROUTES } from '../../../router/routes.js';
 // Render bodies preserved exactly from Chrome.jsx Sidebar + SidebarItem components.
 // Only changes:
 //   - SidebarItem.onClick now calls navigate(); active derives from useLocation()
-//   - Role switcher uses <select> to accommodate the third sub_supervisor role
-//     without overflowing the fixed 232px column width.
+//   - Role switcher uses <select> for the role dropdown.
 
 function SidebarItem({ icon, label, count, active, onClick }) {
   return (
@@ -41,7 +40,7 @@ function SidebarItem({ icon, label, count, active, onClick }) {
 // Role display labels for the <select>
 const ROLE_LABELS = {
   supervisor: 'Supervisor',
-  sub_supervisor: 'City lead',
+  business_admin: 'Business Admin',
   exec: 'BD exec',
 };
 
@@ -84,7 +83,7 @@ export default function Sidebar({ counts, role, onRole }) {
       <SidebarItem icon="file"   label="Pipeline"        count={counts.pipeline}  active={activeView === 'pipeline'}  onClick={() => go(ROUTES.PIPELINE)}/>
       <SidebarItem icon="shield" label="Shortlist queue" count={counts.shortlist} active={activeView === 'shortlist'} onClick={() => go(ROUTES.SHORTLIST)}/>
       <SidebarItem icon="box"    label="Staging"         count={counts.staging}   active={activeView === 'staging'}   onClick={() => go(ROUTES.STAGING)}/>
-      {(role === 'supervisor' || role === 'sub_supervisor') && (
+      {role === 'supervisor' && (
         <SidebarItem icon="folder" label="Archive" count={counts.archive} active={activeView === 'archive'} onClick={() => go(ROUTES.ARCHIVE)}/>
       )}
 
@@ -107,7 +106,7 @@ export default function Sidebar({ counts, role, onRole }) {
 
       <div style={{ flex: 1 }}/>
 
-      {/* Role switcher — mock only; 3 roles use <select> to stay within 232px column */}
+      {/* Role switcher — mock only; uses <select> to stay within 232px column */}
       {onRole && (
         <div style={{
           padding: 10, margin: '0 4px 8px',
@@ -128,7 +127,6 @@ export default function Sidebar({ counts, role, onRole }) {
             }}
           >
             <option value="supervisor">Supervisor</option>
-            <option value="sub_supervisor">City lead (sub-supervisor)</option>
             <option value="exec">BD exec</option>
           </select>
         </div>

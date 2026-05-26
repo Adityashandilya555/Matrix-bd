@@ -121,7 +121,7 @@ function ApproveDialog({ request, busy, onCancel, onConfirm }) {
         <div>
           <div style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', opacity: 0.55 }}>Approve · {request.company}</div>
           <h2 style={{ margin: '4px 0 2px', fontSize: 19, fontWeight: 700 }}>Provision workspace</h2>
-          <p style={{ margin: 0, fontSize: 12.5, opacity: 0.7, lineHeight: 1.5 }}>Creates the tenant, the supervisor user, and the workspace code. The supervisor sees every site across all cities — city scope only applies to sub-supervisors. An email is queued in the outbox to {request.admin_email}.</p>
+          <p style={{ margin: 0, fontSize: 12.5, opacity: 0.7, lineHeight: 1.5 }}>Creates the tenant, the supervisor user, and the workspace code. The supervisor sees every site across all cities. An email is queued in the outbox to {request.admin_email}.</p>
         </div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, opacity: 0.85 }}>
           Primary city (optional)

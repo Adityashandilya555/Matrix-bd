@@ -6,7 +6,7 @@ export const MOCK_USERS = [
   { id: 'user_nikhil', name: 'Nikhil Iyer',    email: 'nikhil.iyer@bluetokai.com',    role: 'executive',     city: 'Pune',      tenantId: 'bt-tenant-001' },
   { id: 'user_aisha',  name: 'Aisha Sengupta', email: 'aisha.sengupta@bluetokai.com', role: 'executive',     city: 'Bengaluru', tenantId: 'bt-tenant-001' },
   { id: 'user_sup1',   name: 'Nisha Kapoor',   email: 'nisha.kapoor@bluetokai.com',   role: 'supervisor',    city: 'Mumbai',    tenantId: 'bt-tenant-001' },
-  { id: 'user_subsup', name: 'Dev Malhotra',   email: 'dev.malhotra@bluetokai.com',   role: 'sub_supervisor', city: 'Mumbai',   tenantId: 'bt-tenant-001' },
+  { id: 'user_bizadmin', name: 'Dev Malhotra', email: 'dev.malhotra@bluetokai.com',   role: 'business_admin', city: 'Mumbai',    tenantId: 'bt-tenant-001' },
 ];
 
 export function getUserById(id) {

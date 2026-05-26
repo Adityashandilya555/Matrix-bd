@@ -144,36 +144,16 @@ export default function DraftsPage({ onOpenSite: onOpenSiteProp, showToast: show
   const [archiving, setArchiving] = React.useState(null);
 
   const ME = user.name;
-  const MY_CITY = user.city || user.assignedCity || null;
   // RBAC: use can() for permission checks. isExec kept as derived alias for render body compat.
   const isExec = !can(role, 'shortlist'); // exec cannot shortlist; supervisor can
-  const isSubSup = role === 'sub_supervisor';
-
-  // Sub-supervisors juggle two views: their own drafts (they're also BD execs in
-  // their city) vs. the rest of their city's team. Default to Team so they see
-  // what needs their decision first.
-  const [scope, setScope] = React.useState('team');
-  React.useEffect(() => { if (!isSubSup) setScope('all'); }, [isSubSup]);
 
   const visibleDrafts = React.useMemo(() => {
     if (isExec) return drafts.filter(d => d.createdBy === ME);
-    if (isSubSup) {
-      const inCity = MY_CITY ? drafts.filter(d => d.city === MY_CITY) : drafts;
-      if (scope === 'mine') return inCity.filter(d => d.createdBy === ME);
-      if (scope === 'team') return inCity.filter(d => d.createdBy !== ME);
-      return inCity;
-    }
     return drafts; // supervisor sees everything
-  }, [drafts, isExec, isSubSup, MY_CITY, ME, scope]);
-
-  // Sub-supervisor counts drive the scope toggle copy so the user can see at a
-  // glance whether their inbox or their own drafts need attention.
-  const myCityDrafts   = isSubSup && MY_CITY ? drafts.filter(d => d.city === MY_CITY) : drafts;
-  const mineCount      = isSubSup ? myCityDrafts.filter(d => d.createdBy === ME).length : 0;
-  const teamCount      = isSubSup ? myCityDrafts.filter(d => d.createdBy !== ME).length : 0;
+  }, [drafts, isExec, ME]);
 
   const filtered = applyDraftFilters(visibleDrafts, filters);
-  const overdueCount = role === 'supervisor' || isSubSup ? visibleDrafts.filter(d => d.days > 7).length : 0;
+  const overdueCount = role === 'supervisor' ? visibleDrafts.filter(d => d.days > 7).length : 0;
 
   const onApprove = (d) => { moveDraftToShortlist(d); showToast?.(`Shortlisted · ${d.name} moved to shortlist queue`); };
   const onReject = (d) => setRejecting(d);
@@ -193,51 +173,21 @@ export default function DraftsPage({ onOpenSite: onOpenSiteProp, showToast: show
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <PageHeader
         file="№ 02" eyebrow="Workflow · Pipeline"
-        title={role === 'supervisor' || isSubSup ? <>Drafts <em>awaiting</em> shortlist</> : <>Your drafts <em>in flight</em></>}
+        title={role === 'supervisor' ? <>Drafts <em>awaiting</em> shortlist</> : <>Your drafts <em>in flight</em></>}
         lede={
           role === 'supervisor'
             ? `${visibleDrafts.length} draft${visibleDrafts.length === 1 ? '' : 's'} from all your BD execs. Supervisor SLA: 7 days. Tap Yes, No, or Archive.`
-            : isSubSup
-              ? `${visibleDrafts.length} draft${visibleDrafts.length === 1 ? '' : 's'} ${scope === 'mine' ? 'you created' : scope === 'team' ? `from your ${MY_CITY || 'city'} team` : `across ${MY_CITY || 'your city'}`}. You can shortlist or reject anything in your city — except your own drafts, which the supervisor decides.`
-              : `${visibleDrafts.length} of your own draft${visibleDrafts.length === 1 ? '' : 's'} awaiting supervisor decision — you only see what you created.`
+            : `${visibleDrafts.length} of your own draft${visibleDrafts.length === 1 ? '' : 's'} awaiting supervisor decision — you only see what you created.`
         }
         right={overdueCount > 0 ? <HeaderTag icon="alert" label={`${overdueCount} PAST SLA`} tone="accent"/> : <HeaderTag icon="check" label="SLA CLEAR"/>}
       />
-      {isSubSup && (
-        <div role="tablist" aria-label="Drafts scope" style={{ display: 'inline-flex', alignSelf: 'flex-start', padding: 4, background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)', borderRadius: 999, gap: 4 }}>
-          {[
-            { id: 'team', label: 'Team', count: teamCount, sub: MY_CITY ? `${MY_CITY} · others' drafts` : "Others' drafts" },
-            { id: 'mine', label: 'Mine', count: mineCount, sub: 'Drafts I created' },
-            { id: 'all',  label: 'All',  count: teamCount + mineCount, sub: MY_CITY ? `Everything in ${MY_CITY}` : 'Everything' },
-          ].map(t => {
-            const active = scope === t.id;
-            return (
-              <button key={t.id} role="tab" aria-selected={active} onClick={() => setScope(t.id)} title={t.sub}
-                style={{
-                  height: 32, padding: '0 14px', borderRadius: 999, border: 'none',
-                  background: active ? 'var(--zm-surface)' : 'transparent',
-                  color: active ? 'var(--zm-fg)' : 'var(--zm-fg-2)',
-                  fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600,
-                  cursor: 'pointer', boxShadow: active ? 'var(--zm-shadow-1)' : 'none',
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                }}>
-                {t.label}
-                <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11, color: active ? 'var(--zm-fg-3)' : 'var(--zm-fg-4)' }}>{t.count}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
       <DraftsFilterBar filters={filters} onFilters={setFilters} drafts={visibleDrafts}/>
       <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1fr 0.8fr 0.7fr ' + (can(role, 'shortlist') ? '230px' : '90px'), gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
           <span>Code</span><span>Pipeline name</span><span>Created by</span><span>City</span><span>Visit date</span><span>Days</span><span style={{ textAlign: 'right' }}>{can(role, 'shortlist') ? 'Decision' : 'Action'}</span>
         </div>
         {filtered.map(d => {
-          // Sub-supervisors can decide on team drafts in their city but NOT on
-          // drafts they created themselves — the spec leaves self-approval to
-          // the supervisor. Supervisors decide everything; execs decide nothing.
-          const canDecideHere = role === 'supervisor' || (isSubSup && d.createdBy !== ME);
+          const canDecideHere = role === 'supervisor';
           return (
             <DraftRow key={d.id} draft={d} role={role} canDecide={canDecideHere} onApprove={onApprove} onReject={onReject} onArchive={onArchive} onOpen={onOpenSite || (() => {})}/>
           );

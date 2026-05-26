@@ -17,7 +17,6 @@ import {
 
 const ROLE_OPTIONS = [
   { value: 'executive',      label: 'BD executive' },
-  { value: 'sub_supervisor', label: 'Sub-supervisor (city lead)' },
 ];
 
 export default function TeamPage() {
@@ -308,9 +307,7 @@ function AssignRoleDrawer({ user, onClose, onAssigned }) {
                 ))}
               </select>
               <p style={hint}>
-                {role === 'sub_supervisor'
-                  ? 'Sub-supervisors own a city and review the BD pipeline within it.'
-                  : 'BD executives capture sites and own the day-to-day pipeline work.'}
+                BD executives capture sites and own the day-to-day pipeline work.
               </p>
             </div>
 

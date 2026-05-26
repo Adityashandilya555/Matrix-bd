@@ -26,7 +26,7 @@ export function SessionProvider({ children }) {
   const [dark, setDark] = useState(false);
 
   // role is the display/canonical string used by existing components:
-  // 'exec' | 'supervisor' | 'sub_supervisor'
+  // 'business_admin' | 'supervisor' | 'executive' | 'exec'
   const role = session.role;
 
   // setRole: allows role switcher to change role locally in mock mode.
@@ -85,8 +85,7 @@ export function SessionProvider({ children }) {
   const permissions = useMemo(() => {
     const canonicalRole =
       role === 'exec' ? ROLE.EXECUTIVE :
-      role === 'supervisor' ? ROLE.SUPERVISOR :
-      role === 'sub_supervisor' ? ROLE.SUB_SUPERVISOR : role;
+      role === 'supervisor' ? ROLE.SUPERVISOR : role;
     return Object.entries(PERMISSIONS)
       .filter(([, roles]) => roles.includes(canonicalRole))
       .map(([action]) => action);

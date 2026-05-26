@@ -9,14 +9,13 @@ export const PERMISSIONS = {
   upload_loi:                 [ROLE.EXECUTIVE],
   view_own_loi:               [ROLE.EXECUTIVE],
 
-  shortlist:                  [ROLE.SUPERVISOR, ROLE.SUB_SUPERVISOR],
-  approve_details:            [ROLE.SUPERVISOR, ROLE.SUB_SUPERVISOR],
-  reject:                     [ROLE.SUPERVISOR, ROLE.SUB_SUPERVISOR],
-  archive:                    [ROLE.SUPERVISOR, ROLE.SUB_SUPERVISOR],
-  set_loi_timeline:           [ROLE.SUPERVISOR, ROLE.SUB_SUPERVISOR],
-  push_to_payments:           [ROLE.SUPERVISOR, ROLE.SUB_SUPERVISOR],
+  shortlist:                  [ROLE.SUPERVISOR],
+  approve_details:            [ROLE.SUPERVISOR],
+  reject:                     [ROLE.SUPERVISOR],
+  archive:                    [ROLE.SUPERVISOR],
+  set_loi_timeline:           [ROLE.SUPERVISOR],
+  push_to_payments:           [ROLE.SUPERVISOR],
   reassign_site:              [ROLE.SUPERVISOR],
-  assign_sub_supervisor:      [ROLE.SUPERVISOR],
 };
 
 export function can(role, action) {
