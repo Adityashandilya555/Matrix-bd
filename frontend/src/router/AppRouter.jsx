@@ -15,6 +15,8 @@ import SupervisorStagingPage from '../modules/staging/supervisor/SupervisorStagi
 import ArchivePage           from '../modules/archive/ArchivePage.jsx';
 import AddDetailsPage        from '../modules/loi/details/AddDetailsPage.jsx';
 import TeamPage              from '../modules/team/TeamPage.jsx';
+import LegalStubPage         from '../modules/legal/LegalStubPage.jsx';
+import PaymentStubPage       from '../modules/payment/PaymentStubPage.jsx';
 import AdminPortalPage       from '../modules/admin/AdminPortalPage.jsx';
 
 // In HTTP (non-mock) mode the landing page is the unauthenticated entry. The
@@ -73,6 +75,17 @@ export default function AppRouter() {
         <Route path={ROUTES.TEAM} element={
           <RequireRole roles={['supervisor']}>
             <TeamPage/>
+          </RequireRole>
+        }/>
+
+        <Route path="/legal/*" element={
+          <RequireRole roles={['supervisor', 'executive']}>
+            <LegalStubPage/>
+          </RequireRole>
+        }/>
+        <Route path="/payment/*" element={
+          <RequireRole roles={['supervisor', 'executive']}>
+            <PaymentStubPage/>
           </RequireRole>
         }/>
 

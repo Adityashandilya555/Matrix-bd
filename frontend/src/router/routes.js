@@ -8,6 +8,8 @@ export const ROUTES = {
   STAGING:              '/staging',
   ARCHIVE:              '/archive',
   TEAM:                 '/team',
+  LEGAL:                '/legal',
+  PAYMENT:              '/payment',
   SITE:                 '/sites/:id',
   ADD_DETAILS:          '/shortlist/:code/details',
   LOI_TIMELINE:         '/shortlist/:code/timeline',

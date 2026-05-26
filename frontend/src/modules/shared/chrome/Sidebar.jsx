@@ -3,6 +3,7 @@ import { useNavigate, useLocation, NavLink } from 'react-router-dom';
 import Icon from '../primitives/Icon.jsx';
 import Avatar from '../primitives/Avatar.jsx';
 import { ROUTES } from '../../../router/routes.js';
+import { useSession } from '../../../state/SessionContext.jsx';
 
 // Render bodies preserved exactly from Chrome.jsx Sidebar + SidebarItem components.
 // Only changes:
@@ -45,9 +46,20 @@ const ROLE_LABELS = {
   exec: 'BD exec',
 };
 
+const SECTION_HEADING_STYLE = {
+  fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10,
+  letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-fg-4)',
+  padding: '14px 10px 6px',
+};
+
 export default function Sidebar({ counts, role, onRole }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { session } = useSession();
+  // Unit 6 will start emitting `module` on the JWT/session. Until then default
+  // to 'bd' so existing BD users keep their current sidebar.
+  const userModule = session?.module || 'bd';
+  const isStubModule = userModule === 'legal' || userModule === 'payment';
 
   // Active view derived from current URL path
   const path = location.pathname;
@@ -69,32 +81,24 @@ export default function Sidebar({ counts, role, onRole }) {
       display: 'flex', flexDirection: 'column', gap: 2,
       overflowY: 'auto',
     }}>
-      <div style={{
-        fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10,
-        letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-fg-4)',
-        padding: '4px 10px 6px',
-      }}>Overview</div>
+      <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Overview</div>
       <SidebarItem icon="trend" label="Sites in motion" active={activeView === 'overview'} onClick={() => go(ROUTES.OVERVIEW)}/>
 
-      <div style={{
-        fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10,
-        letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-fg-4)',
-        padding: '14px 10px 6px',
-      }}>Workflow</div>
-      <SidebarItem icon="file"   label="Pipeline"        count={counts.pipeline}  active={activeView === 'pipeline'}  onClick={() => go(ROUTES.PIPELINE)}/>
-      <SidebarItem icon="shield" label="Shortlist queue" count={counts.shortlist} active={activeView === 'shortlist'} onClick={() => go(ROUTES.SHORTLIST)}/>
-      <SidebarItem icon="box"    label="Staging"         count={counts.staging}   active={activeView === 'staging'}   onClick={() => go(ROUTES.STAGING)}/>
-      {(role === 'supervisor' || role === 'sub_supervisor') && (
-        <SidebarItem icon="folder" label="Archive" count={counts.archive} active={activeView === 'archive'} onClick={() => go(ROUTES.ARCHIVE)}/>
+      {!isStubModule && (
+        <>
+          <div style={SECTION_HEADING_STYLE}>Workflow</div>
+          <SidebarItem icon="file"   label="Pipeline"        count={counts.pipeline}  active={activeView === 'pipeline'}  onClick={() => go(ROUTES.PIPELINE)}/>
+          <SidebarItem icon="shield" label="Shortlist queue" count={counts.shortlist} active={activeView === 'shortlist'} onClick={() => go(ROUTES.SHORTLIST)}/>
+          <SidebarItem icon="box"    label="Staging"         count={counts.staging}   active={activeView === 'staging'}   onClick={() => go(ROUTES.STAGING)}/>
+          {(role === 'supervisor' || role === 'sub_supervisor') && (
+            <SidebarItem icon="folder" label="Archive" count={counts.archive} active={activeView === 'archive'} onClick={() => go(ROUTES.ARCHIVE)}/>
+          )}
+        </>
       )}
 
       {role === 'supervisor' && (
         <>
-          <div style={{
-            fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10,
-            letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-fg-4)',
-            padding: '14px 10px 6px',
-          }}>Workspace</div>
+          <div style={SECTION_HEADING_STYLE}>Workspace</div>
           <SidebarItem
             icon="user"
             label="Team"
