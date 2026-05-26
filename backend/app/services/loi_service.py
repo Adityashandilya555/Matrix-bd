@@ -35,10 +35,10 @@ async def svc_upload_loi(
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         # Site owner restriction (Todo #6). Only the executive who originally
-        # captured the site may upload the LOI. Supervisor and sub_supervisor
-        # roles are explicitly allowed (they can backfill on behalf of the
-        # owner when the owner is off-rotation), but a *different* executive
-        # cannot. This protects the field-team accountability chain.
+        # captured the site may upload the LOI. The supervisor role is
+        # explicitly allowed (they can backfill on behalf of the owner when
+        # the owner is off-rotation), but a *different* executive cannot.
+        # This protects the field-team accountability chain.
         actor_role = (actor.get("role") or "").lower()
         if actor_role == "executive" and str(site.submitted_by) != str(actor["sub"]):
             raise HTTPException(
@@ -75,7 +75,7 @@ async def svc_upload_loi(
             to_status=SiteStatus.LOI_UPLOADED.value,
             detail=filename,
         )
-        recipients = await recipients_for_supervisors(session, tenant_id=tenant_id, city=site.city)
+        recipients = await recipients_for_supervisors(session, tenant_id=tenant_id)
         await notify_enqueue(
             session, tenant_id=tenant_id, event="loi_uploaded",
             recipient_ids=recipients, site_id=site.id,

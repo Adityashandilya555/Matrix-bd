@@ -5,12 +5,10 @@ from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select, text, update
+from sqlalchemy import select, text
 
 from app.core.deps import CurrentUser, DbDep, TenantId
 from app.db import models
-from app.db.session import transaction
-from app.domain.schemas.common import OkResponse
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
 from app.services.audit_service import write_audit_event
@@ -20,21 +18,15 @@ router = APIRouter(prefix="/users", tags=["Users"])
 # Roles a supervisor is allowed to assign to a pending user. NOT exposed:
 #   - 'supervisor' (only the platform admin creates supervisors at workspace approval)
 #   - 'system'     (internal)
-_ASSIGNABLE_ROLES = {"sub_supervisor", "executive"}
+_ASSIGNABLE_ROLES = {"executive"}
 # Alias the landing-page nomenclature into the canonical role values.
 _ROLE_ALIASES = {
-    "sub-supervisor": "sub_supervisor",
-    "subsupervisor":  "sub_supervisor",
     "executive":      "executive",
     "bd_executive":   "executive",
     "bd-executive":   "executive",
     "bdexecutive":    "executive",
     "bd_person":      "executive",  # legacy alias
 }
-
-
-class AssignCityRequest(BaseModel):
-    city: str
 
 
 @router.get("/me", summary="Get current user")
@@ -69,34 +61,6 @@ async def list_users(
     }
 
 
-@router.post(
-    "/{user_id}/assign-city",
-    response_model=OkResponse,
-    summary="Assign sub-supervisor city scope",
-)
-async def assign_sub_supervisor_city(
-    user_id: str,
-    body: AssignCityRequest,
-    db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
-    tenant_id: TenantId,
-) -> OkResponse:
-    async with transaction(db):
-        await db.execute(
-            update(models.User)
-            .where(models.User.id == user_id, models.User.tenant_id == tenant_id)
-            .values(role=Role.SUB_SUPERVISOR.value, assigned_city=body.city)
-        )
-        await write_audit_event(
-            db, tenant_id=tenant_id, site_id=None,
-            actor_id=current_user["sub"], actor_name=current_user["name"],
-            action="assign_sub_supervisor_city",
-            entity_id=user_id, entity_type="user",
-            detail=f"city={body.city}",
-        )
-    return OkResponse(message=f"User {user_id} assigned to city {body.city}")
-
-
 # ── Pending users / role assignment ────────────────────────────────────────
 
 
@@ -111,8 +75,7 @@ class AssignRoleRequest(BaseModel):
         normalized = _ROLE_ALIASES.get(v.strip().lower(), v.strip().lower())
         if normalized not in _ASSIGNABLE_ROLES:
             raise ValueError(
-                "role must be one of: sub_supervisor, executive "
-                "(aliases: sub-supervisor, bd_executive)"
+                "role must be one of: executive (aliases: bd_executive)"
             )
         return normalized
 
@@ -178,7 +141,7 @@ async def assign_role(
     if user_row["is_active"]:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="User already has an assigned role. Use /assign-city for sub-supervisor scope changes.",
+            detail="User already has an assigned role.",
         )
 
     # 2. Activate the public.users row. The user's next /auth/login call will

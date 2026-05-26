@@ -3,7 +3,7 @@ from enum import Enum
 
 
 class Role(str, Enum):
-    EXECUTIVE = "executive"
+    BUSINESS_ADMIN = "business_admin"
     SUPERVISOR = "supervisor"
-    SUB_SUPERVISOR = "sub_supervisor"
+    EXECUTIVE = "executive"
     SYSTEM = "system"

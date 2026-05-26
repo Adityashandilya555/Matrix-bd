@@ -38,7 +38,7 @@ async def get_site_audit(
     site_id: str,
     db: DbDep,
     current_user: Annotated[
-        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR, Role.SUB_SUPERVISOR))
+        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))
     ],
     tenant_id: TenantId,
 ) -> AuditListResponse:

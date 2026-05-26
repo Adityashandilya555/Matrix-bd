@@ -4,7 +4,7 @@ Thin HTTP layer on top of `app.services.delegation_service`. See that module
 for the business rules. Three resource shapes:
 
     POST   /sites/{site_id}/delegations    — grant (supervisor only)
-    GET    /sites/{site_id}/delegations    — list active (supervisor / sub_sup)
+    GET    /sites/{site_id}/delegations    — list active (supervisor / executive)
     DELETE /delegations/{delegation_id}    — revoke (supervisor only)
     GET    /delegations/mine               — active delegations for caller
 """
@@ -59,7 +59,7 @@ async def list_site_delegations(
     site_id: str,
     db: DbDep,
     current_user: Annotated[
-        dict, Depends(require_role(Role.SUPERVISOR, Role.SUB_SUPERVISOR))
+        dict, Depends(require_role(Role.SUPERVISOR, Role.EXECUTIVE))
     ],
     tenant_id: TenantId,
 ) -> dict:
@@ -89,7 +89,7 @@ async def revoke_delegation(
 async def list_my_delegations(
     db: DbDep,
     current_user: Annotated[
-        dict, Depends(require_role(Role.SUPERVISOR, Role.SUB_SUPERVISOR, Role.EXECUTIVE))
+        dict, Depends(require_role(Role.SUPERVISOR, Role.EXECUTIVE))
     ],
     tenant_id: TenantId,
 ) -> dict:

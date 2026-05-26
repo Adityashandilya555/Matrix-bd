@@ -67,11 +67,6 @@ class ReassignSiteRequest(BaseModel):
     new_owner_id: str
 
 
-class AssignSubSupervisorRequest(BaseModel):
-    user_id: str
-    city: str
-
-
 class ArchiveSiteRequest(BaseModel):
     note: str | None = None
 

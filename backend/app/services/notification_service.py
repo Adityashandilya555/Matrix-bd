@@ -13,7 +13,7 @@ routes don't pass magic strings into `recipient_ids` anymore.
 """
 from __future__ import annotations
 
-from typing import Iterable, Literal, Optional, Sequence
+from typing import Iterable, Literal, Sequence
 from uuid import UUID
 
 from sqlalchemy import select
@@ -29,16 +29,14 @@ NotificationChannel = Literal["email", "slack", "in_app"]
 # ── Recipient resolution ──────────────────────────────────────────────────
 
 async def recipients_for_supervisors(
-    session: AsyncSession, *, tenant_id: str | UUID, city: Optional[str] = None,
+    session: AsyncSession, *, tenant_id: str | UUID,
 ) -> list[UUID]:
-    """All supervisors (and sub_supervisors scoped to `city`) in the tenant."""
+    """All supervisors in the tenant."""
     stmt = select(models.User.id).where(
         models.User.tenant_id == tenant_id,
         models.User.is_active.is_(True),
+        models.User.role == Role.SUPERVISOR.value,
     )
-    stmt = stmt.where(models.User.role.in_([Role.SUPERVISOR.value, Role.SUB_SUPERVISOR.value]))
-    if city:
-        stmt = stmt.where((models.User.assigned_city == city) | (models.User.role == Role.SUPERVISOR.value))
     return [r for r in (await session.execute(stmt)).scalars().all()]
 
 

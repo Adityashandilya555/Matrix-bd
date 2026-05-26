@@ -56,7 +56,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(Text, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
-    # ADDED (run_alter_table §users): city scope for sub_supervisor role
+    # ADDED (run_alter_table §users): supervisor metadata (display only).
     assigned_city: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -171,7 +171,7 @@ class AuditLog(Base):
     actor_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     actor_name: Mapped[Optional[str]] = mapped_column(Text)  # denormalised for the activity tab
     action: Mapped[str] = mapped_column(Text, nullable=False)
-    # Generic entity pointers retained for non-site events (e.g. assign_sub_supervisor)
+    # Generic entity pointers retained for non-site events (e.g. assign_role)
     entity_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     entity_type: Mapped[Optional[str]] = mapped_column(Text)
     # ADDED: stage transition columns
