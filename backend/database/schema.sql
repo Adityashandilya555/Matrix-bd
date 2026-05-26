@@ -217,6 +217,7 @@ CREATE TABLE public.users (
   name text NOT NULL,
   tenant_id uuid NOT NULL,
   assigned_city text,
+  notes text,
   CONSTRAINT users_pkey PRIMARY KEY (id),
   CONSTRAINT users_tenant_id_email_key UNIQUE (tenant_id, email),
   CONSTRAINT users_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)
