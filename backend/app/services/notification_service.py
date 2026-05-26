@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Iterable, Literal, Sequence
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -31,13 +31,39 @@ NotificationChannel = Literal["email", "slack", "in_app"]
 async def recipients_for_supervisors(
     session: AsyncSession, *, tenant_id: str | UUID,
 ) -> list[UUID]:
-    """All supervisors in the tenant."""
+    """All supervisors in the tenant (3-role model: role == 'supervisor')."""
     stmt = select(models.User.id).where(
         models.User.tenant_id == tenant_id,
         models.User.is_active.is_(True),
         models.User.role == Role.SUPERVISOR.value,
     )
     return [r for r in (await session.execute(stmt)).scalars().all()]
+
+
+async def recipients_for_legal_supervisors(
+    session: AsyncSession, *, tenant_id: str | UUID,
+) -> list[UUID]:
+    """Supervisors whose module membership is 'legal' in this tenant.
+
+    Queries user_module_memberships (the authoritative membership table) rather
+    than users.role, because in the 3-role model all legal staff are simply
+    role=supervisor / role=executive scoped to module='legal'.
+    """
+    rows = await session.execute(
+        text(
+            """
+            SELECT u.id
+              FROM user_module_memberships m
+              JOIN users u ON u.id = m.user_id
+             WHERE m.tenant_id  = :tenant_id
+               AND m.module     = 'legal'
+               AND m.role_in_module = 'supervisor'
+               AND u.is_active  = true
+            """
+        ),
+        {"tenant_id": str(tenant_id)},
+    )
+    return [row[0] for row in rows]
 
 
 async def recipients_for_site_owner(
