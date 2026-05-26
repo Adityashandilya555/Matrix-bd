@@ -52,7 +52,7 @@ router = APIRouter(prefix="/sites", tags=["Sites"])
 async def list_all_sites(
     db: DbDep,
     current_user: Annotated[
-        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR, Role.SUB_SUPERVISOR))
+        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))
     ],
     tenant_id: TenantId,
     status_filter: Optional[str] = Query(None, alias="status"),
@@ -68,7 +68,7 @@ async def get_site(
     site_id: str,
     db: DbDep,
     current_user: Annotated[
-        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR, Role.SUB_SUPERVISOR))
+        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))
     ],
     tenant_id: TenantId,
 ) -> SiteResponse:
@@ -80,7 +80,7 @@ async def get_site_activity(
     site_id: str,
     db: DbDep,
     current_user: Annotated[
-        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR, Role.SUB_SUPERVISOR))
+        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))
     ],
     tenant_id: TenantId,
 ) -> AuditListResponse:
@@ -96,7 +96,7 @@ async def get_site_documents(
     site_id: str,
     db: DbDep,
     current_user: Annotated[
-        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR, Role.SUB_SUPERVISOR))
+        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))
     ],
     tenant_id: TenantId,
 ) -> dict:
@@ -191,7 +191,7 @@ async def patch_site_status(
         # Mirror the /staging/{id}/push role-gate (Todo #7). The generic
         # status patcher is open to any authed role, but Push-to-Payments is
         # supervisor-only and we want both entry points to enforce the same
-        # rule. Sub-supervisors + executives have to call the supervisor.
+        # rule. Executives have to call the supervisor.
         if (current_user.get("role") or "").lower() != "supervisor":
             raise HTTPException(
                 status_code=http_status.HTTP_403_FORBIDDEN,
@@ -233,7 +233,7 @@ async def archive_site(
     site_id: str,
     body: ArchiveSiteRequest,
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.SUB_SUPERVISOR))],
+    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
     tenant_id: TenantId,
 ) -> OkResponse:
     return await svc_archive_site(
@@ -272,7 +272,7 @@ async def reject_site(
     site_id: str,
     body: _RejectSiteBody,
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.SUB_SUPERVISOR))],
+    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
     tenant_id: TenantId,
 ) -> OkResponse:
     return await svc_reject_site(

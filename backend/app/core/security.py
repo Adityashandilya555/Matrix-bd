@@ -82,7 +82,7 @@ def decode_token(token: str) -> dict[str, Any]:
           "sub":       <uuid string>,
           "name":      <display name from user_metadata.full_name or email>,
           "email":     <email>,
-          "role":      <executive | supervisor | sub_supervisor | system>,
+          "role":      <business_admin | supervisor | executive | system>,
           "tenant_id": <uuid string>,
           "city":      <city slug or None>,
         }

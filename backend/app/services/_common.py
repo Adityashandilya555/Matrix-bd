@@ -63,7 +63,6 @@ def apply_role_scope(stmt, *, model, user: dict):
 
     - executive: only sites they submitted (or are assigned to).
     - supervisor: all sites in the tenant.
-    - sub_supervisor: all sites in the tenant that match the user's city.
 
     Tenant scoping is the caller's responsibility (already applied by the
     `tenant_id == ...` clause); this layer adds role-specific WHEREs.
@@ -72,8 +71,6 @@ def apply_role_scope(stmt, *, model, user: dict):
     if role == Role.EXECUTIVE.value:
         uid = user["sub"]
         stmt = stmt.where((model.submitted_by == uid) | (model.assigned_to == uid))
-    elif role == Role.SUB_SUPERVISOR.value and user.get("city"):
-        stmt = stmt.where(model.city == user["city"])
     # supervisor / system: no further filter
     return stmt
 

@@ -50,7 +50,7 @@ async def view_loi(
     site_id: str,
     db: DbDep,
     current_user: Annotated[
-        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR, Role.SUB_SUPERVISOR))
+        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))
     ],
     tenant_id: TenantId,
 ) -> LOIViewResponse:
@@ -66,7 +66,7 @@ async def set_loi_timeline(
     site_id: str,
     body: SetLOITimelineRequest,
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.SUB_SUPERVISOR))],
+    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
     tenant_id: TenantId,
 ) -> OkResponse:
     return await svc_set_loi_timeline(

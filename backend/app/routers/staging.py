@@ -38,7 +38,7 @@ async def list_exec_staging(
 @router.get("/supervisor", response_model=SiteListResponse, summary="List supervisor staging sites")
 async def list_supervisor_staging(
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.SUB_SUPERVISOR))],
+    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
     tenant_id: TenantId,
 ) -> SiteListResponse:
     return await list_sites(db, tenant_id=tenant_id, user=current_user, status="loi_uploaded")

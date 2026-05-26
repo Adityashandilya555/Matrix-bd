@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 class AuditEvent(BaseModel):
     id: str
-    site_id: Optional[str] = None  # nullable for non-site events (e.g. assign_sub_supervisor)
+    site_id: Optional[str] = None  # nullable for non-site events (e.g. assign_role)
     actor: str  # denormalised actor name (audit_logs.actor_name)
     action: str
     from_status: Optional[str] = None

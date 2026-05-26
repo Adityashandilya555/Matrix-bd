@@ -20,7 +20,6 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -35,7 +34,6 @@ from app.services._common import (
     site_to_response,
 )
 from app.services.audit_service import diff_and_log_pipeline_fields, write_audit_event
-from app.services.delegation_service import actor_has_delegation_for_site
 from app.services.notification_service import (
     enqueue as notify_enqueue,
     recipients_for_site_owner,
@@ -45,53 +43,10 @@ from app.services.notification_service import (
 
 # ── Authorisation guards ──────────────────────────────────────────────────
 #
-# Two cross-cutting rules every state-changing action goes through.
-#
-#   1. City scope (sub_supervisor only). Sub-supervisors own a city. They are
-#      *not* allowed to act on a site that lives in another city. Supervisors
-#      have no city restriction. Executives reach these paths only through
-#      their own submissions and so are implicitly already in-scope.
-#
-#   2. Self-approval. Whoever submitted the draft cannot also be the one who
-#      approves / rejects it. The supervisor's own drafts skip approval
-#      entirely via the auto-promote rule (see Todo #10) — they never reach
-#      these guards as a self-approval. This is purely defensive.
-#
-
-def _city_eq(a: str | None, b: str | None) -> bool:
-    return (a or "").strip().lower() == (b or "").strip().lower()
-
-
-async def _assert_actor_can_act_on_site(
-    session: AsyncSession, actor: dict, site: models.Site,
-) -> None:
-    """City-scope guard. Raises 403 if sub_supervisor is acting outside their
-    assigned city. Supervisor / executive pass through untouched.
-
-    Delegation override: if the sub-supervisor holds an active delegation for
-    this specific site, the city check is bypassed — that's the whole point of
-    the delegation feature (let a deputy own a single cross-city site)."""
-    if (actor.get("role") or "").lower() != "sub_supervisor":
-        return
-    if await actor_has_delegation_for_site(
-        session, tenant_id=site.tenant_id, site_id=site.id, user_id=actor["sub"],
-    ):
-        return
-    actor_city = actor.get("city")
-    if not actor_city:
-        raise HTTPException(
-            status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="Sub-supervisor has no assigned city. Ask the supervisor to set one on /team.",
-        )
-    if not _city_eq(actor_city, site.city):
-        raise HTTPException(
-            status_code=http_status.HTTP_403_FORBIDDEN,
-            detail=(
-                f"You can only act on sites in your assigned city "
-                f"({actor_city}). This site is in {site.city}. Ask the "
-                f"supervisor to delegate this site to you."
-            ),
-        )
+# Self-approval rule: whoever submitted the draft cannot also be the one who
+# approves / rejects it. The supervisor's own drafts skip approval entirely
+# via the auto-promote rule (see Todo #10) — they never reach these guards as
+# a self-approval. This is purely defensive.
 
 
 def _assert_not_self_approval(actor: dict, site: models.Site) -> None:
@@ -168,7 +123,7 @@ async def svc_create_draft(
         # Supervisors don't need to notify themselves; for executives the
         # supervisor cohort gets the email/slack ping.
         if not is_supervisor:
-            recipients = await recipients_for_supervisors(session, tenant_id=tenant_id, city=city)
+            recipients = await recipients_for_supervisors(session, tenant_id=tenant_id)
             await notify_enqueue(
                 session,
                 tenant_id=tenant_id,
@@ -193,7 +148,6 @@ async def svc_shortlist_draft(
 ) -> SiteResponse:
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        await _assert_actor_can_act_on_site(session, actor, site)
         _assert_not_self_approval(actor, site)
         assert_transition(SiteStatus(site.status), SiteStatus.SHORTLISTED)
         site.status = SiteStatus.SHORTLISTED.value
@@ -326,7 +280,7 @@ async def svc_submit_details(
             from_status=SiteStatus.SHORTLISTED.value,
             to_status=SiteStatus.DETAILS_SUBMITTED.value,
         )
-        recipients = await recipients_for_supervisors(session, tenant_id=tenant_id, city=site.city)
+        recipients = await recipients_for_supervisors(session, tenant_id=tenant_id)
         await notify_enqueue(
             session, tenant_id=tenant_id, event="details_submitted_for_review",
             recipient_ids=recipients, site_id=site.id,
@@ -349,7 +303,6 @@ async def svc_approve_shortlist(
 ) -> SiteResponse:
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        await _assert_actor_can_act_on_site(session, actor, site)
         _assert_not_self_approval(actor, site)
         assert_transition(SiteStatus(site.status), SiteStatus.APPROVED)
         approved_at = datetime.now(timezone.utc)
@@ -401,7 +354,6 @@ async def svc_push_to_payments(
 ) -> OkResponse:
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        await _assert_actor_can_act_on_site(session, actor, site)
         assert_transition(SiteStatus(site.status), SiteStatus.PUSHED_TO_PAYMENTS)
         site.status = SiteStatus.PUSHED_TO_PAYMENTS.value
         site.pushed_to_payments_at = datetime.now(timezone.utc)
@@ -430,7 +382,6 @@ async def svc_reject_site(
 ) -> OkResponse:
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        await _assert_actor_can_act_on_site(session, actor, site)
         _assert_not_self_approval(actor, site)
         assert_transition(SiteStatus(site.status), SiteStatus.REJECTED)
         site.status = SiteStatus.REJECTED.value
@@ -461,7 +412,6 @@ async def svc_archive_site(
 ) -> OkResponse:
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        await _assert_actor_can_act_on_site(session, actor, site)
         # Archive note is mandatory — see Todo #9. Per the product spec every
         # archived site must carry a reason so the Archive tab is browsable.
         clean_note = (note or "").strip()
@@ -494,7 +444,7 @@ async def svc_revive_site(
 ) -> OkResponse:
     """Revive an archived site back to the stage it was at when archived.
 
-    Only the supervisor can revive — sub-supervisors and executives must ask
+    Only the supervisor can revive — executives must ask
     for it. The site's `archived_from_status` field is the source of truth
     for where to put it back. If it's missing (older archives that predate
     the column), we fall back to draft_submitted so the site is at least

@@ -8,14 +8,14 @@ PERMISSIONS: dict[str, list[Role]] = {
     "upload_loi":                 [Role.EXECUTIVE],
     "view_own_loi":               [Role.EXECUTIVE],
 
-    "shortlist":                  [Role.SUPERVISOR, Role.SUB_SUPERVISOR],
-    "approve_details":            [Role.SUPERVISOR, Role.SUB_SUPERVISOR],
-    "reject":                     [Role.SUPERVISOR, Role.SUB_SUPERVISOR],
-    "archive":                    [Role.SUPERVISOR, Role.SUB_SUPERVISOR],
-    "set_loi_timeline":           [Role.SUPERVISOR, Role.SUB_SUPERVISOR],
-    "push_to_payments":           [Role.SUPERVISOR, Role.SUB_SUPERVISOR],
+    "shortlist":                  [Role.SUPERVISOR],
+    "approve_details":            [Role.SUPERVISOR],
+    "reject":                     [Role.SUPERVISOR],
+    "archive":                    [Role.SUPERVISOR],
+    "set_loi_timeline":           [Role.SUPERVISOR],
+    "push_to_payments":           [Role.SUPERVISOR],
     "reassign_site":              [Role.SUPERVISOR],
-    "assign_sub_supervisor":      [Role.SUPERVISOR],
+    "manage_module_team":         [Role.SUPERVISOR],
 }
 
 
