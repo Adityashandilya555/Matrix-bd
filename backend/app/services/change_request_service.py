@@ -26,6 +26,7 @@ from app.domain.schemas.legal_change_request import (
     CreateChangeRequestRequest,
     ReviewChangeRequestRequest,
 )
+from app.domain.state_machine import SiteStatus, assert_transition
 from app.services._common import fetch_site_or_404, fetch_user_name
 from app.services.audit_service import write_audit_event
 from app.services.notification_service import (
@@ -233,6 +234,105 @@ async def _fetch_request_or_404(
     return cr
 
 
+async def _maybe_recover_dd_verdict(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    actor: dict,
+    cr: models.LegalChangeRequest,
+    site: models.Site,
+) -> None:
+    """Auto-recover a LEGAL_REJECTED site when an approved CR flips the last
+    failing DD item to 'yes'.
+
+    Defensive defaults — every precondition must hold or this is a no-op:
+      - The CR targets `legal_dd_checklist`.
+      - A DD row exists for this site (it should, given the CR existed).
+      - All 9 items now read 'yes'.
+      - Prior `final_verdict == 'negative'`.
+      - `sites.status == LEGAL_REJECTED`.
+    """
+    if cr.target_table != "legal_dd_checklist":
+        return
+
+    dd = (await session.execute(
+        select(models.LegalDdChecklist).where(models.LegalDdChecklist.site_id == cr.site_id)
+    )).scalar_one_or_none()
+    if dd is None:
+        return
+
+    if not all(getattr(dd, col) == "yes" for col in _DD_FIELDS):
+        return
+
+    if dd.final_verdict != "negative":
+        return
+
+    if site.status != SiteStatus.LEGAL_REJECTED.value:
+        # Verdict flips to positive only when paired with the rejected→review
+        # transition. If the site isn't in LEGAL_REJECTED there's nothing to
+        # recover (and we don't want to silently mutate the verdict outside
+        # of the recovery path — legal_service owns positive verdicts).
+        return
+
+    # All preconditions met — flip the verdict and revive the site.
+    dd.final_verdict = "positive"
+    assert_transition(SiteStatus.LEGAL_REJECTED, SiteStatus.LEGAL_REVIEW)
+    site.status = SiteStatus.LEGAL_REVIEW.value
+    site.legal_dd_status = "positive"
+    site.legal_rejected_at = None
+
+    await write_audit_event(
+        session, tenant_id=tenant_id, site_id=site.id,
+        actor_id=actor["sub"], actor_name=actor["name"],
+        action="legal_dd_recovered",
+        from_status=SiteStatus.LEGAL_REJECTED.value,
+        to_status=SiteStatus.LEGAL_REVIEW.value,
+        detail=f"DD verdict recomputed to positive after CR {cr.id}",
+        entity_id=cr.id,
+        entity_type="legal_change_request",
+    )
+
+    # Mirror svc_save_due_diligence rejection-path notifications, in reverse:
+    # legal supervisors are looped in (email + in_app); BD owner gets an in_app ack.
+    legal_recipients = await recipients_for_legal_supervisors(session, tenant_id=tenant_id)
+    if legal_recipients:
+        await notify_enqueue(
+            session, tenant_id=tenant_id, event="site_recovered_to_legal_review",
+            recipient_ids=legal_recipients, site_id=site.id,
+            channels=("email", "in_app"),
+            payload={
+                "site_id": str(site.id),
+                "site_name": site.name,
+                "change_request_id": str(cr.id),
+            },
+            subject=f"Site recovered to legal review: {site.name}",
+            body=(
+                f"'{site.name}' ({site.code}) was previously LEGAL_REJECTED. A BD "
+                f"change request flipping the final failing DD item was just approved, "
+                f"so the site has been auto-recovered to LEGAL_REVIEW with a positive "
+                f"DD verdict."
+            ),
+        )
+
+    bd_recipients = await recipients_for_site_owner(session, site=site)
+    if bd_recipients:
+        await notify_enqueue(
+            session, tenant_id=tenant_id, event="site_recovered_to_legal_review_ack",
+            recipient_ids=bd_recipients, site_id=site.id,
+            channels=("in_app",),
+            payload={
+                "site_id": str(site.id),
+                "site_name": site.name,
+                "change_request_id": str(cr.id),
+            },
+            subject=f"Site back in legal review: {site.name}",
+            body=(
+                f"Your change request on '{site.name}' was approved and the site has "
+                f"been moved back into legal review."
+            ),
+        )
+
+
 async def svc_approve_change_request(
     session: AsyncSession,
     *,
@@ -277,6 +377,19 @@ async def svc_approve_change_request(
             detail=body.reviewer_note or "",
             entity_id=cr.id,
             entity_type="legal_change_request",
+        )
+
+        # ── DD recovery loop ─────────────────────────────────────────────
+        # If a CR on a DD item flips the final failing 'no' to 'yes' on a site
+        # that was previously LEGAL_REJECTED, recompute the verdict and revive
+        # the site back into LEGAL_REVIEW. Strict preconditions short-circuit
+        # this whole block in the common case.
+        await _maybe_recover_dd_verdict(
+            session,
+            tenant_id=tenant_id,
+            actor=actor,
+            cr=cr,
+            site=site,
         )
 
         bd_recipients = await recipients_for_site_owner(session, site=site)
