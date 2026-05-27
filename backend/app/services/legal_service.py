@@ -13,13 +13,18 @@ Cross-module status mirrors on sites that BD reads for dashboard chips:
 """
 from __future__ import annotations
 
+import json
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from app.db import models
 from app.db.session import transaction
@@ -145,9 +150,17 @@ async def _build_review_response(
 # ── Queue ─────────────────────────────────────────────────────────────────────
 
 async def svc_legal_queue(
-    session: AsyncSession, *, tenant_id: str | UUID,
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    restrict_to_site_ids: Optional[list[str]] = None,
 ) -> LegalQueueResponse:
-    """Return all sites currently in LEGAL_REVIEW with their DD checklist status."""
+    """Return all sites currently in LEGAL_REVIEW with their DD checklist status.
+
+    `restrict_to_site_ids` is an optional additive filter the router passes
+    when the caller is an executive (so they see only delegated sites).
+    Pass None for the supervisor-wide view.
+    """
     stmt = (
         select(models.Site)
         .where(
@@ -156,6 +169,11 @@ async def svc_legal_queue(
         )
         .order_by(models.Site.legal_review_at.asc())
     )
+    if restrict_to_site_ids is not None:
+        if not restrict_to_site_ids:
+            return LegalQueueResponse(items=[], total=0)
+        stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
+
     sites = (await session.execute(stmt)).scalars().all()
 
     items: list[LegalQueueItem] = []
@@ -298,7 +316,72 @@ async def svc_save_due_diligence(
                 detail="Positive DD — proceeding to Agreement",
             )
 
+            # Auto-inherit licensing: if a `site_delegations` row exists for
+            # this site with module='legal' (introduced in slice U2), the same
+            # delegated executive inherits licensing — no new row needed.
+            # We wrap the lookup in a SAVEPOINT + try/except so that a missing
+            # table (U2 not yet landed) is silently skipped rather than
+            # aborting the whole DD-finalize transaction.
+            delegate_user_id = await _find_legal_delegate(session, site_id=site.id)
+            if delegate_user_id is not None:
+                await write_audit_event(
+                    session, tenant_id=tenant_id, site_id=site.id,
+                    actor_id=actor["sub"], actor_name=actor["name"],
+                    action="legal_licensing_auto_inherited",
+                    detail=json.dumps({"delegate_user_id": str(delegate_user_id)}),
+                )
+                await notify_enqueue(
+                    session, tenant_id=tenant_id,
+                    event="legal_licensing_assigned",
+                    recipient_ids=[delegate_user_id], site_id=site.id,
+                    channels=("in_app",),
+                    payload={
+                        "site_id":   str(site.id),
+                        "site_name": site.name,
+                    },
+                    subject=f"Licensing assigned: {site.name}",
+                    body=(
+                        f"You have been auto-assigned licensing for '{site.name}' "
+                        f"({site.code}) following a positive DD verdict."
+                    ),
+                )
+
     return await _build_review_response(session, site)
+
+
+async def _find_legal_delegate(
+    session: AsyncSession, *, site_id: str | UUID,
+) -> Optional[UUID]:
+    """Look up the legal delegate for a site if the U2 table exists.
+
+    Returns the delegate's user id or None if no active delegation. Tolerates
+    the `site_delegations` table not yet existing (slice U2 unshipped) by
+    catching the database error inside a SAVEPOINT and skipping silently.
+    """
+    try:
+        async with session.begin_nested():
+            row = (await session.execute(
+                text(
+                    """
+                    SELECT delegate_user_id
+                      FROM site_delegations
+                     WHERE site_id   = :site_id
+                       AND module    = 'legal'
+                       AND revoked_at IS NULL
+                     LIMIT 1
+                    """
+                ),
+                {"site_id": str(site_id)},
+            )).first()
+        return row[0] if row else None
+    except SQLAlchemyError as exc:
+        # Most likely UndefinedTable: U2 hasn't created site_delegations yet.
+        # SAVEPOINT was rolled back, so the outer transaction is still clean.
+        logger.info(
+            "site_delegations lookup skipped for site %s (table missing or query failed): %s",
+            site_id, exc,
+        )
+        return None
 
 
 # ── Step 3 · Agreement ────────────────────────────────────────────────────────

@@ -320,6 +320,29 @@ class ShortlistDelegation(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
 
+# ── Module-aware site delegation (legal / payment / bd) ────────────────────
+# Mirrors ShortlistDelegation but carries an explicit `module` discriminator so
+# the same row shape can serve any module. Legal is the first consumer.
+
+class SiteDelegation(Base):
+    __tablename__ = "site_delegations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), nullable=False)
+    module: Mapped[str] = mapped_column(Text, nullable=False)
+    delegate_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    granted_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    revoked_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint("module IN ('bd','legal','payment')", name="chk_site_delegations_module"),
+    )
+
+
 # ── Legal workflow child tables ───────────────────────────────────────────────
 # Three separate 1:1 tables owned by the Legal module.
 # The parent `sites` row carries mirror status columns (legal_dd_status,
