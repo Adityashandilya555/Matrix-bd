@@ -13,12 +13,15 @@ Cross-module status mirrors on sites that BD reads for dashboard chips:
 """
 from __future__ import annotations
 
+import json
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -43,6 +46,8 @@ from app.services.notification_service import (
     recipients_for_legal_supervisors,
     recipients_for_site_owner,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -298,7 +303,70 @@ async def svc_save_due_diligence(
                 detail="Positive DD — proceeding to Agreement",
             )
 
+            # The same legal delegate inherits licensing automatically: one
+            # `site_delegations` row covers both DD and licensing under
+            # module='legal'. Wrapped in a SAVEPOINT (see helper) so a missing
+            # site_delegations table (slice U2 not yet shipped) is a silent
+            # no-op rather than a failed finalize.
+            delegate_user_id = await _find_legal_delegate(session, site_id=site.id)
+            if delegate_user_id is not None:
+                await write_audit_event(
+                    session, tenant_id=tenant_id, site_id=site.id,
+                    actor_id=actor["sub"], actor_name=actor["name"],
+                    action="legal_licensing_auto_inherited",
+                    detail=json.dumps({"delegate_user_id": str(delegate_user_id)}),
+                )
+                await notify_enqueue(
+                    session, tenant_id=tenant_id,
+                    event="legal_licensing_assigned",
+                    recipient_ids=[delegate_user_id], site_id=site.id,
+                    channels=("in_app",),
+                    payload={
+                        "site_id":   str(site.id),
+                        "site_name": site.name,
+                    },
+                    subject=f"Licensing assigned: {site.name}",
+                    body=(
+                        f"You have been auto-assigned licensing for '{site.name}' "
+                        f"({site.code}) following a positive DD verdict."
+                    ),
+                )
+
     return await _build_review_response(session, site)
+
+
+async def _find_legal_delegate(
+    session: AsyncSession, *, site_id: str | UUID,
+) -> Optional[UUID]:
+    """Look up the legal delegate for a site, tolerating a missing U2 table.
+
+    Slice U2 introduces `site_delegations`. Until that migration lands the
+    table doesn't exist, so we run the lookup inside a SAVEPOINT and swallow
+    SQLAlchemyError — the outer transaction stays clean and the caller falls
+    back to "no delegate".
+    """
+    try:
+        async with session.begin_nested():
+            row = (await session.execute(
+                text(
+                    """
+                    SELECT delegate_user_id
+                      FROM site_delegations
+                     WHERE site_id   = :site_id
+                       AND module    = 'legal'
+                       AND revoked_at IS NULL
+                     LIMIT 1
+                    """
+                ),
+                {"site_id": str(site_id)},
+            )).first()
+        return row[0] if row else None
+    except SQLAlchemyError as exc:
+        logger.info(
+            "site_delegations lookup skipped for site %s (table missing or query failed): %s",
+            site_id, exc,
+        )
+        return None
 
 
 # ── Step 3 · Agreement ────────────────────────────────────────────────────────

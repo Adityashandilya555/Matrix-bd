@@ -2,8 +2,10 @@ import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ModuleChecklistPage from '../../shared/checklist/ModuleChecklistPage.jsx';
 import { usePageContext } from '../../../App.jsx';
+import { useSession } from '../../../state/SessionContext.jsx';
 import { getLegalReview, saveDdItems, finalizeDd } from '../../../services/api/legalApi.js';
-import { ROUTES } from '../../../router/routes.js';
+import { listSiteDelegations } from '../../../services/api/siteService.js';
+import { ROUTES, paymentSiteLicensingRoute } from '../../../router/routes.js';
 
 const DDR_CHECKS = [
   { id: 'title_doc',       label: 'Title / ownership verified' },
@@ -43,12 +45,18 @@ export default function DdrPage() {
   const { siteId } = useParams();
   const navigate = useNavigate();
   const { showToast } = usePageContext();
+  const { role, session } = useSession();
+  const isExecutive = role === 'executive' || role === 'exec';
+  const myUserId = session?.userId || null;
 
   const [review, setReview] = React.useState(null);
   const [loadState, setLoadState] = React.useState('loading'); // loading | ready | error
   const [error, setError] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
+  // Active delegations for this site. Empty array if U2 hasn't shipped yet —
+  // the licensing CTA simply stays hidden in that case.
+  const [delegations, setDelegations] = React.useState([]);
 
   React.useEffect(() => {
     if (!siteId) return;
@@ -65,6 +73,15 @@ export default function DdrPage() {
         setError(err?.detail || err?.message || 'Failed to load DDR');
         setLoadState('error');
       });
+    return () => { cancelled = true; };
+  }, [siteId]);
+
+  React.useEffect(() => {
+    if (!siteId) return;
+    let cancelled = false;
+    listSiteDelegations(siteId)
+      .then((items) => { if (!cancelled) setDelegations(items || []); })
+      .catch(() => { if (!cancelled) setDelegations([]); });
     return () => { cancelled = true; };
   }, [siteId]);
 
@@ -164,7 +181,56 @@ export default function DdrPage() {
     iconColor: 'var(--zm-plum)',
   };
 
+  // Executive's licensing CTA is unlocked when the DD is positive + published
+  // and there's an active delegation on this site that names me. Missing
+  // `stage` (slice U3 not yet shipped) defaults to 'published' so the gate
+  // doesn't lock executives out once U2 ships before U3.
+  const ddStage = review?.dd?.stage ?? 'published';
+  const ddIsPublished = ddStage === 'published';
+  const ddPositive = review?.dd?.final_verdict === 'positive';
+  const isDelegateForMe = !!myUserId && delegations.some(
+    (d) => String(d.delegateUserId) === String(myUserId),
+  );
+  const showLicensingTab =
+    isExecutive && ddIsPublished && ddPositive && isDelegateForMe;
+
+  const licensingTab = showLicensingTab ? (
+    <div
+      className="zm-glass"
+      style={{
+        padding: 16, borderRadius: 12, marginBottom: 12,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+      }}
+    >
+      <div>
+        <div style={{
+          fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 11,
+          letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--zm-fg-3)',
+        }}>
+          Licensing
+        </div>
+        <div style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', marginTop: 4 }}>
+          DD is positive and published — licensing has been auto-assigned to you.
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => navigate(paymentSiteLicensingRoute(siteId))}
+        className="zm-btn-primary"
+        style={{
+          height: 34, padding: '0 14px', borderRadius: 7, border: 'none',
+          background: 'var(--zm-accent)', color: '#fff',
+          fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 800, cursor: 'pointer',
+        }}
+      >
+        Open licensing
+      </button>
+    </div>
+  ) : null;
+
   return (
+    <>
+    {licensingTab}
     <ModuleChecklistPage
       checks={DDR_CHECKS}
       site={site}
@@ -200,5 +266,6 @@ export default function DdrPage() {
       saving={saving}
       submitting={submitting}
     />
+    </>
   );
 }
