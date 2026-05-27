@@ -2,7 +2,13 @@ import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ModuleChecklistPage from '../../shared/checklist/ModuleChecklistPage.jsx';
 import { usePageContext } from '../../../App.jsx';
-import { getLegalReview, saveDdItems, finalizeDd } from '../../../services/api/legalApi.js';
+import {
+  getLegalReview,
+  saveDdItems,
+  finalizeDd,
+  submitDdForReview,
+} from '../../../services/api/legalApi.js';
+import { useSession } from '../../../state/SessionContext.jsx';
 import { ROUTES } from '../../../router/routes.js';
 
 const DDR_CHECKS = [
@@ -43,12 +49,14 @@ export default function DdrPage() {
   const { siteId } = useParams();
   const navigate = useNavigate();
   const { showToast } = usePageContext();
+  const { role } = useSession();
 
   const [review, setReview] = React.useState(null);
   const [loadState, setLoadState] = React.useState('loading'); // loading | ready | error
   const [error, setError] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
+  const [submittingForReview, setSubmittingForReview] = React.useState(false);
 
   React.useEffect(() => {
     if (!siteId) return;
@@ -91,6 +99,9 @@ export default function DdrPage() {
 
   const initialCore = coreFromDd(review?.dd);
   const initialOthers = otherRowsFromDd(review?.dd);
+  const stage = review?.dd?.stage || 'draft';
+  // Edit gate: executives only when stage === 'draft'. Supervisors edit any stage.
+  const canEdit = role === 'supervisor' || stage === 'draft';
 
   const buildPayload = ({ coreStatuses, otherRows }) => {
     const payload = {};
@@ -106,6 +117,10 @@ export default function DdrPage() {
   };
 
   const handleSave = async (snapshot) => {
+    if (!canEdit) {
+      showToast?.(`DDR is ${stage.replace('_', ' ')} — edits are locked for ${role}.`, 'danger');
+      return;
+    }
     try {
       setSaving(true);
       const payload = buildPayload(snapshot);
@@ -116,6 +131,19 @@ export default function DdrPage() {
       showToast?.(err?.detail || err?.message || 'Save failed', 'danger');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSubmitForReview = async () => {
+    try {
+      setSubmittingForReview(true);
+      const next = await submitDdForReview(siteId);
+      setReview(next);
+      showToast?.('DDR submitted for supervisor review.', 'success');
+    } catch (err) {
+      showToast?.(err?.detail || err?.message || 'Submit for review failed', 'danger');
+    } finally {
+      setSubmittingForReview(false);
     }
   };
 
@@ -199,6 +227,9 @@ export default function DdrPage() {
       onSubmit={handleSubmit}
       saving={saving}
       submitting={submitting}
+      stage={stage}
+      onSubmitForReview={role === 'executive' ? handleSubmitForReview : undefined}
+      submittingForReview={submittingForReview}
     />
   );
 }

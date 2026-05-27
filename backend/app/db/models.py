@@ -352,6 +352,13 @@ class LegalDdChecklist(Base):
     final_verdict: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
 
+    # Workflow stage gate (migration 202605272_checklist_stage).
+    # Executives mutate rows while stage='draft'. Submitting for review flips to
+    # 'pending_review' (read-only for executive). Supervisor finalize/licensing
+    # save publishes the row → 'published' (BD-visible).
+    # Default 'published' keeps pre-existing rows BD-visible.
+    stage: Mapped[str] = mapped_column(Text, nullable=False, server_default="published")
+
     # Who worked on it
     reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))   # legal exec
     approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))   # legal supervisor
@@ -373,6 +380,11 @@ class LegalDdChecklist(Base):
             "final_verdict IN ('pending','positive','negative')",
             name="chk_dd_final_verdict",
         ),
+        CheckConstraint(
+            "stage IN ('draft','pending_review','published')",
+            name="chk_dd_checklist_stage",
+        ),
+        Index("idx_legal_dd_checklist_stage", "stage"),
     )
 
 
@@ -414,6 +426,9 @@ class SiteLicensing(Base):
     fire_noc: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     storage_license: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
 
+    # Workflow stage gate (migration 202605272_checklist_stage). See LegalDdChecklist.stage.
+    stage: Mapped[str] = mapped_column(Text, nullable=False, server_default="published")
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False,
     )
@@ -425,6 +440,11 @@ class SiteLicensing(Base):
             "AND storage_license IN ('pending','yes','no')",
             name="chk_licensing_values",
         ),
+        CheckConstraint(
+            "stage IN ('draft','pending_review','published')",
+            name="chk_site_licensing_stage",
+        ),
+        Index("idx_site_licensing_stage", "stage"),
     )
 
 

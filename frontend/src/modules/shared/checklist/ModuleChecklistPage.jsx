@@ -35,6 +35,56 @@ function roleLabel(role) {
   return 'Executive';
 }
 
+// Stage chip for the staged-checklist workflow (migration 202605272).
+// Three colour-coded states: draft (neutral) · pending review (warm) ·
+// published (success). Missing/unknown values render as published.
+function StageBadge({ stage }) {
+  const value = stage || 'published';
+  const tone = (() => {
+    if (value === 'draft') return {
+      bg: 'var(--zm-surface-2)',
+      color: 'var(--zm-fg-2)',
+      border: 'var(--zm-line-strong)',
+      label: 'Draft',
+    };
+    if (value === 'pending_review') return {
+      bg: 'var(--zm-warning-soft)',
+      color: 'var(--zm-copper)',
+      border: 'var(--zm-copper-line)',
+      label: 'Pending review',
+    };
+    return {
+      bg: 'var(--zm-success-soft)',
+      color: 'var(--zm-success)',
+      border: 'var(--zm-success)',
+      label: 'Published',
+    };
+  })();
+  return (
+    <span
+      title={`Workflow stage · ${tone.label}`}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        height: 26,
+        padding: '0 10px',
+        borderRadius: 999,
+        border: `1px solid ${tone.border}`,
+        background: tone.bg,
+        color: tone.color,
+        fontFamily: 'var(--zm-font-body)',
+        fontSize: 10.5,
+        fontWeight: 800,
+        letterSpacing: '0.12em',
+        textTransform: 'uppercase',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {tone.label}
+    </span>
+  );
+}
+
 function StatusCheckbox({ value, checked, onChange }) {
   const tone = yesNoTone(value, checked);
   const label = value === 'yes' ? 'Yes' : 'No';
@@ -184,7 +234,11 @@ function SummaryStat({ label, value, tone = 'default' }) {
   );
 }
 
-function ContextPanel({ site, trail, complete, issueCount, totalChecks, moduleShort, canSubmit, submitBlockedText, onSave, onSubmit, saving, submitting }) {
+function ContextPanel({
+  site, trail, complete, issueCount, totalChecks, moduleShort,
+  canSubmit, submitBlockedText, onSave, onSubmit, saving, submitting,
+  stage, canSubmitForReview, onSubmitForReview, submittingForReview,
+}) {
   const ready = canSubmit && complete === totalChecks && totalChecks > 0 && !submitting;
 
   return (
@@ -245,7 +299,7 @@ function ContextPanel({ site, trail, complete, issueCount, totalChecks, moduleSh
           }}>
             Review trail
           </span>
-          <HeaderTag icon="clock" label="DRAFT"/>
+          <StageBadge stage={stage}/>
         </div>
         {trail.map(([label, value], index) => (
           <div key={label} style={{ display: 'grid', gridTemplateColumns: '20px 1fr', gap: 9, alignItems: 'start' }}>
@@ -289,21 +343,42 @@ function ContextPanel({ site, trail, complete, issueCount, totalChecks, moduleSh
         >
           {saving ? 'Saving…' : `Save ${moduleShort} draft`}
         </button>
-        <button
-          className="zm-btn-primary"
-          disabled={!ready}
-          onClick={onSubmit}
-          style={{
-            height: 40, borderRadius: 8, border: 'none',
-            background: ready ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)',
-            color: ready ? '#fff' : 'var(--zm-fg-4)',
-            fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 800,
-            cursor: ready ? 'pointer' : 'not-allowed',
-            boxShadow: ready ? 'var(--zm-shadow-1)' : 'none',
-          }}
-        >
-          {submitting ? `Submitting ${moduleShort}…` : `Submit ${moduleShort}`}
-        </button>
+        {canSubmitForReview && (
+          <button
+            type="button"
+            onClick={onSubmitForReview}
+            disabled={submittingForReview}
+            style={{
+              height: 40, borderRadius: 8, border: 'none',
+              background: submittingForReview ? 'var(--zm-surface-sunken)' : 'var(--zm-accent)',
+              color: submittingForReview ? 'var(--zm-fg-4)' : '#fff',
+              fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 800,
+              cursor: submittingForReview ? 'wait' : 'pointer',
+              boxShadow: submittingForReview ? 'none' : 'var(--zm-shadow-1)',
+            }}
+          >
+            {submittingForReview
+              ? `Submitting ${moduleShort} for review…`
+              : `Submit ${moduleShort} for review`}
+          </button>
+        )}
+        {canSubmit && (
+          <button
+            className="zm-btn-primary"
+            disabled={!ready}
+            onClick={onSubmit}
+            style={{
+              height: 40, borderRadius: 8, border: 'none',
+              background: ready ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)',
+              color: ready ? '#fff' : 'var(--zm-fg-4)',
+              fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 800,
+              cursor: ready ? 'pointer' : 'not-allowed',
+              boxShadow: ready ? 'var(--zm-shadow-1)' : 'none',
+            }}
+          >
+            {submitting ? `Submitting ${moduleShort}…` : `Submit ${moduleShort}`}
+          </button>
+        )}
       </div>
     </aside>
   );
@@ -336,10 +411,19 @@ export default function ModuleChecklistPage({
   // Max number of free-form "Other" rows. Defaults to 2 to match the DB
   // (legal_dd_checklist exposes only other_1 + other_2).
   maxOtherRows = 2,
+  // Staging workflow (migration 202605272). Missing values mean the slice
+  // isn't wired yet for this caller — fall back to 'published' so existing
+  // checklists render unchanged.
+  stage = 'published',
+  onSubmitForReview,
+  submittingForReview = false,
 }) {
   const { showToast } = usePageContext();
   const { role, session } = useSession();
   const canSubmit = role === 'supervisor';
+  // Executives may only request review while their draft is live, and only
+  // if the parent has wired the handler (legacy pages get no button).
+  const canSubmitForReview = !!onSubmitForReview && role === 'executive' && stage === 'draft';
   const [coreStatuses, setCoreStatuses] = React.useState(() =>
     checks.reduce((acc, item) => ({ ...acc, [item.id]: initialCoreStatuses?.[item.id] ?? null }), {})
   );
@@ -414,6 +498,11 @@ export default function ModuleChecklistPage({
     showToast?.(message, issueCount ? 'danger' : 'success');
   };
 
+  const submitForReview = () => {
+    if (!onSubmitForReview) return;
+    onSubmitForReview(snapshot());
+  };
+
   const currentModule = session?.module || moduleName;
   const otherRowsExhausted = otherRows.length >= maxOtherRows;
 
@@ -475,7 +564,12 @@ export default function ModuleChecklistPage({
         eyebrow={header.eyebrow}
         title={header.title}
         lede={header.lede}
-        right={<HeaderTag icon={header.tagIcon || site.icon || 'shield'} label={site.stage}/>}
+        right={(
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <StageBadge stage={stage}/>
+            <HeaderTag icon={header.tagIcon || site.icon || 'shield'} label={site.stage}/>
+          </div>
+        )}
       />
 
       <div style={{
@@ -702,6 +796,10 @@ export default function ModuleChecklistPage({
           onSubmit={submitReview}
           saving={saving}
           submitting={submitting}
+          stage={stage}
+          canSubmitForReview={canSubmitForReview}
+          onSubmitForReview={submitForReview}
+          submittingForReview={submittingForReview}
         />
       </div>
     </div>

@@ -16,6 +16,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, field_validator
 
 ChecklistValue = Literal["pending", "yes", "no"]
+ChecklistStage = Literal["draft", "pending_review", "published"]
 
 
 # ── Step 1 · Save DD checklist items ─────────────────────────────────────────
@@ -97,6 +98,9 @@ class DdChecklistResponse(BaseModel):
     rejection_reason: Optional[str] = None
     reviewed_by:     Optional[str] = None
     approved_by:     Optional[str] = None
+    # Staging gate. Defaults to 'published' for forward-compat when the column
+    # is missing (pre-migration window).
+    stage:           ChecklistStage = "published"
     updated_at:      datetime
 
 
@@ -114,6 +118,9 @@ class LicensingResponse(BaseModel):
     shops_estab_reg: str
     fire_noc:        str
     storage_license: str
+    # Staging gate. Defaults to 'published' for forward-compat when the column
+    # is missing (pre-migration window).
+    stage:           ChecklistStage = "published"
     updated_at:      datetime
 
 

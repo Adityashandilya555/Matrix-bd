@@ -47,6 +47,8 @@ from app.services.legal_service import (
     svc_save_due_diligence,
     svc_save_licensing,
     svc_save_verification,
+    svc_submit_dd_for_review,
+    svc_submit_licensing_for_review,
 )
 
 router = APIRouter(prefix="/legal", tags=["Legal"])
@@ -109,6 +111,25 @@ async def save_dd_items(
     )
 
 
+# ── Submit DD draft for review (executive — delegated — or supervisor) ──────
+
+@router.post(
+    "/{site_id}/dd/submit-for-review",
+    response_model=LegalReviewResponse,
+    summary="Executive: submit DD draft for supervisor review (stage draft → pending_review)",
+)
+async def submit_dd_for_review(
+    site_id: str,
+    db: DbDep,
+    current_user: LegalMember,
+    _module: InLegalModule,
+    tenant_id: TenantId,
+) -> LegalReviewResponse:
+    return await svc_submit_dd_for_review(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
+    )
+
+
 # ── Step 2 · Finalize DD verdict (supervisor only) ────────────────────────────
 
 @router.post(
@@ -166,6 +187,25 @@ async def save_licensing(
 ) -> LegalReviewResponse:
     return await svc_save_licensing(
         db, tenant_id=tenant_id, actor=current_user, site_id=site_id, body=body,
+    )
+
+
+# ── Submit licensing draft for review (executive — delegated — or supervisor) ─
+
+@router.post(
+    "/{site_id}/licensing/submit-for-review",
+    response_model=LegalReviewResponse,
+    summary="Executive: submit licensing draft for supervisor review (stage draft → pending_review)",
+)
+async def submit_licensing_for_review(
+    site_id: str,
+    db: DbDep,
+    current_user: LegalMember,
+    _module: InLegalModule,
+    tenant_id: TenantId,
+) -> LegalReviewResponse:
+    return await svc_submit_licensing_for_review(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
     )
 
 
