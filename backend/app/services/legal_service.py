@@ -52,6 +52,15 @@ from app.services.notification_service import (
 logger = logging.getLogger(__name__)
 
 
+# DD fields used for the auto-positive check in svc_save_verification.
+# Matches change_request_service._DD_FIELDS exactly so both recovery paths
+# use the same bar.  All 9 items (including other_1/other_2) must be 'yes'.
+_REQUIRED_DD_FIELDS = (
+    "title_doc", "sanctioned_plan", "oc_cc", "commercial_use",
+    "property_tax", "electricity", "fire_noc", "other_1", "other_2",
+)
+
+
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 async def _fetch_dd_or_none(
@@ -243,7 +252,11 @@ async def svc_legal_queue(
     tenant_id: str | UUID,
     restrict_to_site_ids: Optional[list[str]] = None,
 ) -> LegalQueueResponse:
-    """Return all sites currently in LEGAL_REVIEW with their DD checklist status.
+    """Return all sites in LEGAL_REVIEW or LEGAL_REJECTED with their DD status.
+
+    LEGAL_REJECTED sites are included so the legal supervisor can see them in
+    their queue (marked with a 'negative' badge) and directly fix the failing
+    DD items without the site vanishing from their dashboard.
 
     `restrict_to_site_ids` is an optional additive filter the router passes
     when the caller is an executive (so they see only delegated sites).
@@ -253,7 +266,10 @@ async def svc_legal_queue(
         select(models.Site)
         .where(
             models.Site.tenant_id == tenant_id,
-            models.Site.status == SiteStatus.LEGAL_REVIEW.value,
+            models.Site.status.in_([
+                SiteStatus.LEGAL_REVIEW.value,
+                SiteStatus.LEGAL_REJECTED.value,
+            ]),
         )
         .order_by(models.Site.legal_review_at.asc())
     )
@@ -314,12 +330,35 @@ async def svc_save_verification(
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
 
-        if site.status != SiteStatus.LEGAL_REVIEW.value:
+        _VALID_EDIT_STATUSES = {
+            SiteStatus.LEGAL_REVIEW.value,
+            SiteStatus.LEGAL_REJECTED.value,
+        }
+        if site.status not in _VALID_EDIT_STATUSES:
             raise HTTPException(
                 status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Site is not in legal_review (current: {site.status})",
+                detail=f"Site is not in a legal workflow status (current: {site.status})",
             )
 
+        # Executives cannot directly edit a LEGAL_REJECTED site — they must
+        # open a change request (POST /legal/change-requests) so there is a
+        # formal approval trail.  Supervisors may edit directly; the auto-positive
+        # check below will recover the site to LEGAL_REVIEW if all items pass.
+        if (
+            site.status == SiteStatus.LEGAL_REJECTED.value
+            and actor.get("role") == "executive"
+        ):
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Executives cannot directly edit checklist items on a rejected site. "
+                    "Open a change request instead (POST /legal/change-requests)."
+                ),
+            )
+
+        # Delegation check applies only when the site is in LEGAL_REVIEW.
+        # On a LEGAL_REJECTED site only supervisors reach this point (blocked above),
+        # and _require_executive_legal_delegation is a no-op for supervisors.
         is_executive = await _require_executive_legal_delegation(
             session, site_id=site.id, actor=actor,
         )
@@ -346,15 +385,55 @@ async def svc_save_verification(
 
         dd.reviewed_by = actor["sub"]
 
-        # Mirror to sites
-        site.legal_dd_status = "in_review"
-
-        await write_audit_event(
-            session, tenant_id=tenant_id, site_id=site.id,
-            actor_id=actor["sub"], actor_name=actor["name"],
-            action="legal_dd_items_saved",
-            detail="DD checklist items updated",
-        )
+        # ── Auto-positive check with LEGAL_REJECTED recovery ─────────────────
+        # After every supervisor edit, check if ALL 9 DD items are now 'yes'.
+        # If so:
+        #   1. final_verdict → 'positive', legal_dd_status → 'positive'
+        #   2. If site was LEGAL_REJECTED, transition back to LEGAL_REVIEW so
+        #      it re-enters the active workflow and reappears in the queue.
+        #
+        # This is the direct-edit recovery path for supervisors.  BD executives
+        # go through change_request_service (_maybe_recover_dd_verdict) which
+        # has the same check against the same _DD_FIELDS set.
+        # A verdict already 'positive' is never downgraded here.
+        if dd.final_verdict != "positive":
+            all_required_yes = all(getattr(dd, f) == "yes" for f in _REQUIRED_DD_FIELDS)
+            if all_required_yes:
+                dd.final_verdict = "positive"
+                site.legal_dd_status = "positive"
+                was_rejected = site.status == SiteStatus.LEGAL_REJECTED.value
+                if was_rejected:
+                    assert_transition(SiteStatus.LEGAL_REJECTED, SiteStatus.LEGAL_REVIEW)
+                    site.status = SiteStatus.LEGAL_REVIEW.value
+                    site.legal_rejected_at = None
+                await write_audit_event(
+                    session, tenant_id=tenant_id, site_id=site.id,
+                    actor_id=actor["sub"], actor_name=actor["name"],
+                    action="legal_dd_auto_positive",
+                    detail=(
+                        "All DD items marked yes — verdict auto-set to positive"
+                        + ("; site recovered to LEGAL_REVIEW" if was_rejected else "")
+                    ),
+                )
+            else:
+                # Still working through items.  Reset mirror to 'in_review'
+                # to show the queue badge as "in progress" even if recovering
+                # from a 'negative' verdict.
+                site.legal_dd_status = "in_review"
+                await write_audit_event(
+                    session, tenant_id=tenant_id, site_id=site.id,
+                    actor_id=actor["sub"], actor_name=actor["name"],
+                    action="legal_dd_items_saved",
+                    detail="DD checklist items updated",
+                )
+        else:
+            # Verdict already positive — save as supplementary edits only.
+            await write_audit_event(
+                session, tenant_id=tenant_id, site_id=site.id,
+                actor_id=actor["sub"], actor_name=actor["name"],
+                action="legal_dd_items_saved",
+                detail="DD checklist items updated (post-positive)",
+            )
 
     return await _build_review_response(session, site)
 
