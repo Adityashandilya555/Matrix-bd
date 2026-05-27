@@ -72,6 +72,7 @@ export default function Sidebar({ counts, role, onRole }) {
     path.startsWith('/staging')                          ? 'staging'   :
     path === ROUTES.ARCHIVE                              ? 'archive'   :
     path === ROUTES.DD_FAILED                            ? 'dd-failed' :
+    path.startsWith('/site-tracker')                     ? 'site-tracker' :
     path === ROUTES.TEAM                                 ? 'team'      :
     path === ROUTES.LEGAL_CHANGE_REQUESTS                ? 'legal-change-requests' :
     path.startsWith('/legal')                            ? 'legal-ddr' :
@@ -101,6 +102,7 @@ export default function Sidebar({ counts, role, onRole }) {
             <SidebarItem icon="folder" label="Archive" count={counts.archive} active={activeView === 'archive'} onClick={() => go(ROUTES.ARCHIVE)}/>
           )}
           <SidebarItem icon="alert" label="DD failed" active={activeView === 'dd-failed'} onClick={() => go(ROUTES.DD_FAILED)}/>
+          <SidebarItem icon="activity" label="Site tracker" active={activeView === 'site-tracker'} onClick={() => go(ROUTES.SITE_TRACKER)}/>
         </>
       )}
 
