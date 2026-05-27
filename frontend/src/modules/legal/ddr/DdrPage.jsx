@@ -169,8 +169,18 @@ export default function DdrPage() {
   const initialCore = coreFromDd(review?.dd);
   const initialOthers = otherRowsFromDd(review?.dd);
   const stage = review?.dd?.stage || 'draft';
-  // Edit gate: executives only when stage === 'draft'. Supervisors edit any stage.
-  const canEdit = role === 'supervisor' || stage === 'draft';
+  // Executive must hold an active legal delegation on this site to edit. The
+  // backend enforces this (raises 403 in svc_save_verification), so we mirror
+  // it here to avoid letting an executive type into a checklist that the API
+  // will refuse to persist.
+  const hasMyDelegation = !!myUserId && delegations.some(
+    (d) => String(d.delegateUserId) === String(myUserId),
+  );
+  const executiveBlockedByDelegation = isExecutive && !hasMyDelegation;
+  // Edit gate: executives only when stage === 'draft' AND they are delegated.
+  // Supervisors edit any stage.
+  const canEdit =
+    isSupervisor || (stage === 'draft' && hasMyDelegation);
 
   const buildPayload = ({ coreStatuses, otherRows }) => {
     const payload = {};
@@ -187,7 +197,14 @@ export default function DdrPage() {
 
   const handleSave = async (snapshot) => {
     if (!canEdit) {
-      showToast?.(`DDR is ${stage.replace('_', ' ')} — edits are locked for ${role}.`, 'danger');
+      if (executiveBlockedByDelegation) {
+        showToast?.(
+          'You do not have an active legal delegation on this site. Ask the legal supervisor to delegate it before saving a draft.',
+          'danger',
+        );
+      } else {
+        showToast?.(`DDR is ${stage.replace('_', ' ')} — edits are locked for ${role}.`, 'danger');
+      }
       return;
     }
     try {
@@ -414,6 +431,31 @@ export default function DdrPage() {
 
   return (
     <>
+    {executiveBlockedByDelegation && (
+      <div
+        className="zm-glass"
+        style={{
+          padding: 14, borderRadius: 10, marginBottom: 12,
+          border: '1px solid var(--zm-warning, #E0A659)',
+          background: 'rgba(224, 166, 89, 0.08)',
+          color: 'var(--zm-fg)',
+          fontFamily: 'var(--zm-font-body)', fontSize: 13,
+          display: 'flex', alignItems: 'center', gap: 10,
+        }}
+        role="status"
+      >
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: 22, height: 22, borderRadius: 999,
+          background: 'var(--zm-warning, #E0A659)', color: '#1A1310', fontWeight: 900,
+          fontSize: 13,
+        }}>!</span>
+        <span>
+          <strong>Read-only:</strong> you have not been delegated this site yet.
+          Ask the legal supervisor to delegate it to you before saving a draft.
+        </span>
+      </div>
+    )}
     {delegationPanel}
     {licensingTab}
     <ModuleChecklistPage

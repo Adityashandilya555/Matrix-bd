@@ -275,6 +275,9 @@ async def svc_legal_queue(
             city=site.city,
             legal_dd_status=site.legal_dd_status or "pending",
             dd_final_verdict=dd.final_verdict if dd else "pending",
+            # _row_stage tolerates the column being missing during the
+            # migration window — falls back to 'published'.
+            dd_stage=_row_stage(dd) if dd else "published",
             legal_review_at=site.legal_review_at,
             submitted_by_name=submitted_by_name,
         ))

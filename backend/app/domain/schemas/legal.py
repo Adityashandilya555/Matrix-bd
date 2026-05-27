@@ -146,6 +146,10 @@ class LegalQueueItem(BaseModel):
     city:           str
     legal_dd_status: str          # sites.legal_dd_status mirror
     dd_final_verdict: str         # legal_dd_checklist.final_verdict
+    # Surfaces the checklist staging gate to supervisors so they can spot rows
+    # an executive has submitted (stage='pending_review'). Defaults to
+    # 'published' when no DD row exists yet or when the column is missing.
+    dd_stage:        ChecklistStage = "published"
     legal_review_at: Optional[datetime] = None
     submitted_by_name: Optional[str] = None
 

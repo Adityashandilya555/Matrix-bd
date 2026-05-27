@@ -14,6 +14,14 @@ const STATUS_LABELS = {
   negative:  { label: 'DD negative',         tone: 'var(--zm-danger)' },
 };
 
+// Stage badge surfaces the checklist staging gate (U3) — drives supervisor
+// awareness that an executive has submitted a draft for review.
+const STAGE_LABELS = {
+  draft:          { label: 'Draft',          tone: 'var(--zm-fg-3)' },
+  pending_review: { label: 'Pending review', tone: 'var(--zm-warning, #E0A659)' },
+  published:      null, // don't render anything in the steady state
+};
+
 function StatusPill({ value }) {
   const meta = STATUS_LABELS[value] || { label: value || 'unknown', tone: 'var(--zm-fg-3)' };
   return (
@@ -22,6 +30,22 @@ function StatusPill({ value }) {
       borderRadius: 4, border: `1px solid ${meta.tone}`, color: meta.tone,
       fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 10,
       letterSpacing: '0.14em', textTransform: 'uppercase',
+    }}>
+      {meta.label}
+    </span>
+  );
+}
+
+function StagePill({ value }) {
+  const meta = STAGE_LABELS[value];
+  if (!meta) return null;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', height: 20, padding: '0 8px',
+      borderRadius: 4, border: `1px solid ${meta.tone}`, color: meta.tone,
+      fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9.5,
+      letterSpacing: '0.14em', textTransform: 'uppercase',
+      background: 'transparent',
     }}>
       {meta.label}
     </span>
@@ -139,23 +163,28 @@ export default function LegalQueuePage() {
                 {row.siteCode}
               </span>
               <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 700, color: 'var(--zm-fg)' }}>
-                {row.siteName}
-                {isSupervisor && delegateNames[row.siteId] && (
-                  <span style={{
-                    marginLeft: 8, display: 'inline-flex', alignItems: 'center',
-                    height: 18, padding: '0 8px', borderRadius: 4,
-                    border: '1px solid var(--zm-accent)', color: 'var(--zm-accent)',
-                    fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9.5,
-                    letterSpacing: '0.12em', textTransform: 'uppercase',
-                  }}>
-                    Delegated · {delegateNames[row.siteId]}
-                  </span>
-                )}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span>{row.siteName}</span>
+                  {isSupervisor && delegateNames[row.siteId] && (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center',
+                      height: 18, padding: '0 8px', borderRadius: 4,
+                      border: '1px solid var(--zm-accent)', color: 'var(--zm-accent)',
+                      fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9.5,
+                      letterSpacing: '0.12em', textTransform: 'uppercase',
+                    }}>
+                      Delegated · {delegateNames[row.siteId]}
+                    </span>
+                  )}
+                </span>
               </span>
               <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>
                 {row.city}
               </span>
-              <StatusPill value={row.legalDdStatus}/>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <StatusPill value={row.legalDdStatus}/>
+                <StagePill value={row.ddStage}/>
+              </span>
               <button
                 type="button"
                 className="zm-btn-primary"
