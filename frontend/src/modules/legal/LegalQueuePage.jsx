@@ -2,7 +2,9 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
+import { useSession } from '../../state/SessionContext.jsx';
 import { getLegalQueue } from '../../services/api/legalApi.js';
+import { listLegalDelegationsForSite } from '../../services/api/legalDelegationApi.js';
 import { legalSiteDdrRoute } from '../../router/routes.js';
 
 const STATUS_LABELS = {
@@ -28,7 +30,11 @@ function StatusPill({ value }) {
 
 export default function LegalQueuePage() {
   const navigate = useNavigate();
+  const { role } = useSession();
+  const isSupervisor = role === 'supervisor';
   const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
+  // siteId -> delegate name string (supervisor view only)
+  const [delegateNames, setDelegateNames] = React.useState({});
 
   React.useEffect(() => {
     let cancelled = false;
@@ -44,6 +50,28 @@ export default function LegalQueuePage() {
       });
     return () => { cancelled = true; };
   }, []);
+
+  // Supervisor view: best-effort hydration of delegate names per visible row.
+  // Failures degrade silently — the row just won't show a delegated badge.
+  React.useEffect(() => {
+    if (!isSupervisor || state.status !== 'ready' || state.items.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const updates = {};
+      await Promise.all(state.items.map(async (row) => {
+        try {
+          const r = await listLegalDelegationsForSite(row.siteId);
+          if (r.items?.length) {
+            updates[row.siteId] = r.items[0].delegateName || r.items[0].delegateEmail;
+          }
+        } catch { /* silent */ }
+      }));
+      if (!cancelled && Object.keys(updates).length) {
+        setDelegateNames((prev) => ({ ...prev, ...updates }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isSupervisor, state.status, state.items]);
 
   const open = (siteId) => navigate(legalSiteDdrRoute(siteId));
 
@@ -112,6 +140,17 @@ export default function LegalQueuePage() {
               </span>
               <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 700, color: 'var(--zm-fg)' }}>
                 {row.siteName}
+                {isSupervisor && delegateNames[row.siteId] && (
+                  <span style={{
+                    marginLeft: 8, display: 'inline-flex', alignItems: 'center',
+                    height: 18, padding: '0 8px', borderRadius: 4,
+                    border: '1px solid var(--zm-accent)', color: 'var(--zm-accent)',
+                    fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9.5,
+                    letterSpacing: '0.12em', textTransform: 'uppercase',
+                  }}>
+                    Delegated · {delegateNames[row.siteId]}
+                  </span>
+                )}
               </span>
               <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>
                 {row.city}

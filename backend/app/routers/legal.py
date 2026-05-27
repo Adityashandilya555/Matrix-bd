@@ -14,9 +14,10 @@ Endpoints:
 """
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status as http_status
+from pydantic import BaseModel
 
 from app.core.deps import DbDep, TenantId
 from app.domain.schemas.common import OkResponse
@@ -40,6 +41,14 @@ from app.services.change_request_service import (
     svc_list_pending_for_legal,
     svc_reject_change_request,
 )
+from app.services.delegation_service import (
+    svc_assigned_sites,
+    svc_delegate_legal,
+    svc_is_delegated,
+    svc_list_legal_delegations_for_site,
+    svc_list_my_legal_assignments,
+    svc_revoke_legal_delegation,
+)
 from app.services.legal_service import (
     svc_get_legal_review,
     svc_legal_queue,
@@ -62,6 +71,10 @@ InLegalModule = Annotated[dict, Depends(require_module("legal"))]
 
 # ── Queue ─────────────────────────────────────────────────────────────────────
 
+def _is_executive(user: dict) -> bool:
+    return (user.get("role") or "").lower() == Role.EXECUTIVE.value
+
+
 @router.get(
     "/queue",
     response_model=LegalQueueResponse,
@@ -73,7 +86,95 @@ async def legal_queue(
     _module: InLegalModule,
     tenant_id: TenantId,
 ) -> LegalQueueResponse:
-    return await svc_legal_queue(db, tenant_id=tenant_id)
+    # Executives only see sites delegated to them. Supervisors see all.
+    restrict_to: Optional[list[str]] = None
+    if _is_executive(current_user):
+        restrict_to = await svc_assigned_sites(
+            db, tenant_id=tenant_id, user_id=current_user["sub"], module="legal",
+        )
+    return await svc_legal_queue(db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to)
+
+
+# ── Delegations ───────────────────────────────────────────────────────────────
+# Routes are defined BEFORE `GET /{site_id}` so the static `/delegations/...`
+# path doesn't collide with the dynamic `{site_id}` segment in the router's
+# match order. FastAPI matches in declaration order — keep static-first.
+
+
+class DelegateLegalRequest(BaseModel):
+    executive_id: str
+    notes: Optional[str] = None
+
+
+@router.get(
+    "/delegations/me",
+    summary="List sites delegated to the current executive (legal module)",
+)
+async def list_my_legal_assignments(
+    db: DbDep,
+    current_user: LegalMember,
+    _module: InLegalModule,
+    tenant_id: TenantId,
+) -> dict:
+    return await svc_list_my_legal_assignments(db, tenant_id=tenant_id, actor=current_user)
+
+
+@router.get(
+    "/{site_id}/delegations",
+    summary="List active legal delegations for a site (supervisor view)",
+)
+async def list_legal_delegations_for_site(
+    site_id: str,
+    db: DbDep,
+    current_user: LegalMember,
+    _module: InLegalModule,
+    tenant_id: TenantId,
+) -> dict:
+    return await svc_list_legal_delegations_for_site(db, tenant_id=tenant_id, site_id=site_id)
+
+
+@router.post(
+    "/{site_id}/delegate",
+    summary="Delegate legal responsibility for a site to an executive",
+)
+async def delegate_legal(
+    site_id: str,
+    body: DelegateLegalRequest,
+    db: DbDep,
+    current_user: LegalSupervisor,
+    _module: InLegalModule,
+    tenant_id: TenantId,
+) -> dict:
+    return await svc_delegate_legal(
+        db,
+        tenant_id=tenant_id,
+        actor=current_user,
+        site_id=site_id,
+        delegate_user_id=body.executive_id,
+        notes=body.notes,
+    )
+
+
+@router.delete(
+    "/{site_id}/delegate/{user_id}",
+    response_model=OkResponse,
+    summary="Revoke a legal delegation for a (site, user)",
+)
+async def revoke_legal_delegation(
+    site_id: str,
+    user_id: str,
+    db: DbDep,
+    current_user: LegalSupervisor,
+    _module: InLegalModule,
+    tenant_id: TenantId,
+) -> OkResponse:
+    return await svc_revoke_legal_delegation(
+        db,
+        tenant_id=tenant_id,
+        actor=current_user,
+        site_id=site_id,
+        delegate_user_id=user_id,
+    )
 
 
 @router.get(
@@ -88,6 +189,21 @@ async def get_legal_review(
     _module: InLegalModule,
     tenant_id: TenantId,
 ) -> LegalReviewResponse:
+    # Executives can only read a site if it's delegated to them. Supervisors
+    # are unrestricted (additive filter — does not break the supervisor path).
+    if _is_executive(current_user):
+        ok = await svc_is_delegated(
+            db,
+            tenant_id=tenant_id,
+            site_id=site_id,
+            user_id=current_user["sub"],
+            module="legal",
+        )
+        if not ok:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail="Site not found",
+            )
     return await svc_get_legal_review(db, site_id=site_id, tenant_id=tenant_id)
 
 
