@@ -320,6 +320,29 @@ class ShortlistDelegation(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
 
+# ── Module-aware site delegation (legal / payment / bd) ────────────────────
+# Mirrors ShortlistDelegation but carries an explicit `module` discriminator so
+# the same row shape can serve any module. Legal is the first consumer.
+
+class SiteDelegation(Base):
+    __tablename__ = "site_delegations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), nullable=False)
+    module: Mapped[str] = mapped_column(Text, nullable=False)
+    delegate_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    granted_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    revoked_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint("module IN ('bd','legal','payment')", name="chk_site_delegations_module"),
+    )
+
+
 # ── Legal workflow child tables ───────────────────────────────────────────────
 # Three separate 1:1 tables owned by the Legal module.
 # The parent `sites` row carries mirror status columns (legal_dd_status,
@@ -352,6 +375,13 @@ class LegalDdChecklist(Base):
     final_verdict: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
 
+    # Workflow stage gate (migration 202605272_checklist_stage).
+    # Executives mutate rows while stage='draft'. Submitting for review flips to
+    # 'pending_review' (read-only for executive). Supervisor finalize/licensing
+    # save publishes the row → 'published' (BD-visible).
+    # Default 'published' keeps pre-existing rows BD-visible.
+    stage: Mapped[str] = mapped_column(Text, nullable=False, server_default="published")
+
     # Who worked on it
     reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))   # legal exec
     approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))   # legal supervisor
@@ -373,6 +403,11 @@ class LegalDdChecklist(Base):
             "final_verdict IN ('pending','positive','negative')",
             name="chk_dd_final_verdict",
         ),
+        CheckConstraint(
+            "stage IN ('draft','pending_review','published')",
+            name="chk_dd_checklist_stage",
+        ),
+        Index("idx_legal_dd_checklist_stage", "stage"),
     )
 
 
@@ -414,6 +449,9 @@ class SiteLicensing(Base):
     fire_noc: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     storage_license: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
 
+    # Workflow stage gate (migration 202605272_checklist_stage). See LegalDdChecklist.stage.
+    stage: Mapped[str] = mapped_column(Text, nullable=False, server_default="published")
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False,
     )
@@ -425,6 +463,11 @@ class SiteLicensing(Base):
             "AND storage_license IN ('pending','yes','no')",
             name="chk_licensing_values",
         ),
+        CheckConstraint(
+            "stage IN ('draft','pending_review','published')",
+            name="chk_site_licensing_stage",
+        ),
+        Index("idx_site_licensing_stage", "stage"),
     )
 
 

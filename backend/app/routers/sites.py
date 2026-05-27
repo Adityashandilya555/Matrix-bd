@@ -24,6 +24,7 @@ from app.domain.schemas.site import (
     SiteListResponse,
     SiteResponse,
 )
+from app.domain.schemas.site_tracker import SiteTrackerResponse
 from app.domain.state_machine import SiteStatus
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
@@ -125,6 +126,87 @@ async def get_site_documents(
             "url": await signed_url(r.storage_path),
         })
     return {"site_id": site_id, "documents": items}
+
+
+# ── Site Tracker (BD-safe cross-module projection) ─────────────────────────
+
+@router.get(
+    "/{site_id}/tracker",
+    response_model=SiteTrackerResponse,
+    summary="BD-safe site tracker projection (legal review + agreement + licensing)",
+)
+async def get_site_tracker(
+    site_id: str,
+    db: DbDep,
+    current_user: Annotated[
+        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))
+    ],
+    tenant_id: TenantId,
+) -> SiteTrackerResponse:
+    """Return the site mirror columns + DD/agreement/licensing payloads.
+
+    Defensive: a future staged-checklist migration (slice U3) is expected to
+    add a `stage` column on the child rows. Until that lands we treat every
+    row as published; once it lands we filter to `stage == 'published'` for
+    BD callers only. Legal staff (module=='legal') always see drafts so they
+    can keep working pre-publish. Wrapped in try/except so a missing column
+    in mid-migration doesn't 500.
+    """
+    from app.services._common import fetch_site_or_404, fetch_user_name
+    from app.services.legal_service import (
+        _agreement_to_response,
+        _dd_to_response,
+        _fetch_agreement_or_none,
+        _fetch_dd_or_none,
+        _fetch_licensing_or_none,
+        _licensing_to_response,
+    )
+
+    site = await fetch_site_or_404(db, site_id=site_id, tenant_id=tenant_id)
+
+    caller_module = (current_user.get("module") or "").lower()
+    bd_caller = caller_module in ("", "bd")  # default to BD when module missing
+
+    def _is_published(row) -> bool:
+        # If the staged-checklist column hasn't landed yet, `getattr` falls
+        # back to 'published'. If U3 adds it later this filter starts working
+        # without any change to the tracker code.
+        try:
+            stage = getattr(row, "stage", "published")
+        except Exception:  # pragma: no cover - defensive guard
+            stage = "published"
+        return stage in (None, "", "published")
+
+    def _visible(row) -> bool:
+        # Non-BD callers always see the row (drafts included). BD only sees
+        # published rows.
+        return row is not None and (not bd_caller or _is_published(row))
+
+    dd  = await _fetch_dd_or_none(db, site_id=site.id)
+    ag  = await _fetch_agreement_or_none(db, site_id=site.id)
+    lic = await _fetch_licensing_or_none(db, site_id=site.id)
+
+    dd_resp        = _dd_to_response(dd)         if _visible(dd)  else None
+    agreement_resp = _agreement_to_response(ag)  if _visible(ag)  else None
+    licensing_resp = _licensing_to_response(lic) if _visible(lic) else None
+
+    submitted_by_name = await fetch_user_name(db, site.submitted_by)
+
+    return SiteTrackerResponse(
+        site_id=str(site.id),
+        site_code=site.code or "",
+        site_name=site.name,
+        city=site.city,
+        site_status=site.status,
+        legal_dd_status=site.legal_dd_status,
+        agreement_status=site.agreement_status,
+        licensing_status=site.licensing_status,
+        dd=dd_resp,
+        agreement=agreement_resp,
+        licensing=licensing_resp,
+        submitted_by=str(site.submitted_by),
+        submitted_by_name=submitted_by_name,
+    )
 
 
 # ── Action aliases ─────────────────────────────────────────────────────────

@@ -20,6 +20,8 @@ import ChangeRequestsPage    from '../modules/legal/ChangeRequestsPage.jsx';
 import DdrPage               from '../modules/legal/ddr/DdrPage.jsx';
 import SiteStatusPage        from '../modules/bd/site-status/SiteStatusPage.jsx';
 import DdFailedPage          from '../modules/bd/dd-failed/DdFailedPage.jsx';
+import SiteTrackerListPage   from '../modules/bd/site-tracker/SiteTrackerListPage.jsx';
+import SiteTrackerDetailPage from '../modules/bd/site-tracker/SiteTrackerDetailPage.jsx';
 import LicensingPage         from '../modules/payment/licensing/LicensingPage.jsx';
 import PaymentStubPage       from '../modules/payment/PaymentStubPage.jsx';
 import AdminPortalPage       from '../modules/admin/AdminPortalPage.jsx';
@@ -158,6 +160,21 @@ export default function AppRouter() {
         <Route path={ROUTES.BD_SITE_STATUS} element={
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <SiteStatusPage/>
+          </RequireRole>
+        }/>
+
+        <Route path={ROUTES.SITE_TRACKER} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['bd']}>
+              <SiteTrackerListPage/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.SITE_TRACKER_DETAIL} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['bd']}>
+              <SiteTrackerDetailPage/>
+            </RequireModule>
           </RequireRole>
         }/>
 

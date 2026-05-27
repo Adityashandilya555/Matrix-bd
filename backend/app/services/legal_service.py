@@ -21,8 +21,10 @@ from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
 from sqlalchemy import select, text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import ProgrammingError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from app.db import models
 from app.db.session import transaction
@@ -103,6 +105,7 @@ def _dd_to_response(dd: models.LegalDdChecklist) -> DdChecklistResponse:
         rejection_reason=dd.rejection_reason,
         reviewed_by=str(dd.reviewed_by) if dd.reviewed_by else None,
         approved_by=str(dd.approved_by) if dd.approved_by else None,
+        stage=getattr(dd, "stage", None) or "published",
         updated_at=dd.updated_at,
     )
 
@@ -124,6 +127,7 @@ def _licensing_to_response(lic: models.SiteLicensing) -> LicensingResponse:
         shops_estab_reg=lic.shops_estab_reg,
         fire_noc=lic.fire_noc,
         storage_license=lic.storage_license,
+        stage=getattr(lic, "stage", None) or "published",
         updated_at=lic.updated_at,
     )
 
@@ -147,12 +151,104 @@ async def _build_review_response(
     )
 
 
+# ── Staging helpers (migration 202605272_checklist_stage) ────────────────────
+#
+# Executive writes are gated by both an active site_delegations row AND the row
+# being in 'draft' stage. Supervisor writes are unrestricted (any stage).
+#
+# Defensive defaults:
+#   - site_delegations table may not exist yet (U2 slice). Treat absent table
+#     as "no delegation" rather than raising.
+#   - stage column may not have landed in the live DB yet (race between deploy
+#     and migration). Treat missing attribute as 'published'.
+
+async def _executive_has_legal_delegation(
+    session: AsyncSession, *, site_id: str | UUID, user_id: str | UUID,
+) -> bool:
+    """Return True if there's an active legal delegation for (site, user).
+
+    Returns False (rather than raising) if the site_delegations table doesn't
+    exist yet — keeps this slice independent of the U2 delegation slice.
+    """
+    try:
+        result = await session.execute(
+            text(
+                """
+                SELECT 1
+                  FROM site_delegations
+                 WHERE site_id = :site_id
+                   AND module = 'legal'
+                   AND delegate_user_id = :user_id
+                   AND revoked_at IS NULL
+                 LIMIT 1
+                """
+            ),
+            {"site_id": str(site_id), "user_id": str(user_id)},
+        )
+        return result.first() is not None
+    except ProgrammingError:
+        await session.rollback()
+        return False
+    except Exception:
+        return False
+
+
+async def _require_executive_legal_delegation(
+    session: AsyncSession, *, site_id: str | UUID, actor: dict,
+) -> bool:
+    """Enforce executive delegation gate, no-op for non-executives.
+
+    Returns True if the caller is an executive (so the caller can branch on
+    stage rules). Raises 403 if an executive caller lacks an active delegation.
+    """
+    if actor.get("role") != "executive":
+        return False
+    has_delegation = await _executive_has_legal_delegation(
+        session, site_id=site_id, user_id=actor["sub"],
+    )
+    if not has_delegation:
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Executive does not have an active legal delegation on this site. "
+                "Ask the legal supervisor to delegate first."
+            ),
+        )
+    return True
+
+
+def _row_stage(row) -> str:
+    """Read the `stage` attribute, tolerating absence (pre-migration window)."""
+    return getattr(row, "stage", None) or "published"
+
+
+def _assert_executive_can_edit_stage(stage: str) -> None:
+    """Raise 422 if executive attempts to edit a non-draft row."""
+    if stage != "draft":
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Cannot edit checklist while stage is '{stage}'. "
+                "Executives may only edit drafts; once submitted, edits are "
+                "locked until the supervisor publishes the row."
+            ),
+        )
+
+
 # ── Queue ─────────────────────────────────────────────────────────────────────
 
 async def svc_legal_queue(
-    session: AsyncSession, *, tenant_id: str | UUID,
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    restrict_to_site_ids: Optional[list[str]] = None,
 ) -> LegalQueueResponse:
-    """Return all sites currently in LEGAL_REVIEW with their DD checklist status."""
+    """Return all sites currently in LEGAL_REVIEW with their DD checklist status.
+
+    `restrict_to_site_ids` is an optional additive filter the router passes
+    when the caller is an executive (so they see only delegated sites).
+    Pass None for the supervisor-wide view.
+    """
     stmt = (
         select(models.Site)
         .where(
@@ -161,6 +257,11 @@ async def svc_legal_queue(
         )
         .order_by(models.Site.legal_review_at.asc())
     )
+    if restrict_to_site_ids is not None:
+        if not restrict_to_site_ids:
+            return LegalQueueResponse(items=[], total=0)
+        stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
+
     sites = (await session.execute(stmt)).scalars().all()
 
     items: list[LegalQueueItem] = []
@@ -198,7 +299,15 @@ async def svc_save_verification(
     site_id: str | UUID,
     body: SaveVerificationRequest,
 ) -> LegalReviewResponse:
-    """Create or update the DD checklist row; set sites.legal_dd_status = 'in_review'."""
+    """Create or update the DD checklist row; set sites.legal_dd_status = 'in_review'.
+
+    Stage gate (migration 202605272):
+      - Executive callers must have an active site_delegations row for
+        (site, module='legal'). On insert, stage starts at 'draft'. They may
+        only update rows whose stage is 'draft'; pending_review / published
+        raise 422.
+      - Supervisor callers are unrestricted (can write at any stage).
+    """
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
 
@@ -208,10 +317,20 @@ async def svc_save_verification(
                 detail=f"Site is not in legal_review (current: {site.status})",
             )
 
+        is_executive = await _require_executive_legal_delegation(
+            session, site_id=site.id, actor=actor,
+        )
+
         dd = await _fetch_dd_or_none(session, site_id=site.id)
         if dd is None:
             dd = models.LegalDdChecklist(site_id=site.id)
+            # Executive-initiated rows start as drafts; supervisor inserts
+            # behave as before (default: 'published').
+            if is_executive:
+                dd.stage = "draft"
             session.add(dd)
+        elif is_executive:
+            _assert_executive_can_edit_stage(_row_stage(dd))
 
         # Only overwrite fields that were explicitly supplied
         for field in (
@@ -233,6 +352,61 @@ async def svc_save_verification(
             action="legal_dd_items_saved",
             detail="DD checklist items updated",
         )
+
+    return await _build_review_response(session, site)
+
+
+# ── Submit DD draft for supervisor review (executive only) ───────────────────
+
+async def svc_submit_dd_for_review(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    actor: dict,
+    site_id: str | UUID,
+) -> LegalReviewResponse:
+    """Executive flips DD checklist stage: 'draft' → 'pending_review'.
+
+    Notifies the legal supervisor pool that a review is queued.
+    """
+    async with transaction(session):
+        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        dd   = await _fetch_dd_or_404(session, site_id=site.id)
+
+        await _require_executive_legal_delegation(session, site_id=site.id, actor=actor)
+
+        current_stage = _row_stage(dd)
+        if current_stage != "draft":
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"DD checklist is not in 'draft' (current: {current_stage}); cannot submit for review.",
+            )
+
+        dd.stage = "pending_review"
+
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=site.id,
+            actor_id=actor["sub"], actor_name=actor["name"],
+            action="legal_dd_submitted_for_review",
+            detail="Executive submitted DD draft for supervisor review",
+        )
+        legal_recipients = await recipients_for_legal_supervisors(session, tenant_id=tenant_id)
+        if legal_recipients:
+            await notify_enqueue(
+                session, tenant_id=tenant_id, event="legal_dd_pending_review",
+                recipient_ids=legal_recipients, site_id=site.id,
+                channels=("email", "in_app"),
+                payload={
+                    "site_id": str(site.id),
+                    "site_name": site.name,
+                    "submitted_by": actor.get("name"),
+                },
+                subject=f"DD review pending: {site.name}",
+                body=(
+                    f"The legal executive {actor.get('name') or ''} has submitted the DD "
+                    f"checklist for '{site.name}' ({site.code}) for supervisor review."
+                ),
+            )
 
     return await _build_review_response(session, site)
 
@@ -261,6 +435,9 @@ async def svc_save_due_diligence(
         dd.final_verdict   = body.final_verdict
         dd.rejection_reason = body.rejection_reason
         dd.approved_by     = actor["sub"]
+        # Finalising publishes the row regardless of verdict — BD reads only
+        # published rows, and a negative verdict is BD-actionable too.
+        dd.stage = "published"
 
         if body.final_verdict == "negative":
             # ── Reject path ──────────────────────────────────────────────────
@@ -303,11 +480,10 @@ async def svc_save_due_diligence(
                 detail="Positive DD — proceeding to Agreement",
             )
 
-            # The same legal delegate inherits licensing automatically: one
-            # `site_delegations` row covers both DD and licensing under
-            # module='legal'. Wrapped in a SAVEPOINT (see helper) so a missing
-            # site_delegations table (slice U2 not yet shipped) is a silent
-            # no-op rather than a failed finalize.
+            # Auto-inherit licensing: the same `site_delegations` row (module='legal')
+            # covers both DD and licensing. Wrapped in a SAVEPOINT inside the helper
+            # so that a missing site_delegations table is a silent no-op rather than
+            # aborting the DD-finalize transaction.
             delegate_user_id = await _find_legal_delegate(session, site_id=site.id)
             if delegate_user_id is not None:
                 await write_audit_event(
@@ -340,10 +516,9 @@ async def _find_legal_delegate(
 ) -> Optional[UUID]:
     """Look up the legal delegate for a site, tolerating a missing U2 table.
 
-    Slice U2 introduces `site_delegations`. Until that migration lands the
-    table doesn't exist, so we run the lookup inside a SAVEPOINT and swallow
-    SQLAlchemyError — the outer transaction stays clean and the caller falls
-    back to "no delegate".
+    Returns the delegate's user id or None if no active delegation. Uses a
+    SAVEPOINT + SQLAlchemyError catch so a missing `site_delegations` table is
+    a silent no-op rather than aborting the outer transaction.
     """
     try:
         async with session.begin_nested():
@@ -362,6 +537,8 @@ async def _find_legal_delegate(
             )).first()
         return row[0] if row else None
     except SQLAlchemyError as exc:
+        # Most likely UndefinedTable: site_delegations table missing.
+        # SAVEPOINT was rolled back, so the outer transaction stays clean.
         logger.info(
             "site_delegations lookup skipped for site %s (table missing or query failed): %s",
             site_id, exc,
@@ -431,6 +608,14 @@ async def svc_save_licensing(
 ) -> LegalReviewResponse:
     """Create or update the licensing row.
 
+    Stage gate (migration 202605272):
+      - Executive callers must hold an active legal site_delegations row and
+        may only mutate while stage='draft'. On insert by executive, stage
+        starts at 'draft'.
+      - Supervisor callers are unrestricted. When the supervisor saves AND all
+        five items are 'yes', stage is flipped to 'published'. Partial saves
+        leave stage untouched.
+
     When all five items are 'yes':
       - sites.licensing_status → 'complete'
       - sites.status → LEGAL_APPROVED (legal workflow done)
@@ -446,10 +631,18 @@ async def svc_save_licensing(
                 detail="Agreement must be registered (Step 3) before saving Licensing",
             )
 
+        is_executive = await _require_executive_legal_delegation(
+            session, site_id=site.id, actor=actor,
+        )
+
         lic = await _fetch_licensing_or_none(session, site_id=site.id)
         if lic is None:
             lic = models.SiteLicensing(site_id=site.id)
+            if is_executive:
+                lic.stage = "draft"
             session.add(lic)
+        elif is_executive:
+            _assert_executive_can_edit_stage(_row_stage(lic))
 
         for field in ("fssai", "health_trade", "shops_estab_reg", "fire_noc", "storage_license"):
             val = getattr(body, field)
@@ -462,7 +655,12 @@ async def svc_save_licensing(
             for f in ("fssai", "health_trade", "shops_estab_reg", "fire_noc", "storage_license")
         )
 
-        if all_done:
+        if all_done and not is_executive:
+            # Only the supervisor's "all yes" save publishes the row AND
+            # auto-approves the site. An executive who flips them all stays in
+            # draft and must Submit-for-review → supervisor publishes.
+            lic.stage = "published"
+
             site.licensing_status = "complete"
             # Auto-approve: transition LEGAL_REVIEW → LEGAL_APPROVED
             assert_transition(SiteStatus(site.status), SiteStatus.LEGAL_APPROVED)
@@ -496,6 +694,66 @@ async def svc_save_licensing(
                 actor_id=actor["sub"], actor_name=actor["name"],
                 action="legal_licensing_partial",
                 detail="Licensing items partially saved",
+            )
+
+    return await _build_review_response(session, site)
+
+
+# ── Submit licensing draft for supervisor review (executive only) ────────────
+
+async def svc_submit_licensing_for_review(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    actor: dict,
+    site_id: str | UUID,
+) -> LegalReviewResponse:
+    """Executive flips licensing stage: 'draft' → 'pending_review'.
+
+    Notifies the legal supervisor pool that a review is queued.
+    """
+    async with transaction(session):
+        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        lic  = await _fetch_licensing_or_none(session, site_id=site.id)
+        if lic is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"No licensing row found for site {site_id}. Save licensing items first.",
+            )
+
+        await _require_executive_legal_delegation(session, site_id=site.id, actor=actor)
+
+        current_stage = _row_stage(lic)
+        if current_stage != "draft":
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Licensing is not in 'draft' (current: {current_stage}); cannot submit for review.",
+            )
+
+        lic.stage = "pending_review"
+
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=site.id,
+            actor_id=actor["sub"], actor_name=actor["name"],
+            action="legal_licensing_submitted_for_review",
+            detail="Executive submitted licensing draft for supervisor review",
+        )
+        legal_recipients = await recipients_for_legal_supervisors(session, tenant_id=tenant_id)
+        if legal_recipients:
+            await notify_enqueue(
+                session, tenant_id=tenant_id, event="legal_licensing_pending_review",
+                recipient_ids=legal_recipients, site_id=site.id,
+                channels=("email", "in_app"),
+                payload={
+                    "site_id": str(site.id),
+                    "site_name": site.name,
+                    "submitted_by": actor.get("name"),
+                },
+                subject=f"Licensing review pending: {site.name}",
+                body=(
+                    f"The legal executive {actor.get('name') or ''} has submitted the licensing "
+                    f"checklist for '{site.name}' ({site.code}) for supervisor review."
+                ),
             )
 
     return await _build_review_response(session, site)

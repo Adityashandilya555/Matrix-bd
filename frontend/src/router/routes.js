@@ -18,6 +18,8 @@ export const ROUTES = {
   SITE:                   '/sites/:id',
   ADD_DETAILS:            '/shortlist/:code/details',
   LOI_TIMELINE:           '/shortlist/:code/timeline',
+  SITE_TRACKER:           '/site-tracker',
+  SITE_TRACKER_DETAIL:    '/site-tracker/:siteId',
 };
 
 export function siteRoute(id) {
@@ -42,4 +44,8 @@ export function paymentSiteLicensingRoute(siteId) {
 
 export function bdSiteStatusRoute(siteId) {
   return ROUTES.BD_SITE_STATUS.replace(':siteId', siteId);
+}
+
+export function siteTrackerDetailRoute(siteId) {
+  return ROUTES.SITE_TRACKER_DETAIL.replace(':siteId', siteId);
 }

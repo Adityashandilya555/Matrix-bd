@@ -56,6 +56,12 @@ function queueItemFromServer(row) {
 
 function reviewFromServer(row) {
   if (!row) return row;
+  // Surface the staging gate on each child row so the UI can render the chip
+  // and gate edits/submits. Missing `stage` (pre-migration) → 'published'.
+  const dd = row.dd ? { ...row.dd, stage: row.dd.stage || 'published' } : null;
+  const licensing = row.licensing
+    ? { ...row.licensing, stage: row.licensing.stage || 'published' }
+    : null;
   return {
     siteId:           row.site_id,
     tenantId:         row.tenant_id,
@@ -63,9 +69,9 @@ function reviewFromServer(row) {
     legalDdStatus:    row.legal_dd_status,
     agreementStatus:  row.agreement_status,
     licensingStatus:  row.licensing_status,
-    dd:               row.dd        ? { ...row.dd } : null,
+    dd,
     agreement:        row.agreement ? { ...row.agreement } : null,
-    licensing:        row.licensing ? { ...row.licensing } : null,
+    licensing,
   };
 }
 
@@ -112,5 +118,18 @@ export async function saveAgreement(siteId, { signed, registered, documentUrl })
 // auto-transitions the site to LEGAL_APPROVED.
 export async function saveLicensing(siteId, items) {
   const data = await client.post(`/legal/${siteId}/licensing`, items).then((r) => r.data);
+  return reviewFromServer(data);
+}
+
+// Stage submit — delegated executive (or supervisor) flips the DD checklist
+// stage from 'draft' → 'pending_review'. Returns the refreshed review.
+export async function submitDdForReview(siteId) {
+  const data = await client.post(`/legal/${siteId}/dd/submit-for-review`).then((r) => r.data);
+  return reviewFromServer(data);
+}
+
+// Stage submit — same shape for the licensing row.
+export async function submitLicensingForReview(siteId) {
+  const data = await client.post(`/legal/${siteId}/licensing/submit-for-review`).then((r) => r.data);
   return reviewFromServer(data);
 }

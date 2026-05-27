@@ -25,7 +25,9 @@ export const ALLOWED_TRANSITIONS = {
   [SiteStatus.LOI_UPLOADED]:       [SiteStatus.LEGAL_REVIEW, SiteStatus.REJECTED, SiteStatus.ARCHIVED],
   [SiteStatus.LEGAL_REVIEW]:       [SiteStatus.LEGAL_APPROVED, SiteStatus.LEGAL_REJECTED],
   [SiteStatus.LEGAL_APPROVED]:     [SiteStatus.PUSHED_TO_PAYMENTS],
-  [SiteStatus.LEGAL_REJECTED]:     [],
+  // Recovery loop: a CR approval that flips the last failing DD item revives
+  // the site back into LEGAL_REVIEW (see backend change_request_service).
+  [SiteStatus.LEGAL_REJECTED]:     [SiteStatus.LEGAL_REVIEW],
   [SiteStatus.PUSHED_TO_PAYMENTS]: [], // terminal
   [SiteStatus.REJECTED]:           [], // terminal
   [SiteStatus.ARCHIVED]:           [], // terminal

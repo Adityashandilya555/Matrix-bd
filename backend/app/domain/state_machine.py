@@ -36,7 +36,9 @@ ALLOWED_TRANSITIONS: dict[SiteStatus, list[SiteStatus]] = {
     SiteStatus.LEGAL_REVIEW:       [SiteStatus.LEGAL_APPROVED,    SiteStatus.LEGAL_REJECTED],
     # Legal approved → Payments module (terminal until Payments is built)
     SiteStatus.LEGAL_APPROVED:     [SiteStatus.PUSHED_TO_PAYMENTS],
-    SiteStatus.LEGAL_REJECTED:     [],  # terminal — BD notified via notification_outbox
+    # Recovery loop: BD opens a CR flipping the failing DD item; on legal approval
+    # the recompute in change_request_service revives the site to LEGAL_REVIEW.
+    SiteStatus.LEGAL_REJECTED:     [SiteStatus.LEGAL_REVIEW],
     SiteStatus.PUSHED_TO_PAYMENTS: [],  # terminal
     SiteStatus.REJECTED:           [],  # terminal
     SiteStatus.ARCHIVED:           [],  # terminal
