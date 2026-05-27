@@ -49,6 +49,8 @@ from app.services.notification_service import (
     recipients_for_site_owner,
 )
 
+logger = logging.getLogger(__name__)
+
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -478,12 +480,10 @@ async def svc_save_due_diligence(
                 detail="Positive DD — proceeding to Agreement",
             )
 
-            # Auto-inherit licensing: if a `site_delegations` row exists for
-            # this site with module='legal' (introduced in slice U2), the same
-            # delegated executive inherits licensing — no new row needed.
-            # We wrap the lookup in a SAVEPOINT + try/except so that a missing
-            # table (U2 not yet landed) is silently skipped rather than
-            # aborting the whole DD-finalize transaction.
+            # Auto-inherit licensing: the same `site_delegations` row (module='legal')
+            # covers both DD and licensing. Wrapped in a SAVEPOINT inside the helper
+            # so that a missing site_delegations table is a silent no-op rather than
+            # aborting the DD-finalize transaction.
             delegate_user_id = await _find_legal_delegate(session, site_id=site.id)
             if delegate_user_id is not None:
                 await write_audit_event(
@@ -514,11 +514,11 @@ async def svc_save_due_diligence(
 async def _find_legal_delegate(
     session: AsyncSession, *, site_id: str | UUID,
 ) -> Optional[UUID]:
-    """Look up the legal delegate for a site if the U2 table exists.
+    """Look up the legal delegate for a site, tolerating a missing U2 table.
 
-    Returns the delegate's user id or None if no active delegation. Tolerates
-    the `site_delegations` table not yet existing (slice U2 unshipped) by
-    catching the database error inside a SAVEPOINT and skipping silently.
+    Returns the delegate's user id or None if no active delegation. Uses a
+    SAVEPOINT + SQLAlchemyError catch so a missing `site_delegations` table is
+    a silent no-op rather than aborting the outer transaction.
     """
     try:
         async with session.begin_nested():
@@ -537,8 +537,8 @@ async def _find_legal_delegate(
             )).first()
         return row[0] if row else None
     except SQLAlchemyError as exc:
-        # Most likely UndefinedTable: U2 hasn't created site_delegations yet.
-        # SAVEPOINT was rolled back, so the outer transaction is still clean.
+        # Most likely UndefinedTable: site_delegations table missing.
+        # SAVEPOINT was rolled back, so the outer transaction stays clean.
         logger.info(
             "site_delegations lookup skipped for site %s (table missing or query failed): %s",
             site_id, exc,

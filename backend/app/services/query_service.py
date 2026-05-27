@@ -17,6 +17,50 @@ from app.domain.schemas.site import SiteListResponse, SiteResponse
 from app.services._common import apply_role_scope, fetch_site_or_404, site_to_response
 
 
+# Slice U3 adds a `stage` column on legal_dd_checklist + site_licensing
+# (draft / pending_review / published). BD must only see published rows. Use
+# getattr with a 'published' default so we keep working pre-U3.
+
+_DD_BD_FIELDS = (
+    "title_doc", "sanctioned_plan", "oc_cc", "commercial_use", "property_tax",
+    "electricity", "fire_noc", "other_1", "other_2",
+    "final_verdict", "rejection_reason",
+)
+_LICENSING_BD_FIELDS = (
+    "fssai", "health_trade", "shops_estab_reg", "fire_noc", "storage_license",
+)
+
+
+def _row_stage(row) -> str:
+    try:
+        return getattr(row, "stage", "published") or "published"
+    except Exception:  # pragma: no cover — defensive
+        return "published"
+
+
+def _project_for_caller(row, fields: tuple[str, ...], *, module: Optional[str]) -> dict:
+    if row is None:
+        return {"stage": "absent", "items_visible": False}
+    stage = _row_stage(row)
+    bd_caller = (module or "").lower() == "bd"
+    if bd_caller and stage != "published":
+        return {"stage": stage, "items_visible": False}
+    out = {"stage": stage, "items_visible": True}
+    for f in fields:
+        out[f] = getattr(row, f, None)
+    return out
+
+
+def project_dd_for_caller(row, *, module: Optional[str]) -> dict:
+    """BD callers see published DD rows only; legal staff see everything."""
+    return _project_for_caller(row, _DD_BD_FIELDS, module=module)
+
+
+def project_licensing_for_caller(row, *, module: Optional[str]) -> dict:
+    """BD callers see published licensing rows only; legal staff see everything."""
+    return _project_for_caller(row, _LICENSING_BD_FIELDS, module=module)
+
+
 async def list_sites(
     session: AsyncSession,
     *,

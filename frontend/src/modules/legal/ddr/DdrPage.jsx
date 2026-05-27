@@ -67,7 +67,8 @@ export default function DdrPage() {
   const [submitting, setSubmitting] = React.useState(false);
   const [submittingForReview, setSubmittingForReview] = React.useState(false);
 
-  // Delegations: supervisor-only "Delegate to executive" UI.
+  // Delegations: supervisor-only "Delegate to executive" UI; also drives the
+  // executive's licensing CTA unlock once DD is published positive.
   const [executives, setExecutives] = React.useState([]);
   const [delegations, setDelegations] = React.useState([]);
   const [selectedExec, setSelectedExec] = React.useState('');
@@ -141,6 +142,15 @@ export default function DdrPage() {
         setError(err?.detail || err?.message || 'Failed to load DDR');
         setLoadState('error');
       });
+    return () => { cancelled = true; };
+  }, [siteId]);
+
+  React.useEffect(() => {
+    if (!siteId) return;
+    let cancelled = false;
+    listSiteDelegations(siteId)
+      .then((items) => { if (!cancelled) setDelegations(items || []); })
+      .catch(() => { if (!cancelled) setDelegations([]); });
     return () => { cancelled = true; };
   }, [siteId]);
 
@@ -261,14 +271,13 @@ export default function DdrPage() {
   };
 
   // ── Licensing-tab gate (U5) ────────────────────────────────────────────────
-  // Executive's licensing tab is visible iff
+  // Executive's licensing CTA is unlocked when:
   //   dd.stage === 'published'
   //   && dd.final_verdict === 'positive'
   //   && there is an active legal delegation on this site for me.
   //
-  // Defensive default: if the backend's `stage` column hasn't shipped yet
-  // (slice U3 not landed), `dd.stage` is undefined — treat that as 'published'
-  // so the gate still passes once the verdict turns positive.
+  // Defensive default: missing `dd.stage` (slice U3 not landed yet) is treated
+  // as 'published' so the gate still passes once the verdict turns positive.
   const ddStage = review?.dd?.stage ?? 'published';
   const ddIsPublished = ddStage === 'published';
   const ddPositive = review?.dd?.final_verdict === 'positive';

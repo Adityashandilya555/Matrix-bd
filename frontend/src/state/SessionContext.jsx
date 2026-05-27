@@ -60,6 +60,10 @@ export function SessionProvider({ children }) {
           tenantId:  claims.tenant_id || INITIAL_SESSION.tenantId,
           cityScope: claims.city || INITIAL_SESSION.cityScope,
           module:    claims.module || null,
+          // JWT subject id — the DDR licensing tab compares this against the
+          // site's legal delegate to decide whether the auto-inherited
+          // licensing CTA is unlocked for this user.
+          userId:    claims.sub || INITIAL_SESSION.userId || null,
         });
       } catch (err) {
         // 401/403 → token is stale or app_metadata missing. Clear so the UI
