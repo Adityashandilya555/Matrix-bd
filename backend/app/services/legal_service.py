@@ -675,10 +675,10 @@ async def svc_save_agreement(
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         dd   = await _fetch_dd_or_404(session, site_id=site.id)
 
-        if dd.final_verdict != "positive":
+        if _row_stage(dd) != "published" or dd.final_verdict != "positive":
             raise HTTPException(
                 status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Complete Due Diligence with a positive verdict (Step 2) before saving Agreement",
+                detail="Complete published positive Due Diligence (Step 2) before saving Agreement",
             )
 
         now = datetime.now(timezone.utc)
@@ -690,7 +690,7 @@ async def svc_save_agreement(
         if body.document_url is not None:
             ag.document_url = body.document_url
 
-        if body.signed and not ag.signed:
+        if (body.signed or body.registered) and not ag.signed:
             ag.signed    = True
             ag.signed_at = now
             site.agreement_status = "signed"
@@ -746,10 +746,10 @@ async def svc_save_licensing(
                 detail="Complete published positive DDR before saving Licensing",
             )
 
-        if ag is None or not ag.registered:
+        if ag is None or not (ag.signed or ag.registered):
             raise HTTPException(
                 status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Agreement must be registered (Step 3) before saving Licensing",
+                detail="Agreement must be executed (Step 3) before saving Licensing",
             )
 
         is_executive = await _require_executive_legal_delegation(

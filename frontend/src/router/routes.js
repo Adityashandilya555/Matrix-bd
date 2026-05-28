@@ -13,6 +13,7 @@ export const ROUTES = {
   LEGAL:                  '/legal',
   LEGAL_CHANGE_REQUESTS:  '/legal/change-requests',
   LEGAL_SITE_DDR:         '/legal/sites/:siteId/ddr',
+  LEGAL_SITE_AGREEMENT:   '/legal/sites/:siteId/agreement',
   LEGAL_SITE_LICENSING:   '/legal/sites/:siteId/licensing',
   PAYMENT:                '/payment',
   PAYMENT_SITE_LICENSING: '/payment/sites/:siteId/licensing',
@@ -37,6 +38,10 @@ export function loiTimelineRoute(code) {
 
 export function legalSiteDdrRoute(siteId) {
   return ROUTES.LEGAL_SITE_DDR.replace(':siteId', siteId);
+}
+
+export function legalSiteAgreementRoute(siteId) {
+  return ROUTES.LEGAL_SITE_AGREEMENT.replace(':siteId', siteId);
 }
 
 export function legalSiteLicensingRoute(siteId) {

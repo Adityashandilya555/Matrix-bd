@@ -4,6 +4,7 @@ import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Icon from '../../shared/primitives/Icon.jsx';
 import { getSiteTrackerView } from '../../../services/api/siteTrackerApi.js';
 import { ROUTES } from '../../../router/routes.js';
+import { agreementStatusLabel, normalizeAgreementStatus } from '../../../lib/agreementStatus.js';
 
 // Static LOI-forward hand-over graph. Only the Legal node is interactive in v1;
 // the remaining nodes are placeholders that
@@ -183,6 +184,7 @@ function LegalPanel({ data, onClose }) {
   const ag = data.agreement;
   const lic = data.licensing;
   const verdict = verdictTone(dd?.final_verdict);
+  const agreementStatus = normalizeAgreementStatus(data);
 
   return (
     <aside style={{
@@ -257,7 +259,7 @@ function LegalPanel({ data, onClose }) {
             <span style={{
               fontFamily: 'var(--zm-font-body)', fontSize: 11,
               color: 'var(--zm-fg-2)',
-            }}>{data.agreementStatus || 'pending'}</span>
+            }}>{agreementStatusLabel(agreementStatus)}</span>
           </div>
           {!ag ? (
             <div style={{ padding: 14, color: 'var(--zm-fg-3)', fontStyle: 'italic', fontSize: 13 }}>
@@ -265,7 +267,7 @@ function LegalPanel({ data, onClose }) {
             </div>
           ) : (
             <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12.5 }}>
-              <div>Signed: <strong>{ag.signed ? 'yes' : 'no'}</strong>
+              <div>Executed: <strong>{ag.signed ? 'yes' : 'no'}</strong>
                 {ag.signed_at ? ` · ${new Date(ag.signed_at).toLocaleDateString()}` : ''}
               </div>
               <div>Registered: <strong>{ag.registered ? 'yes' : 'no'}</strong>
@@ -400,7 +402,7 @@ export default function SiteTrackerDetailPage() {
               </div>
               <div>
                 <div style={{ fontSize: 10.5, color: 'var(--zm-fg-3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Agreement</div>
-                <div style={{ fontWeight: 700 }}>{data.agreementStatus || 'pending'}</div>
+                <div style={{ fontWeight: 700 }}>{agreementStatusLabel(normalizeAgreementStatus(data))}</div>
               </div>
               <div>
                 <div style={{ fontSize: 10.5, color: 'var(--zm-fg-3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Licensing</div>

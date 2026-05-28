@@ -6,6 +6,7 @@ import { useSession } from '../../../state/SessionContext.jsx';
 import { getLegalReview, saveLicensing } from '../../../services/api/legalApi.js';
 import { listLegalDelegationsForSite } from '../../../services/api/legalDelegationApi.js';
 import { ROUTES } from '../../../router/routes.js';
+import { agreementAllowsLicensing, agreementStatusLabel, normalizeAgreementStatus } from '../../../lib/agreementStatus.js';
 
 const LICENSING_CHECKS = [
   { id: 'fssai',           label: 'FSSAI license verified' },
@@ -98,14 +99,15 @@ export default function LicensingPage() {
   const hasMyDelegation = !!myUserId && delegations.some(
     (d) => String(d.delegateUserId) === String(myUserId),
   );
-  const agreementReady = review?.agreementStatus === 'registered' || review?.agreement?.registered === true;
+  const agreementStatus = normalizeAgreementStatus(review);
+  const agreementReady = agreementAllowsLicensing(agreementStatus);
   const ddReady = (review?.dd?.stage || 'published') === 'published' && review?.dd?.final_verdict === 'positive';
   const canEditStage = isSupervisor || (isExecutive && stage === 'draft' && hasMyDelegation);
   const canEdit = ddReady && agreementReady && canEditStage;
   const lockedReason = !ddReady
     ? 'Licensing opens after DDR is published with a positive verdict.'
     : !agreementReady
-      ? 'Agreement must be registered before licensing can be edited.'
+      ? 'Agreement must be executed before licensing can be edited.'
       : isExecutive && !hasMyDelegation
         ? 'This licensing checklist is read-only until the legal supervisor delegates the site to you.'
         : isExecutive && stage !== 'draft'
@@ -177,7 +179,7 @@ export default function LicensingPage() {
     )}
     {ddReady && !agreementReady && (
       <div className="zm-glass" style={{ padding: 14, borderRadius: 10, marginBottom: 12, color: 'var(--zm-fg-2)' }}>
-        Agreement is not yet registered. Licensing is locked until the agreement record is marked registered.
+        Agreement is still pending. Licensing is locked until the agreement is executed or registered.
       </div>
     )}
     {ddReady && agreementReady && !canEdit && (
@@ -196,7 +198,7 @@ export default function LicensingPage() {
       ]}
       trail={[
         ['DDR verdict',          ddReady ? 'Positive' : 'Pending'],
-        ['Agreement registered', agreementReady ? 'Done' : 'Pending'],
+        ['Agreement status', agreementReady ? agreementStatusLabel(agreementStatus) : 'Pending'],
         ['Payment handoff',      review?.licensingStatus === 'complete' ? 'Ready' : 'Pending'],
       ]}
       header={{

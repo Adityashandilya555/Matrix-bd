@@ -7,6 +7,7 @@ import {
   getBdSiteStatus,
   createChangeRequest,
 } from '../../../services/api/changeRequestApi.js';
+import { agreementAllowsLicensing, agreementStatusLabel, normalizeAgreementStatus } from '../../../lib/agreementStatus.js';
 
 const DD_CHECKS = [
   { id: 'title_doc',       label: 'Title / ownership' },
@@ -140,6 +141,8 @@ export default function SiteStatusPage() {
   const dd = d.dd;
   const ddPositive = dd && dd.final_verdict === 'positive';
   const ddNegative = dd && dd.final_verdict === 'negative';
+  const agreementStatus = normalizeAgreementStatus(d);
+  const agreementReady = agreementAllowsLicensing(agreementStatus);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -206,9 +209,46 @@ export default function SiteStatusPage() {
           padding: '12px 16px', borderBottom: '1px solid var(--zm-line)',
           background: 'var(--zm-surface-2)', display: 'flex', alignItems: 'center', gap: 8,
         }}>
+          <Icon name="file" size={14}/>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 11.5, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+            2 · Agreement
+          </span>
+        </div>
+        {!ddPositive && (
+          <div style={{ padding: 18, color: 'var(--zm-fg-3)', fontStyle: 'italic' }}>
+            Agreement details unlock once due diligence is positive.
+          </div>
+        )}
+        {ddPositive && (
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'minmax(220px,1fr) 160px',
+            gap: 12, padding: '14px 16px', alignItems: 'center',
+          }}>
+            <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, color: 'var(--zm-fg)' }}>
+              Agreement status
+            </span>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              height: 24, padding: '0 10px', borderRadius: 4,
+              border: `1px solid ${agreementReady ? 'var(--zm-success)' : 'var(--zm-fg-3)'}`,
+              color: agreementReady ? 'var(--zm-success)' : 'var(--zm-fg-3)',
+              fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 10.5,
+              letterSpacing: '0.12em', textTransform: 'uppercase',
+            }}>
+              {agreementStatusLabel(agreementStatus)}
+            </span>
+          </div>
+        )}
+      </section>
+
+      <section className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{
+          padding: '12px 16px', borderBottom: '1px solid var(--zm-line)',
+          background: 'var(--zm-surface-2)', display: 'flex', alignItems: 'center', gap: 8,
+        }}>
           <Icon name="shield" size={14}/>
           <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 11.5, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-            2 · Licenses
+            3 · Licenses
           </span>
         </div>
         {!ddPositive && (
@@ -216,12 +256,17 @@ export default function SiteStatusPage() {
             Licensing details unlock once due diligence is positive.
           </div>
         )}
-        {ddPositive && !d.licensing && (
+        {ddPositive && !agreementReady && (
+          <div style={{ padding: 18, color: 'var(--zm-fg-3)', fontStyle: 'italic' }}>
+            Licensing is locked until agreement is executed or registered.
+          </div>
+        )}
+        {ddPositive && agreementReady && !d.licensing && (
           <div style={{ padding: 18, color: 'var(--zm-fg-3)' }}>
             Legal has not started the licensing checklist yet.
           </div>
         )}
-        {ddPositive && d.licensing && LIC_CHECKS.map(row => (
+        {ddPositive && agreementReady && d.licensing && LIC_CHECKS.map(row => (
           <ChecklistRow
             key={row.id} row={row} value={d.licensing[row.id]}
           />
