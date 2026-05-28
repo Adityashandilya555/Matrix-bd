@@ -1089,7 +1089,13 @@ function AuthModal({ mode, onMode, onClose }) {
       onClose();
       navigate(routeFromToken(data?.access_token));
     } catch (error) {
-      showStatus(`Sign-in failed: ${error?.message || String(error)}`, error?.isPending ? 'success' : 'error');
+      // Pending-approval responses are not failures — show the warm message
+      // as success-toned without the "Sign-in failed:" prefix.
+      if (error?.isPending) {
+        showStatus(error.message || 'Your access is pending approval.');
+      } else {
+        showStatus(`Sign-in failed: ${error?.message || String(error)}`, 'error');
+      }
     } finally {
       setBusy(false);
     }
@@ -1187,7 +1193,7 @@ function AuthModal({ mode, onMode, onClose }) {
   return (
     <div className="scale-auth-overlay" role="presentation" onMouseDown={onClose}>
       <form className="scale-auth-card" onSubmit={submitHandler} onMouseDown={(event) => event.stopPropagation()}>
-        <button type="button" className="scale-auth-close" onClick={onClose} aria-label="Close auth">X</button>
+        <button type="button" className="scale-auth-close" onClick={onClose} aria-label="Close auth">×</button>
         <div className="scale-auth-tabs">
           <button type="button" data-active={mode === 'login'} onClick={() => onMode('login')}>Sign in</button>
           <button type="button" data-active={mode === 'join'} onClick={() => onMode('join')}>Join</button>
@@ -1211,13 +1217,27 @@ function AuthModal({ mode, onMode, onClose }) {
         {isRegister && (
           <label>
             Company name
-            <input name="company" type="text" placeholder="Blue Tokai Coffee" autoComplete="organization" />
+            <input
+              name="company"
+              type="text"
+              placeholder="Blue Tokai Coffee"
+              autoComplete="organization"
+              required
+              autoFocus
+            />
           </label>
         )}
 
         <label>
           Work email
-          <input name={isRegister ? 'admin_email' : 'email'} type="email" placeholder="you@company.com" autoComplete="email" />
+          <input
+            name={isRegister ? 'admin_email' : 'email'}
+            type="email"
+            placeholder="you@company.com"
+            autoComplete="email"
+            required
+            autoFocus={!isRegister}
+          />
         </label>
 
         {isRegister ? (
@@ -1239,6 +1259,7 @@ function AuthModal({ mode, onMode, onClose }) {
               placeholder={isJoin ? (joinMode === 'supervisor' ? 'DEPT-AB12' : 'SUP-AB12') : 'BTOKAI-7X9F'}
               autoComplete="off"
               spellCheck="false"
+              required
             />
           </label>
         )}
