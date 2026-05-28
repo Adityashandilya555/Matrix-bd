@@ -289,8 +289,35 @@ const MOCK_SITES = [
   },
 ];
 
-// In-memory mutable store — all service writes mutate this array.
-let _sites = MOCK_SITES.map(s => ({ ...s }));
+const STORAGE_KEY = 'matrix_bd_mock_sites_v1';
+
+function cloneSite(site) {
+  return JSON.parse(JSON.stringify(site));
+}
+
+function readStoredSites() {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistSites() {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(_sites));
+  } catch {
+    // Mock persistence is best-effort only; writes should keep working in memory.
+  }
+}
+
+// Mutable mock store. Browser mock mode persists to localStorage so draft saves
+// survive refreshes like the HTTP/database-backed app does.
+let _sites = readStoredSites() || MOCK_SITES.map(cloneSite);
 
 export function getAllSites() {
   return [..._sites];
@@ -306,16 +333,20 @@ export function getSiteByCode(code) {
 
 export function upsertSite(site) {
   const idx = _sites.findIndex(s => s.id === site.id);
+  let saved;
   if (idx >= 0) {
     _sites[idx] = { ..._sites[idx], ...site, updatedAt: new Date().toISOString() };
-    return _sites[idx];
+    saved = _sites[idx];
   } else {
     const newSite = { ...site, updatedAt: new Date().toISOString() };
     _sites.unshift(newSite);
-    return newSite;
+    saved = newSite;
   }
+  persistSites();
+  return saved;
 }
 
 export function resetSites() {
-  _sites = MOCK_SITES.map(s => ({ ...s }));
+  _sites = MOCK_SITES.map(cloneSite);
+  if (typeof localStorage !== 'undefined') localStorage.removeItem(STORAGE_KEY);
 }
