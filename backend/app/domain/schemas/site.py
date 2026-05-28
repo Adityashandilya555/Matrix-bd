@@ -1,6 +1,6 @@
 """Pydantic schemas for site resources."""
 from __future__ import annotations
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 from pydantic import AliasChoices, BaseModel, Field
 from app.domain.state_machine import SiteStatus
@@ -139,12 +139,14 @@ class SiteResponse(BaseModel):
     cam: Optional[float] = None
     rent: Optional[float] = None
     total_op_cost: Optional[float] = None
+    escalation: Optional[float] = None
     rent_free_days: Optional[int] = None
     cadex: Optional[float] = None
     deposit: Optional[float] = None
     brokerage: Optional[float] = None
     lockin: Optional[int] = None
     tenure: Optional[int] = None
+    details_saved_at: Optional[datetime] = None
     legal_dd_status: Optional[str] = None
     agreement_status: Optional[str] = None
     licensing_status: Optional[str] = None

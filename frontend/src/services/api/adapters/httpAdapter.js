@@ -95,13 +95,14 @@ function siteFromServer(s) {
     rentType: s.rent_type ?? '',
     rent: s.rent ?? s.expected_rent ?? '',
     revshare: s.revshare ?? s.expected_revshare_pct ?? '',
+    _savedAt: s.details_saved_at ?? '',
     score: s.score ?? '',
     estSales: s.est_sales ?? '',
     nearestStarbucks: s.nearest_starbucks ?? '',
     nearestTWC: s.nearest_twc ?? '',
     carpet: s.carpet ?? '',
     cam: s.cam ?? '',
-    escalation: s.expected_escalation_pct ?? '',
+    escalation: s.escalation ?? s.expected_escalation_pct ?? '',
     rentFreeDays: s.rent_free_days ?? '',
     cadex: s.cadex ?? '',
     deposit: s.deposit ?? '',
@@ -113,7 +114,8 @@ function siteFromServer(s) {
   };
   const hasSavedDetails = [
     s.score, s.est_sales, s.nearest_starbucks, s.nearest_twc, s.carpet, s.cam,
-    s.revshare, s.rent_free_days, s.cadex, s.deposit, s.brokerage, s.lockin, s.tenure,
+    s.escalation, s.revshare, s.rent_free_days, s.cadex, s.deposit, s.brokerage, s.lockin, s.tenure,
+    s.details_saved_at,
   ].some((v) => v !== null && v !== undefined);
   return {
     id: s.id,

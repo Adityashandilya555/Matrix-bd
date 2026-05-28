@@ -233,6 +233,8 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
   const { shortlist, saveDraftDetails, submitDetailsForReview, approveShortlistToStaging } = useSites();
   const [approving, setApproving] = React.useState(null);
   const [detailing, setDetailing] = React.useState(null);
+  const [detailSaving, setDetailSaving] = React.useState(false);
+  const [detailError, setDetailError] = React.useState(null);
   const [delegating, setDelegating] = React.useState(null);
 
   const ME = user.name;
@@ -246,7 +248,10 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
     approveShortlistToStaging(item, days);
     showToast?.(`Approved · ${item.name}. LOI expected in ${days}d. Moved to staging.`);
   };
-  const onAddDetails = (item) => setDetailing(item);
+  const onAddDetails = (item) => {
+    setDetailError(null);
+    setDetailing(item);
+  };
   const onDetailsSubmit = async (item, formData) => {
     setDetailing(null);
     try {
@@ -256,10 +261,20 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
       showToast?.(`Submit failed: ${err?.detail || err?.message || 'Unknown error'}`, 'danger');
     }
   };
-  const onDetailsSaveDraft = (item, formData) => {
-    setDetailing(null);
-    saveDraftDetails(item, formData);
-    showToast?.(`Draft saved · ${item.name}. Continue anytime from the shortlist.`);
+  const onDetailsSaveDraft = async (item, formData) => {
+    setDetailError(null);
+    setDetailSaving(true);
+    try {
+      await saveDraftDetails(item, formData);
+      setDetailing(null);
+      showToast?.(`Draft saved · ${item.name}. Continue anytime from the shortlist.`);
+    } catch (err) {
+      const message = err?.detail || err?.message || 'Unknown error';
+      setDetailError(message);
+      showToast?.(`Draft save failed: ${message}`, 'danger');
+    } finally {
+      setDetailSaving(false);
+    }
   };
 
   return (
@@ -284,7 +299,7 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
         </div>
       )}
       {approving && <LOITimelineModal site={approving} onCancel={() => setApproving(null)} onSubmit={onTimelineSubmit}/>}
-      {detailing && <AddDetailsPage item={detailing} onClose={() => setDetailing(null)} onSubmit={(formData) => onDetailsSubmit(detailing, formData)} onSaveDraft={(formData) => onDetailsSaveDraft(detailing, formData)}/>}
+      {detailing && <AddDetailsPage key={detailing.id} item={detailing} onClose={() => { if (!detailSaving) setDetailing(null); }} onSubmit={(formData) => onDetailsSubmit(detailing, formData)} onSaveDraft={(formData) => onDetailsSaveDraft(detailing, formData)} savingDraft={detailSaving} saveError={detailError}/>}
       {delegating && <DelegationModal site={delegating} onClose={() => setDelegating(null)} showToast={showToast}/>}
     </div>
   );

@@ -65,7 +65,7 @@ function FormSection({ title, n, children }) {
   );
 }
 
-export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft }) {
+export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, savingDraft = false, saveError = null }) {
   // Pipeline-stage fields (model, spocName, googlePin, rentType, expectedRent) are now
   // captured at draft creation. Prefill them here so the BE picks up where they left off;
   // any edit before submit/save is diff-logged into the activity feed by the backend.
@@ -117,7 +117,10 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft })
   const resumed = !!item.details;
   const lastSavedAt = item.details?._savedAt;
   const handleSubmit = () => { if (!filled) return; onSubmit({ ...f, totalOpCost }); };
-  const handleSaveDraft = () => { onSaveDraft?.({ ...f, totalOpCost, _savedAt: new Date().toISOString() }); };
+  const handleSaveDraft = () => {
+    if (savingDraft) return;
+    onSaveDraft?.({ ...f, totalOpCost, _savedAt: new Date().toISOString() });
+  };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.50)', backdropFilter: 'blur(6px)', zIndex: 110, display: 'flex', alignItems: 'stretch', justifyContent: 'flex-end', animation: 'zm-fade 200ms var(--zm-ease)' }}>
@@ -128,7 +131,7 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft })
             <h2 style={{ margin: 0, fontFamily: 'var(--zm-font-display)', fontWeight: 700, fontSize: 22, letterSpacing: '-0.02em', color: 'var(--zm-fg)' }}>Add site details · {f.name}</h2>
             <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-3)' }}>{resumed ? <>Resumed draft · last saved <strong style={{ color: 'var(--zm-fg-2)' }}>{lastSavedAt ? new Date(lastSavedAt).toLocaleString('en', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}</strong>. Pick up where you left off, or send for review.</> : <><strong style={{ color: 'var(--zm-fg-2)' }}>{totalFields}</strong> essential fields. Enter rupee values in <strong>full rupees, no commas</strong> (e.g. 125000 — not 1.25L). Total op cost is auto-calculated. Save partial progress anytime; hit <strong>Send for review</strong> when ready.</>}</p>
           </div>
-          <button onClick={onClose} className="zm-icon-btn" style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 8, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--zm-fg-2)', cursor: 'pointer' }}><Icon name="x" size={14}/></button>
+          <button onClick={onClose} disabled={savingDraft} className="zm-icon-btn" style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 8, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: savingDraft ? 'var(--zm-fg-4)' : 'var(--zm-fg-2)', cursor: savingDraft ? 'wait' : 'pointer', opacity: savingDraft ? 0.65 : 1 }}><Icon name="x" size={14}/></button>
         </header>
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 28px 28px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -161,9 +164,10 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft })
         <footer style={{ padding: '14px 28px', borderTop: '1px solid var(--zm-line)', background: 'var(--zm-surface)', display: 'flex', alignItems: 'center', gap: 12 }}>
           {filled ? (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: '#047857', fontWeight: 600 }}><Icon name="check" size={14}/> All essentials filled · ready for review</span>) : (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}><Icon name="alert" size={14} style={{ color: '#B45309' }}/><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span><strong style={{ color: 'var(--zm-fg)' }}>{filledCount}</strong> <span style={{ color: 'var(--zm-fg-3)' }}>/ {totalFields}</span> filled</span><span aria-hidden="true" style={{ width: 84, height: 5, borderRadius: 999, background: 'var(--zm-surface-sunken)', overflow: 'hidden' }}><span style={{ display: 'block', height: '100%', width: `${Math.round((filledCount / totalFields) * 100)}%`, background: 'var(--zm-accent)', borderRadius: 999, transition: 'width 280ms var(--zm-ease-emp)' }}/></span></span></span>)}
           <span style={{ flex: 1 }}/>
-          <button onClick={onClose} className="zm-btn" style={{ height: 36, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-          <button onClick={handleSaveDraft} className="zm-btn" title="Save partial progress · continue later" style={{ height: 36, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="folder" size={13}/> Save draft</button>
-          <button onClick={handleSubmit} disabled={!filled} className="zm-btn-primary" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: filled ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: filled ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: filled ? 'pointer' : 'not-allowed', boxShadow: filled ? 'var(--zm-shadow-1)' : 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>Send for review <Icon name="arrow" size={14}/></button>
+          {saveError && <span style={{ maxWidth: 260, fontFamily: 'var(--zm-font-body)', fontSize: 12, color: '#B91C1C' }}>Save failed: {saveError}</span>}
+          <button onClick={onClose} disabled={savingDraft} className="zm-btn" style={{ height: 36, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: savingDraft ? 'var(--zm-fg-4)' : 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: savingDraft ? 'wait' : 'pointer', opacity: savingDraft ? 0.65 : 1 }}>Cancel</button>
+          <button onClick={handleSaveDraft} disabled={savingDraft} className="zm-btn" title="Save partial progress · continue later" style={{ height: 36, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: savingDraft ? 'var(--zm-fg-3)' : 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: savingDraft ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: savingDraft ? 0.75 : 1 }}><Icon name="folder" size={13}/> {savingDraft ? 'Saving...' : 'Save draft'}</button>
+          <button onClick={handleSubmit} disabled={!filled || savingDraft} className="zm-btn-primary" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: filled && !savingDraft ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: filled && !savingDraft ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: filled && !savingDraft ? 'pointer' : 'not-allowed', boxShadow: filled && !savingDraft ? 'var(--zm-shadow-1)' : 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>Send for review <Icon name="arrow" size={14}/></button>
         </footer>
       </div>
     </div>
