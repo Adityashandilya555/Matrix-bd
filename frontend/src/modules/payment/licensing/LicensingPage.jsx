@@ -162,7 +162,7 @@ export default function LicensingPage() {
     )}
     {ddReady && !agreementReady && (
       <div className="zm-glass" style={{ padding: 14, borderRadius: 10, marginBottom: 12, color: 'var(--zm-fg-2)' }}>
-        Agreement is not registered yet. You can open the licensing checklist, but saving requires the agreement step to be registered first.
+        Agreement is not yet registered. You can save licensing drafts now — completing licensing (all items Yes) will require agreement to be registered first.
       </div>
     )}
     <ModuleChecklistPage
