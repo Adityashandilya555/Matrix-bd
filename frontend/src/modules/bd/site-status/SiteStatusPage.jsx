@@ -38,7 +38,7 @@ function tone(value) {
 
 function ChecklistRow({ row, value, onRequestFlip, pendingRequest }) {
   const t = tone(value);
-  const canFlip = value === 'no' && !pendingRequest;
+  const canFlip = value === 'no' && !pendingRequest && onRequestFlip;
   return (
     <div style={{
       display: 'grid', gridTemplateColumns: 'minmax(220px,1fr) 110px 200px',
@@ -224,8 +224,6 @@ export default function SiteStatusPage() {
         {ddPositive && d.licensing && LIC_CHECKS.map(row => (
           <ChecklistRow
             key={row.id} row={row} value={d.licensing[row.id]}
-            pendingRequest={pendingFor(d.changeRequests, 'site_licensing', row.id)}
-            onRequestFlip={() => requestFlip('site_licensing', row.id)}
           />
         ))}
       </section>

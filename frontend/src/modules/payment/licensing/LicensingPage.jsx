@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import ModuleChecklistPage from '../../shared/checklist/ModuleChecklistPage.jsx';
 import { usePageContext } from '../../../App.jsx';
 import { useSession } from '../../../state/SessionContext.jsx';
-import { getLegalReview, saveLicensing, submitLicensingForReview } from '../../../services/api/legalApi.js';
+import { getLegalReview, saveLicensing } from '../../../services/api/legalApi.js';
+import { listLegalDelegationsForSite } from '../../../services/api/legalDelegationApi.js';
 import { ROUTES } from '../../../router/routes.js';
 
 const LICENSING_CHECKS = [
@@ -28,14 +29,14 @@ export default function LicensingPage() {
   const { siteId } = useParams();
   const navigate = useNavigate();
   const { showToast } = usePageContext();
-  const { role } = useSession();
+  const { role, session } = useSession();
 
   const [review, setReview] = React.useState(null);
   const [loadState, setLoadState] = React.useState('loading');
   const [error, setError] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
-  const [submittingForReview, setSubmittingForReview] = React.useState(false);
+  const [delegations, setDelegations] = React.useState([]);
 
   React.useEffect(() => {
     if (!siteId) return;
@@ -51,6 +52,19 @@ export default function LicensingPage() {
         if (cancelled) return;
         setError(err?.detail || err?.message || 'Failed to load licensing');
         setLoadState('error');
+      });
+    return () => { cancelled = true; };
+  }, [siteId]);
+
+  React.useEffect(() => {
+    if (!siteId) return;
+    let cancelled = false;
+    listLegalDelegationsForSite(siteId)
+      .then((r) => {
+        if (!cancelled) setDelegations(r.items || []);
+      })
+      .catch(() => {
+        if (!cancelled) setDelegations([]);
       });
     return () => { cancelled = true; };
   }, [siteId]);
@@ -80,9 +94,23 @@ export default function LicensingPage() {
   const stage = review?.licensing?.stage || 'draft';
   const isSupervisor = role === 'supervisor';
   const isExecutive = role === 'executive' || role === 'exec';
-  const canEdit = isSupervisor || stage === 'draft';
-  const agreementReady = review?.agreementStatus === 'registered';
-  const ddReady = review?.dd?.stage === 'published' && review?.dd?.final_verdict === 'positive';
+  const myUserId = session?.userId || null;
+  const hasMyDelegation = !!myUserId && delegations.some(
+    (d) => String(d.delegateUserId) === String(myUserId),
+  );
+  const agreementReady = review?.agreementStatus === 'registered' || review?.agreement?.registered === true;
+  const ddReady = (review?.dd?.stage || 'published') === 'published' && review?.dd?.final_verdict === 'positive';
+  const canEditStage = isSupervisor || (isExecutive && stage === 'draft' && hasMyDelegation);
+  const canEdit = ddReady && agreementReady && canEditStage;
+  const lockedReason = !ddReady
+    ? 'Licensing opens after DDR is published with a positive verdict.'
+    : !agreementReady
+      ? 'Agreement must be registered before licensing can be edited.'
+      : isExecutive && !hasMyDelegation
+        ? 'This licensing checklist is read-only until the legal supervisor delegates the site to you.'
+        : isExecutive && stage !== 'draft'
+          ? `Licensing is ${stage.replace('_', ' ')}; executive edits are locked.`
+          : 'Licensing is read-only right now.';
 
   const buildPayload = ({ coreStatuses }) => {
     const payload = {};
@@ -95,7 +123,7 @@ export default function LicensingPage() {
 
   const handleSave = async (snapshot) => {
     if (!canEdit) {
-      showToast?.(`Licensing is ${stage.replace('_', ' ')} — edits are locked for ${role}.`, 'danger');
+      showToast?.(lockedReason, 'danger');
       return;
     }
     try {
@@ -112,7 +140,7 @@ export default function LicensingPage() {
 
   const handleSubmit = async (snapshot) => {
     if (!canEdit) {
-      showToast?.(`Licensing is ${stage.replace('_', ' ')} — edits are locked for ${role}.`, 'danger');
+      showToast?.(lockedReason, 'danger');
       return;
     }
     try {
@@ -126,19 +154,6 @@ export default function LicensingPage() {
       showToast?.(err?.detail || err?.message || 'Submit failed', 'danger');
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleSubmitForReview = async () => {
-    try {
-      setSubmittingForReview(true);
-      const next = await submitLicensingForReview(siteId);
-      setReview(next);
-      showToast?.('Licensing submitted for supervisor review.', 'success');
-    } catch (err) {
-      showToast?.(err?.detail || err?.message || 'Submit for review failed', 'danger');
-    } finally {
-      setSubmittingForReview(false);
     }
   };
 
@@ -162,7 +177,12 @@ export default function LicensingPage() {
     )}
     {ddReady && !agreementReady && (
       <div className="zm-glass" style={{ padding: 14, borderRadius: 10, marginBottom: 12, color: 'var(--zm-fg-2)' }}>
-        Agreement is not yet registered. You can save licensing drafts now — completing licensing (all items Yes) will require agreement to be registered first.
+        Agreement is not yet registered. Licensing is locked until the agreement record is marked registered.
+      </div>
+    )}
+    {ddReady && agreementReady && !canEdit && (
+      <div className="zm-glass" style={{ padding: 14, borderRadius: 10, marginBottom: 12, color: 'var(--zm-fg-2)' }}>
+        {lockedReason}
       </div>
     )}
     <ModuleChecklistPage
@@ -200,8 +220,8 @@ export default function LicensingPage() {
       saving={saving}
       submitting={submitting}
       stage={stage}
-      onSubmitForReview={isExecutive ? handleSubmitForReview : undefined}
-      submittingForReview={submittingForReview}
+      readOnly={!canEdit}
+      readOnlyText={lockedReason}
     />
     </>
   );

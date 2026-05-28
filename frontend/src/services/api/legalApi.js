@@ -48,6 +48,7 @@ function queueItemFromServer(row) {
     siteName:         row.site_name,
     city:             row.city,
     legalDdStatus:    row.legal_dd_status,
+    agreementStatus:  row.agreement_status,
     ddFinalVerdict:   row.dd_final_verdict,
     ddStage:          row.dd_stage || 'published',
     legalReviewAt:    row.legal_review_at,

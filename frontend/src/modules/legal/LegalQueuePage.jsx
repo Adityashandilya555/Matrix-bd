@@ -98,7 +98,7 @@ export default function LegalQueuePage() {
   }, [isSupervisor, state.status, state.items]);
 
   const open = (row) => {
-    const target = row.legalDdStatus === 'positive'
+    const target = row.legalDdStatus === 'positive' && row.agreementStatus === 'registered'
       ? legalSiteLicensingRoute(row.siteId)
       : legalSiteDdrRoute(row.siteId);
     navigate(target);
@@ -203,7 +203,7 @@ export default function LegalQueuePage() {
                   cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
                 }}
               >
-                {row.legalDdStatus === 'positive' ? 'Open licensing' : 'Open DDR'}
+                {row.legalDdStatus === 'positive' && row.agreementStatus === 'registered' ? 'Open licensing' : 'Open DDR'}
                 <Icon name="arrow-right" size={12}/>
               </button>
             </div>

@@ -85,7 +85,7 @@ function StageBadge({ stage }) {
   );
 }
 
-function StatusCheckbox({ value, checked, onChange }) {
+function StatusCheckbox({ value, checked, onChange, disabled = false }) {
   const tone = yesNoTone(value, checked);
   const label = value === 'yes' ? 'Yes' : 'No';
   return (
@@ -106,13 +106,15 @@ function StatusCheckbox({ value, checked, onChange }) {
         fontFamily: 'var(--zm-font-body)',
         fontSize: 12.5,
         fontWeight: 700,
-        cursor: 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.55 : 1,
         userSelect: 'none',
       }}
     >
       <input
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={onChange}
         style={{
           appearance: 'none',
@@ -130,7 +132,7 @@ function StatusCheckbox({ value, checked, onChange }) {
   );
 }
 
-function ChecklistRow({ no, label, status, onStatus, children }) {
+function ChecklistRow({ no, label, status, onStatus, children, readOnly = false }) {
   return (
     <div
       className="zm-row checklist-row"
@@ -193,11 +195,13 @@ function ChecklistRow({ no, label, status, onStatus, children }) {
         <StatusCheckbox
           value="yes"
           checked={status === 'yes'}
+          disabled={readOnly}
           onChange={() => onStatus(status === 'yes' ? null : 'yes')}
         />
         <StatusCheckbox
           value="no"
           checked={status === 'no'}
+          disabled={readOnly}
           onChange={() => onStatus(status === 'no' ? null : 'no')}
         />
       </div>
@@ -238,8 +242,9 @@ function ContextPanel({
   site, trail, complete, issueCount, totalChecks, moduleShort,
   canSubmit, submitBlockedText, onSave, onSubmit, saving, submitting,
   stage, canSubmitForReview, onSubmitForReview, submittingForReview,
+  readOnly = false, readOnlyText,
 }) {
-  const ready = canSubmit && complete === totalChecks && totalChecks > 0 && !submitting;
+  const ready = !readOnly && canSubmit && complete === totalChecks && totalChecks > 0 && !submitting;
 
   return (
     <aside
@@ -316,7 +321,7 @@ function ContextPanel({
         ))}
       </div>
 
-      {!canSubmit && (
+      {(readOnly || !canSubmit) && (
         <div style={{
           padding: 10, borderRadius: 8,
           background: 'var(--zm-warning-soft)',
@@ -324,60 +329,64 @@ function ContextPanel({
           fontFamily: 'var(--zm-font-body)', fontSize: 12,
           lineHeight: 1.45, color: 'var(--zm-fg-2)',
         }}>
-          {submitBlockedText}
+          {readOnly ? readOnlyText : submitBlockedText}
         </div>
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <button
-          className="zm-btn"
-          onClick={onSave}
-          disabled={saving}
-          style={{
-            height: 38, borderRadius: 8, border: '1px solid var(--zm-line)',
-            background: 'var(--zm-surface)', color: 'var(--zm-fg)',
-            fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700,
-            cursor: saving ? 'wait' : 'pointer',
-            opacity: saving ? 0.7 : 1,
-          }}
-        >
-          {saving ? 'Saving…' : `Save ${moduleShort} draft`}
-        </button>
-        {canSubmitForReview && (
-          <button
-            type="button"
-            onClick={onSubmitForReview}
-            disabled={submittingForReview}
-            style={{
-              height: 40, borderRadius: 8, border: 'none',
-              background: submittingForReview ? 'var(--zm-surface-sunken)' : 'var(--zm-accent)',
-              color: submittingForReview ? 'var(--zm-fg-4)' : '#fff',
-              fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 800,
-              cursor: submittingForReview ? 'wait' : 'pointer',
-              boxShadow: submittingForReview ? 'none' : 'var(--zm-shadow-1)',
-            }}
-          >
-            {submittingForReview
-              ? `Submitting ${moduleShort} for review…`
-              : `Submit ${moduleShort} for review`}
-          </button>
-        )}
-        {canSubmit && (
-          <button
-            className="zm-btn-primary"
-            disabled={!ready}
-            onClick={onSubmit}
-            style={{
-              height: 40, borderRadius: 8, border: 'none',
-              background: ready ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)',
-              color: ready ? '#fff' : 'var(--zm-fg-4)',
-              fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 800,
-              cursor: ready ? 'pointer' : 'not-allowed',
-              boxShadow: ready ? 'var(--zm-shadow-1)' : 'none',
-            }}
-          >
-            {submitting ? `Submitting ${moduleShort}…` : `Submit ${moduleShort}`}
-          </button>
+        {!readOnly && (
+          <>
+            <button
+              className="zm-btn"
+              onClick={onSave}
+              disabled={saving}
+              style={{
+                height: 38, borderRadius: 8, border: '1px solid var(--zm-line)',
+                background: 'var(--zm-surface)', color: 'var(--zm-fg)',
+                fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700,
+                cursor: saving ? 'wait' : 'pointer',
+                opacity: saving ? 0.7 : 1,
+              }}
+            >
+              {saving ? 'Saving…' : `Save ${moduleShort} draft`}
+            </button>
+            {canSubmitForReview && (
+              <button
+                type="button"
+                onClick={onSubmitForReview}
+                disabled={submittingForReview}
+                style={{
+                  height: 40, borderRadius: 8, border: 'none',
+                  background: submittingForReview ? 'var(--zm-surface-sunken)' : 'var(--zm-accent)',
+                  color: submittingForReview ? 'var(--zm-fg-4)' : '#fff',
+                  fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 800,
+                  cursor: submittingForReview ? 'wait' : 'pointer',
+                  boxShadow: submittingForReview ? 'none' : 'var(--zm-shadow-1)',
+                }}
+              >
+                {submittingForReview
+                  ? `Submitting ${moduleShort} for review…`
+                  : `Submit ${moduleShort} for review`}
+              </button>
+            )}
+            {canSubmit && (
+              <button
+                className="zm-btn-primary"
+                disabled={!ready}
+                onClick={onSubmit}
+                style={{
+                  height: 40, borderRadius: 8, border: 'none',
+                  background: ready ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)',
+                  color: ready ? '#fff' : 'var(--zm-fg-4)',
+                  fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 800,
+                  cursor: ready ? 'pointer' : 'not-allowed',
+                  boxShadow: ready ? 'var(--zm-shadow-1)' : 'none',
+                }}
+              >
+                {submitting ? `Submitting ${moduleShort}…` : `Submit ${moduleShort}`}
+              </button>
+            )}
+          </>
         )}
       </div>
     </aside>
@@ -417,6 +426,8 @@ export default function ModuleChecklistPage({
   stage = 'published',
   onSubmitForReview,
   submittingForReview = false,
+  readOnly = false,
+  readOnlyText = 'This checklist is read-only right now.',
 }) {
   const { showToast } = usePageContext();
   const { role, session } = useSession();
@@ -441,10 +452,12 @@ export default function ModuleChecklistPage({
   }, [initialOtherRows]);
 
   const setCoreStatus = (id, value) => {
+    if (readOnly) return;
     setCoreStatuses((prev) => ({ ...prev, [id]: value }));
   };
 
   const addOtherRow = () => {
+    if (readOnly) return;
     setOtherRows((rows) => {
       if (rows.length >= maxOtherRows) return rows;
       return [
@@ -455,10 +468,12 @@ export default function ModuleChecklistPage({
   };
 
   const updateOtherRow = (id, patch) => {
+    if (readOnly) return;
     setOtherRows((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
   };
 
   const removeOtherRow = (id) => {
+    if (readOnly) return;
     setOtherRows((rows) => rows.filter((row) => row.id !== id));
   };
 
@@ -480,6 +495,7 @@ export default function ModuleChecklistPage({
   });
 
   const saveDraft = () => {
+    if (readOnly) return;
     if (onSave) {
       onSave(snapshot());
       return;
@@ -488,6 +504,7 @@ export default function ModuleChecklistPage({
   };
 
   const submitReview = () => {
+    if (readOnly) return;
     if (onSubmit) {
       onSubmit(snapshot());
       return;
@@ -499,6 +516,7 @@ export default function ModuleChecklistPage({
   };
 
   const submitForReview = () => {
+    if (readOnly) return;
     if (!onSubmitForReview) return;
     onSubmitForReview(snapshot());
   };
@@ -668,6 +686,7 @@ export default function ModuleChecklistPage({
                   label={item.label}
                   status={coreStatuses[item.id]}
                   onStatus={(value) => setCoreStatus(item.id, value)}
+                  readOnly={readOnly}
                 />
               ))}
 
@@ -677,11 +696,13 @@ export default function ModuleChecklistPage({
                   no={checks.length + index + 1}
                   status={row.status}
                   onStatus={(value) => updateOtherRow(row.id, { status: value })}
+                  readOnly={readOnly}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                     <input
                       value={row.label}
                       onChange={(event) => updateOtherRow(row.id, { label: event.target.value })}
+                      disabled={readOnly}
                       placeholder={otherPlaceholder}
                       aria-label={otherPlaceholder}
                       style={{
@@ -691,7 +712,7 @@ export default function ModuleChecklistPage({
                         padding: '0 10px',
                         border: '1px solid var(--zm-line)',
                         borderRadius: 7,
-                        background: 'var(--zm-bg)',
+                        background: readOnly ? 'var(--zm-surface-2)' : 'var(--zm-bg)',
                         color: 'var(--zm-fg)',
                         fontFamily: 'var(--zm-font-body)',
                         fontSize: 13.5,
@@ -702,6 +723,7 @@ export default function ModuleChecklistPage({
                       type="button"
                       className="zm-icon-btn"
                       onClick={() => removeOtherRow(row.id)}
+                      disabled={readOnly}
                       title="Remove other field"
                       style={{
                         width: 32,
@@ -713,7 +735,8 @@ export default function ModuleChecklistPage({
                         display: 'inline-flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        cursor: 'pointer',
+                        cursor: readOnly ? 'not-allowed' : 'pointer',
+                        opacity: readOnly ? 0.45 : 1,
                         flex: '0 0 auto',
                       }}
                     >
@@ -756,24 +779,24 @@ export default function ModuleChecklistPage({
                 className="zm-btn-primary"
                 type="button"
                 onClick={addOtherRow}
-                disabled={otherRowsExhausted}
+                disabled={readOnly || otherRowsExhausted}
                 title={otherRowsExhausted ? `Up to ${maxOtherRows} other rows allowed` : undefined}
                 style={{
                   height: 36,
                   padding: '0 14px',
                   border: 'none',
                   borderRadius: 8,
-                  background: otherRowsExhausted ? 'var(--zm-surface-sunken)' : 'var(--zm-accent)',
-                  color: otherRowsExhausted ? 'var(--zm-fg-4)' : '#fff',
+                  background: readOnly || otherRowsExhausted ? 'var(--zm-surface-sunken)' : 'var(--zm-accent)',
+                  color: readOnly || otherRowsExhausted ? 'var(--zm-fg-4)' : '#fff',
                   fontFamily: 'var(--zm-font-body)',
                   fontSize: 12.5,
                   fontWeight: 800,
-                  cursor: otherRowsExhausted ? 'not-allowed' : 'pointer',
+                  cursor: readOnly || otherRowsExhausted ? 'not-allowed' : 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 7,
                   whiteSpace: 'nowrap',
-                  boxShadow: otherRowsExhausted ? 'none' : 'var(--zm-shadow-1)',
+                  boxShadow: readOnly || otherRowsExhausted ? 'none' : 'var(--zm-shadow-1)',
                 }}
               >
                 <Icon name="plus" size={14}/>
@@ -800,6 +823,8 @@ export default function ModuleChecklistPage({
           canSubmitForReview={canSubmitForReview}
           onSubmitForReview={submitForReview}
           submittingForReview={submittingForReview}
+          readOnly={readOnly}
+          readOnlyText={readOnlyText}
         />
       </div>
     </div>

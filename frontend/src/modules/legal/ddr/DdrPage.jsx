@@ -289,11 +289,36 @@ export default function DdrPage() {
   const ddStage = review?.dd?.stage ?? 'published';
   const ddIsPublished = ddStage === 'published';
   const ddPositive = review?.dd?.final_verdict === 'positive';
+  const agreementReady = review?.agreementStatus === 'registered' || review?.agreement?.registered === true;
   const isDelegateForMe = !!myUserId && delegations.some(
     (d) => String(d.delegateUserId) === String(myUserId),
   );
   const showLicensingTab =
-    ddIsPublished && ddPositive && (isSupervisor || (isExecutive && isDelegateForMe));
+    ddIsPublished && ddPositive && agreementReady && (isSupervisor || (isExecutive && isDelegateForMe));
+
+  const agreementRequiredPanel = ddIsPublished && ddPositive && !agreementReady ? (
+    <div
+      className="zm-glass"
+      style={{
+        padding: 16, borderRadius: 12, marginBottom: 12,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+        border: '1px solid var(--zm-copper-line)',
+        background: 'var(--zm-warning-soft)',
+      }}
+    >
+      <div>
+        <div style={{
+          fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 11,
+          letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--zm-fg-3)',
+        }}>
+          Agreement required
+        </div>
+        <div style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', marginTop: 4 }}>
+          DDR is positive and published. Register the agreement before licensing opens for this site.
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   const delegationPanel = (
     <div
@@ -459,6 +484,7 @@ export default function DdrPage() {
       </div>
     )}
     {delegationPanel}
+    {agreementRequiredPanel}
     {licensingTab}
     <ModuleChecklistPage
       checks={DDR_CHECKS}
