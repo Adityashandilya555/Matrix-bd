@@ -53,6 +53,16 @@ body[data-accent="cyan"]   { --scale-accent: #00F0FF; --scale-accent-2: #16D9E6;
 body[data-accent="copper"] { --scale-accent: #E0A659; --scale-accent-2: #C28840; --scale-accent-soft: rgba(224,166,89,0.16); --scale-glow: rgba(224,166,89,0.55); }
 body[data-accent="plum"]   { --scale-accent: #B197D2; --scale-accent-2: #8A2BE2; --scale-accent-soft: rgba(177,151,210,0.18); --scale-glow: rgba(138,43,226,0.5); }
 
+/* Override index.html's `html, body, #root { height:100%; overflow:hidden }`
+   so the 900vh sticky-stage scroll model actually scrolls. */
+html[data-scale-route="true"],
+body[data-scale-route="true"],
+body[data-scale-route="true"] #root {
+  height: auto !important;
+  min-height: 100%;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
 body[data-scale-route="true"] {
   margin: 0;
   background: #06141A;
@@ -60,7 +70,6 @@ body[data-scale-route="true"] {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
-body[data-scale-route="true"] #root { overflow-x: hidden; }
 
 .scale-landing-root,
 .scale-landing-root * { box-sizing: border-box; }

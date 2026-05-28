@@ -876,10 +876,12 @@ export default function ScaleLandingPage() {
 
   // Body data attributes drive accent + theme via CSS.
   useEffect(() => {
+    document.documentElement.dataset.scaleRoute = 'true';
     document.body.dataset.theme = 'dark';
     document.body.dataset.accent = 'cyan';
     document.body.dataset.scaleRoute = 'true';
     return () => {
+      delete document.documentElement.dataset.scaleRoute;
       delete document.body.dataset.theme;
       delete document.body.dataset.accent;
       delete document.body.dataset.scaleRoute;
