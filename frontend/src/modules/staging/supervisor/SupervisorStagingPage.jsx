@@ -17,7 +17,7 @@ function EyeIcon({ size = 14 }) {
 }
 
 function KpiTile({ label, value, sub, tone = 'neutral' }) {
-  const tones = { neutral: { color: 'var(--zm-fg)', rule: 'var(--zm-fg-3)' }, good: { color: '#047857', rule: '#047857' }, warn: { color: '#B45309', rule: '#D97706' }, bad: { color: '#B91C1C', rule: '#B91C1C' } }[tone] || { color: 'var(--zm-fg)', rule: 'var(--zm-fg-3)' };
+  const tones = { neutral: { color: 'var(--zm-fg)', rule: 'var(--zm-fg-3)' }, good: { color: 'var(--zm-success)', rule: 'var(--zm-success)' }, warn: { color: 'var(--zm-warning)', rule: 'var(--zm-warning)' }, bad: { color: 'var(--zm-danger)', rule: 'var(--zm-danger)' } }[tone] || { color: 'var(--zm-fg)', rule: 'var(--zm-fg-3)' };
   return (<div style={{ flex: 1, minWidth: 140, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4, background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 10, borderTop: '2px solid ' + tones.rule }}><span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9.5, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>{label}</span><span style={{ fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 22, fontWeight: 600, color: tones.color, lineHeight: 1.1 }}>{value}</span>{sub && (<span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, color: 'var(--zm-fg-3)' }}>{sub}</span>)}</div>);
 }
 
@@ -55,9 +55,9 @@ function TimelineTracker({ site }) {
   const late = actual > target; const pct = Math.max(0, Math.min(100, (actual / Math.max(target, actual)) * 100));
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, fontFamily: 'var(--zm-font-mono)', fontSize: 10.5, whiteSpace: 'nowrap' }}><span style={{ color: 'var(--zm-fg-3)' }}>{site.draftDate || site.approvedDate}</span><span style={{ color: late ? '#B91C1C' : '#005F60', fontWeight: 600 }}>{actual}d / {target}d</span><span style={{ color: 'var(--zm-fg-3)' }}>{site.loiUploadedAt || '—'}</span></div>
-      <div style={{ height: 6, borderRadius: 999, background: 'var(--zm-surface-sunken)', position: 'relative', overflow: 'hidden' }}><div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: late ? '#B91C1C' : '#005F60', borderRadius: 999, transition: 'width 360ms var(--zm-ease-emp)' }}/><span style={{ position: 'absolute', left: `${Math.min(100, (target/Math.max(target,actual))*100)}%`, top: -3, bottom: -3, width: 2, background: 'var(--zm-fg-3)', opacity: 0.4 }}/></div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--zm-font-body)', fontSize: 10.5, fontWeight: 600, color: late ? '#B91C1C' : '#047857', whiteSpace: 'nowrap' }}>{late ? <><Icon name="alert" size={10}/> Uploaded {actual - target}d late</> : <><Icon name="check" size={10}/> Uploaded {target - actual}d early</>}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, fontFamily: 'var(--zm-font-mono)', fontSize: 10.5, whiteSpace: 'nowrap' }}><span style={{ color: 'var(--zm-fg-3)' }}>{site.draftDate || site.approvedDate}</span><span style={{ color: late ? 'var(--zm-danger)' : '#005F60', fontWeight: 600 }}>{actual}d / {target}d</span><span style={{ color: 'var(--zm-fg-3)' }}>{site.loiUploadedAt || '—'}</span></div>
+      <div style={{ height: 6, borderRadius: 999, background: 'var(--zm-surface-sunken)', position: 'relative', overflow: 'hidden' }}><div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: late ? 'var(--zm-danger)' : '#005F60', borderRadius: 999, transition: 'width 360ms var(--zm-ease-emp)' }}/><span style={{ position: 'absolute', left: `${Math.min(100, (target/Math.max(target,actual))*100)}%`, top: -3, bottom: -3, width: 2, background: 'var(--zm-fg-3)', opacity: 0.4 }}/></div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--zm-font-body)', fontSize: 10.5, fontWeight: 600, color: late ? 'var(--zm-danger)' : 'var(--zm-success)', whiteSpace: 'nowrap' }}>{late ? <><Icon name="alert" size={10}/> Uploaded {actual - target}d late</> : <><Icon name="check" size={10}/> Uploaded {target - actual}d early</>}</div>
     </div>
   );
 }

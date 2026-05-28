@@ -874,17 +874,29 @@ export default function ScaleLandingPage() {
   const [heroEmail, setHeroEmail] = useState('');
   const [prefillEmail, setPrefillEmail] = useState('');
 
-  // Body data attributes drive accent + theme via CSS.
+  // Body data attributes drive accent + theme via CSS. Landing is always dark,
+  // but we must NOT delete the theme on unmount — that would strip
+  // body[data-theme="dark"] for users who toggled dark inside the app and
+  // happened to pass through landing. Restore the user's preference instead.
   useEffect(() => {
+    const prevTheme = document.body.dataset.theme;
     document.documentElement.dataset.scaleRoute = 'true';
     document.body.dataset.theme = 'dark';
     document.body.dataset.accent = 'cyan';
     document.body.dataset.scaleRoute = 'true';
     return () => {
       delete document.documentElement.dataset.scaleRoute;
-      delete document.body.dataset.theme;
       delete document.body.dataset.accent;
       delete document.body.dataset.scaleRoute;
+      // Restore whatever the SessionContext established (persisted choice).
+      let restored = prevTheme;
+      try {
+        const stored = window.localStorage.getItem('zm:dark');
+        if (stored === '1') restored = 'dark';
+        else if (stored === '0') restored = 'light';
+      } catch { /* storage disabled */ }
+      if (restored) document.body.dataset.theme = restored;
+      else delete document.body.dataset.theme;
     };
   }, []);
 

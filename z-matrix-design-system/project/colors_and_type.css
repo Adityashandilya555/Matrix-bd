@@ -128,9 +128,9 @@
   --zm-grid:          rgba(238, 232, 220, 0.04);
 
   --zm-fg:            #EDE6D8;   /* warm platinum */
-  --zm-fg-2:          #B8B0A0;
-  --zm-fg-3:          #807868;
-  --zm-fg-4:          #524C40;
+  --zm-fg-2:          #C8C0B0;   /* lifted: ~10:1 on bg */
+  --zm-fg-3:          #9E9684;   /* lifted from #807868 → ~5.4:1 AA on bg */
+  --zm-fg-4:          #6E6757;   /* lifted from #524C40 → ~3.2:1 (non-text UI only) */
   --zm-fg-inv:        #0B0B12;
 
   --zm-accent:        #4DD0C1;
