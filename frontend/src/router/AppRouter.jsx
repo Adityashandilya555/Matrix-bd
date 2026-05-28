@@ -7,6 +7,7 @@ import { useAuthToken } from '../state/useAuthToken.js';
 
 import App from '../App.jsx';
 import LandingPage          from '../modules/landing/LandingPage.jsx';
+import ScaleLandingPage     from '../modules/landing/ScaleLandingPage.jsx';
 import OverviewPage          from '../modules/bd/overview/OverviewPage.jsx';
 import DraftsPage            from '../modules/bd/drafts/DraftsPage.jsx';
 import ShortlistPage         from '../modules/bd/shortlist/ShortlistPage.jsx';
@@ -69,6 +70,7 @@ export default function AppRouter() {
   return (
     <Routes>
       <Route path={LANDING_PATH} element={<LandingRedirectIfAuthed/>}/>
+      <Route path="/scale" element={<ScaleLandingPage/>}/>
 
       {/* Platform admin portal lives OUTSIDE the workspace auth tree — its
           users are platform operators, not tenant members. The page itself
