@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { ROUTES } from './routes.js';
 import { RequireModule, RequireRole } from './guards.jsx';
@@ -6,7 +6,10 @@ import { useSession } from '../state/SessionContext.jsx';
 import { useAuthToken } from '../state/useAuthToken.js';
 
 import App from '../App.jsx';
-import LandingPage          from '../modules/landing/LandingPage.jsx';
+// Lazy-load the landing — Three.js is ~600KB minified. Authenticated users
+// redirect away before the chunk loads; unauthenticated visitors see the
+// fallback for the few hundred ms it takes to fetch on first paint.
+const ScaleLandingPage = lazy(() => import('../modules/landing/ScaleLandingPage.jsx'));
 import OverviewPage          from '../modules/bd/overview/OverviewPage.jsx';
 import DraftsPage            from '../modules/bd/drafts/DraftsPage.jsx';
 import ShortlistPage         from '../modules/bd/shortlist/ShortlistPage.jsx';
@@ -51,6 +54,11 @@ function RequireAuth({ children }) {
   return children;
 }
 
+function LandingFallback() {
+  // Matches the landing's dark background so the swap is invisible.
+  return <div style={{ minHeight: '100vh', background: '#090A07' }} aria-hidden="true" />;
+}
+
 function LandingRedirectIfAuthed() {
   // Send signed-in users away from the marketing page back to their module home.
   const token = useAuthToken();
@@ -58,7 +66,7 @@ function LandingRedirectIfAuthed() {
   if (!USE_MOCK && token) {
     return <Navigate to={homeForRoleModule(role, session?.module)} replace/>;
   }
-  return <LandingPage/>;
+  return <ScaleLandingPage/>;
 }
 
 function IndexRedirect() {
@@ -75,7 +83,11 @@ function IndexRedirect() {
 export default function AppRouter() {
   return (
     <Routes>
-      <Route path={LANDING_PATH} element={<LandingRedirectIfAuthed/>}/>
+      <Route path={LANDING_PATH} element={
+        <Suspense fallback={<LandingFallback/>}>
+          <LandingRedirectIfAuthed/>
+        </Suspense>
+      }/>
 
       {/* Platform admin portal lives OUTSIDE the workspace auth tree — its
           users are platform operators, not tenant members. The page itself
