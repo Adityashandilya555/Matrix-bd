@@ -1797,10 +1797,11 @@ const SCALE_CSS = `
     background: transparent;
     border: 0;
     cursor: pointer;
+    transition: color 180ms ease-out, transform 220ms cubic-bezier(0.19, 1, 0.22, 1);
   }
 
   .scale-nav button:hover,
-  .scale-link-btn:hover { color: var(--scale-paper); }
+  .scale-link-btn:hover { color: var(--scale-paper); transform: translateY(-1px); }
 
   .scale-actions {
     position: absolute;
@@ -1824,6 +1825,17 @@ const SCALE_CSS = `
     font-weight: 800;
     cursor: pointer;
     box-shadow: 0 16px 50px rgba(244, 240, 232, 0.18);
+    transition:
+      transform 220ms cubic-bezier(0.19, 1, 0.22, 1),
+      box-shadow 220ms cubic-bezier(0.19, 1, 0.22, 1);
+  }
+  .scale-primary-btn:not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 22px 60px rgba(244, 240, 232, 0.28);
+  }
+  .scale-primary-btn:not(:disabled):active {
+    transform: translateY(0);
+    transition-duration: 80ms;
   }
 
   .scale-hero {
@@ -3384,6 +3396,7 @@ const SCALE_CSS = `
     padding: 22px;
     background: rgba(9, 10, 7, 0.72);
     backdrop-filter: blur(20px);
+    animation: scale-auth-overlay-in 220ms cubic-bezier(0.19, 1, 0.22, 1) both;
   }
 
   .scale-auth-card {
@@ -3396,6 +3409,7 @@ const SCALE_CSS = `
     box-shadow: 0 30px 110px rgba(0, 0, 0, 0.42);
     display: grid;
     gap: 16px;
+    animation: scale-auth-card-in 360ms cubic-bezier(0.19, 1, 0.22, 1) both;
   }
 
   .scale-auth-close {
@@ -3422,6 +3436,14 @@ const SCALE_CSS = `
     color: rgba(244, 240, 232, 0.62);
     font-weight: 850;
     cursor: pointer;
+    transition:
+      background 200ms ease-out,
+      color 200ms ease-out;
+  }
+
+  .scale-auth-tabs button:not([data-active="true"]):hover {
+    background: rgba(244, 240, 232, 0.06);
+    color: rgba(244, 240, 232, 0.88);
   }
 
   .scale-auth-tabs button[data-active="true"] {
@@ -3530,12 +3552,36 @@ const SCALE_CSS = `
     padding: 12px 14px;
     font-size: 13px;
     line-height: 1.35;
+    animation: scale-auth-status-in 280ms cubic-bezier(0.19, 1, 0.22, 1) both;
   }
 
   .scale-auth-status.is-error {
     border-color: rgba(222, 117, 111, 0.5);
     background: rgba(222, 117, 111, 0.12);
     color: #fcd5d2;
+  }
+
+  @keyframes scale-auth-overlay-in {
+    from { opacity: 0; backdrop-filter: blur(0); }
+    to   { opacity: 1; backdrop-filter: blur(20px); }
+  }
+
+  @keyframes scale-auth-card-in {
+    from {
+      opacity: 0;
+      transform: translateY(14px) scale(0.96);
+      filter: blur(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+  }
+
+  @keyframes scale-auth-status-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
 
   @keyframes scale-orange-intro {
@@ -4184,9 +4230,19 @@ const SCALE_CSS = `
     .scale-hero-deck::before,
     .scale-hero-masthead::after,
     .scale-detail-shell,
-    .scale-mini-preview {
+    .scale-mini-preview,
+    .scale-auth-overlay,
+    .scale-auth-card,
+    .scale-auth-status,
+    .scale-auth-tabs button,
+    .scale-link-btn,
+    .scale-primary-btn {
       animation: none !important;
       transition: none !important;
+    }
+    .scale-link-btn:hover,
+    .scale-primary-btn:not(:disabled):hover {
+      transform: none !important;
     }
   }
 `;
