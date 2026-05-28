@@ -133,7 +133,7 @@ function DelegationModal({ site, onClose, onChanged, showToast }) {
           <button onClick={onClose} className="zm-icon-btn" style={{ background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)', borderRadius: 8, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--zm-fg-2)', cursor: 'pointer' }}><Icon name="x" size={14}/></button>
         </div>
 
-        {error && <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(185,28,28,0.08)', color: '#B91C1C', fontSize: 12.5 }}>{error}</div>}
+        {error && <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(185,28,28,0.08)', color: 'var(--zm-danger)', fontSize: 12.5 }}>{error}</div>}
 
         <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>Active delegations</span>
@@ -150,7 +150,7 @@ function DelegationModal({ site, onClose, onChanged, showToast }) {
                         <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11, color: 'var(--zm-fg-3)' }}>{d.delegateEmail}</span>
                         {d.notes && <span style={{ marginTop: 4, fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{d.notes}</span>}
                       </div>
-                      <button disabled={busy} onClick={() => revoke(d)} style={{ height: 30, padding: '0 12px', borderRadius: 7, border: '1px solid #F2B6B6', background: '#fff', color: '#B91C1C', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>Revoke</button>
+                      <button disabled={busy} onClick={() => revoke(d)} style={{ height: 30, padding: '0 12px', borderRadius: 7, border: '1px solid #F2B6B6', background: '#fff', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>Revoke</button>
                     </div>
                   ))}
                 </div>
@@ -197,7 +197,7 @@ function ShortlistCard({ item, role, onView, onAddDetails, onApprove, onDelegate
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
           <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>Score</span>
-          <span style={{ fontFamily: 'var(--zm-font-mono)', fontWeight: 600, fontSize: 22, color: item.score >= 75 ? '#047857' : 'var(--zm-fg)' }}>{item.score || '—'}</span>
+          <span style={{ fontFamily: 'var(--zm-font-mono)', fontWeight: 600, fontSize: 22, color: item.score >= 75 ? 'var(--zm-success)' : 'var(--zm-fg)' }}>{item.score || '—'}</span>
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0, padding: '10px 0', borderTop: '1px solid var(--zm-line-faint)', borderBottom: '1px solid var(--zm-line-faint)' }}>

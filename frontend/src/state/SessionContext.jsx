@@ -23,7 +23,16 @@ const SessionContext = createContext(null);
 
 export function SessionProvider({ children }) {
   const [session, setSession] = useState(INITIAL_SESSION);
-  const [dark, setDark] = useState(false);
+  // Hydrate dark from localStorage so the choice survives refresh and any
+  // provider re-mount (e.g. StrictMode double-invoke, route-driven unmount).
+  const [dark, setDark] = useState(() => {
+    try {
+      const stored = window.localStorage.getItem('zm:dark');
+      if (stored === '1') return true;
+      if (stored === '0') return false;
+      return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+    } catch { return false; }
+  });
 
   // role is the display/canonical string used by existing components:
   // 'business_admin' | 'supervisor' | 'executive' | 'exec'
@@ -37,6 +46,7 @@ export function SessionProvider({ children }) {
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     document.body.dataset.theme = dark ? 'dark' : 'light';
+    try { window.localStorage.setItem('zm:dark', dark ? '1' : '0'); } catch { /* storage disabled */ }
   }, [dark]);
 
   // In HTTP mode, hydrate session from /auth/whoami whenever a token appears

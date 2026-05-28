@@ -126,7 +126,7 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
           <button onClick={onNewPipeline} className="zm-tb-cta" style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             height: 34, padding: '0 14px', borderRadius: 8,
-            background: 'var(--zm-accent)', color: '#fff', border: 'none',
+            background: 'var(--zm-cta-bg)', color: 'var(--zm-cta-fg)', border: 'none',
             fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600,
             cursor: 'pointer', boxShadow: 'var(--zm-shadow-1)',
             whiteSpace: 'nowrap', lineHeight: 1, flex: '0 0 auto',

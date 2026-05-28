@@ -173,10 +173,10 @@ function MoreFilters({ value, onChange, onClose }) {
 
 function FilterChip({ active, label, count, color, onClick }) {
   return (
-    <button onClick={onClick} className="zm-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 30, padding: '0 12px', borderRadius: 999, border: '1px solid ' + (active ? 'var(--zm-fg)' : 'var(--zm-line)'), background: active ? 'var(--zm-fg)' : 'var(--zm-surface)', color: active ? '#fff' : 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', transition: 'all 120ms var(--zm-ease)' }}>
+    <button onClick={onClick} className="zm-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 30, padding: '0 12px', borderRadius: 999, border: '1px solid ' + (active ? 'var(--zm-fg)' : 'var(--zm-line)'), background: active ? 'var(--zm-fg)' : 'var(--zm-surface)', color: active ? 'var(--zm-fg-inv)' : 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', transition: 'all 120ms var(--zm-ease)' }}>
       {color && <span style={{ width: 6, height: 6, borderRadius: 999, background: color }}/>}
       {label}
-      {count != null && (<span style={{ fontFamily: 'var(--zm-font-mono)', fontWeight: 500, fontSize: 11, color: active ? 'rgba(255,255,255,0.7)' : 'var(--zm-fg-3)' }}>{count}</span>)}
+      {count != null && (<span style={{ fontFamily: 'var(--zm-font-mono)', fontWeight: 500, fontSize: 11, color: active ? 'var(--zm-fg-inv)' : 'var(--zm-fg-3)', opacity: active ? 0.7 : 1 }}>{count}</span>)}
     </button>
   );
 }
@@ -213,12 +213,12 @@ function MotionTable({ rows, onOpen }) {
       </div>
       {rows.slice(0, 12).map(r => (
         <div key={r.id} onClick={() => onOpen(r)} className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.7fr 1fr 1fr 0.7fr 1.1fr 1.2fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: r.stage === 'overdue' ? 'rgba(217,119,6,0.06)' : 'transparent', cursor: 'pointer', position: 'relative' }}>
-          {r.stage === 'overdue' && <span style={{ position: 'absolute', left: 0, top: 12, bottom: 12, width: 2, background: '#D97706', borderRadius: 2 }}/>}
+          {r.stage === 'overdue' && <span style={{ position: 'absolute', left: 0, top: 12, bottom: 12, width: 2, background: 'var(--zm-warning)', borderRadius: 2 }}/>}
           <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{r.code}</span>
           <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{r.name}</span>
           <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{r.city}</span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Avatar name={r.owner} size={20}/><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{r.owner}</span></span>
-          <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, color: r.stage === 'overdue' ? '#B45309' : 'var(--zm-fg)' }}>{String(r.days).padStart(2,'0')}d</span>
+          <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, color: r.stage === 'overdue' ? 'var(--zm-warning)' : 'var(--zm-fg)' }}>{String(r.days).padStart(2,'0')}d</span>
           <span><StatusPill stage={r.stage}/></span>
           <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-3)' }}>{r.meta}</span>
         </div>

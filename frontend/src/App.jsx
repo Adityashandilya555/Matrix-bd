@@ -259,8 +259,8 @@ function NewPipelineModal({ onClose, onSubmit }) {
             {pinStatus && (
               <span style={{
                 fontFamily: 'var(--zm-font-body)', fontSize: 11.5,
-                color: pinStatus.tone === 'ok' ? '#047857'
-                     : pinStatus.tone === 'err' ? '#B91C1C'
+                color: pinStatus.tone === 'ok' ? 'var(--zm-success)'
+                     : pinStatus.tone === 'err' ? 'var(--zm-danger)'
                      : 'var(--zm-fg-3)',
               }}>{pinStatus.msg}</span>
             )}

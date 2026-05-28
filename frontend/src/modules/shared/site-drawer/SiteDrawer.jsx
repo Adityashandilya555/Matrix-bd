@@ -126,7 +126,7 @@ function LOITracker({ site }) {
         <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
           {pushed ? 'LOI · pushed to payments' : uploaded ? 'LOI uploaded' : 'LOI countdown'}
         </span>
-        <span style={{ fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 28, fontWeight: 600, color: overdue ? '#B45309' : 'var(--zm-fg)', letterSpacing: '-0.02em' }}>
+        <span style={{ fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 28, fontWeight: 600, color: overdue ? 'var(--zm-warning)' : 'var(--zm-fg)', letterSpacing: '-0.02em' }}>
           {String(daysShown).padStart(2, '0')} days
           {!uploaded && (
             <span style={{ marginLeft: 8, fontSize: 13, color: 'var(--zm-fg-3)', fontWeight: 500 }}>
@@ -144,14 +144,14 @@ function LOITracker({ site }) {
       </div>
       <div style={{ flex: 1 }}/>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontFamily: 'var(--zm-font-body)', fontSize: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#047857' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--zm-success)' }}>
           <Icon name="check" size={13}/> Approved by supervisor
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: uploaded ? '#047857' : overdue ? '#B45309' : 'var(--zm-fg-3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: uploaded ? 'var(--zm-success)' : overdue ? 'var(--zm-warning)' : 'var(--zm-fg-3)' }}>
           <Icon name={uploaded ? 'check' : overdue ? 'alert' : 'clock'} size={13}/>
           {uploaded ? 'LOI uploaded' : 'Awaiting LOI from BD'}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: pushed ? '#047857' : 'var(--zm-fg-3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: pushed ? 'var(--zm-success)' : 'var(--zm-fg-3)' }}>
           <Icon name={pushed ? 'check' : 'clock'} size={13}/>
           {pushed ? 'Pushed to payments' : 'Awaiting push to payments'}
         </div>
@@ -248,7 +248,7 @@ function SiteOverviewTab({ site }) {
                 <span style={{ position: 'absolute', top: 12, left: 12, fontFamily: 'var(--zm-font-mono)', fontSize: 10, color: '#005F60' }}>map pin captured</span>
                 <span style={{
                   position: 'absolute', left: '52%', top: '46%',
-                  width: 14, height: 14, borderRadius: 999, background: '#D97706',
+                  width: 14, height: 14, borderRadius: 999, background: 'var(--zm-warning)',
                   boxShadow: '0 0 0 6px rgba(217,119,6,0.22)', transform: 'translate(-50%,-50%)',
                 }}/>
               </>
@@ -303,7 +303,7 @@ function SiteActivityTab({ site }) {
     return <div style={{ ...wrapStyle, padding: 20, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>Loading activity…</div>;
   }
   if (error) {
-    return <div style={{ ...wrapStyle, padding: 20, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: '#B91C1C' }}>{error}</div>;
+    return <div style={{ ...wrapStyle, padding: 20, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-danger)' }}>{error}</div>;
   }
   if (entries.length === 0) {
     return <div style={{ ...wrapStyle, padding: 20, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>No activity yet for this site.</div>;
@@ -351,7 +351,7 @@ function SiteDocsTab({ site }) {
     return <div style={{ ...shell, padding: 20, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>Loading documents…</div>;
   }
   if (error) {
-    return <div style={{ ...shell, padding: 20, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: '#B91C1C' }}>{error}</div>;
+    return <div style={{ ...shell, padding: 20, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-danger)' }}>{error}</div>;
   }
   if (docs.length === 0) {
     return <div style={{ ...shell, padding: 20, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>No documents have been uploaded for this site yet.</div>;
