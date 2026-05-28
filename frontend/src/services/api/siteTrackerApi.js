@@ -10,9 +10,11 @@
 import axios from 'axios';
 import { getAuthToken, clearAuthToken } from './authToken.js';
 import { ApiError } from './adapters/httpAdapter.js';
+import { adapter } from './adapters/index.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
 const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true;
 
 const client = axios.create({ baseURL: BASE_URL, timeout: TIMEOUT_MS });
 
@@ -54,7 +56,30 @@ function trackerFromServer(row) {
   };
 }
 
+function trackerFromMockSite(site) {
+  if (!site) return site;
+  return {
+    siteId:           site.id,
+    siteCode:         site.code || '',
+    siteName:         site.name,
+    city:             site.city,
+    siteStatus:       site.status,
+    legalDdStatus:    site.legalDdStatus || 'pending',
+    agreementStatus:  site.agreementStatus || 'pending',
+    licensingStatus:  site.licensingStatus || 'pending',
+    dd:               site.dd || null,
+    agreement:        site.agreement || null,
+    licensing:        site.licensing || null,
+    submittedBy:      site.createdBy?.id || '',
+    submittedByName:  site.createdBy?.name || site.createdBy || '',
+  };
+}
+
 export async function getSiteTrackerView(siteId) {
+  if (USE_MOCK) {
+    const site = await adapter.getSite(siteId);
+    return trackerFromMockSite(site);
+  }
   const data = await client.get(`/sites/${siteId}/tracker`).then((r) => r.data);
   return trackerFromServer(data);
 }

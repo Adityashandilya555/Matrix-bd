@@ -19,8 +19,8 @@ export const ROUTES = {
   SITE:                   '/sites/:id',
   ADD_DETAILS:            '/shortlist/:code/details',
   LOI_TIMELINE:           '/shortlist/:code/timeline',
-  SITE_TRACKER:           '/site-tracker',
-  SITE_TRACKER_DETAIL:    '/site-tracker/:siteId',
+  SITE_TRACKER:           '/staging-flow',
+  SITE_TRACKER_DETAIL:    '/staging-flow/:siteId',
 };
 
 export function siteRoute(id) {
