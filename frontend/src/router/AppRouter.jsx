@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { ROUTES } from './routes.js';
 import { RequireModule, RequireRole } from './guards.jsx';
 import { useSession } from '../state/SessionContext.jsx';
@@ -134,6 +134,13 @@ export default function AppRouter() {
             </RequireModule>
           </RequireRole>
         }/>
+        <Route path={ROUTES.LEGAL_SITE_LICENSING} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['legal']}>
+              <LicensingPage/>
+            </RequireModule>
+          </RequireRole>
+        }/>
         <Route path="/legal/*" element={<Navigate to={ROUTES.LEGAL} replace/>}/>
 
         <Route path={ROUTES.PAYMENT} element={
@@ -144,11 +151,7 @@ export default function AppRouter() {
           </RequireRole>
         }/>
         <Route path={ROUTES.PAYMENT_SITE_LICENSING} element={
-          <RequireRole roles={['supervisor', 'executive', 'exec']}>
-            <RequireModule modules={['payment']}>
-              <LicensingPage/>
-            </RequireModule>
-          </RequireRole>
+          <PaymentLicensingRedirect/>
         }/>
         <Route path="/payment/*" element={<Navigate to={ROUTES.PAYMENT} replace/>}/>
 
@@ -193,4 +196,9 @@ function StagingRedirect() {
   // Backend ships role='executive'; mock-mode role switcher still uses 'exec'.
   const isExec = role === 'exec' || role === 'executive';
   return <Navigate to={isExec ? ROUTES.STAGING_EXEC : ROUTES.STAGING_SUPERVISOR} replace/>;
+}
+
+function PaymentLicensingRedirect() {
+  const { siteId } = useParams();
+  return <Navigate to={ROUTES.LEGAL_SITE_LICENSING.replace(':siteId', siteId)} replace/>;
 }

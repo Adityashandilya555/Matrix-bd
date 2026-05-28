@@ -3,6 +3,7 @@ import Icon from '../primitives/Icon.jsx';
 import Avatar from '../primitives/Avatar.jsx';
 import StatusPill from '../primitives/StatusPill.jsx';
 import { getSiteActivity, colorForAction, labelForEntry } from '../../../services/api/audit.js';
+import { getSiteDocuments } from '../../../services/api/siteService.js';
 import { SiteStatus } from '../../../lib/stateMachine.js';
 
 // Relative time formatter for the activity tab. Keeps the rendering format from
@@ -22,7 +23,31 @@ function relativeTime(iso) {
   return `${mo} mo ago`;
 }
 
-// All render bodies preserved exactly from SiteDrawer.jsx.
+const hasValue = (value) => value !== undefined && value !== null && value !== '';
+const display = (value, fallback = 'Not captured yet') => hasValue(value) ? value : fallback;
+const numberValue = (value) => {
+  if (!hasValue(value)) return null;
+  const n = Number(String(value).replace(/[,\s₹]/g, ''));
+  return Number.isFinite(n) ? n : null;
+};
+const formatNumber = (value, suffix = '') => {
+  const n = numberValue(value);
+  return n === null ? 'Not captured yet' : `${n.toLocaleString('en-IN')}${suffix}`;
+};
+const formatINR = (value, suffix = '') => {
+  const n = numberValue(value);
+  return n === null ? 'Not captured yet' : `₹${Math.round(n).toLocaleString('en-IN')}${suffix}`;
+};
+const formatPercent = (value, suffix = '') => {
+  const n = numberValue(value);
+  return n === null ? 'Not captured yet' : `${n.toLocaleString('en-IN')}%${suffix}`;
+};
+const formatDate = (value) => {
+  if (!hasValue(value)) return 'Not captured yet';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+};
 
 function Field({ label, value, mono, span = 1 }) {
   return (
@@ -135,21 +160,33 @@ function LOITracker({ site }) {
   );
 }
 
-function PhotoTile({ caption, hue = 200 }) {
+function PhotoTile({ photo }) {
+  if (!photo?.url) return null;
   return (
     <div style={{
       border: '1px solid var(--zm-line)', borderRadius: 10, overflow: 'hidden',
-      background: `linear-gradient(135deg, hsl(${hue} 30% 80%), hsl(${hue + 30} 28% 65%))`,
+      background: `url(${photo.url}) center/cover`,
       aspectRatio: '4 / 3', position: 'relative',
       display: 'flex', alignItems: 'flex-end',
     }}>
       <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.4), transparent 50%)' }}/>
-      <span style={{ position: 'relative', padding: 10, color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 11, fontWeight: 600 }}>{caption}</span>
+      <span style={{ position: 'relative', padding: 10, color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 11, fontWeight: 600 }}>
+        {photo.name || photo.caption || 'Site photo'}
+      </span>
     </div>
   );
 }
 
 function SiteOverviewTab({ site }) {
+  const mapHref = site.googleMapsUrl
+    || (hasValue(site.pin) && site.pin !== '—'
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.pin)}`
+      : null);
+  const photos = Array.isArray(site.photos) ? site.photos.filter((photo) => photo?.url) : [];
+  const escalationValue = hasValue(site.escalation)
+    ? `${formatPercent(site.escalation)}${hasValue(site.escalationYears) ? ` every ${site.escalationYears} yr` : ' / yr'}`
+    : 'Not captured yet';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <LOITracker site={site}/>
@@ -160,46 +197,70 @@ function SiteOverviewTab({ site }) {
           display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '18px 24px',
           padding: '20px 22px', background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 10,
         }}>
-          <Field label="Site code" value={site.code} mono/>
-          <Field label="Model" value={site.model}/>
-          <Field label="City" value={site.city}/>
-          <Field label="Carpet area" value={`${site.carpet} sqft`} mono/>
-          <Field label="Rent / month" value={`₹${site.rent.toLocaleString('en-IN')}`} mono/>
-          <Field label="CAM" value={`₹${site.cam.toLocaleString('en-IN')}`} mono/>
-          <Field label="Total op cost" value={`₹${site.opCost.toLocaleString('en-IN')}`} mono/>
-          <Field label="Lock-in" value={`${site.lockin} months`} mono/>
-          <Field label="Escalation" value={`${site.escalation}% / yr`} mono/>
-          <Field label="Security deposit" value={`₹${site.deposit.toLocaleString('en-IN')}`} mono/>
-          <Field label="Rent-free days" value={`${site.rentFree}`} mono/>
-          <Field label="Est. monthly sales" value={`₹${site.estSales.toLocaleString('en-IN')}`} mono/>
+          <Field label="Site code" value={display(site.code, '—')} mono/>
+          <Field label="Model" value={display(site.model)}/>
+          <Field label="City" value={display(site.city, '—')}/>
+          <Field label="Carpet area" value={formatNumber(site.carpet, ' sqft')} mono/>
+          <Field label="Rent / month" value={formatINR(site.rent, '/mo')} mono/>
+          <Field label="Rent type" value={display(site.rentType)}/>
+          <Field label="CAM" value={formatINR(site.cam, '/mo')} mono/>
+          <Field label="Total op cost" value={formatINR(site.opCost, '/mo')} mono/>
+          <Field label="Lock-in" value={formatNumber(site.lockin, ' months')} mono/>
+          <Field label="Tenure" value={formatNumber(site.tenure, ' months')} mono/>
+          <Field label="Escalation" value={escalationValue} mono/>
+          <Field label="Revenue share" value={formatPercent(site.revshare, ' of sales')} mono/>
+          <Field label="Security deposit" value={formatINR(site.deposit)} mono/>
+          <Field label="Rent-free days" value={formatNumber(site.rentFree, ' days')} mono/>
+          <Field label="Est. monthly sales" value={formatINR(site.estSales, '/mo')} mono/>
+          <Field label="Nearest Starbucks sales" value={formatINR(site.nearestStarbucks, '/mo')} mono/>
+          <Field label="Nearest TWC sales" value={formatINR(site.nearestTWC, '/mo')} mono/>
+          <Field label="Cadex / Capex" value={formatINR(site.cadex)} mono/>
+          <Field label="Brokerage" value={formatINR(site.brokerage)} mono/>
+          <Field label="Visit date" value={formatDate(site.createdAt)} mono/>
         </div>
       </section>
 
       <section>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14 }}>
           <h4 style={{ margin: 0, fontFamily: 'var(--zm-font-display)', fontWeight: 600, fontSize: 14, color: 'var(--zm-fg)' }}>SPOC + Google pin</h4>
-          <button className="zm-link-btn" style={{ background: 'none', border: 'none', color: 'var(--zm-accent)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Open in Maps →</button>
+          {mapHref ? (
+            <a href={mapHref} target="_blank" rel="noreferrer" className="zm-link-btn" style={{ color: 'var(--zm-accent)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, textDecoration: 'none' }}>Open in Maps →</a>
+          ) : (
+            <span style={{ color: 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600 }}>No map link</span>
+          )}
         </div>
         <div style={{
           padding: 20, background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 10,
           display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20,
         }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <Field label="SPOC name" value={site.spocName}/>
-            <Field label="SPOC phone" value={site.spocPhone} mono/>
-            <Field label="Google pin" value={site.pin} mono/>
+            <Field label="SPOC name" value={display(site.spocName)}/>
+            <Field label="SPOC phone" value={display(site.spocPhone)} mono/>
+            <Field label="Google pin" value={display(site.pin)} mono/>
           </div>
           <div style={{
             background: 'linear-gradient(135deg,#EEF1F5,#E1E5EB)', borderRadius: 8, position: 'relative', overflow: 'hidden',
             backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><path d='M32 0 L0 0 0 32' fill='none' stroke='%23005F60' stroke-width='0.6' opacity='0.18'/></svg>\")",
             backgroundColor: '#EEF1F5', minHeight: 130,
           }}>
-            <span style={{ position: 'absolute', top: 12, left: 12, fontFamily: 'var(--zm-font-mono)', fontSize: 10, color: '#005F60' }}>map · stub</span>
-            <span style={{
-              position: 'absolute', left: '52%', top: '46%',
-              width: 14, height: 14, borderRadius: 999, background: '#D97706',
-              boxShadow: '0 0 0 6px rgba(217,119,6,0.22)', transform: 'translate(-50%,-50%)',
-            }}/>
+            {mapHref ? (
+              <>
+                <span style={{ position: 'absolute', top: 12, left: 12, fontFamily: 'var(--zm-font-mono)', fontSize: 10, color: '#005F60' }}>map pin captured</span>
+                <span style={{
+                  position: 'absolute', left: '52%', top: '46%',
+                  width: 14, height: 14, borderRadius: 999, background: '#D97706',
+                  boxShadow: '0 0 0 6px rgba(217,119,6,0.22)', transform: 'translate(-50%,-50%)',
+                }}/>
+              </>
+            ) : (
+              <span style={{
+                position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: 18, textAlign: 'center', fontFamily: 'var(--zm-font-body)', fontSize: 12.5,
+                color: '#64748B',
+              }}>
+                No Google pin or Maps link was captured for this site.
+              </span>
+            )}
           </div>
         </div>
       </section>
@@ -207,16 +268,16 @@ function SiteOverviewTab({ site }) {
       <section>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14 }}>
           <h4 style={{ margin: 0, fontFamily: 'var(--zm-font-display)', fontWeight: 600, fontSize: 14, color: 'var(--zm-fg)' }}>Site photos</h4>
-          <button className="zm-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 8, padding: '6px 10px', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, color: 'var(--zm-fg)', cursor: 'pointer' }}>
-            <Icon name="upload" size={13}/> Upload
-          </button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-          <PhotoTile caption="Storefront · day" hue={200}/>
-          <PhotoTile caption="Interior shell"   hue={30}/>
-          <PhotoTile caption="Foot traffic"     hue={140}/>
-          <PhotoTile caption="Adjacency map"    hue={280}/>
-        </div>
+        {photos.length > 0 ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+            {photos.map((photo) => <PhotoTile key={photo.id || photo.url} photo={photo}/>)}
+          </div>
+        ) : (
+          <div style={{ padding: 18, background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 10, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>
+            No site photos have been saved for this site yet.
+          </div>
+        )}
       </section>
     </div>
   );
@@ -270,30 +331,63 @@ function SiteActivityTab({ site }) {
   );
 }
 
-function SiteDocsTab() {
-  const docs = [
-    { name: 'LOI · final signed.pdf',          size: '482 KB', when: '12 min ago', who: 'Riya S.' },
-    { name: 'Carpet floor plan v3.pdf',         size: '1.2 MB', when: '3 days ago', who: 'Riya S.' },
-    { name: 'Site photos · 14 images.zip',      size: '8.4 MB', when: '3 days ago', who: 'Riya S.' },
-    { name: 'Rental agreement draft v2.docx',   size: '212 KB', when: '4 days ago', who: 'Aman V.' },
-    { name: 'Estimated sales model.xlsx',       size: '88 KB',  when: '5 days ago', who: 'Riya S.' },
-  ];
+function SiteDocsTab({ site }) {
+  const [docs, setDocs] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDocs(null);
+    setError(null);
+    getSiteDocuments(site.id)
+      .then((res) => { if (!cancelled) setDocs(res.documents || []); })
+      .catch((err) => { if (!cancelled) setError(err?.message || 'Failed to load documents'); });
+    return () => { cancelled = true; };
+  }, [site.id]);
+
+  const shell = { background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 10, overflow: 'hidden' };
+
+  if (docs === null && !error) {
+    return <div style={{ ...shell, padding: 20, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>Loading documents…</div>;
+  }
+  if (error) {
+    return <div style={{ ...shell, padding: 20, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: '#B91C1C' }}>{error}</div>;
+  }
+  if (docs.length === 0) {
+    return <div style={{ ...shell, padding: 20, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>No documents have been uploaded for this site yet.</div>;
+  }
+
   return (
-    <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 10, overflow: 'hidden' }}>
+    <div style={shell}>
       {docs.map((d, i) => (
-        <div key={i} style={{
+        <div key={d.id || i} style={{
           display: 'grid', gridTemplateColumns: '28px 1fr 80px 110px 80px 24px', alignItems: 'center', gap: 14,
           padding: '12px 16px',
           borderBottom: i < docs.length - 1 ? '1px solid var(--zm-line-faint)' : 'none',
         }}>
           <span style={{ color: 'var(--zm-fg-3)' }}><Icon name="file" size={16}/></span>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 500, color: 'var(--zm-fg)' }}>{d.name}</span>
-          <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{d.size}</span>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)' }}>{d.when}</span>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)' }}>{d.who}</span>
-          <span style={{ color: 'var(--zm-fg-3)' }}><Icon name="download" size={14}/></span>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 500, color: 'var(--zm-fg)' }}>{d.fileName || 'Untitled document'}</span>
+          <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{d.fileSizeKb ? `${d.fileSizeKb} KB` : '—'}</span>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)' }}>{d.uploadedAt ? relativeTime(d.uploadedAt) : '—'}</span>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)' }}>{d.uploadedBy || '—'}</span>
+          {d.url ? (
+            <a href={d.url} target="_blank" rel="noreferrer" style={{ color: 'var(--zm-fg-3)' }}><Icon name="download" size={14}/></a>
+          ) : (
+            <span style={{ color: 'var(--zm-fg-4)' }}><Icon name="file" size={14}/></span>
+          )}
         </div>
       ))}
+    </div>
+  );
+}
+
+function SitePaymentsTab({ site }) {
+  const ready = site.status === SiteStatus.LEGAL_APPROVED || site.status === SiteStatus.PUSHED_TO_PAYMENTS || site.licensingStatus === 'complete';
+  return (
+    <div style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
+      {ready
+        ? 'Legal has cleared this site for the payment module.'
+        : 'Payment details are not available until Legal approves DDR, agreement, and licensing.'}
     </div>
   );
 }
@@ -325,13 +419,13 @@ export default function SiteDrawer({ site, onClose }) {
             </span>
             <h2 style={{ margin: 0, fontFamily: 'var(--zm-font-display)', fontWeight: 700, fontSize: 24, letterSpacing: '-0.02em', color: 'var(--zm-fg)' }}>{site.name}</h2>
             <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>
-              {site.city} · {site.model} · created by {site.createdBy} · {site.createdAt}
+              {display(site.city, '—')} · {display(site.model)} · created by {display(site.createdBy, '—')} · {formatDate(site.createdAt)}
             </span>
             <div style={{ marginTop: 18, display: 'flex', gap: 0, borderTop: '1px solid var(--zm-line)' }}>
               <Tab label="Overview"  active={tab === 'overview'}  onClick={() => setTab('overview')}/>
-              <Tab label="Activity"  count={6} active={tab === 'activity'} onClick={() => setTab('activity')}/>
-              <Tab label="Documents" count={5} active={tab === 'docs'}     onClick={() => setTab('docs')}/>
-              <Tab label="Payments"  count={1} active={tab === 'payments'} onClick={() => setTab('payments')}/>
+              <Tab label="Activity"  active={tab === 'activity'} onClick={() => setTab('activity')}/>
+              <Tab label="Documents" active={tab === 'docs'}     onClick={() => setTab('docs')}/>
+              <Tab label="Payments"  active={tab === 'payments'} onClick={() => setTab('payments')}/>
             </div>
           </div>
           <button onClick={onClose} className="zm-icon-btn" style={{
@@ -344,38 +438,24 @@ export default function SiteDrawer({ site, onClose }) {
         <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
           {tab === 'overview'  && <SiteOverviewTab site={site}/>}
           {tab === 'activity'  && <SiteActivityTab site={site}/>}
-          {tab === 'docs'      && <SiteDocsTab/>}
-          {tab === 'payments'  && (
-            <div style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
-              1 draft payment ready for approval — open the Payments module to action.
-            </div>
-          )}
+          {tab === 'docs'      && <SiteDocsTab site={site}/>}
+          {tab === 'payments'  && <SitePaymentsTab site={site}/>}
         </div>
 
         <div style={{
           padding: '14px 28px', borderTop: '1px solid var(--zm-line)', background: 'var(--zm-surface)',
           display: 'flex', alignItems: 'center', gap: 12,
         }}>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-3)' }}>
+            This drawer reflects only fields saved to the workspace database.
+          </span>
+          <span style={{ flex: 1 }}/>
           <button className="zm-btn" style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             height: 34, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)',
             background: 'var(--zm-surface)', color: 'var(--zm-fg)',
             fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-          }}><Icon name="message" size={14}/> Comment</button>
-          <span style={{ flex: 1 }}/>
-          <button className="zm-btn" style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            height: 34, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)',
-            background: 'var(--zm-surface)', color: 'var(--zm-fg-2)',
-            fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-          }}>Re-assign</button>
-          <button className="zm-btn-primary" style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            height: 34, padding: '0 16px', borderRadius: 8, border: 'none',
-            background: 'var(--zm-accent)', color: '#fff',
-            fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-            boxShadow: 'var(--zm-shadow-1)',
-          }}>Advance to payment <Icon name="arrow" size={14}/></button>
+          }} onClick={onClose}>Close</button>
         </div>
       </aside>
     </>

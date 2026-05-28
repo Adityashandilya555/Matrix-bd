@@ -15,7 +15,7 @@ import {
   listLegalDelegationsForSite,
 } from '../../../services/api/legalDelegationApi.js';
 import { listMyTeam } from '../../../services/api/adapters/httpAdapter.js';
-import { ROUTES, paymentSiteLicensingRoute } from '../../../router/routes.js';
+import { ROUTES, legalSiteLicensingRoute } from '../../../router/routes.js';
 
 const DDR_CHECKS = [
   { id: 'title_doc',       label: 'Title / ownership verified' },
@@ -256,6 +256,7 @@ export default function DdrPage() {
       const next = await finalizeDd(siteId, { finalVerdict: 'positive' });
       setReview(next);
       showToast?.('DDR finalised as positive.', 'success');
+      navigate(legalSiteLicensingRoute(siteId));
     } catch (err) {
       showToast?.(err?.detail || err?.message || 'Finalise failed', 'danger');
     } finally {
@@ -263,15 +264,11 @@ export default function DdrPage() {
     }
   };
 
-  // Minimal site shape derived from the LegalReviewResponse. The fuller name /
-  // code / city render comes from the queue payload that linked us here; for
-  // now we synthesise a placeholder, since LegalReviewResponse currently only
-  // exposes the legal child rows. The header still reflects real status.
   const site = {
-    code: review?.siteId?.slice(0, 8).toUpperCase() || 'SITE',
-    name: `Site ${review?.siteId?.slice(0, 8) || ''}`,
-    city: '—',
-    owner: '—',
+    code: review?.siteCode || review?.siteId?.slice(0, 8).toUpperCase() || 'SITE',
+    name: review?.siteName || `Site ${review?.siteId?.slice(0, 8) || ''}`,
+    city: review?.city || '—',
+    owner: review?.submittedByName || '—',
     stage: review?.siteStatus || 'LEGAL_REVIEW',
     icon: 'shield',
     iconBg: 'var(--zm-plum-soft)',
@@ -279,6 +276,9 @@ export default function DdrPage() {
   };
 
   // ── Licensing-tab gate (U5) ────────────────────────────────────────────────
+  // Licensing opens after DDR is published positive. Supervisors can continue
+  // directly; executives need the same active legal delegation used for DDR.
+  //
   // Executive's licensing CTA is unlocked when:
   //   dd.stage === 'published'
   //   && dd.final_verdict === 'positive'
@@ -293,7 +293,7 @@ export default function DdrPage() {
     (d) => String(d.delegateUserId) === String(myUserId),
   );
   const showLicensingTab =
-    isExecutive && ddIsPublished && ddPositive && isDelegateForMe;
+    ddIsPublished && ddPositive && (isSupervisor || (isExecutive && isDelegateForMe));
 
   const delegationPanel = (
     <div
@@ -411,12 +411,14 @@ export default function DdrPage() {
           Licensing
         </div>
         <div style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', marginTop: 4 }}>
-          DD is positive and published — licensing has been auto-assigned to you.
+          {isSupervisor
+            ? 'DD is positive and published — continue into licensing for this site.'
+            : 'DD is positive and published — licensing has been auto-assigned to you.'}
         </div>
       </div>
       <button
         type="button"
-        onClick={() => navigate(paymentSiteLicensingRoute(siteId))}
+        onClick={() => navigate(legalSiteLicensingRoute(siteId))}
         className="zm-btn-primary"
         style={{
           height: 34, padding: '0 14px', borderRadius: 7, border: 'none',

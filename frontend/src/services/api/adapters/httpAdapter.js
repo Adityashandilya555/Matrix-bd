@@ -54,10 +54,67 @@ const get   = (url, params) => client.get(url, { params }).then(r => r.data);
 const post  = (url, data)   => client.post(url, data).then(r => r.data);
 const patch = (url, data)   => client.patch(url, data).then(r => r.data);
 
+function detailsToServer(details = {}) {
+  if (!details || typeof details !== 'object') return details;
+  const clean = (value) => value === '' ? null : value;
+  return {
+    model: clean(details.model ?? null),
+    spoc_name: clean(details.spoc_name ?? details.spocName ?? null),
+    google_pin: clean(details.google_pin ?? details.googlePin ?? null),
+    score: clean(details.score ?? null),
+    est_sales: clean(details.est_sales ?? details.estSales ?? null),
+    nearest_starbucks: clean(details.nearest_starbucks ?? details.nearestStarbucks ?? null),
+    nearest_twc: clean(details.nearest_twc ?? details.nearestTWC ?? null),
+    carpet: clean(details.carpet ?? null),
+    cam: clean(details.cam ?? null),
+    rent_type: clean(details.rent_type ?? details.rentType ?? null),
+    rent: clean(details.rent ?? null),
+    escalation: clean(details.escalation ?? null),
+    revshare: clean(details.revshare ?? null),
+    rent_free_days: clean(details.rent_free_days ?? details.rentFreeDays ?? null),
+    cadex: clean(details.cadex ?? null),
+    deposit: clean(details.deposit ?? null),
+    brokerage: clean(details.brokerage ?? null),
+    lockin: clean(details.lockin ?? null),
+    tenure: clean(details.tenure ?? null),
+    total_op_cost: clean(details.total_op_cost ?? details.totalOpCost ?? null),
+  };
+}
+
 // ── snake_case → camelCase response shaping ─────────────────────────────────
 
 function siteFromServer(s) {
   if (!s) return s;
+  const details = {
+    name: s.name,
+    visitDate: s.visit_date,
+    city: s.city,
+    model: s.model ?? '',
+    spocName: s.spoc_name ?? '',
+    googlePin: s.google_pin ?? '',
+    rentType: s.rent_type ?? '',
+    rent: s.rent ?? s.expected_rent ?? '',
+    revshare: s.revshare ?? s.expected_revshare_pct ?? '',
+    score: s.score ?? '',
+    estSales: s.est_sales ?? '',
+    nearestStarbucks: s.nearest_starbucks ?? '',
+    nearestTWC: s.nearest_twc ?? '',
+    carpet: s.carpet ?? '',
+    cam: s.cam ?? '',
+    escalation: s.expected_escalation_pct ?? '',
+    rentFreeDays: s.rent_free_days ?? '',
+    cadex: s.cadex ?? '',
+    deposit: s.deposit ?? '',
+    brokerage: s.brokerage ?? '',
+    lockin: s.lockin ?? '',
+    tenure: s.tenure ?? '',
+    totalOpCost: s.total_op_cost ?? '',
+    photos: [],
+  };
+  const hasSavedDetails = [
+    s.score, s.est_sales, s.nearest_starbucks, s.nearest_twc, s.carpet, s.cam,
+    s.revshare, s.rent_free_days, s.cadex, s.deposit, s.brokerage, s.lockin, s.tenure,
+  ].some((v) => v !== null && v !== undefined);
   return {
     id: s.id,
     code: s.code,
@@ -79,6 +136,22 @@ function siteFromServer(s) {
     expectedEscalationPct: s.expected_escalation_pct,
     expectedEscalationYears: s.expected_escalation_years,
     expectedRevsharePct: s.expected_revshare_pct,
+    score: s.score,
+    estSales: s.est_sales,
+    nearestStarbucks: s.nearest_starbucks,
+    nearestTWC: s.nearest_twc,
+    carpet: s.carpet,
+    cam: s.cam,
+    rent: s.rent,
+    revshare: s.revshare,
+    totalOpCost: s.total_op_cost,
+    rentFreeDays: s.rent_free_days,
+    cadex: s.cadex,
+    deposit: s.deposit,
+    brokerage: s.brokerage,
+    lockin: s.lockin,
+    tenure: s.tenure,
+    details: hasSavedDetails ? details : null,
     legalDdStatus: s.legal_dd_status,
     agreementStatus: s.agreement_status,
     licensingStatus: s.licensing_status,
@@ -123,13 +196,15 @@ export async function createSite(payload) {
 }
 
 export async function patchSiteStatus(id, status, payload = {}) {
-  return siteFromServer(await patch(`/sites/${id}/status`, { status, payload }));
+  const nextPayload = payload?.details
+    ? { ...payload, details: detailsToServer(payload.details) }
+    : payload;
+  return siteFromServer(await patch(`/sites/${id}/status`, { status, payload: nextPayload }));
 }
 
 export async function patchSiteDetails(id, details) {
-  // The form already uses snake_case-ish keys (see siteService.submitDetails).
-  // Pass through; backend tolerates both shapes.
-  return patch(`/sites/${id}/details`, { details });
+  // The UI form is camelCase; the API contract is snake_case.
+  return patch(`/sites/${id}/details`, { details: detailsToServer(details) });
 }
 
 export async function getSiteActivity(id) {

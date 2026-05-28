@@ -201,6 +201,7 @@ async def svc_save_details(
     """Partial save. Promotes the five pipeline-stage fields onto the site row,
     diff-logs each change, and upserts the site_details row with the remaining
     fields. No status transition."""
+    details = _normalise_detail_keys(details or {})
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         before = {
@@ -253,6 +254,7 @@ async def svc_submit_details(
     site_id: str | UUID,
     details: dict | None = None,
 ) -> SiteResponse:
+    details = _normalise_detail_keys(details or {})
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         assert_transition(SiteStatus(site.status), SiteStatus.DETAILS_SUBMITTED)
@@ -570,6 +572,7 @@ _SITE_DETAIL_KEY_MAP = {
     "carpet": "carpet_area_sqft",
     "cam": "cam_charges",
     "escalation": "escalation_pct",
+    "revshare": "rev_share_pct",
     "rent_free_days": "rent_free_days",
     "cadex": "capex",
     "deposit": "security_deposit",
@@ -578,6 +581,36 @@ _SITE_DETAIL_KEY_MAP = {
     "tenure": "tenure_months",
     "rent_type": "rent_type",
 }
+
+
+_DETAIL_ALIASES = {
+    "spoc_name": ("spoc_name", "spocName"),
+    "google_pin": ("google_pin", "googlePin"),
+    "rent_type": ("rent_type", "rentType"),
+    "est_sales": ("est_sales", "estSales"),
+    "nearest_starbucks": ("nearest_starbucks", "nearestStarbucks"),
+    "nearest_twc": ("nearest_twc", "nearestTWC"),
+    "rent_free_days": ("rent_free_days", "rentFreeDays"),
+    "total_op_cost": ("total_op_cost", "totalOpCost"),
+}
+
+
+def _normalise_detail_keys(details: dict) -> dict:
+    """Accept frontend camelCase and API snake_case detail payloads.
+
+    The shortlist drawer reads from the persisted row, so dropping aliases here
+    makes the UI appear empty even when the executive filled the form.
+    """
+    normalised = dict(details or {})
+    for canonical, aliases in _DETAIL_ALIASES.items():
+        if normalised.get(canonical) not in (None, ""):
+            continue
+        for alias in aliases:
+            value = normalised.get(alias)
+            if value not in (None, ""):
+                normalised[canonical] = value
+                break
+    return normalised
 
 
 async def _upsert_site_details(

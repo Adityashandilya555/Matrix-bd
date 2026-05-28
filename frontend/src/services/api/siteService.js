@@ -79,6 +79,10 @@ export async function getSite(id) {
   return adapter.getSite(id);
 }
 
+export async function getSiteDocuments(id) {
+  return adapter.getSiteDocuments(id);
+}
+
 export async function createSite(payload) {
   return adapter.createSite(payload);
 }

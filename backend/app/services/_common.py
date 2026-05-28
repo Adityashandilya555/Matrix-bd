@@ -77,8 +77,23 @@ def apply_role_scope(stmt, *, model, user: dict):
 
 # ── Site → SiteResponse mapping ───────────────────────────────────────────
 
-def site_to_response(site: models.Site, created_by_name: str | None = None) -> SiteResponse:
+def _float_or_none(value) -> float | None:
+    return float(value) if value is not None else None
+
+
+def _int_or_none(value) -> int | None:
+    return int(value) if value is not None else None
+
+
+def site_to_response(
+    site: models.Site,
+    created_by_name: str | None = None,
+    details: models.SiteDetail | None = None,
+) -> SiteResponse:
     """Map an ORM Site into the API SiteResponse Pydantic model."""
+    rent = _float_or_none(site.expected_rent)
+    cam = _float_or_none(details.cam_charges) if details else None
+    total_op_cost = (rent + cam) * 1.18 if rent is not None and cam is not None else None
     return SiteResponse(
         id=str(site.id),
         code=site.code or "",
@@ -95,15 +110,29 @@ def site_to_response(site: models.Site, created_by_name: str | None = None) -> S
         spoc_name=site.spoc_name,
         google_pin=site.google_maps_pin,
         google_maps_url=site.google_maps_url,
-        expected_rent=float(site.expected_rent) if site.expected_rent is not None else None,
+        expected_rent=rent,
         rent_type=site.rent_type,
-        expected_escalation_pct=(
-            float(site.expected_escalation_pct) if site.expected_escalation_pct is not None else None
-        ),
+        expected_escalation_pct=_float_or_none(site.expected_escalation_pct),
         expected_escalation_years=site.expected_escalation_years,
-        expected_revshare_pct=(
-            float(site.expected_revshare_pct) if site.expected_revshare_pct is not None else None
-        ),
+        expected_revshare_pct=_float_or_none(site.expected_revshare_pct),
+        score=_float_or_none(details.score) if details else None,
+        est_sales=_float_or_none(details.estimated_monthly_sales) if details else None,
+        nearest_starbucks=_float_or_none(details.nearest_starbucks_m) if details else None,
+        nearest_twc=_float_or_none(details.nearest_twc_m) if details else None,
+        carpet=_float_or_none(details.carpet_area_sqft) if details else None,
+        cam=cam,
+        rent=rent,
+        total_op_cost=total_op_cost,
+        revshare=_float_or_none(details.rev_share_pct) if details else None,
+        rent_free_days=_int_or_none(details.rent_free_days) if details else None,
+        cadex=_float_or_none(details.capex) if details else None,
+        deposit=_float_or_none(details.security_deposit) if details else None,
+        brokerage=_float_or_none(details.brokerage) if details else None,
+        lockin=_int_or_none(details.lock_in_months) if details else None,
+        tenure=_int_or_none(details.tenure_months) if details else None,
+        legal_dd_status=site.legal_dd_status,
+        agreement_status=site.agreement_status,
+        licensing_status=site.licensing_status,
     )
 
 

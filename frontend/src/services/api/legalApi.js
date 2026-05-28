@@ -9,7 +9,7 @@
 //   POST /legal/{site_id}/dd/items        (supervisor OR executive)
 //   POST /legal/{site_id}/dd/finalize     (supervisor only)
 //   POST /legal/{site_id}/agreement       (supervisor only)
-//   POST /legal/{site_id}/licensing       (supervisor only — drives auto-approve)
+//   POST /legal/{site_id}/licensing       (supervisor or delegated executive)
 
 import axios from 'axios';
 import { getAuthToken, clearAuthToken } from './authToken.js';
@@ -49,6 +49,7 @@ function queueItemFromServer(row) {
     city:             row.city,
     legalDdStatus:    row.legal_dd_status,
     ddFinalVerdict:   row.dd_final_verdict,
+    ddStage:          row.dd_stage || 'published',
     legalReviewAt:    row.legal_review_at,
     submittedByName:  row.submitted_by_name,
   };
@@ -64,6 +65,10 @@ function reviewFromServer(row) {
     : null;
   return {
     siteId:           row.site_id,
+    siteCode:         row.site_code,
+    siteName:         row.site_name,
+    city:             row.city,
+    submittedByName:  row.submitted_by_name,
     tenantId:         row.tenant_id,
     siteStatus:       row.site_status,
     legalDdStatus:    row.legal_dd_status,
@@ -114,8 +119,8 @@ export async function saveAgreement(siteId, { signed, registered, documentUrl })
   return reviewFromServer(data);
 }
 
-// Step 4 — supervisor only. When all five values flip to 'yes' the backend
-// auto-transitions the site to LEGAL_APPROVED.
+// Step 4 — supervisor or delegated executive. Supervisor all-yes saves publish
+// licensing and auto-transition the site to LEGAL_APPROVED.
 export async function saveLicensing(siteId, items) {
   const data = await client.post(`/legal/${siteId}/licensing`, items).then((r) => r.data);
   return reviewFromServer(data);

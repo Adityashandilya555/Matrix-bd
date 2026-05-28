@@ -1,8 +1,8 @@
 """Legal Department workflow router.
 
 Access control: caller must be role=supervisor OR role=executive AND module=legal.
-The two Annotated deps are composed per-route so finalize/agreement/licensing
-are supervisor-only while viewing and saving DD items allows executives too.
+The two Annotated deps are composed per-route so finalize/agreement are
+supervisor-only while checklist item saves allow delegated executives too.
 
 Endpoints:
   GET  /legal/queue                      → legal queue (LEGAL_REVIEW sites)
@@ -63,7 +63,8 @@ from app.services.legal_service import (
 router = APIRouter(prefix="/legal", tags=["Legal"])
 
 # Both supervisor and executive in the legal module can access legal routes.
-# Finalize / agreement / licensing are further restricted to supervisor below.
+# Finalize + agreement are supervisor-only. Licensing saves are allowed for
+# delegated legal executives, with the service enforcing draft-stage limits.
 LegalMember  = Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.EXECUTIVE))]
 LegalSupervisor = Annotated[dict, Depends(require_role(Role.SUPERVISOR))]
 InLegalModule = Annotated[dict, Depends(require_module("legal"))]
@@ -286,18 +287,18 @@ async def save_agreement(
     )
 
 
-# ── Step 4 · Licensing (supervisor only) ─────────────────────────────────────
+# ── Step 4 · Licensing ───────────────────────────────────────────────────────
 
 @router.post(
     "/{site_id}/licensing",
     response_model=LegalReviewResponse,
-    summary="Step 4 · Save licensing checklist → auto-approves site to LEGAL_APPROVED",
+    summary="Step 4 · Save licensing checklist → supervisor all-yes auto-approves site",
 )
 async def save_licensing(
     site_id: str,
     body: SaveLicensingRequest,
     db: DbDep,
-    current_user: LegalSupervisor,
+    current_user: LegalMember,
     _module: InLegalModule,
     tenant_id: TenantId,
 ) -> LegalReviewResponse:

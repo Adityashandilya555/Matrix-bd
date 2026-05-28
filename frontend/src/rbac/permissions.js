@@ -16,6 +16,11 @@ export const PERMISSIONS = {
   set_loi_timeline:           [ROLE.SUPERVISOR],
   push_to_payments:           [ROLE.SUPERVISOR],
   reassign_site:              [ROLE.SUPERVISOR],
+  legal_view_queue:           [ROLE.SUPERVISOR, ROLE.EXECUTIVE],
+  legal_save_dd:              [ROLE.SUPERVISOR, ROLE.EXECUTIVE],
+  legal_finalize_dd:          [ROLE.SUPERVISOR],
+  legal_save_agreement:       [ROLE.SUPERVISOR],
+  legal_save_licensing:       [ROLE.SUPERVISOR, ROLE.EXECUTIVE],
 };
 
 export function can(role, action) {

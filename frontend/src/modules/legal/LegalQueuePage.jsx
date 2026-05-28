@@ -5,7 +5,7 @@ import Icon from '../shared/primitives/Icon.jsx';
 import { useSession } from '../../state/SessionContext.jsx';
 import { getLegalQueue } from '../../services/api/legalApi.js';
 import { listLegalDelegationsForSite } from '../../services/api/legalDelegationApi.js';
-import { legalSiteDdrRoute } from '../../router/routes.js';
+import { legalSiteDdrRoute, legalSiteLicensingRoute } from '../../router/routes.js';
 
 const STATUS_LABELS = {
   pending:   { label: 'Awaiting review',    tone: 'var(--zm-fg-3)' },
@@ -97,7 +97,12 @@ export default function LegalQueuePage() {
     return () => { cancelled = true; };
   }, [isSupervisor, state.status, state.items]);
 
-  const open = (siteId) => navigate(legalSiteDdrRoute(siteId));
+  const open = (row) => {
+    const target = row.legalDdStatus === 'positive'
+      ? legalSiteLicensingRoute(row.siteId)
+      : legalSiteDdrRoute(row.siteId);
+    navigate(target);
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -148,7 +153,7 @@ export default function LegalQueuePage() {
           {state.items.map((row) => (
             <div
               key={row.siteId}
-              onClick={() => open(row.siteId)}
+              onClick={() => open(row)}
               style={{
                 display: 'grid',
                 gridTemplateColumns: '120px minmax(220px, 1fr) 140px 160px 140px',
@@ -188,7 +193,7 @@ export default function LegalQueuePage() {
               <button
                 type="button"
                 className="zm-btn-primary"
-                onClick={(e) => { e.stopPropagation(); open(row.siteId); }}
+                onClick={(e) => { e.stopPropagation(); open(row); }}
                 style={{
                   justifySelf: 'end',
                   height: 32, padding: '0 14px',
@@ -198,7 +203,7 @@ export default function LegalQueuePage() {
                   cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
                 }}
               >
-                Open DDR
+                {row.legalDdStatus === 'positive' ? 'Open licensing' : 'Open DDR'}
                 <Icon name="arrow-right" size={12}/>
               </button>
             </div>

@@ -423,7 +423,7 @@ export default function ModuleChecklistPage({
   const canSubmit = role === 'supervisor';
   // Executives may only request review while their draft is live, and only
   // if the parent has wired the handler (legacy pages get no button).
-  const canSubmitForReview = !!onSubmitForReview && role === 'executive' && stage === 'draft';
+  const canSubmitForReview = !!onSubmitForReview && (role === 'executive' || role === 'exec') && stage === 'draft';
   const [coreStatuses, setCoreStatuses] = React.useState(() =>
     checks.reduce((acc, item) => ({ ...acc, [item.id]: initialCoreStatuses?.[item.id] ?? null }), {})
   );

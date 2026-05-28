@@ -289,6 +289,25 @@ export async function getSiteActivity(siteId) {
   return { items, total: items.length };
 }
 
+export async function getSiteDocuments(siteId) {
+  await delay(80, 200);
+  const site = getSiteById(siteId);
+  const docs = [];
+  if (site?.loiUrl) {
+    docs.push({
+      id: `loi_${siteId}`,
+      fileName: 'LOI uploaded.pdf',
+      fileType: 'loi',
+      fileSizeKb: null,
+      mimeType: 'application/pdf',
+      uploadedAt: site._loiUploadedAt || site.updatedAt || new Date().toISOString(),
+      uploadedBy: site.createdBy?.name || site.createdBy || 'BD',
+      url: site.loiUrl,
+    });
+  }
+  return { siteId, documents: docs };
+}
+
 // ---- Users ----
 
 export async function listUsers() {

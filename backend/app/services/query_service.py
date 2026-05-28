@@ -81,12 +81,25 @@ async def list_sites(
 
     # Resolve names for the SiteResponse.created_by field in one query.
     submitter_ids = {r.submitted_by for r in rows if r.submitted_by}
+    site_ids = [r.id for r in rows]
     names = {}
     if submitter_ids:
         u_stmt = select(models.User.id, models.User.name).where(models.User.id.in_(submitter_ids))
         names = dict((u_id, n) for u_id, n in (await session.execute(u_stmt)).all())
+    detail_by_site = {}
+    if site_ids:
+        d_stmt = select(models.SiteDetail).where(models.SiteDetail.site_id.in_(site_ids))
+        details = (await session.execute(d_stmt)).scalars().all()
+        detail_by_site = {d.site_id: d for d in details}
 
-    items = [site_to_response(r, created_by_name=names.get(r.submitted_by, "")) for r in rows]
+    items = [
+        site_to_response(
+            r,
+            created_by_name=names.get(r.submitted_by, ""),
+            details=detail_by_site.get(r.id),
+        )
+        for r in rows
+    ]
     return SiteListResponse(items=items, total=len(items))
 
 
@@ -104,7 +117,9 @@ async def get_site(
 
     name_stmt = select(models.User.name).where(models.User.id == site.submitted_by)
     name = (await session.execute(name_stmt)).scalar_one_or_none()
-    return site_to_response(site, created_by_name=name or "")
+    detail_stmt = select(models.SiteDetail).where(models.SiteDetail.site_id == site.id)
+    details = (await session.execute(detail_stmt)).scalar_one_or_none()
+    return site_to_response(site, created_by_name=name or "", details=details)
 
 
 async def list_site_activity(

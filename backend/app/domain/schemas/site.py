@@ -2,7 +2,7 @@
 from __future__ import annotations
 from datetime import date
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, Field
 from app.domain.state_machine import SiteStatus
 
 
@@ -25,6 +25,21 @@ class CreateDraftRequest(BaseModel):
     expected_escalation_pct: Optional[float] = None
     expected_escalation_years: Optional[int] = None
     expected_revshare_pct: Optional[float] = None
+    score: Optional[float] = None
+    est_sales: Optional[float] = None
+    nearest_starbucks: Optional[float] = None
+    nearest_twc: Optional[float] = None
+    carpet: Optional[float] = None
+    cam: Optional[float] = None
+    rent: Optional[float] = None
+    total_op_cost: Optional[float] = None
+    revshare: Optional[float] = None
+    rent_free_days: Optional[int] = None
+    cadex: Optional[float] = None
+    deposit: Optional[float] = None
+    brokerage: Optional[float] = None
+    lockin: Optional[int] = None
+    tenure: Optional[int] = None
 
 
 class ShortlistDraftRequest(BaseModel):
@@ -39,24 +54,25 @@ class RejectSiteRequest(BaseModel):
 class SaveDetailsRequest(BaseModel):
     """Partial 17-field form save — all fields optional so exec can save incrementally."""
     model: Optional[str] = None
-    spoc_name: Optional[str] = None
-    google_pin: Optional[str] = None
+    spoc_name: Optional[str] = Field(default=None, validation_alias=AliasChoices("spoc_name", "spocName"))
+    google_pin: Optional[str] = Field(default=None, validation_alias=AliasChoices("google_pin", "googlePin"))
     score: Optional[float] = None
-    est_sales: Optional[float] = None
-    nearest_starbucks: Optional[float] = None
-    nearest_twc: Optional[float] = None
+    est_sales: Optional[float] = Field(default=None, validation_alias=AliasChoices("est_sales", "estSales"))
+    nearest_starbucks: Optional[float] = Field(default=None, validation_alias=AliasChoices("nearest_starbucks", "nearestStarbucks"))
+    nearest_twc: Optional[float] = Field(default=None, validation_alias=AliasChoices("nearest_twc", "nearestTWC"))
     carpet: Optional[float] = None
     cam: Optional[float] = None
-    rent_type: Optional[str] = None
+    rent_type: Optional[str] = Field(default=None, validation_alias=AliasChoices("rent_type", "rentType"))
     rent: Optional[float] = None
     escalation: Optional[float] = None
-    rent_free_days: Optional[int] = None
+    revshare: Optional[float] = None
+    rent_free_days: Optional[int] = Field(default=None, validation_alias=AliasChoices("rent_free_days", "rentFreeDays"))
     cadex: Optional[float] = None
     deposit: Optional[float] = None
     brokerage: Optional[float] = None
     lockin: Optional[int] = None
     tenure: Optional[int] = None
-    total_op_cost: Optional[float] = None
+    total_op_cost: Optional[float] = Field(default=None, validation_alias=AliasChoices("total_op_cost", "totalOpCost"))
 
 
 class SubmitDetailsRequest(SaveDetailsRequest):
@@ -113,6 +129,25 @@ class SiteResponse(BaseModel):
     expected_escalation_pct: Optional[float] = None
     expected_escalation_years: Optional[int] = None
     expected_revshare_pct: Optional[float] = None
+    # Persisted 17-field details from the shortlist form. These power the
+    # read-only site drawer and must never be synthesized by the frontend.
+    score: Optional[float] = None
+    est_sales: Optional[float] = None
+    nearest_starbucks: Optional[float] = None
+    nearest_twc: Optional[float] = None
+    carpet: Optional[float] = None
+    cam: Optional[float] = None
+    rent: Optional[float] = None
+    total_op_cost: Optional[float] = None
+    rent_free_days: Optional[int] = None
+    cadex: Optional[float] = None
+    deposit: Optional[float] = None
+    brokerage: Optional[float] = None
+    lockin: Optional[int] = None
+    tenure: Optional[int] = None
+    legal_dd_status: Optional[str] = None
+    agreement_status: Optional[str] = None
+    licensing_status: Optional[str] = None
 
 
 class SiteListResponse(BaseModel):

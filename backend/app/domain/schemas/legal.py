@@ -127,6 +127,10 @@ class LicensingResponse(BaseModel):
 class LegalReviewResponse(BaseModel):
     """Combined view of all three legal child tables for a site."""
     site_id:        str
+    site_code:      Optional[str] = None
+    site_name:      Optional[str] = None
+    city:           Optional[str] = None
+    submitted_by_name: Optional[str] = None
     tenant_id:      str
     site_status:    str          # current sites.status value
     legal_dd_status: Optional[str] = None    # sites mirror column

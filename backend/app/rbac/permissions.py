@@ -32,7 +32,7 @@ PERMISSIONS: dict[str, list[Role]] = {
     "legal_save_dd":              [Role.SUPERVISOR, Role.EXECUTIVE],
     "legal_finalize_dd":          [Role.SUPERVISOR],
     "legal_save_agreement":       [Role.SUPERVISOR],
-    "legal_save_licensing":       [Role.SUPERVISOR],
+    "legal_save_licensing":       [Role.SUPERVISOR, Role.EXECUTIVE],
 }
 
 

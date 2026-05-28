@@ -138,8 +138,13 @@ async def _build_review_response(
     dd  = await _fetch_dd_or_none(session, site_id=site.id)
     ag  = await _fetch_agreement_or_none(session, site_id=site.id)
     lic = await _fetch_licensing_or_none(session, site_id=site.id)
+    submitted_by_name = await fetch_user_name(session, site.submitted_by)
     return LegalReviewResponse(
         site_id=str(site.id),
+        site_code=site.code or "",
+        site_name=site.name,
+        city=site.city,
+        submitted_by_name=submitted_by_name,
         tenant_id=str(site.tenant_id),
         site_status=site.status,
         legal_dd_status=site.legal_dd_status,
