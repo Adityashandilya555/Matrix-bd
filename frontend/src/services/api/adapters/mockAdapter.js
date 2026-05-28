@@ -289,6 +289,32 @@ export async function getSiteActivity(siteId) {
   return { items, total: items.length };
 }
 
+// In-memory photo store for mock mode (keyed by siteId)
+const _mockPhotos = {};
+
+export async function uploadPhoto(siteId, file) {
+  await delay(400, 900);
+  maybeFail();
+  const id = 'photo_' + Math.random().toString(36).slice(2, 10);
+  // Keep the object URL alive for the mock session
+  const url = (file instanceof Blob || file instanceof File)
+    ? URL.createObjectURL(file)
+    : `mock-storage/photo-${siteId}-${Date.now()}.jpg`;
+  const entry = {
+    id,
+    fileName: file?.name || 'photo.jpg',
+    fileType: 'photo',
+    fileSizeKb: file?.size ? Math.max(1, Math.round(file.size / 1024)) : 50,
+    mimeType:  file?.type || 'image/jpeg',
+    uploadedAt: new Date().toISOString(),
+    uploadedBy: 'exec',
+    url,
+  };
+  if (!_mockPhotos[siteId]) _mockPhotos[siteId] = [];
+  _mockPhotos[siteId].push(entry);
+  return { id, url, fileName: entry.fileName, fileSizeKb: entry.fileSizeKb, mimeType: entry.mimeType };
+}
+
 export async function getSiteDocuments(siteId) {
   await delay(80, 200);
   const site = getSiteById(siteId);
@@ -305,7 +331,9 @@ export async function getSiteDocuments(siteId) {
       url: site.loiUrl,
     });
   }
-  return { siteId, documents: docs };
+  // Include any photos uploaded via uploadPhoto() this session
+  const photos = _mockPhotos[siteId] || [];
+  return { siteId, documents: [...docs, ...photos] };
 }
 
 // ---- Users ----

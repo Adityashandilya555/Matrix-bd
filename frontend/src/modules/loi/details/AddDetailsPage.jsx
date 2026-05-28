@@ -1,9 +1,7 @@
 import React from 'react';
 import Icon from '../../shared/primitives/Icon.jsx';
 import StatusPill from '../../shared/primitives/StatusPill.jsx';
-
-// Render body preserved exactly from AddDetailsForm.jsx.
-// Only change: window globals replaced with ES imports above; component renamed to AddDetailsPage.
+import * as siteService from '../../../services/api/siteService.js';
 
 const MODELS = ['BTC Cafe', 'BTC Cafe+', 'Blue Tokai Origins', 'Roastries', 'Micro-Cafes & Express Outlets', 'Others'];
 const RENT_TYPES = [
@@ -12,17 +10,39 @@ const RENT_TYPES = [
   { id: 'mg_revshare', label: 'MG + Revenue share', sub: 'minimum guarantee + % of sales' },
 ];
 
-function PhotoPicker({ photos, onAdd, onRemove }) {
+// uploadingIds: Set of local photo IDs currently being uploaded to storage
+function PhotoPicker({ photos, onAdd, onRemove, uploadingIds = new Set() }) {
   const fileInput = React.useRef(null);
-  const onPick = (e) => { const files = Array.from(e.target.files || []); files.forEach(f => { const url = URL.createObjectURL(f); onAdd({ id: Math.random().toString(36).slice(2,8), name: f.name, size: f.size, url }); }); e.target.value = ''; };
+  const onPick = (e) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach(f => {
+      const url = URL.createObjectURL(f);
+      // Pass the original File object so the parent can upload it
+      onAdd({ id: Math.random().toString(36).slice(2, 8), name: f.name, size: f.size, url, file: f });
+    });
+    e.target.value = '';
+  };
   return (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-        {photos.map(p => (<div key={p.id} className="zm-photo-tile" style={{ position: 'relative', aspectRatio: '4 / 3', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--zm-line)', background: `url(${p.url}) center/cover` }}><button onClick={() => onRemove(p.id)} title="Remove" className="zm-photo-del" style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, padding: 0, border: 'none', borderRadius: 999, background: 'rgba(11,12,16,0.7)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Icon name="x" size={12}/></button><span style={{ position: 'absolute', left: 6, bottom: 6, padding: '2px 6px', borderRadius: 4, background: 'rgba(11,12,16,0.6)', color: '#fff', fontFamily: 'var(--zm-font-mono)', fontSize: 10 }}>{Math.round(p.size / 1024)} KB</span></div>))}
-        <button onClick={() => fileInput.current?.click()} className="zm-upload-tile" style={{ aspectRatio: '4 / 3', borderRadius: 10, border: '1px dashed var(--zm-line-strong)', background: 'var(--zm-surface-2)', color: 'var(--zm-fg-3)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Icon name="camera" size={20}/> Add photos<span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 10, color: 'var(--zm-fg-4)' }}>OneDrive sync</span></button>
+        {photos.map(p => (
+          <div key={p.id} className="zm-photo-tile" style={{ position: 'relative', aspectRatio: '4 / 3', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--zm-line)', background: p.url ? `url(${p.url}) center/cover` : 'var(--zm-surface-2)' }}>
+            {/* Upload-in-progress spinner overlay */}
+            {uploadingIds.has(p.id) && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(11,12,16,0.45)', borderRadius: 10 }}>
+                <span style={{ width: 18, height: 18, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'zm-spin 0.7s linear infinite' }}/>
+              </div>
+            )}
+            <button onClick={() => onRemove(p.id)} title="Remove" className="zm-photo-del" style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, padding: 0, border: 'none', borderRadius: 999, background: 'rgba(11,12,16,0.7)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Icon name="x" size={12}/></button>
+            <span style={{ position: 'absolute', left: 6, bottom: 6, padding: '2px 6px', borderRadius: 4, background: 'rgba(11,12,16,0.6)', color: '#fff', fontFamily: 'var(--zm-font-mono)', fontSize: 10 }}>
+              {uploadingIds.has(p.id) ? 'uploading…' : `${Math.round((p.size || (p.fileSizeKb || 0) * 1024) / 1024)} KB`}
+            </span>
+          </div>
+        ))}
+        <button onClick={() => fileInput.current?.click()} className="zm-upload-tile" style={{ aspectRatio: '4 / 3', borderRadius: 10, border: '1px dashed var(--zm-line-strong)', background: 'var(--zm-surface-2)', color: 'var(--zm-fg-3)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Icon name="camera" size={20}/> Add photos<span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 10, color: 'var(--zm-fg-4)' }}>Stored in Supabase</span></button>
       </div>
       <input ref={fileInput} type="file" accept="image/*" multiple onChange={onPick} style={{ display: 'none' }}/>
-      {photos.length === 0 && (<p style={{ margin: '8px 0 0', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>Add at least one storefront photo. All photos sync to OneDrive on save.</p>)}
+      {photos.length === 0 && (<p style={{ margin: '8px 0 0', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>Add storefront photos — they upload immediately and persist across sessions.</p>)}
     </div>
   );
 }
@@ -69,21 +89,76 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft })
   // Pipeline-stage fields (model, spocName, googlePin, rentType, expectedRent) are now
   // captured at draft creation. Prefill them here so the BE picks up where they left off;
   // any edit before submit/save is diff-logged into the activity feed by the backend.
-  const init = item.details || {
-    name: item.name, visitDate: item.visitDate, city: item.city,
-    model: item.model || '',
-    spocName: item.spocName || '',
-    googlePin: item.googlePin || '',
-    rentType: item.rentType || '',
-    rent: item.expectedRent != null ? String(item.expectedRent) : '',
-    photos: [], score: '', estSales: '', nearestStarbucks: '', nearestTWC: '',
-    carpet: '', cam: '',
-    escalation: item.expectedEscalationPct != null ? String(item.expectedEscalationPct) : '',
-    revshare: item.expectedRevsharePct != null ? String(item.expectedRevsharePct) : '',
-    rentFreeDays: '',
-    cadex: '', deposit: '', brokerage: '', lockin: '', tenure: '',
+  //
+  // Photos are ALWAYS initialised as [] here — blob URLs from a previous session
+  // are stale and unusable. The useEffect below loads persisted photos from the API.
+  const init = {
+    ...(item.details || {
+      name: item.name, visitDate: item.visitDate, city: item.city,
+      model: item.model || '',
+      spocName: item.spocName || '',
+      googlePin: item.googlePin || '',
+      rentType: item.rentType || '',
+      rent: item.expectedRent != null ? String(item.expectedRent) : '',
+      score: '', estSales: '', nearestStarbucks: '', nearestTWC: '',
+      carpet: '', cam: '',
+      escalation: item.expectedEscalationPct != null ? String(item.expectedEscalationPct) : '',
+      revshare: item.expectedRevsharePct != null ? String(item.expectedRevsharePct) : '',
+      rentFreeDays: '',
+      cadex: '', deposit: '', brokerage: '', lockin: '', tenure: '',
+    }),
+    photos: [], // always override — load from API below
   };
   const [f, setF] = React.useState(init);
+  // Track which photo IDs are mid-upload so the tile can show a spinner
+  const [uploadingPhotoIds, setUploadingPhotoIds] = React.useState(new Set());
+
+  // Load persisted photos from Supabase on mount
+  React.useEffect(() => {
+    if (!item?.id) return;
+    siteService.listSitePhotos(item.id)
+      .then(photos => {
+        if (!photos.length) return;
+        setF(prev => ({
+          ...prev,
+          photos: photos.map(p => ({
+            id: p.id,
+            name: p.fileName,
+            size: (p.fileSizeKb || 0) * 1024,
+            fileSizeKb: p.fileSizeKb,
+            url: p.url || '',
+            persisted: true,
+          })),
+        }));
+      })
+      .catch(() => {}); // photos are non-blocking — silently ignore load errors
+  }, [item?.id]);
+
+  // Called by PhotoPicker when the user picks file(s).
+  // Adds immediately with a blob URL for preview, then uploads to storage
+  // and swaps in the persistent signed URL on success.
+  const handlePhotoAdd = React.useCallback(async (photoEntry) => {
+    setF(prev => ({ ...prev, photos: [...prev.photos, photoEntry] }));
+    if (!item?.id || !photoEntry.file) return;
+    setUploadingPhotoIds(prev => new Set([...prev, photoEntry.id]));
+    try {
+      const result = await siteService.uploadPhoto(item.id, photoEntry.file);
+      setF(prev => ({
+        ...prev,
+        photos: prev.photos.map(p =>
+          p.id === photoEntry.id
+            ? { ...p, url: result.url || p.url, backendId: result.id, persisted: true }
+            : p
+        ),
+      }));
+    } catch {
+      // Upload failed — photo stays in state with blob URL for preview,
+      // marked as not persisted. User can remove and re-add to retry.
+    } finally {
+      setUploadingPhotoIds(prev => { const s = new Set(prev); s.delete(photoEntry.id); return s; });
+    }
+  }, [item?.id]);
+
   const upd = (k) => (v) => setF(prev => ({ ...prev, [k]: v }));
   const rentNum = parseFloat(f.rent) || 0; const camNum = parseFloat(f.cam) || 0;
   const totalOpCost = (rentNum + camNum) * 1.18;
@@ -134,7 +209,7 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft })
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
             <FormSection n="1·3" title="Identity"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}><TextField label="Name" value={f.name} onChange={upd('name')} required hint="Editable from draft"/><TextField label="Visit date" value={f.visitDate} mono readOnly hint="Locked from pipeline"/><TextField label="City" value={f.city} onChange={upd('city')} required/></div></FormSection>
             <FormSection n="4·6" title="Model · SPOC · Google pin"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}><SelectField label="Model" value={f.model} onChange={upd('model')} required options={MODELS}/><TextField label="SPOC name" value={f.spocName} onChange={upd('spocName')} required placeholder="Landlord / agent"/><TextField label="Google pin" value={f.googlePin} onChange={upd('googlePin')} required mono placeholder="19.1183, 72.9089"/></div></FormSection>
-            <FormSection n="7" title="Storefront photos"><PhotoPicker photos={f.photos} onAdd={(p) => setF(prev => ({ ...prev, photos: [...prev.photos, p] }))} onRemove={(id) => setF(prev => ({ ...prev, photos: prev.photos.filter(x => x.id !== id) }))}/>{errors.photos && <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: '#B91C1C', marginTop: 6 }}>{errors.photos}</span>}</FormSection>
+            <FormSection n="7" title="Storefront photos"><PhotoPicker photos={f.photos} onAdd={handlePhotoAdd} onRemove={(id) => setF(prev => ({ ...prev, photos: prev.photos.filter(x => x.id !== id) }))} uploadingIds={uploadingPhotoIds}/></FormSection>
             <FormSection n="8·11" title="Score + adjacency sales"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}><TextField label="Score" value={f.score} onChange={upd('score')} required type="number" min="0" hint="0–100 footfall + visibility"/><TextField label="Estimated sales" value={f.estSales} onChange={upd('estSales')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 1250000" hint="Full rupees · no commas"/><TextField label="Nearest Starbucks sales" value={f.nearestStarbucks} onChange={upd('nearestStarbucks')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 900000" hint="Full rupees"/><TextField label="Nearest TWC sales" value={f.nearestTWC} onChange={upd('nearestTWC')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 700000" hint="Third-Wave Coffee · full rupees"/></div></FormSection>
             <FormSection n="12·14" title="Carpet · CAM · rent">
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}><TextField label="Carpet / covered area" value={f.carpet} onChange={upd('carpet')} required mono suffix="sqft" placeholder="e.g. 850"/><TextField label="CAM" value={f.cam} onChange={upd('cam')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 25000" hint="Full rupees · no commas"/><div/></div>

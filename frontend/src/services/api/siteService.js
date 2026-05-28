@@ -86,6 +86,17 @@ export async function getSiteDocuments(id) {
   return adapter.getSiteDocuments(id);
 }
 
+// Upload a single photo for a site. Returns { id, url, fileName, fileSizeKb, mimeType }.
+export async function uploadPhoto(siteId, file) {
+  return adapter.uploadPhoto(siteId, file);
+}
+
+// Return all photo documents for a site (filters the documents list by fileType='photo').
+export async function listSitePhotos(siteId) {
+  const result = await adapter.getSiteDocuments(siteId);
+  return (result?.documents || []).filter(d => d.fileType === 'photo');
+}
+
 export async function createSite(payload) {
   return adapter.createSite(payload);
 }

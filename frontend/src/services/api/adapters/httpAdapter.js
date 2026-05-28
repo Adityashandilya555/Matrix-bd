@@ -255,6 +255,26 @@ export async function uploadLoi(id, file) {
   return r.data;
 }
 
+export async function uploadPhoto(id, file) {
+  const form = new FormData();
+  if (file instanceof File || file instanceof Blob) {
+    form.append('file', file, file.name || 'photo.jpg');
+  } else {
+    throw new Error('uploadPhoto: expected a File or Blob');
+  }
+  const r = await client.post(`/sites/${id}/photos`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  // Backend returns { id, url, file_name, file_size_kb, mime_type }
+  return {
+    id:         r.data.id,
+    url:        r.data.url,
+    fileName:   r.data.file_name,
+    fileSizeKb: r.data.file_size_kb,
+    mimeType:   r.data.mime_type,
+  };
+}
+
 export async function archiveSite(id, note)               { return post(`/sites/${id}/archive`, { note }); }
 export async function reviveSite(id, note)                { return post(`/sites/${id}/revive`, { note: note || null }); }
 export async function rejectSite(id, reasons, comment)    { return post(`/sites/${id}/reject`, { reasons, comment }); }

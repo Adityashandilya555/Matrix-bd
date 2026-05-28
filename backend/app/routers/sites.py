@@ -390,6 +390,36 @@ async def assign_site(
     )
 
 
+@router.post("/{site_id}/photos", summary="Upload a site photo")
+async def upload_site_photo(
+    site_id: str,
+    db: DbDep,
+    current_user: Annotated[
+        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))
+    ],
+    tenant_id: TenantId,
+    file: UploadFile = File(...),
+) -> dict:
+    """Upload a photo for a site.
+
+    Stores the image in Supabase Storage under ``photos/{tenant}/{site}/``
+    and inserts a ``site_files`` row with ``file_type='photo'``.
+    Returns ``{ id, url, file_name, file_size_kb, mime_type }`` so the
+    frontend can replace its local blob URL with the persisted signed URL.
+    """
+    from app.services.photo_service import svc_upload_photo
+    body = await file.read()
+    return await svc_upload_photo(
+        db,
+        tenant_id=tenant_id,
+        actor=current_user,
+        site_id=site_id,
+        filename=file.filename or "photo.jpg",
+        content_type=file.content_type,
+        file_bytes=body,
+    )
+
+
 @router.post("/{site_id}/loi", response_model=LOIUploadResponse, summary="Upload LOI (alias, multipart)")
 async def upload_loi_alias(
     site_id: str,
