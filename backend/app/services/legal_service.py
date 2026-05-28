@@ -53,12 +53,15 @@ logger = logging.getLogger(__name__)
 
 
 # DD fields used for the auto-positive check in svc_save_verification.
-# Matches change_request_service._DD_FIELDS exactly so both recovery paths
-# use the same bar.  All 9 items (including other_1/other_2) must be 'yes'.
-_REQUIRED_DD_FIELDS = (
+# Core fields — all 7 must be 'yes' for auto-positive to fire.
+# Optional slots (other_1 / other_2) are free-form additions; a NULL value
+# means "not used on this site" and must NOT block the positive verdict.
+# If a supervisor has filled them in they must also be 'yes'.
+_CORE_DD_FIELDS = (
     "title_doc", "sanctioned_plan", "oc_cc", "commercial_use",
-    "property_tax", "electricity", "fire_noc", "other_1", "other_2",
+    "property_tax", "electricity", "fire_noc",
 )
+_OPTIONAL_DD_FIELDS = ("other_1", "other_2")
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -391,18 +394,24 @@ async def svc_save_verification(
         dd.reviewed_by = actor["sub"]
 
         # ── Auto-positive check with LEGAL_REJECTED recovery ─────────────────
-        # After every supervisor edit, check if ALL 9 DD items are now 'yes'.
-        # If so:
+        # After every supervisor edit, check if all required DD items are 'yes'.
+        # Rule: 7 core items must be 'yes'; other_1/other_2 must be 'yes' OR NULL
+        # (NULL = "not used on this site"; a supervisor who adds them must also
+        # mark them yes before positive triggers).
+        # If the bar is met:
         #   1. final_verdict → 'positive', legal_dd_status → 'positive'
         #   2. If site was LEGAL_REJECTED, transition back to LEGAL_REVIEW so
         #      it re-enters the active workflow and reappears in the queue.
         #
         # This is the direct-edit recovery path for supervisors.  BD executives
         # go through change_request_service (_maybe_recover_dd_verdict) which
-        # has the same check against the same _DD_FIELDS set.
+        # uses the same core/optional split.
         # A verdict already 'positive' is never downgraded here.
         if dd.final_verdict != "positive":
-            all_required_yes = all(getattr(dd, f) == "yes" for f in _REQUIRED_DD_FIELDS)
+            all_required_yes = (
+                all(getattr(dd, f) == "yes" for f in _CORE_DD_FIELDS)
+                and all(getattr(dd, f) in (None, "yes") for f in _OPTIONAL_DD_FIELDS)
+            )
             if all_required_yes:
                 dd.final_verdict = "positive"
                 site.legal_dd_status = "positive"
@@ -513,11 +522,28 @@ async def svc_save_due_diligence(
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         dd   = await _fetch_dd_or_404(session, site_id=site.id)
 
-        if site.status != SiteStatus.LEGAL_REVIEW.value:
+        # Positive verdicts may also be submitted on a LEGAL_REJECTED site —
+        # the supervisor has corrected all items and is finalising inline.
+        # In that case we first recover the site to LEGAL_REVIEW, then proceed
+        # with the normal positive-verdict path (avoids a separate save step).
+        # Negative verdicts can only be submitted from LEGAL_REVIEW (you cannot
+        # re-reject a site that is already rejected).
+        _allowed = {SiteStatus.LEGAL_REVIEW.value}
+        if body.final_verdict == "positive":
+            _allowed.add(SiteStatus.LEGAL_REJECTED.value)
+
+        if site.status not in _allowed:
             raise HTTPException(
                 status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Site is not in legal_review (current: {site.status})",
             )
+
+        # If recovering from LEGAL_REJECTED, transition to LEGAL_REVIEW first
+        # so the rest of the function runs against a consistent LEGAL_REVIEW state.
+        if site.status == SiteStatus.LEGAL_REJECTED.value:
+            assert_transition(SiteStatus.LEGAL_REJECTED, SiteStatus.LEGAL_REVIEW)
+            site.status = SiteStatus.LEGAL_REVIEW.value
+            site.legal_rejected_at = None
 
         dd.final_verdict   = body.final_verdict
         dd.rejection_reason = body.rejection_reason
