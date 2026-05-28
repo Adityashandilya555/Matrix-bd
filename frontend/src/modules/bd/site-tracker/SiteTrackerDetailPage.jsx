@@ -5,17 +5,16 @@ import Icon from '../../shared/primitives/Icon.jsx';
 import { getSiteTrackerView } from '../../../services/api/siteTrackerApi.js';
 import { ROUTES } from '../../../router/routes.js';
 
-// Static 7-node hand-over graph. The list is intentionally hard-coded — only
-// the Legal node is interactive in v1; the other five are placeholders that
+// Static LOI-forward hand-over graph. Only the Legal node is interactive in v1;
+// the remaining nodes are placeholders that
 // will light up as the downstream modules ship.
 const NODES = [
-  { id: 'bd',          label: 'BD',            icon: 'shield',  interactive: false },
-  { id: 'legal',       label: 'Legal',         icon: 'shield',  interactive: true  },
-  { id: 'payment',     label: 'Payment',       icon: 'card',    interactive: false },
-  { id: 'design',      label: 'Design',        icon: 'grid',    interactive: false },
-  { id: 'project_ex',  label: 'Project Ex',    icon: 'box',     interactive: false },
-  { id: 'nso',         label: 'NSO Handover',  icon: 'upload',  interactive: false },
-  { id: 'cam',         label: 'CAM',           icon: 'activity', interactive: false },
+  { id: 'loi',     label: 'BD LOI Signed',        icon: 'file',    interactive: false },
+  { id: 'legal',   label: 'Legal & Compliance',   icon: 'shield',  interactive: true  },
+  { id: 'ca',      label: 'CA / Commercial Code', icon: 'rupee',   interactive: false },
+  { id: 'design',  label: 'Design / Technical',   icon: 'grid',    interactive: false },
+  { id: 'project', label: 'Project Execution',    icon: 'box',     interactive: false },
+  { id: 'final',   label: 'Final Approval',       icon: 'check',   interactive: false },
 ];
 
 const DD_LABELS = [
@@ -50,7 +49,12 @@ function verdictTone(verdict) {
 }
 
 function NodeCard({ node, selected, onClick }) {
-  const greyed = !node.interactive;
+  const completed = node.id === 'loi';
+  const greyed = !node.interactive && !completed;
+  const statusLabel = node.interactive ? 'OPEN' : completed ? 'DONE' : 'QUEUED';
+  const statusColor = node.interactive
+    ? 'var(--zm-accent)'
+    : completed ? 'var(--zm-success, #2D7A48)' : 'var(--zm-fg-3)';
   return (
     <button
       type="button"
@@ -63,14 +67,14 @@ function NodeCard({ node, selected, onClick }) {
         border: '1px solid ' + (selected ? 'var(--zm-accent)' : 'var(--zm-line)'),
         background: selected
           ? 'var(--zm-accent-soft, var(--zm-surface-2))'
-          : greyed ? 'var(--zm-surface-2)' : 'var(--zm-surface)',
+          : completed ? 'rgba(45,122,72,0.06)' : greyed ? 'var(--zm-surface-2)' : 'var(--zm-surface)',
         color: greyed ? 'var(--zm-fg-3)' : 'var(--zm-fg)',
-        cursor: node.interactive ? 'pointer' : 'not-allowed',
+        cursor: node.interactive ? 'pointer' : 'default',
         opacity: greyed ? 0.7 : 1,
         boxShadow: selected ? 'var(--zm-shadow-1)' : 'none',
       }}
     >
-      <span style={{ color: selected ? 'var(--zm-accent)' : (greyed ? 'var(--zm-fg-3)' : 'var(--zm-fg-2)') }}>
+      <span style={{ color: selected ? 'var(--zm-accent)' : (completed ? 'var(--zm-success, #2D7A48)' : greyed ? 'var(--zm-fg-3)' : 'var(--zm-fg-2)') }}>
         <Icon name={node.icon} size={20}/>
       </span>
       <span style={{
@@ -79,17 +83,17 @@ function NodeCard({ node, selected, onClick }) {
       }}>{node.label}</span>
       <span style={{
         fontFamily: 'var(--zm-font-body)', fontSize: 10, fontWeight: 600,
-        color: greyed ? 'var(--zm-fg-3)' : 'var(--zm-accent)',
+        color: statusColor,
       }}>
-        {node.interactive ? 'OPEN' : 'COMING SOON'}
+        {statusLabel}
       </span>
     </button>
   );
 }
 
 function NodeDiagram({ selected, onSelect }) {
-  // Static, hard-coded SVG-on-grid layout. Six edges, all going left → right
-  // in a single row. The arrow heads are inline so we don't need defs.
+  // Static, hard-coded SVG-on-grid layout. Edges run left to right in one row.
+  // The arrow heads are inline so we don't need defs.
   return (
     <div style={{
       position: 'relative',
@@ -98,9 +102,9 @@ function NodeDiagram({ selected, onSelect }) {
       overflowX: 'auto',
     }}>
       {/* Arrow row sits behind the cards. SVG width chosen to comfortably
-          contain 7 cards × ~140px each. */}
+          contain the six node cards. */}
       <svg
-        viewBox="0 0 980 60"
+        viewBox="0 0 840 60"
         preserveAspectRatio="none"
         style={{
           position: 'absolute', left: 16, right: 16, top: '50%',
@@ -108,9 +112,9 @@ function NodeDiagram({ selected, onSelect }) {
           transform: 'translateY(-50%)', pointerEvents: 'none',
         }}
       >
-        {[0,1,2,3,4,5].map((i) => {
-          const x1 = 80 + i * 140;
-          const x2 = x1 + 80;
+        {Array.from({ length: NODES.length - 1 }, (_, i) => {
+          const x1 = 78 + i * 140;
+          const x2 = x1 + 82;
           return (
             <g key={i} stroke="var(--zm-line)" strokeWidth="1.5" fill="none">
               <line x1={x1} y1="30" x2={x2 - 6} y2="30"/>
@@ -122,7 +126,7 @@ function NodeDiagram({ selected, onSelect }) {
 
       <div style={{
         position: 'relative', display: 'grid',
-        gridTemplateColumns: 'repeat(7, minmax(120px, 1fr))',
+        gridTemplateColumns: `repeat(${NODES.length}, minmax(120px, 1fr))`,
         gap: 20, alignItems: 'center',
       }}>
         {NODES.map((n) => (
@@ -348,7 +352,7 @@ export default function SiteTrackerDetailPage() {
         if (cancelled) return;
         setState({
           status: 'error', data: null,
-          error: err?.detail || err?.message || 'Failed to load site tracker',
+          error: err?.detail || err?.message || 'Failed to load site flow',
         });
       });
     return () => { cancelled = true; };
@@ -370,7 +374,7 @@ export default function SiteTrackerDetailPage() {
       <PageHeader
         file="No. 08"
         eyebrow={`Site · ${data.siteCode || data.siteId}`}
-        title={<>{data.siteName} <em>tracker</em></>}
+        title={<>{data.siteName} <em>flow</em></>}
         lede={`${data.city}${data.submittedByName ? ' · drafted by ' + data.submittedByName : ''}`}
         right={<HeaderTag icon="shield" label={`DD ${verdict.label}`}/>}
       />
@@ -429,7 +433,7 @@ export default function SiteTrackerDetailPage() {
             cursor: 'pointer',
           }}
         >
-          ← Back to tracker
+          ← Back to flow
         </button>
       </div>
     </div>

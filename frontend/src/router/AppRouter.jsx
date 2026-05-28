@@ -178,6 +178,9 @@ export default function AppRouter() {
           </RequireRole>
         }/>
 
+        <Route path="/site-tracker" element={<Navigate to={ROUTES.SITE_TRACKER} replace/>}/>
+        <Route path="/site-tracker/:siteId" element={<LegacySiteFlowRedirect/>}/>
+
         <Route path={ROUTES.SITE_TRACKER} element={
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <RequireModule modules={['bd']}>
@@ -213,4 +216,9 @@ function StagingRedirect() {
 function PaymentLicensingRedirect() {
   const { siteId } = useParams();
   return <Navigate to={ROUTES.LEGAL_SITE_LICENSING.replace(':siteId', siteId)} replace/>;
+}
+
+function LegacySiteFlowRedirect() {
+  const { siteId } = useParams();
+  return <Navigate to={ROUTES.SITE_TRACKER_DETAIL.replace(':siteId', siteId)} replace/>;
 }
