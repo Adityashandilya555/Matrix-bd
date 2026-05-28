@@ -244,7 +244,7 @@ export default function AgreementPage() {
         className="agreement-shell"
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) 300px',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))',
           gap: 18,
           alignItems: 'start',
         }}
@@ -252,7 +252,7 @@ export default function AgreementPage() {
         <section className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
           <div style={{
             display: 'grid',
-            gridTemplateColumns: '48px minmax(180px, 1fr) 184px',
+            gridTemplateColumns: '36px minmax(0, 1fr) minmax(90px, 150px)',
             gap: 14,
             alignItems: 'center',
             padding: '12px 16px',
