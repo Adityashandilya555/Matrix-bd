@@ -674,7 +674,9 @@ function ScaleThreeHero({ selectedId }) {
     resizeObserver.observe(canvas);
     resize();
 
-    const tick = (time) => {
+    // Single render pass — used both inside the rAF loop and as the static
+    // frame when prefers-reduced-motion blocks animation.
+    const renderFrame = (time) => {
       const targetZoom = stateRef.current.selectedId ? 1 : 0;
       zoom += (targetZoom - zoom) * 0.065;
 
@@ -701,13 +703,44 @@ function ScaleThreeHero({ selectedId }) {
       camera.lookAt(0, 0, 0);
 
       renderer.render(scene, camera);
-      raf = window.requestAnimationFrame(tick);
     };
 
-    raf = window.requestAnimationFrame(tick);
+    // Respect prefers-reduced-motion: render a single static frame and skip
+    // the continuous rAF tick loop (which would otherwise hold ~10% CPU
+    // forever on this page).
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const startLoop = () => {
+      const tick = (time) => {
+        renderFrame(time);
+        raf = window.requestAnimationFrame(tick);
+      };
+      raf = window.requestAnimationFrame(tick);
+    };
+    const stopLoop = () => {
+      if (raf) {
+        window.cancelAnimationFrame(raf);
+        raf = 0;
+      }
+    };
+    if (motionQuery.matches) {
+      renderFrame(performance.now()); // one static frame so the blob is visible
+    } else {
+      startLoop();
+    }
+    // React to the user toggling the OS-level preference mid-session.
+    const onMotionChange = (event) => {
+      if (event.matches) {
+        stopLoop();
+        renderFrame(performance.now());
+      } else if (!raf) {
+        startLoop();
+      }
+    };
+    motionQuery.addEventListener('change', onMotionChange);
 
     return () => {
-      window.cancelAnimationFrame(raf);
+      stopLoop();
+      motionQuery.removeEventListener('change', onMotionChange);
       resizeObserver.disconnect();
       geometry.dispose();
       material.dispose();
