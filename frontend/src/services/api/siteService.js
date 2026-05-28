@@ -30,12 +30,15 @@ export async function submitDetails(siteId, formData, by) {
   return transitionSite(siteId, SiteStatus.DETAILS_SUBMITTED, {
     by,
     details: formData,
-    score:       toNumber(formData.score),
-    estSales:    toNumber(formData.estSales),
-    carpet:      toNumber(formData.carpet),
-    rent:        toNumber(formData.rent),
-    rentType:    formData.rentType,
-    totalOpCost: toNumber(formData.totalOpCost),
+    score:        toNumber(formData.score),
+    estSales:     toNumber(formData.estSales),
+    carpet:       toNumber(formData.carpet),
+    rent:         toNumber(formData.rent),
+    rentType:     formData.rentType,
+    totalOpCost:  toNumber(formData.totalOpCost),
+    lockin:       toNumber(formData.lockin),
+    tenure:       toNumber(formData.tenure),
+    rentFreeDays: toNumber(formData.rentFreeDays),
   });
 }
 

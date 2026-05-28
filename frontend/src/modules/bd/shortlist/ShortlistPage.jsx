@@ -247,10 +247,14 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
     showToast?.(`Approved · ${item.name}. LOI expected in ${days}d. Moved to staging.`);
   };
   const onAddDetails = (item) => setDetailing(item);
-  const onDetailsSubmit = (item, formData) => {
+  const onDetailsSubmit = async (item, formData) => {
     setDetailing(null);
-    submitDetailsForReview(item, formData);
-    showToast?.(`Sent for review · ${formData.name}. Supervisor notified.`);
+    try {
+      await submitDetailsForReview(item, formData);
+      showToast?.(`Sent for review · ${formData.name}. Supervisor notified.`);
+    } catch (err) {
+      showToast?.(`Submit failed: ${err?.detail || err?.message || 'Unknown error'}`, 'danger');
+    }
   };
   const onDetailsSaveDraft = (item, formData) => {
     setDetailing(null);

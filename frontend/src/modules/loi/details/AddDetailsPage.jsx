@@ -87,10 +87,9 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft })
   const upd = (k) => (v) => setF(prev => ({ ...prev, [k]: v }));
   const rentNum = parseFloat(f.rent) || 0; const camNum = parseFloat(f.cam) || 0;
   const totalOpCost = (rentNum + camNum) * 1.18;
-  const REQUIRED = ['model','spocName','googlePin','score','estSales','nearestStarbucks','nearestTWC','carpet','cam','rentType','cadex','deposit','brokerage'];
+  const REQUIRED = ['model','googlePin','score','estSales','nearestStarbucks','nearestTWC','carpet','cam','rentType','cadex','deposit','brokerage'];
   const errors = {};
   REQUIRED.forEach(k => { if (!f[k] && f[k] !== 0) errors[k] = 'Required'; });
-  if (f.photos.length === 0) errors.photos = 'Add at least one photo';
   if (f.rentType === 'fixed') {
     if (!f.rent) errors.rent = 'Required';
     if (!f.escalation) errors.escalation = 'Set escalation %';
@@ -110,11 +109,10 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft })
     mg_revshare: ['rent', 'revshare'],
   };
   const rentExtras = RENT_EXTRAS[f.rentType] || [];
-  const totalFields = REQUIRED.length + 1 + rentExtras.length;
+  const totalFields = REQUIRED.length + rentExtras.length;
   const conditionalFilled = rentExtras.filter(k => f[k]).length;
   const filledCount =
     REQUIRED.filter(k => f[k] || f[k] === 0).length
-    + (f.photos.length > 0 ? 1 : 0)
     + conditionalFilled;
   const resumed = !!item.details;
   const lastSavedAt = item.details?._savedAt;
