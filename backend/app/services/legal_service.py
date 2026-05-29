@@ -259,27 +259,35 @@ def _assert_executive_can_edit_stage(stage: str) -> None:
 
 
 def _assert_supervisor_can_edit_stage(stage: str) -> None:
-    """Raise 422 if supervisor attempts to edit a row in pending_review.
+    """Raise 422 if supervisor attempts to edit a published DD row.
 
-    Once an executive has submitted a DD draft for review (stage='pending_review'),
-    the supervisor must EITHER finalize the verdict via svc_save_due_diligence
-    (positive → site clears DDR; negative → site moves to LEGAL_REJECTED) OR
-    leave the row untouched. Editing items at this stage would silently rewrite
-    what the executive submitted — breaking the audit trail and the "review
-    what was sent" contract the staged-checklist workflow promises.
+    Once a verdict is published (stage='published'), the row is the source of
+    truth that BD reads from — the mirror columns on `sites` are stamped, the
+    failed-DDR / staging-tracker queues partition off this state, and the
+    decision is part of the externally-visible audit trail. Allowing a
+    supervisor to silently re-edit a published row would let them change
+    what BD sees without a record of the change request that authorized it.
 
-    Supervisors may freely edit at stage='draft' (typically only happens when
-    they fix items inline before any executive engagement) and at
-    stage='published' (post-finalization patch-ups).
+    Edits to a published row must therefore flow through the change-request
+    path (POST /legal/change-requests, processed by
+    change_request_service.approve_change_request) so the audit trail captures
+    who requested the change, what was approved, and why. The
+    _maybe_recover_dd_verdict helper in that service handles the verdict +
+    site-status side-effects symmetrically with svc_save_verification's
+    auto-positive check, so both paths converge on the same outcome.
+
+    Supervisors remain free to edit at stage='draft' (typically only when
+    they're fixing items inline before any executive submission) and at
+    stage='pending_review' (the review-and-adjust window before publishing).
     """
-    if stage == "pending_review":
+    if stage == "published":
         raise HTTPException(
             status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
-                "DDR is in 'pending_review' and cannot be edited directly. "
-                "Confirm the verdict via the Finalize endpoint instead — the "
-                "auto-positive check will publish a positive verdict if all "
-                "core items are 'yes'."
+                "DDR is published — BD reads this row as the source of truth. "
+                "Open a change request (POST /legal/change-requests) to edit a "
+                "published checklist; that path captures the request → approval "
+                "trail BD relies on."
             ),
         )
 
@@ -414,10 +422,13 @@ async def svc_save_verification(
         elif is_executive:
             _assert_executive_can_edit_stage(_row_stage(dd))
         else:
-            # Supervisor path: blocked from editing items while the row sits
-            # in pending_review (executive's submitted draft is locked until
-            # the supervisor confirms via svc_save_due_diligence). Draft and
-            # published rows remain freely editable.
+            # Supervisor path: blocked from editing items once the row is
+            # published — BD reads published rows as the source of truth, so
+            # any post-publish change must flow through the change-request
+            # path (where the request + approval are explicitly logged).
+            # Draft and pending_review rows remain freely editable so the
+            # supervisor can adjust items either before the executive submits
+            # or after reviewing what they sent.
             _assert_supervisor_can_edit_stage(_row_stage(dd))
 
         # Only overwrite fields that were explicitly supplied

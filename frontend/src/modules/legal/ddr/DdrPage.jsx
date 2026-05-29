@@ -179,13 +179,14 @@ export default function DdrPage() {
   const executiveBlockedByDelegation = isExecutive && !hasMyDelegation;
   // Edit gate:
   //  • Executives: stage === 'draft' AND delegated to them.
-  //  • Supervisors: any stage EXCEPT 'pending_review' (the executive's submitted
-  //    draft is locked from edits until the supervisor confirms via Finalize).
-  //    This mirrors svc_save_verification's supervisor stage-gate so an edit
-  //    attempted at pending_review fails server-side anyway.
-  const supervisorLockedByPendingReview = isSupervisor && stage === 'pending_review';
+  //  • Supervisors: any stage EXCEPT 'published'. Once published, the row is
+  //    what BD reads as the source of truth, so any post-publish change
+  //    must flow through the change-request path (BD opens a request →
+  //    supervisor approves it via change_request_service). This mirrors
+  //    svc_save_verification's supervisor stage-gate.
+  const supervisorLockedByPublished = isSupervisor && stage === 'published';
   const canEdit =
-    (isSupervisor && !supervisorLockedByPendingReview)
+    (isSupervisor && !supervisorLockedByPublished)
     || (stage === 'draft' && hasMyDelegation);
 
   const buildPayload = ({ coreStatuses, otherRows }) => {
@@ -208,9 +209,9 @@ export default function DdrPage() {
           'You do not have an active legal delegation on this site. Ask the legal supervisor to delegate it before saving a draft.',
           'danger',
         );
-      } else if (supervisorLockedByPendingReview) {
+      } else if (supervisorLockedByPublished) {
         showToast?.(
-          'DDR is awaiting your review — confirm the verdict instead of editing items.',
+          'DDR is published — BD reads this as the source of truth. Edits require a change request from BD.',
           'danger',
         );
       } else {
@@ -469,7 +470,7 @@ export default function DdrPage() {
         </span>
       </div>
     )}
-    {supervisorLockedByPendingReview && (
+    {supervisorLockedByPublished && (
       <div
         className="zm-glass"
         style={{
@@ -489,10 +490,9 @@ export default function DdrPage() {
           fontSize: 13,
         }}>i</span>
         <span>
-          <strong>Awaiting your review:</strong> the executive submitted this DDR
-          for confirmation. Items are read-only — review what was sent, then
-          confirm to publish (positive if every core item is Yes; negative
-          otherwise).
+          <strong>Published — read-only:</strong> BD reads this DDR as the
+          source of truth. Edits to a published checklist require a change
+          request opened by BD; once approved, the change replays here.
         </span>
       </div>
     )}
