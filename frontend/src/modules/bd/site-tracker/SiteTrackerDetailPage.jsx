@@ -2,9 +2,15 @@ import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Icon from '../../shared/primitives/Icon.jsx';
-import { getSiteTrackerView } from '../../../services/api/siteTrackerApi.js';
+import {
+  getSiteTrackerView,
+  saveFinanceDraft,
+  requestFinanceApproval,
+  approveFinance,
+} from '../../../services/api/siteTrackerApi.js';
 import { ROUTES } from '../../../router/routes.js';
 import { agreementStatusLabel, normalizeAgreementStatus } from '../../../lib/agreementStatus.js';
+import { useSession } from '../../../state/SessionContext.jsx';
 
 // Static LOI-forward hand-over graph. Only the Legal node is interactive in v1;
 // the remaining nodes are placeholders that
@@ -12,7 +18,7 @@ import { agreementStatusLabel, normalizeAgreementStatus } from '../../../lib/agr
 const NODES = [
   { id: 'loi',     label: 'BD LOI Signed',        icon: 'file',    interactive: false },
   { id: 'legal',   label: 'Legal & Compliance',   icon: 'shield',  interactive: true  },
-  { id: 'ca',      label: 'CA / Commercial Code', icon: 'rupee',   interactive: false },
+  { id: 'ca',      label: 'CA / Commercial Code', icon: 'rupee',   interactive: true  },
   { id: 'design',  label: 'Design / Technical',   icon: 'grid',    interactive: false },
   { id: 'project', label: 'Project Execution',    icon: 'box',     interactive: false },
   { id: 'final',   label: 'Final Approval',       icon: 'check',   interactive: false },
@@ -49,13 +55,15 @@ function verdictTone(verdict) {
   return { color: 'var(--zm-fg-3)', label: 'PENDING' };
 }
 
-function NodeCard({ node, selected, onClick }) {
+function NodeCard({ node, selected, onClick, statusOverride }) {
   const completed = node.id === 'loi';
   const greyed = !node.interactive && !completed;
-  const statusLabel = node.interactive ? 'OPEN' : completed ? 'DONE' : 'QUEUED';
-  const statusColor = node.interactive
+  const defaultLabel = node.interactive ? 'OPEN' : completed ? 'DONE' : 'QUEUED';
+  const defaultColor = node.interactive
     ? 'var(--zm-accent)'
     : completed ? 'var(--zm-success, #2D7A48)' : 'var(--zm-fg-3)';
+  const statusLabel = statusOverride?.label ?? defaultLabel;
+  const statusColor = statusOverride?.color ?? defaultColor;
   return (
     <button
       type="button"
@@ -92,7 +100,15 @@ function NodeCard({ node, selected, onClick }) {
   );
 }
 
-function NodeDiagram({ selected, onSelect }) {
+function financeStatusOverride(financeStatus) {
+  if (financeStatus === 'approved')
+    return { label: 'DONE', color: 'var(--zm-success, #2D7A48)' };
+  if (financeStatus === 'awaiting_admin' || financeStatus === 'awaiting_supervisor')
+    return { label: 'PENDING', color: 'var(--zm-warning, #B45309)' };
+  return null; // default 'OPEN'
+}
+
+function NodeDiagram({ selected, onSelect, financeStatus }) {
   // Static, hard-coded SVG-on-grid layout. Edges run left to right in one row.
   // The arrow heads are inline so we don't need defs.
   return (
@@ -136,6 +152,7 @@ function NodeDiagram({ selected, onSelect }) {
             node={n}
             selected={selected === n.id}
             onClick={() => onSelect(n.id)}
+            statusOverride={n.id === 'ca' ? financeStatusOverride(financeStatus) : undefined}
           />
         ))}
       </div>
@@ -302,6 +319,359 @@ function LegalPanel({ data, onClose }) {
   );
 }
 
+const LOI_AND_BEYOND = new Set([
+  'loi_uploaded', 'legal_review', 'legal_approved', 'pushed_to_payments',
+]);
+
+const FINANCE_STATUS_LABELS = {
+  pending:              'Not started',
+  awaiting_supervisor:  'Awaiting supervisor',
+  awaiting_admin:       'Awaiting admin',
+  approved:             'Approved',
+};
+
+function FinanceStatusBadge({ status }) {
+  const colors = {
+    pending:             { bg: 'var(--zm-surface-2)', fg: 'var(--zm-fg-3)' },
+    awaiting_supervisor: { bg: 'rgba(180,83,9,0.10)',  fg: 'var(--zm-warning, #B45309)' },
+    awaiting_admin:      { bg: 'rgba(180,83,9,0.10)',  fg: 'var(--zm-warning, #B45309)' },
+    approved:            { bg: 'rgba(45,122,72,0.10)', fg: 'var(--zm-success, #2D7A48)' },
+  };
+  const { bg, fg } = colors[status] || colors.pending;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', height: 22, padding: '0 8px',
+      borderRadius: 4, background: bg, color: fg,
+      fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 10.5,
+      letterSpacing: '0.12em', textTransform: 'uppercase',
+    }}>
+      {FINANCE_STATUS_LABELS[status] || status}
+    </span>
+  );
+}
+
+function FinancePanel({ data, role, onClose, onUpdate }) {
+  const siteStatus   = data.siteStatus ?? '';
+  const accessible   = LOI_AND_BEYOND.has(siteStatus);
+  const financeStatus = data.financeStatus ?? 'pending';
+  const isLocked     = financeStatus !== 'pending';
+  const isApproved   = financeStatus === 'approved';
+
+  // Local form state — initialised from data (re-init if data changes via onUpdate)
+  const [kycVerified,  setKycVerified]  = React.useState(data.kycVerified  ?? false);
+  const [caCode,       setCaCode]       = React.useState(data.caCode       ?? '');
+  const [amount,       setAmount]       = React.useState(
+    data.financeAmount != null ? String(data.financeAmount) : '',
+  );
+  const [saving,       setSaving]       = React.useState(false);
+  const [requesting,   setRequesting]   = React.useState(false);
+  const [approving,    setApproving]    = React.useState(false);
+  const [toast,        setToast]        = React.useState(null); // { msg, type }
+
+  // Sync form state when parent data updates (after onUpdate re-fetch)
+  React.useEffect(() => {
+    setKycVerified(data.kycVerified ?? false);
+    setCaCode(data.caCode ?? '');
+    setAmount(data.financeAmount != null ? String(data.financeAmount) : '');
+  }, [data.kycVerified, data.caCode, data.financeAmount, data.financeStatus]);
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  // ── Save draft ────────────────────────────────────────────────────────────
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await saveFinanceDraft(data.siteId, {
+        kycVerified,
+        caCode:        caCode.trim() || null,
+        financeAmount: amount !== '' ? Number(amount) : undefined,
+      });
+      showToast('Draft saved.');
+      await onUpdate();
+    } catch (err) {
+      showToast(err?.detail || err?.message || 'Save failed.', 'danger');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── Request approval ──────────────────────────────────────────────────────
+  const handleRequestApproval = async () => {
+    setRequesting(true);
+    try {
+      await requestFinanceApproval(data.siteId);
+      showToast('Approval requested — supervisor notified.');
+      await onUpdate();
+    } catch (err) {
+      showToast(err?.detail || err?.message || 'Request failed.', 'danger');
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  // ── Approve ───────────────────────────────────────────────────────────────
+  const handleApprove = async () => {
+    setApproving(true);
+    try {
+      await approveFinance(data.siteId);
+      showToast('Finance approved.');
+      await onUpdate();
+    } catch (err) {
+      showToast(err?.detail || err?.message || 'Approval failed.', 'danger');
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const canSave    = !isLocked && accessible;
+  const canRequest = !isLocked && accessible && kycVerified && caCode.trim() && amount !== '';
+  const canApproveSupervisor  = role === 'supervisor'      && financeStatus === 'awaiting_supervisor';
+  const canApproveAdmin       = role === 'business_admin'  && financeStatus === 'awaiting_admin';
+  const canApprove = canApproveSupervisor || canApproveAdmin;
+
+  const inputStyle = (disabled) => ({
+    width: '100%', boxSizing: 'border-box',
+    height: 34, padding: '0 10px',
+    border: '1px solid var(--zm-line)',
+    borderRadius: 7,
+    background: disabled ? 'var(--zm-surface-2)' : 'var(--zm-surface)',
+    color: disabled ? 'var(--zm-fg-3)' : 'var(--zm-fg)',
+    fontFamily: 'var(--zm-font-body)', fontSize: 13,
+    outline: 'none',
+    cursor: disabled ? 'not-allowed' : 'text',
+  });
+
+  const btnStyle = (primary, disabled) => ({
+    height: 32, padding: '0 14px',
+    border: primary ? 'none' : '1px solid var(--zm-line)',
+    borderRadius: 7,
+    background: primary ? 'var(--zm-accent)' : 'var(--zm-surface)',
+    color: primary ? '#fff' : 'var(--zm-fg)',
+    fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 700,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.5 : 1,
+  });
+
+  return (
+    <aside style={{
+      width: 380, flex: '0 0 380px',
+      background: 'var(--zm-surface)', border: '1px solid var(--zm-line)',
+      borderRadius: 12, boxShadow: 'var(--zm-shadow-1)',
+      display: 'flex', flexDirection: 'column', maxHeight: '80vh', overflow: 'hidden',
+    }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 16px', borderBottom: '1px solid var(--zm-line)',
+        background: 'var(--zm-surface-2)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Icon name="rupee" size={14}/>
+          <span style={{
+            fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 11.5,
+            letterSpacing: '0.12em', textTransform: 'uppercase',
+          }}>
+            Finance · CA code
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close finance panel"
+          style={{
+            width: 28, height: 28, padding: 0, border: '1px solid var(--zm-line)',
+            borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)',
+            cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <Icon name="x" size={12}/>
+        </button>
+      </div>
+
+      <div style={{ overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+        {/* Status row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{
+            fontFamily: 'var(--zm-font-body)', fontSize: 11,
+            color: 'var(--zm-fg-3)', textTransform: 'uppercase', letterSpacing: '0.1em',
+          }}>Status</span>
+          <FinanceStatusBadge status={financeStatus}/>
+        </div>
+
+        {!accessible && (
+          <div style={{
+            padding: '10px 12px', borderRadius: 8,
+            background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)',
+            fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-3)',
+          }}>
+            Finance details are available once the LOI is uploaded and the site enters
+            legal review.
+          </div>
+        )}
+
+        {accessible && (
+          <>
+            {/* Step 1 — KYC */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{
+                fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 11.5,
+                textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--zm-fg-2)',
+              }}>
+                Step 1 · KYC Verification
+              </label>
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                cursor: isLocked ? 'not-allowed' : 'pointer',
+                opacity: isLocked ? 0.6 : 1,
+              }}>
+                <input
+                  type="checkbox"
+                  checked={kycVerified}
+                  disabled={isLocked}
+                  onChange={(e) => setKycVerified(e.target.checked)}
+                  style={{ width: 15, height: 15, accentColor: 'var(--zm-accent)', cursor: isLocked ? 'not-allowed' : 'pointer' }}
+                />
+                <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
+                  KYC documents verified
+                </span>
+              </label>
+              {kycVerified && !isLocked && (
+                <span style={{ fontSize: 11.5, color: 'var(--zm-success, #2D7A48)' }}>
+                  ✓ KYC verified — you can now enter the CA code
+                </span>
+              )}
+            </div>
+
+            {/* Step 2 — CA Code (visible only when KYC checked) */}
+            {kycVerified && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{
+                  fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 11.5,
+                  textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--zm-fg-2)',
+                }}>
+                  Step 2 · CA / Commercial Code
+                </label>
+                <input
+                  type="text"
+                  value={caCode}
+                  disabled={isLocked}
+                  placeholder="e.g. BT-MUM-0042"
+                  onChange={(e) => setCaCode(e.target.value)}
+                  style={inputStyle(isLocked)}
+                />
+                {isLocked && data.caCode && (
+                  <span style={{ fontSize: 11.5, color: 'var(--zm-fg-3)' }}>
+                    Site tracked as <strong>{data.caCode}</strong> across all modules.
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Step 3 — Amount (visible only when CA code is set) */}
+            {kycVerified && caCode.trim() && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{
+                  fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 11.5,
+                  textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--zm-fg-2)',
+                }}>
+                  Step 3 · Finance Amount (₹)
+                </label>
+                <input
+                  type="number"
+                  value={amount}
+                  disabled={isLocked}
+                  placeholder="Enter amount in ₹"
+                  min={0}
+                  onChange={(e) => setAmount(e.target.value)}
+                  style={inputStyle(isLocked)}
+                />
+                {isLocked && data.financeAmount != null && (
+                  <span style={{ fontSize: 11.5, color: 'var(--zm-fg-2)' }}>
+                    Amount: <strong>₹{Number(data.financeAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Save draft button (only when pending) */}
+            {canSave && (
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                style={btnStyle(false, saving)}
+              >
+                {saving ? 'Saving…' : 'Save draft'}
+              </button>
+            )}
+
+            {/* Request approval (exec / supervisor, pending state, all fields filled) */}
+            {!isLocked && (role === 'executive' || role === 'exec' || role === 'supervisor') && (
+              <button
+                type="button"
+                onClick={handleRequestApproval}
+                disabled={!canRequest || requesting}
+                style={btnStyle(true, !canRequest || requesting)}
+              >
+                {requesting ? 'Requesting…' : 'Request supervisor approval'}
+              </button>
+            )}
+
+            {/* Approve button — supervisor seeing awaiting_supervisor */}
+            {canApprove && (
+              <button
+                type="button"
+                onClick={handleApprove}
+                disabled={approving}
+                style={btnStyle(true, approving)}
+              >
+                {approving
+                  ? 'Approving…'
+                  : canApproveSupervisor ? 'Forward to admin' : 'Approve finance'}
+              </button>
+            )}
+
+            {/* Final approved state */}
+            {isApproved && (
+              <div style={{
+                padding: '10px 14px', borderRadius: 8,
+                background: 'rgba(45,122,72,0.08)', border: '1px solid var(--zm-success, #2D7A48)',
+                fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-success, #2D7A48)',
+                fontWeight: 700,
+              }}>
+                ✓ Finance approved — CA code <strong>{data.caCode}</strong> active.
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Inline toast */}
+        {toast && (
+          <div style={{
+            padding: '8px 12px', borderRadius: 7, fontSize: 12.5,
+            background: toast.type === 'danger'
+              ? 'rgba(185,28,28,0.08)'
+              : 'rgba(45,122,72,0.08)',
+            color: toast.type === 'danger'
+              ? 'var(--zm-danger, #B91C1C)'
+              : 'var(--zm-success, #2D7A48)',
+            border: `1px solid ${toast.type === 'danger'
+              ? 'var(--zm-danger, #B91C1C)'
+              : 'var(--zm-success, #2D7A48)'}`,
+            fontFamily: 'var(--zm-font-body)',
+          }}>
+            {toast.msg}
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
 function ComingSoonPanel({ node, onClose }) {
   return (
     <aside style={{
@@ -338,27 +708,22 @@ function ComingSoonPanel({ node, onClose }) {
 export default function SiteTrackerDetailPage() {
   const { siteId } = useParams();
   const navigate = useNavigate();
+  const { role } = useSession();
   const [state, setState] = React.useState({ status: 'loading', data: null, error: null });
   const [selectedNode, setSelectedNode] = React.useState('legal');
 
-  React.useEffect(() => {
-    if (!siteId) return undefined;
-    let cancelled = false;
-    setState({ status: 'loading', data: null, error: null });
+  const load = React.useCallback((silent = false) => {
+    if (!siteId) return;
+    if (!silent) setState((s) => ({ ...s, status: 'loading' }));
     getSiteTrackerView(siteId)
-      .then((data) => {
-        if (cancelled) return;
-        setState({ status: 'ready', data, error: null });
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setState({
-          status: 'error', data: null,
-          error: err?.detail || err?.message || 'Failed to load site flow',
-        });
-      });
-    return () => { cancelled = true; };
+      .then((data) => setState({ status: 'ready', data, error: null }))
+      .catch((err) => setState({
+        status: 'error', data: null,
+        error: err?.detail || err?.message || 'Failed to load site flow',
+      }));
   }, [siteId]);
+
+  React.useEffect(() => { load(); }, [load]);
 
   if (state.status === 'loading') {
     return <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>Loading…</div>;
@@ -370,18 +735,24 @@ export default function SiteTrackerDetailPage() {
   const data = state.data;
   const verdict = verdictTone(data.dd?.final_verdict);
   const activeNode = NODES.find((n) => n.id === selectedNode);
+  // Use CA code as the display identifier once it's set
+  const displayCode = data.caCode || data.siteCode || data.siteId;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <PageHeader
         file="No. 08"
-        eyebrow={`Site · ${data.siteCode || data.siteId}`}
+        eyebrow={`Site · ${displayCode}`}
         title={<>{data.siteName} <em>flow</em></>}
         lede={`${data.city}${data.submittedByName ? ' · drafted by ' + data.submittedByName : ''}`}
         right={<HeaderTag icon="shield" label={`DD ${verdict.label}`}/>}
       />
 
-      <NodeDiagram selected={selectedNode} onSelect={setSelectedNode}/>
+      <NodeDiagram
+        selected={selectedNode}
+        onSelect={setSelectedNode}
+        financeStatus={data.financeStatus}
+      />
 
       <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 360px', minWidth: 0 }}>
@@ -409,17 +780,35 @@ export default function SiteTrackerDetailPage() {
                 <div style={{ fontWeight: 700 }}>{data.licensingStatus || 'pending'}</div>
               </div>
             </div>
+            {data.caCode && (
+              <div style={{
+                marginTop: 4, padding: '6px 10px', borderRadius: 6,
+                background: 'rgba(45,122,72,0.07)', border: '1px solid var(--zm-success, #2D7A48)',
+                fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-success, #2D7A48)',
+              }}>
+                CA code active: <strong>{data.caCode}</strong>
+                {' '}— site is tracked as this code across all modules.
+              </div>
+            )}
             <p style={{ margin: 0, fontSize: 12, color: 'var(--zm-fg-3)' }}>
-              Click the <strong>Legal</strong> node above to see the published due-diligence, agreement,
-              and licensing summary. Other nodes light up once their modules ship.
+              Click <strong>Legal</strong> for the DD / agreement / licensing summary.
+              Click <strong>CA / Commercial Code</strong> to manage the finance workflow.
             </p>
           </div>
         </div>
 
-        {activeNode && activeNode.interactive && (
+        {activeNode?.id === 'legal' && (
           <LegalPanel data={data} onClose={() => setSelectedNode(null)}/>
         )}
-        {activeNode && !activeNode.interactive && (
+        {activeNode?.id === 'ca' && (
+          <FinancePanel
+            data={data}
+            role={role}
+            onClose={() => setSelectedNode(null)}
+            onUpdate={() => load(true)}
+          />
+        )}
+        {activeNode && !activeNode.interactive && activeNode.id !== 'legal' && activeNode.id !== 'ca' && (
           <ComingSoonPanel node={activeNode} onClose={() => setSelectedNode(null)}/>
         )}
       </div>

@@ -53,6 +53,11 @@ function trackerFromServer(row) {
     licensing:        row.licensing ? { ...row.licensing } : null,
     submittedBy:      row.submitted_by,
     submittedByName:  row.submitted_by_name,
+    // Finance sub-workflow
+    kycVerified:      row.kyc_verified  ?? false,
+    caCode:           row.ca_code       ?? null,
+    financeAmount:    row.finance_amount ?? null,
+    financeStatus:    row.finance_status ?? 'pending',
   };
 }
 
@@ -72,6 +77,11 @@ function trackerFromMockSite(site) {
     licensing:        site.licensing || null,
     submittedBy:      site.createdBy?.id || '',
     submittedByName:  site.createdBy?.name || site.createdBy || '',
+    // Finance sub-workflow
+    kycVerified:      site.kycVerified  ?? false,
+    caCode:           site.caCode       ?? null,
+    financeAmount:    site.financeAmount ?? null,
+    financeStatus:    site.financeStatus ?? 'pending',
   };
 }
 
@@ -82,4 +92,28 @@ export async function getSiteTrackerView(siteId) {
   }
   const data = await client.get(`/sites/${siteId}/tracker`).then((r) => r.data);
   return trackerFromServer(data);
+}
+
+// ── Finance actions ───────────────────────────────────────────────────────────
+
+export async function saveFinanceDraft(siteId, { kycVerified, caCode, financeAmount } = {}) {
+  if (USE_MOCK) {
+    const result = await adapter.saveFinanceDraft(siteId, { kycVerified, caCode, financeAmount });
+    return result;
+  }
+  const body = {};
+  if (kycVerified !== undefined) body.kyc_verified = kycVerified;
+  if (caCode !== undefined) body.ca_code = caCode;
+  if (financeAmount !== undefined) body.finance_amount = financeAmount;
+  return client.patch(`/sites/${siteId}/finance`, body).then((r) => r.data);
+}
+
+export async function requestFinanceApproval(siteId) {
+  if (USE_MOCK) return adapter.requestFinanceApproval(siteId);
+  return client.post(`/sites/${siteId}/finance/request-approval`, {}).then((r) => r.data);
+}
+
+export async function approveFinance(siteId) {
+  if (USE_MOCK) return adapter.approveFinance(siteId);
+  return client.post(`/sites/${siteId}/finance/approve`, {}).then((r) => r.data);
 }

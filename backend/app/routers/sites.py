@@ -40,6 +40,11 @@ from app.services.bd_service import (
     svc_shortlist_draft,
     svc_submit_details,
 )
+from app.services.finance_service import (
+    svc_finance_approve,
+    svc_finance_request_approval,
+    svc_save_finance_draft,
+)
 from app.services.loi_service import svc_upload_loi
 from app.services.query_service import get_site as svc_get_site
 from app.services.query_service import list_site_activity, list_sites
@@ -206,6 +211,14 @@ async def get_site_tracker(
         licensing=licensing_resp,
         submitted_by=str(site.submitted_by),
         submitted_by_name=submitted_by_name,
+        kyc_verified=bool(getattr(site, "kyc_verified", False)),
+        ca_code=getattr(site, "ca_code", None),
+        finance_amount=(
+            float(site.finance_amount)
+            if getattr(site, "finance_amount", None) is not None
+            else None
+        ),
+        finance_status=getattr(site, "finance_status", "pending") or "pending",
     )
 
 
@@ -417,6 +430,81 @@ async def upload_site_photo(
         filename=file.filename or "photo.jpg",
         content_type=file.content_type,
         file_bytes=body,
+    )
+
+
+# ── Finance tab ───────────────────────────────────────────────────────────────
+
+class _FinanceDraftBody(BaseModel):
+    kyc_verified:   Optional[bool] = None
+    ca_code:        Optional[str] = None
+    finance_amount: Optional[float] = None
+
+
+@router.patch(
+    "/{site_id}/finance",
+    summary="Save finance draft (KYC, CA code, amount)",
+    description=(
+        "Idempotent save — fields are only written when the finance sub-workflow is "
+        "in 'pending'. Available to executives and supervisors."
+    ),
+)
+async def save_finance_draft(
+    site_id: str,
+    body: _FinanceDraftBody,
+    db: DbDep,
+    current_user: Annotated[
+        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))
+    ],
+    tenant_id: TenantId,
+) -> dict:
+    return await svc_save_finance_draft(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
+        kyc_verified=body.kyc_verified,
+        ca_code=body.ca_code,
+        finance_amount=body.finance_amount,
+    )
+
+
+@router.post(
+    "/{site_id}/finance/request-approval",
+    summary="Executive requests supervisor approval for finance",
+    description=(
+        "Validates KYC verified + CA code set + amount entered, then transitions "
+        "finance_status: pending → awaiting_supervisor and notifies supervisors."
+    ),
+)
+async def finance_request_approval(
+    site_id: str,
+    db: DbDep,
+    current_user: Annotated[
+        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))
+    ],
+    tenant_id: TenantId,
+) -> dict:
+    return await svc_finance_request_approval(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
+    )
+
+
+@router.post(
+    "/{site_id}/finance/approve",
+    summary="Supervisor / admin approve finance",
+    description=(
+        "Role-aware approval step. Supervisor: awaiting_supervisor → awaiting_admin. "
+        "Business admin: awaiting_admin → approved."
+    ),
+)
+async def finance_approve(
+    site_id: str,
+    db: DbDep,
+    current_user: Annotated[
+        dict, Depends(require_role(Role.SUPERVISOR, Role.BUSINESS_ADMIN))
+    ],
+    tenant_id: TenantId,
+) -> dict:
+    return await svc_finance_approve(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
     )
 
 

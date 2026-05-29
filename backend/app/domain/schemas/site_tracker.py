@@ -37,3 +37,11 @@ class SiteTrackerResponse(BaseModel):
 
     submitted_by:      str
     submitted_by_name: Optional[str] = None
+
+    # Finance sub-workflow — CA code entry, KYC gate, amount, approval chain.
+    # All default to "not started" so older clients receiving this response
+    # don't blow up if they read these fields before the DB migration lands.
+    kyc_verified:   bool = False
+    ca_code:        Optional[str] = None
+    finance_amount: Optional[float] = None
+    finance_status: str = "pending"

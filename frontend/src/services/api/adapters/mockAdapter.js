@@ -397,6 +397,84 @@ export async function me() {
   return { ...DEFAULT_SESSION };
 }
 
+// ---- Finance (mock) ----
+// Finance state lives on the site object so getSite() / getSiteTrackerView()
+// automatically pick it up without an extra round-trip.
+
+export async function saveFinanceDraft(siteId, { kycVerified, caCode, financeAmount } = {}) {
+  await delay(100, 300);
+  const site = getSiteById(siteId);
+  if (!site) throw new Error(`Site not found: ${siteId}`);
+  if ((site.financeStatus ?? 'pending') !== 'pending') {
+    const err = new Error(`Finance is already in '${site.financeStatus}' — fields are locked.`);
+    err.status = 422;
+    throw err;
+  }
+  const updated = { ...site };
+  if (kycVerified !== undefined) updated.kycVerified = kycVerified;
+  if (caCode !== undefined) updated.caCode = caCode || null;
+  if (financeAmount !== undefined) updated.financeAmount = financeAmount;
+  upsertSite(updated);
+  return {
+    kyc_verified:   updated.kycVerified ?? false,
+    ca_code:        updated.caCode ?? null,
+    finance_amount: updated.financeAmount ?? null,
+    finance_status: updated.financeStatus ?? 'pending',
+  };
+}
+
+export async function requestFinanceApproval(siteId) {
+  await delay(200, 400);
+  const site = getSiteById(siteId);
+  if (!site) throw new Error(`Site not found: ${siteId}`);
+  if (!site.kycVerified) {
+    const err = new Error('KYC must be verified before requesting approval.');
+    err.status = 422;
+    throw err;
+  }
+  if (!site.caCode) {
+    const err = new Error('CA code must be entered before requesting approval.');
+    err.status = 422;
+    throw err;
+  }
+  if (site.financeAmount == null) {
+    const err = new Error('Amount must be entered before requesting approval.');
+    err.status = 422;
+    throw err;
+  }
+  const updated = { ...site, financeStatus: 'awaiting_supervisor' };
+  upsertSite(updated);
+  return {
+    kyc_verified:   updated.kycVerified ?? false,
+    ca_code:        updated.caCode ?? null,
+    finance_amount: updated.financeAmount ?? null,
+    finance_status: 'awaiting_supervisor',
+  };
+}
+
+export async function approveFinance(siteId) {
+  await delay(200, 400);
+  const site = getSiteById(siteId);
+  if (!site) throw new Error(`Site not found: ${siteId}`);
+  const current = site.financeStatus ?? 'pending';
+  let next;
+  if (current === 'awaiting_supervisor') next = 'awaiting_admin';
+  else if (current === 'awaiting_admin') next = 'approved';
+  else {
+    const err = new Error(`Cannot approve from status: ${current}`);
+    err.status = 422;
+    throw err;
+  }
+  const updated = { ...site, financeStatus: next };
+  upsertSite(updated);
+  return {
+    kyc_verified:   updated.kycVerified ?? false,
+    ca_code:        updated.caCode ?? null,
+    finance_amount: updated.financeAmount ?? null,
+    finance_status: next,
+  };
+}
+
 // ---- Auth ----
 
 export async function login(credentials) {
