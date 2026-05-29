@@ -21,6 +21,7 @@ import TeamPage              from '../modules/team/TeamPage.jsx';
 import LegalQueuePage       from '../modules/legal/LegalQueuePage.jsx';
 import ChangeRequestsPage    from '../modules/legal/ChangeRequestsPage.jsx';
 import DdrPage               from '../modules/legal/ddr/DdrPage.jsx';
+import AgreementPage         from '../modules/legal/agreement/AgreementPage.jsx';
 import SiteStatusPage        from '../modules/bd/site-status/SiteStatusPage.jsx';
 import DdFailedPage          from '../modules/bd/dd-failed/DdFailedPage.jsx';
 import SiteTrackerListPage   from '../modules/bd/site-tracker/SiteTrackerListPage.jsx';
@@ -143,6 +144,13 @@ export default function AppRouter() {
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <RequireModule modules={['legal']}>
               <DdrPage/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.LEGAL_SITE_AGREEMENT} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['legal']}>
+              <AgreementPage/>
             </RequireModule>
           </RequireRole>
         }/>

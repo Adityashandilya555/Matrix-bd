@@ -5,7 +5,8 @@ import Icon from '../shared/primitives/Icon.jsx';
 import { useSession } from '../../state/SessionContext.jsx';
 import { getLegalQueue } from '../../services/api/legalApi.js';
 import { listLegalDelegationsForSite } from '../../services/api/legalDelegationApi.js';
-import { legalSiteDdrRoute, legalSiteLicensingRoute } from '../../router/routes.js';
+import { legalSiteAgreementRoute, legalSiteDdrRoute, legalSiteLicensingRoute } from '../../router/routes.js';
+import { agreementAllowsLicensing, normalizeAgreementStatus } from '../../lib/agreementStatus.js';
 
 const STATUS_LABELS = {
   pending:   { label: 'Awaiting review',    tone: 'var(--zm-fg-3)' },
@@ -98,10 +99,18 @@ export default function LegalQueuePage() {
   }, [isSupervisor, state.status, state.items]);
 
   const open = (row) => {
-    const target = row.legalDdStatus === 'positive'
-      ? legalSiteLicensingRoute(row.siteId)
-      : legalSiteDdrRoute(row.siteId);
+    const agreementStatus = normalizeAgreementStatus(row.agreementStatus);
+    const target = row.legalDdStatus !== 'positive'
+      ? legalSiteDdrRoute(row.siteId)
+      : agreementAllowsLicensing(agreementStatus)
+        ? legalSiteLicensingRoute(row.siteId)
+        : legalSiteAgreementRoute(row.siteId);
     navigate(target);
+  };
+
+  const actionLabel = (row) => {
+    if (row.legalDdStatus !== 'positive') return 'Open DDR';
+    return agreementAllowsLicensing(row.agreementStatus) ? 'Open licensing' : 'Open agreement';
   };
 
   return (
@@ -203,7 +212,7 @@ export default function LegalQueuePage() {
                   cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
                 }}
               >
-                {row.legalDdStatus === 'positive' ? 'Open licensing' : 'Open DDR'}
+                {actionLabel(row)}
                 <Icon name="arrow-right" size={12}/>
               </button>
             </div>

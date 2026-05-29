@@ -5,6 +5,7 @@ import Icon from '../../shared/primitives/Icon.jsx';
 import { listSites } from '../../../services/api/siteService.js';
 import { getSiteTrackerView } from '../../../services/api/siteTrackerApi.js';
 import { siteTrackerDetailRoute } from '../../../router/routes.js';
+import { normalizeAgreementStatus } from '../../../lib/agreementStatus.js';
 
 // A site becomes a staging tracker item as soon as BD uploads the signed LOI.
 // Legal owns the editable checklist data; this BD surface reads the live mirror
@@ -60,14 +61,15 @@ function pretty(value) {
 }
 
 function statusTone(value) {
-  if (!value || value === 'pending') return { color: 'var(--zm-fg-3)', label: 'Pending' };
-  if (['positive', 'complete', 'signed', 'registered', 'yes'].includes(value)) {
-    return { color: 'var(--zm-success, #2D7A48)', label: pretty(value) };
+  const displayValue = value === 'signed' ? 'executed' : value;
+  if (!displayValue || displayValue === 'pending') return { color: 'var(--zm-fg-3)', label: 'Pending' };
+  if (['positive', 'complete', 'executed', 'registered', 'yes'].includes(displayValue)) {
+    return { color: 'var(--zm-success, #2D7A48)', label: pretty(displayValue) };
   }
-  if (['negative', 'rejected', 'no'].includes(value)) {
-    return { color: 'var(--zm-danger, #B91C1C)', label: pretty(value) };
+  if (['negative', 'rejected', 'no'].includes(displayValue)) {
+    return { color: 'var(--zm-danger, #B91C1C)', label: pretty(displayValue) };
   }
-  return { color: 'var(--zm-accent)', label: pretty(value) };
+  return { color: 'var(--zm-accent)', label: pretty(displayValue) };
 }
 
 function legalNodeState(site) {
@@ -84,6 +86,7 @@ function legalNodeState(site) {
     site.legalDdStatus === 'in_review' ||
     site.legalDdStatus === 'positive' ||
     site.agreementStatus === 'signed' ||
+    site.agreementStatus === 'executed' ||
     site.agreementStatus === 'registered' ||
     site.licensingStatus === 'partial'
   ) {
@@ -411,7 +414,7 @@ function legalSummary(data) {
     };
   }
   const dd = data.legalDdStatus || data.dd?.final_verdict || 'pending';
-  const agreement = data.agreementStatus || (data.agreement?.registered ? 'registered' : data.agreement?.signed ? 'signed' : 'pending');
+  const agreement = normalizeAgreementStatus(data);
   const licensing = data.licensingStatus || 'pending';
   let overall = 'pending';
   if (data.siteStatus === 'legal_rejected' || dd === 'negative') overall = 'rejected';

@@ -342,6 +342,7 @@ async def svc_legal_queue(
             site_name=site.name,
             city=site.city,
             legal_dd_status=site.legal_dd_status or "pending",
+            agreement_status=site.agreement_status or "pending",
             dd_final_verdict=dd.final_verdict if dd else "pending",
             # _row_stage tolerates the column being missing during the
             # migration window — falls back to 'published'.
@@ -743,10 +744,10 @@ async def svc_save_agreement(
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         dd   = await _fetch_dd_or_404(session, site_id=site.id)
 
-        if dd.final_verdict != "positive":
+        if _row_stage(dd) != "published" or dd.final_verdict != "positive":
             raise HTTPException(
                 status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Complete Due Diligence with a positive verdict (Step 2) before saving Agreement",
+                detail="Complete published positive Due Diligence (Step 2) before saving Agreement",
             )
 
         now = datetime.now(timezone.utc)
@@ -758,7 +759,7 @@ async def svc_save_agreement(
         if body.document_url is not None:
             ag.document_url = body.document_url
 
-        if body.signed and not ag.signed:
+        if (body.signed or body.registered) and not ag.signed:
             ag.signed    = True
             ag.signed_at = now
             site.agreement_status = "signed"
@@ -805,10 +806,20 @@ async def svc_save_licensing(
     """
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        dd   = await _fetch_dd_or_404(session, site_id=site.id)
         ag   = await _fetch_agreement_or_none(session, site_id=site.id)
-        # Note: agreement is fetched here but the registered check is deferred
-        # to the auto-approve path below. Draft saves are allowed without agreement
-        # so supervisors can record licensing status while agreement is being finalised.
+
+        if _row_stage(dd) != "published" or dd.final_verdict != "positive":
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Complete published positive DDR before saving Licensing",
+            )
+
+        if ag is None or not (ag.signed or ag.registered):
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Agreement must be executed (Step 3) before saving Licensing",
+            )
 
         is_executive = await _require_executive_legal_delegation(
             session, site_id=site.id, actor=actor,
@@ -837,15 +848,7 @@ async def svc_save_licensing(
         if all_done and not is_executive:
             # Only the supervisor's "all yes" save publishes the row AND
             # auto-approves the site. An executive who flips them all stays in
-            # draft and must Submit-for-review → supervisor publishes.
-            #
-            # Agreement MUST be registered before licensing can complete — check
-            # only here so that draft / partial saves are never blocked.
-            if ag is None or not ag.registered:
-                raise HTTPException(
-                    status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="Agreement must be registered (Step 3) before finalising Licensing",
-                )
+            # draft until a supervisor reviews and saves the checklist.
             lic.stage = "published"
 
             site.licensing_status = "complete"

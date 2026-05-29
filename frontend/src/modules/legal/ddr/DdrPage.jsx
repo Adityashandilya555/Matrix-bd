@@ -15,7 +15,8 @@ import {
   listLegalDelegationsForSite,
 } from '../../../services/api/legalDelegationApi.js';
 import { listMyTeam } from '../../../services/api/adapters/httpAdapter.js';
-import { ROUTES, legalSiteLicensingRoute } from '../../../router/routes.js';
+import { ROUTES, legalSiteAgreementRoute, legalSiteLicensingRoute } from '../../../router/routes.js';
+import { agreementAllowsLicensing, agreementStatusLabel, normalizeAgreementStatus } from '../../../lib/agreementStatus.js';
 
 const DDR_CHECKS = [
   { id: 'title_doc',       label: 'Title / ownership verified' },
@@ -298,7 +299,7 @@ export default function DdrPage() {
       const next = await finalizeDd(siteId, { finalVerdict: 'positive' });
       setReview(next);
       showToast?.('DDR finalised as positive.', 'success');
-      navigate(legalSiteLicensingRoute(siteId));
+      navigate(legalSiteAgreementRoute(siteId));
     } catch (err) {
       showToast?.(err?.detail || err?.message || 'Finalise failed', 'danger');
     } finally {
@@ -331,11 +332,50 @@ export default function DdrPage() {
   const ddStage = review?.dd?.stage ?? 'published';
   const ddIsPublished = ddStage === 'published';
   const ddPositive = review?.dd?.final_verdict === 'positive';
+  const agreementStatus = normalizeAgreementStatus(review);
+  const agreementReady = agreementAllowsLicensing(agreementStatus);
   const isDelegateForMe = !!myUserId && delegations.some(
     (d) => String(d.delegateUserId) === String(myUserId),
   );
   const showLicensingTab =
-    ddIsPublished && ddPositive && (isSupervisor || (isExecutive && isDelegateForMe));
+    ddIsPublished && ddPositive && agreementReady && (isSupervisor || (isExecutive && isDelegateForMe));
+
+  const agreementPanel = ddIsPublished && ddPositive && !agreementReady ? (
+    <div
+      className="zm-glass"
+      style={{
+        padding: 16, borderRadius: 12, marginBottom: 12,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+        border: '1px solid var(--zm-copper-line)',
+        background: 'var(--zm-warning-soft)',
+      }}
+    >
+      <div>
+        <div style={{
+          fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 11,
+          letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--zm-fg-3)',
+        }}>
+          Agreement required
+        </div>
+        <div style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', marginTop: 4 }}>
+          DDR is positive and published. Mark the agreement executed before licensing opens for this site.
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => navigate(legalSiteAgreementRoute(siteId))}
+        className="zm-btn-primary"
+        style={{
+          height: 34, padding: '0 14px', borderRadius: 7, border: 'none',
+          background: 'var(--zm-accent)', color: '#fff',
+          fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 800, cursor: 'pointer',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        Open agreement
+      </button>
+    </div>
+  ) : null;
 
   const delegationPanel = (
     <div
@@ -454,8 +494,8 @@ export default function DdrPage() {
         </div>
         <div style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', marginTop: 4 }}>
           {isSupervisor
-            ? 'DD is positive and published — continue into licensing for this site.'
-            : 'DD is positive and published — licensing has been auto-assigned to you.'}
+            ? `Agreement is ${agreementStatusLabel(agreementStatus).toLowerCase()} — continue into licensing for this site.`
+            : `Agreement is ${agreementStatusLabel(agreementStatus).toLowerCase()} — licensing has been auto-assigned to you.`}
         </div>
       </div>
       <button
@@ -527,6 +567,7 @@ export default function DdrPage() {
       </div>
     )}
     {delegationPanel}
+    {agreementPanel}
     {licensingTab}
     <ModuleChecklistPage
       checks={DDR_CHECKS}
