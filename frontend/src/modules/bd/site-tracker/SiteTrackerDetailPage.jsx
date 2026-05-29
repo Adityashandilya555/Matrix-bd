@@ -56,7 +56,7 @@ function verdictTone(verdict) {
 }
 
 function NodeCard({ node, selected, onClick, statusOverride }) {
-  const completed = node.id === 'loi';
+  const completed = node.id === 'loi' || statusOverride?.label === 'DONE';
   const greyed = !node.interactive && !completed;
   const defaultLabel = node.interactive ? 'OPEN' : completed ? 'DONE' : 'QUEUED';
   const defaultColor = node.interactive
@@ -108,7 +108,28 @@ function financeStatusOverride(financeStatus) {
   return null; // default 'OPEN'
 }
 
-function NodeDiagram({ selected, onSelect, financeStatus }) {
+// Legal node is DONE when DD positive + agreement registered + licensing complete.
+// Falls back to site-status heuristic when the detailed fields aren't populated yet.
+function legalStatusOverride(data) {
+  const ddPositive   = data.legalDdStatus === 'positive';
+  const licComplete  = data.licensingStatus === 'complete';
+  // Agreement: check the nested object first, then the mirror column string
+  const agRegistered =
+    data.agreement?.registered === true ||
+    (typeof data.agreementStatus === 'string' &&
+      data.agreementStatus.toLowerCase().includes('registered'));
+
+  if (ddPositive && agRegistered && licComplete)
+    return { label: 'DONE', color: 'var(--zm-success, #2D7A48)' };
+
+  // If at least DD is positive but the rest aren't done yet → IN PROGRESS
+  if (ddPositive)
+    return { label: 'IN PROGRESS', color: 'var(--zm-warning, #B45309)' };
+
+  return null; // default 'OPEN'
+}
+
+function NodeDiagram({ selected, onSelect, financeStatus, trackerData }) {
   // Static, hard-coded SVG-on-grid layout. Edges run left to right in one row.
   // The arrow heads are inline so we don't need defs.
   return (
@@ -152,7 +173,11 @@ function NodeDiagram({ selected, onSelect, financeStatus }) {
             node={n}
             selected={selected === n.id}
             onClick={() => onSelect(n.id)}
-            statusOverride={n.id === 'ca' ? financeStatusOverride(financeStatus) : undefined}
+            statusOverride={
+              n.id === 'ca'    ? financeStatusOverride(financeStatus) :
+              n.id === 'legal' ? legalStatusOverride(trackerData)     :
+              undefined
+            }
           />
         ))}
       </div>
@@ -752,6 +777,7 @@ export default function SiteTrackerDetailPage() {
         selected={selectedNode}
         onSelect={setSelectedNode}
         financeStatus={data.financeStatus}
+        trackerData={data}
       />
 
       <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start', flexWrap: 'wrap' }}>
