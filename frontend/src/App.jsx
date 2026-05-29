@@ -163,7 +163,7 @@ export default function App() {
 export const PageContext = React.createContext({ showToast: () => {}, onOpenSite: () => {} });
 export function usePageContext() { return React.useContext(PageContext); }
 
-// NewPipelineModal — extended to capture pipeline-stage Model · SPOC · Google pin · Expected rent.
+// NewPipelineModal — captures pipeline-stage Model · Google pin · Expected rent.
 // Same fields stay editable at shortlist (AddDetailsPage prefills from these values);
 // edits at shortlist are diff-logged into the site Activity tab.
 const PIPELINE_MODELS = ['BTC Cafe', 'BTC Cafe+', 'Blue Tokai Origins', 'Roastries', 'Micro-Cafes & Express Outlets', 'Others'];
@@ -173,7 +173,7 @@ const PIPELINE_RENT_TYPES = [
   { id: 'mg_revshare', label: 'MG + Revenue share', sub: 'minimum guarantee + % of sales' },
 ];
 function NewPipelineModal({ onClose, onSubmit }) {
-  const [form, setForm] = useState({ name: '', visitDate: '', city: '', model: '', spocName: '', googlePin: '', googleMapsUrl: '', rentType: '', expectedRent: '', expectedEscalation: '', expectedEscalationYears: '', expectedRevshare: '' });
+  const [form, setForm] = useState({ name: '', visitDate: '', city: '', model: '', googlePin: '', googleMapsUrl: '', rentType: '', expectedRent: '', expectedEscalation: '', expectedEscalationYears: '', expectedRevshare: '' });
   const [pinStatus, setPinStatus] = useState(null); // { tone: 'info'|'ok'|'err', msg: string }
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   // Rent-type-specific essentials. Mirrors AddDetailsPage so the data captured
@@ -183,7 +183,7 @@ function NewPipelineModal({ onClose, onSubmit }) {
     : form.rentType === 'fixed' ? !!form.expectedRent && !!form.expectedEscalation && !!form.expectedEscalationYears
     : form.rentType === 'mg_revshare' ? !!form.expectedRent && !!form.expectedRevshare
     : false;
-  const ready = form.name && form.visitDate && form.city && form.model && form.spocName && form.googlePin && form.rentType && rentReady;
+  const ready = form.name && form.visitDate && form.city && form.model && form.googlePin && form.rentType && rentReady;
 
   // Resolve a pasted/typed Maps URL into coords, but keep the original URL too.
   // Both end up persisted: googlePin = "lat, lng", googleMapsUrl = the link.
@@ -244,33 +244,25 @@ function NewPipelineModal({ onClose, onSubmit }) {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label style={labelBase}>Model</label><select value={form.model} onChange={set('model')} style={inputBase}><option value="">Select model…</option>{PIPELINE_MODELS.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label style={labelBase}>SPOC name</label><input value={form.spocName} onChange={set('spocName')} placeholder="Landlord / agent" style={inputBase}/></div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={labelBase}>Google pin</label>
-            <input
-              value={form.googlePin || form.googleMapsUrl}
-              onChange={onPinChange}
-              onPaste={onPinPaste}
-              onBlur={onPinBlur}
-              placeholder="Paste Google Maps link or 19.1183, 72.9089"
-              style={{ ...inputBase, fontFamily: 'var(--zm-font-mono)', fontSize: 13 }}
-            />
-            {pinStatus && (
-              <span style={{
-                fontFamily: 'var(--zm-font-body)', fontSize: 11.5,
-                color: pinStatus.tone === 'ok' ? 'var(--zm-success)'
-                     : pinStatus.tone === 'err' ? 'var(--zm-danger)'
-                     : 'var(--zm-fg-3)',
-              }}>{pinStatus.msg}</span>
-            )}
-            {form.googleMapsUrl && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>
-                <span>Link saved:</span>
-                <a href={form.googleMapsUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--zm-accent)', textDecoration: 'underline', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{form.googleMapsUrl}</a>
-                <button type="button" onClick={clearMapsLink} title="Clear link" style={{ background: 'transparent', border: 'none', color: 'var(--zm-fg-3)', cursor: 'pointer', padding: 0, fontSize: 12 }}>×</button>
-              </span>
-            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={labelBase}>Google pin</label>
+              <input value={form.googlePin || form.googleMapsUrl} onChange={onPinChange} onPaste={onPinPaste} onBlur={onPinBlur} placeholder="Paste Google Maps link or 19.1183, 72.9089" style={{ ...inputBase, fontFamily: 'var(--zm-font-mono)', fontSize: 13 }}/>
+              {pinStatus && (
+                <span style={{
+                  fontFamily: 'var(--zm-font-body)', fontSize: 11.5,
+                  color: pinStatus.tone === 'ok' ? 'var(--zm-success)'
+                       : pinStatus.tone === 'err' ? 'var(--zm-danger)'
+                       : 'var(--zm-fg-3)',
+                }}>{pinStatus.msg}</span>
+              )}
+              {form.googleMapsUrl && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>
+                  <span>Link saved:</span>
+                  <a href={form.googleMapsUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--zm-accent)', textDecoration: 'underline', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{form.googleMapsUrl}</a>
+                  <button type="button" onClick={clearMapsLink} title="Clear link" style={{ background: 'transparent', border: 'none', color: 'var(--zm-fg-3)', cursor: 'pointer', padding: 0, fontSize: 12 }}>×</button>
+                </span>
+              )}
+            </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <label style={labelBase}>Rent type</label>

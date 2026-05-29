@@ -86,7 +86,7 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
           <Icon name="search" size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--zm-fg-3)', pointerEvents: 'none' }}/>
           <input
             className="zm-tb-search"
-            placeholder="Search sites or SPOC…"
+            placeholder="Search sites…"
             onChange={(e) => onSearch?.(e.target.value)}
             style={{
               width: '100%', minWidth: 0, boxSizing: 'border-box',

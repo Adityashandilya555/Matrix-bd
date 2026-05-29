@@ -34,8 +34,6 @@ export function buildDrawerSite(row) {
     cadex: first(row.cadex, details.cadex),
     brokerage: first(row.brokerage, details.brokerage),
     model: first(row.model, details.model),
-    spocName: first(row.spocName, details.spocName, createdBy, row.by),
-    spocPhone: first(row.spocPhone, details.spocPhone),
     pin: first(row.googlePin, row.pin, details.googlePin),
     googleMapsUrl: first(row.googleMapsUrl, details.googleMapsUrl),
     photos: Array.isArray(details.photos) ? details.photos : [],

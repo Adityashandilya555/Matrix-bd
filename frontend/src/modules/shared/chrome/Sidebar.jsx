@@ -75,6 +75,7 @@ export default function Sidebar({ counts, role, onRole }) {
     path === ROUTES.DD_FAILED                            ? 'dd-failed' :
     path === ROUTES.TEAM                                 ? 'team'      :
     path === ROUTES.LEGAL_CHANGE_REQUESTS                ? 'legal-change-requests' :
+    path === ROUTES.LEGAL_REJECTED                       ? 'legal-rejected' :
     path.startsWith('/legal')                            ? 'legal-ddr' :
     path.startsWith('/payment')                          ? 'payment-licensing' :
     'overview';
@@ -120,6 +121,12 @@ export default function Sidebar({ counts, role, onRole }) {
             label="Change requests"
             active={activeView === 'legal-change-requests'}
             onClick={() => go(ROUTES.LEGAL_CHANGE_REQUESTS)}
+          />
+          <SidebarItem
+            icon="folder"
+            label="Rejected sites"
+            active={activeView === 'legal-rejected'}
+            onClick={() => go(ROUTES.LEGAL_REJECTED)}
           />
         </>
       )}

@@ -12,6 +12,7 @@ export const ROUTES = {
   BD_SITE_STATUS:         '/sites/:siteId/status',
   LEGAL:                  '/legal',
   LEGAL_CHANGE_REQUESTS:  '/legal/change-requests',
+  LEGAL_REJECTED:         '/legal/rejected',
   LEGAL_SITE_DDR:         '/legal/sites/:siteId/ddr',
   LEGAL_SITE_AGREEMENT:   '/legal/sites/:siteId/agreement',
   LEGAL_SITE_LICENSING:   '/legal/sites/:siteId/licensing',

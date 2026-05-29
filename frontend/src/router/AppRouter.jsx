@@ -20,6 +20,7 @@ import AddDetailsPage        from '../modules/loi/details/AddDetailsPage.jsx';
 import TeamPage              from '../modules/team/TeamPage.jsx';
 import LegalQueuePage       from '../modules/legal/LegalQueuePage.jsx';
 import ChangeRequestsPage    from '../modules/legal/ChangeRequestsPage.jsx';
+import RejectedSitesPage     from '../modules/legal/RejectedSitesPage.jsx';
 import DdrPage               from '../modules/legal/ddr/DdrPage.jsx';
 import AgreementPage         from '../modules/legal/agreement/AgreementPage.jsx';
 import SiteStatusPage        from '../modules/bd/site-status/SiteStatusPage.jsx';
@@ -137,6 +138,13 @@ export default function AppRouter() {
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <RequireModule modules={['legal']}>
               <ChangeRequestsPage/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.LEGAL_REJECTED} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['legal']}>
+              <RejectedSitesPage/>
             </RequireModule>
           </RequireRole>
         }/>

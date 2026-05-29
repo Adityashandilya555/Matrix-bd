@@ -65,7 +65,6 @@ export async function createSite(payload) {
     ],
     // Pipeline-stage fields — also rendered into the shortlist edit form.
     model: payload.model ?? '',
-    spocName: payload.spocName ?? '',
     googlePin: payload.googlePin ?? '',
     rentType: payload.rentType ?? '',
     expectedRent: payload.expectedRent ?? null,
@@ -115,7 +114,6 @@ export async function patchSiteStatus(id, newStatus, payload = {}) {
     updated._approvedBy = payload.by || 'Supervisor';
     updated._daysSinceApproval = 0;
     updated._daysToLOI = null;
-    updated._spocName = payload.spocName || site.details?.spocName || site.createdBy.name;
   }
   return upsertSite(updated);
 }
@@ -215,7 +213,6 @@ export async function assignSite(id, execId) {
 // site activity tab can render the diff (mirrors the backend service contract).
 const PIPELINE_FIELDS_FE = [
   ['model', 'model'],
-  ['spocName', 'spoc_name'],
   ['googlePin', 'google_pin'],
   ['rentType', 'rent_type'],
   // In the form the rent number lives in `rent`; on the site it lives on `expectedRent`.
@@ -252,9 +249,8 @@ export async function patchSiteDetails(id, details) {
   const updated = {
     ...site,
     details: { ...(site.details || {}), ...details },
-    // Promote the 5 pipeline-stage fields back onto the site row (single source of truth).
+    // Promote the pipeline-stage fields back onto the site row (single source of truth).
     model: details.model ?? site.model,
-    spocName: details.spocName ?? site.spocName,
     googlePin: details.googlePin ?? site.googlePin,
     rentType: details.rentType ?? site.rentType,
     expectedRent: details.rent != null && details.rent !== '' ? Number(details.rent) : site.expectedRent,

@@ -5,6 +5,7 @@
 //
 // Endpoints used:
 //   GET  /legal/queue
+//   GET  /legal/rejected-sites
 //   GET  /legal/{site_id}
 //   POST /legal/{site_id}/dd/items        (supervisor OR executive)
 //   POST /legal/{site_id}/dd/finalize     (supervisor only)
@@ -56,6 +57,18 @@ function queueItemFromServer(row) {
   };
 }
 
+function rejectedSiteFromServer(row) {
+  return {
+    siteId:          row.site_id,
+    siteCode:        row.site_code,
+    siteName:        row.site_name,
+    city:            row.city,
+    submittedByName: row.submitted_by_name,
+    rejectionReason: row.rejection_reason,
+    legalRejectedAt: row.legal_rejected_at,
+  };
+}
+
 function reviewFromServer(row) {
   if (!row) return row;
   // Surface the staging gate on each child row so the UI can render the chip
@@ -87,6 +100,14 @@ export async function getLegalQueue() {
   const data = await client.get('/legal/queue').then((r) => r.data);
   return {
     items: (data.items || []).map(queueItemFromServer),
+    total: data.total ?? 0,
+  };
+}
+
+export async function listLegalRejectedSites() {
+  const data = await client.get('/legal/rejected-sites').then((r) => r.data);
+  return {
+    items: (data.items || []).map(rejectedSiteFromServer),
     total: data.total ?? 0,
   };
 }

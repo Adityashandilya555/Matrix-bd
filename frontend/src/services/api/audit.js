@@ -19,6 +19,16 @@ const ACTION_TO_TAG = {
   set_loi_timeline: 'edit',
   upload_loi: 'doc',
   push_to_payments: 'approve',
+  legal_dd_items_saved: 'edit',
+  legal_dd_submitted_for_review: 'submit',
+  legal_dd_auto_positive: 'approve',
+  legal_dd_positive: 'approve',
+  legal_dd_rejected: 'edit',
+  legal_dd_recovered: 'approve',
+  legal_agreement_saved: 'approve',
+  legal_approved: 'approve',
+  legal_licensing_partial: 'edit',
+  legal_licensing_submitted_for_review: 'submit',
   reject: 'edit',
   archive: 'edit',
   reassign_site: 'edit',
@@ -45,6 +55,16 @@ export function labelForEntry(e) {
     case 'set_loi_timeline':          return e.detail ? `set LOI timeline (${e.detail})` : 'set LOI timeline';
     case 'upload_loi':                return 'uploaded LOI document';
     case 'push_to_payments':          return 'pushed site to payments';
+    case 'legal_dd_items_saved':      return 'updated due-diligence checklist';
+    case 'legal_dd_submitted_for_review': return 'submitted DDR for review';
+    case 'legal_dd_auto_positive':    return 'auto-marked DDR positive';
+    case 'legal_dd_positive':         return 'marked DDR positive';
+    case 'legal_dd_rejected':         return e.detail ? `rejected DDR (${e.detail})` : 'rejected DDR';
+    case 'legal_dd_recovered':        return 'recovered site to legal review';
+    case 'legal_agreement_saved':     return 'saved agreement status';
+    case 'legal_approved':            return 'legal approved site';
+    case 'legal_licensing_partial':   return 'saved licensing checklist';
+    case 'legal_licensing_submitted_for_review': return 'submitted licensing for review';
     case 'reject':                    return 'rejected site';
     case 'archive':                   return 'archived site';
     case 'reassign_site':             return 'reassigned site';

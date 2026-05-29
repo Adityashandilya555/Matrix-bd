@@ -222,7 +222,7 @@ function SiteOverviewTab({ site }) {
 
       <section>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14 }}>
-          <h4 style={{ margin: 0, fontFamily: 'var(--zm-font-display)', fontWeight: 600, fontSize: 14, color: 'var(--zm-fg)' }}>SPOC + Google pin</h4>
+          <h4 style={{ margin: 0, fontFamily: 'var(--zm-font-display)', fontWeight: 600, fontSize: 14, color: 'var(--zm-fg)' }}>Google pin</h4>
           {mapHref ? (
             <a href={mapHref} target="_blank" rel="noreferrer" className="zm-link-btn" style={{ color: 'var(--zm-accent)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, textDecoration: 'none' }}>Open in Maps →</a>
           ) : (
@@ -231,11 +231,9 @@ function SiteOverviewTab({ site }) {
         </div>
         <div style={{
           padding: 20, background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 10,
-          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20,
+          display: 'grid', gridTemplateColumns: 'minmax(180px, 0.8fr) 1fr', gap: 20,
         }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <Field label="SPOC name" value={display(site.spocName)}/>
-            <Field label="SPOC phone" value={display(site.spocPhone)} mono/>
             <Field label="Google pin" value={display(site.pin)} mono/>
           </div>
           <div style={{

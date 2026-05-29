@@ -59,7 +59,6 @@ function detailsToServer(details = {}) {
   const clean = (value) => value === '' ? null : value;
   return {
     model: clean(details.model ?? null),
-    spoc_name: clean(details.spoc_name ?? details.spocName ?? null),
     google_pin: clean(details.google_pin ?? details.googlePin ?? null),
     score: clean(details.score ?? null),
     est_sales: clean(details.est_sales ?? details.estSales ?? null),
@@ -185,7 +184,6 @@ export async function createSite(payload) {
     city: payload.city,
     visit_date: payload.visitDate,
     model: payload.model ?? null,
-    spoc_name: payload.spocName ?? null,
     google_pin: payload.googlePin ?? null,
     google_maps_url: payload.googleMapsUrl ?? null,
     expected_rent: payload.expectedRent ?? null,
@@ -210,7 +208,7 @@ export async function patchSiteDetails(id, details) {
 }
 
 export async function getSiteActivity(id) {
-  const data = await get(`/sites/${id}/activity`);
+  const data = await get(`/audit/site/${id}`);
   const items = (data?.items || []).map(e => ({
     id: e.id,
     siteId: e.site_id,

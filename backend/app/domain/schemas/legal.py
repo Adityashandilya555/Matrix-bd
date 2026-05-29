@@ -172,3 +172,19 @@ class LegalQueueItem(BaseModel):
 class LegalQueueResponse(BaseModel):
     items: list[LegalQueueItem]
     total: int
+
+
+class LegalRejectedSiteItem(BaseModel):
+    """Read-only Legal dashboard row for a site rejected during DD."""
+    site_id: str
+    site_code: str
+    site_name: str
+    city: str
+    submitted_by_name: Optional[str] = None
+    rejection_reason: Optional[str] = None
+    legal_rejected_at: Optional[datetime] = None
+
+
+class LegalRejectedSitesResponse(BaseModel):
+    items: list[LegalRejectedSiteItem]
+    total: int

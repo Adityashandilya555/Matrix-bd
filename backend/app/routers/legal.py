@@ -23,6 +23,7 @@ from app.core.deps import DbDep, TenantId
 from app.domain.schemas.common import OkResponse
 from app.domain.schemas.legal import (
     LegalQueueResponse,
+    LegalRejectedSitesResponse,
     LegalReviewResponse,
     SaveAgreementRequest,
     SaveDueDiligenceRequest,
@@ -52,6 +53,7 @@ from app.services.delegation_service import (
 from app.services.legal_service import (
     svc_get_legal_review,
     svc_legal_queue,
+    svc_legal_rejected_sites,
     svc_save_agreement,
     svc_save_due_diligence,
     svc_save_licensing,
@@ -94,6 +96,20 @@ async def legal_queue(
             db, tenant_id=tenant_id, user_id=current_user["sub"], module="legal",
         )
     return await svc_legal_queue(db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to)
+
+
+@router.get(
+    "/rejected-sites",
+    response_model=LegalRejectedSitesResponse,
+    summary="List sites rejected by Legal during due diligence",
+)
+async def legal_rejected_sites(
+    db: DbDep,
+    current_user: LegalMember,
+    _module: InLegalModule,
+    tenant_id: TenantId,
+) -> LegalRejectedSitesResponse:
+    return await svc_legal_rejected_sites(db, tenant_id=tenant_id)
 
 
 # ── Delegations ───────────────────────────────────────────────────────────────

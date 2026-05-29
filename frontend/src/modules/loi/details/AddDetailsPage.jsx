@@ -86,7 +86,7 @@ function FormSection({ title, n, children }) {
 }
 
 export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, savingDraft = false, saveError = null }) {
-  // Pipeline-stage fields (model, spocName, googlePin, rentType, expectedRent) are now
+  // Pipeline-stage fields (model, googlePin, rentType, expectedRent) are now
   // captured at draft creation. Prefill them here so the BE picks up where they left off;
   // any edit before submit/save is diff-logged into the activity feed by the backend.
   //
@@ -96,7 +96,6 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
     ...(item.details || {
       name: item.name, visitDate: item.visitDate, city: item.city,
       model: item.model || '',
-      spocName: item.spocName || '',
       googlePin: item.googlePin || '',
       rentType: item.rentType || '',
       rent: item.expectedRent != null ? String(item.expectedRent) : '',
@@ -204,10 +203,14 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
     + conditionalFilled;
   const resumed = !!item.details;
   const lastSavedAt = item.details?._savedAt;
-  const handleSubmit = () => { if (!filled) return; onSubmit({ ...f, totalOpCost }); };
+  const payloadWithoutSpoc = () => {
+    const { spocName, spoc_name, ...rest } = f;
+    return { ...rest, totalOpCost };
+  };
+  const handleSubmit = () => { if (!filled) return; onSubmit(payloadWithoutSpoc()); };
   const handleSaveDraft = () => {
     if (savingDraft) return;
-    onSaveDraft?.({ ...f, totalOpCost, _savedAt: new Date().toISOString() });
+    onSaveDraft?.({ ...payloadWithoutSpoc(), _savedAt: new Date().toISOString() });
   };
 
   return (
@@ -224,7 +227,7 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 28px 28px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
             <FormSection n="1·3" title="Identity"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}><TextField label="Name" value={f.name} onChange={upd('name')} required hint="Editable from draft"/><TextField label="Visit date" value={f.visitDate} mono readOnly hint="Locked from pipeline"/><TextField label="City" value={f.city} onChange={upd('city')} required/></div></FormSection>
-            <FormSection n="4·6" title="Model · SPOC · Google pin"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}><SelectField label="Model" value={f.model} onChange={upd('model')} required options={MODELS}/><TextField label="SPOC name" value={f.spocName} onChange={upd('spocName')} required placeholder="Landlord / agent"/><TextField label="Google pin" value={f.googlePin} onChange={upd('googlePin')} required mono placeholder="19.1183, 72.9089"/></div></FormSection>
+            <FormSection n="4·5" title="Model · Google pin"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}><SelectField label="Model" value={f.model} onChange={upd('model')} required options={MODELS}/><TextField label="Google pin" value={f.googlePin} onChange={upd('googlePin')} required mono placeholder="19.1183, 72.9089"/></div></FormSection>
             <FormSection n="7" title="Storefront photos"><PhotoPicker photos={f.photos} onAdd={handlePhotoAdd} onRemove={(id) => setF(prev => ({ ...prev, photos: prev.photos.filter(x => x.id !== id) }))} uploadingIds={uploadingPhotoIds}/></FormSection>
             <FormSection n="8·11" title="Score + adjacency sales"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}><TextField label="Score" value={f.score} onChange={updScore} required type="number" min="0" max="100" hint="0–100 footfall + visibility" error={Number(f.score) > 100 ? 'Max 100' : undefined}/><TextField label="Estimated sales" value={f.estSales} onChange={upd('estSales')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 1250000" hint="Full rupees · no commas"/><TextField label="Nearest Starbucks sales" value={f.nearestStarbucks} onChange={upd('nearestStarbucks')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 900000" hint="Full rupees"/><TextField label="Nearest TWC sales" value={f.nearestTWC} onChange={upd('nearestTWC')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 700000" hint="Third-Wave Coffee · full rupees"/></div></FormSection>
             <FormSection n="12·14" title="Carpet · CAM · rent">

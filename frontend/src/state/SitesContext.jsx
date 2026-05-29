@@ -20,7 +20,6 @@ import { useSession } from './SessionContext.jsx';
 //   staging.approvedDate <- site._approvedDate
 //   staging.approvedBy   <- site._approvedBy
 //   staging.daysToLOI    <- site._daysToLOI
-//   staging.spocName     <- site._spocName || site.details?.spocName
 //   staging.loiUploadedAt <- site._loiUploadedAt
 //   archive.archivedAt   <- site.updatedAt (date site moved to ARCHIVED)
 //   archive.reasons      <- site.rejectionReasons
@@ -90,7 +89,6 @@ function toStagingShape(site) {
     name: site.name,
     city: site.city,
     createdBy: site.createdBy?.name || site.createdBy || '',
-    spocName: site._spocName || site.details?.spocName || site.createdBy?.name || '',
     draftDate: site._draftDate || site.visitDate,
     approvedDate: site._approvedDate || '',
     approvedBy: site._approvedBy || '',
@@ -216,7 +214,7 @@ export function SitesProvider({ children }) {
   }, [refresh]);
 
   const approveShortlistToStaging = useCallback(async (item, days) => {
-    await siteService.approveSite(item.id, days, 'supervisor', item.details?.spocName || item.createdBy);
+    await siteService.approveSite(item.id, days, 'supervisor');
     await refresh();
   }, [refresh]);
 
@@ -237,7 +235,7 @@ export function SitesProvider({ children }) {
   }, [refresh]);
 
   const createDraft = useCallback(async (form, createdByName) => {
-    // Pipeline-stage fields (model, spocName, googlePin, rentType, expectedRent) are
+    // Pipeline-stage fields (model, googlePin, rentType, expectedRent) are
     // forwarded so they land on the sites row at creation; they stay editable at
     // shortlist and any subsequent edit is diff-logged into the activity feed.
     //
@@ -252,7 +250,6 @@ export function SitesProvider({ children }) {
       city: form.city,
       visitDate: form.visitDate,
       model: form.model || null,
-      spocName: form.spocName || null,
       googlePin: form.googlePin || null,
       googleMapsUrl: form.googleMapsUrl || null,
       rentType: form.rentType || null,

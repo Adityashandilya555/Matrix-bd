@@ -20,7 +20,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import select, text
+from sqlalchemy import desc, select, text
 from sqlalchemy.exc import ProgrammingError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +33,8 @@ from app.domain.schemas.legal import (
     DdChecklistResponse,
     LegalQueueItem,
     LegalQueueResponse,
+    LegalRejectedSiteItem,
+    LegalRejectedSitesResponse,
     LegalReviewResponse,
     LicensingResponse,
     SaveAgreementRequest,
@@ -352,6 +354,39 @@ async def svc_legal_queue(
         ))
 
     return LegalQueueResponse(items=items, total=len(items))
+
+
+async def svc_legal_rejected_sites(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+) -> LegalRejectedSitesResponse:
+    """Read-only Legal dashboard list for sites rejected during DD."""
+    stmt = (
+        select(models.Site)
+        .where(
+            models.Site.tenant_id == tenant_id,
+            models.Site.status == SiteStatus.LEGAL_REJECTED.value,
+        )
+        .order_by(desc(models.Site.legal_rejected_at).nulls_last(), desc(models.Site.updated_at))
+    )
+    sites = (await session.execute(stmt)).scalars().all()
+
+    items: list[LegalRejectedSiteItem] = []
+    for site in sites:
+        dd = await _fetch_dd_or_none(session, site_id=site.id)
+        submitted_by_name = await fetch_user_name(session, site.submitted_by)
+        items.append(LegalRejectedSiteItem(
+            site_id=str(site.id),
+            site_code=site.code or "",
+            site_name=site.name,
+            city=site.city,
+            submitted_by_name=submitted_by_name,
+            rejection_reason=dd.rejection_reason if dd else None,
+            legal_rejected_at=site.legal_rejected_at,
+        ))
+
+    return LegalRejectedSitesResponse(items=items, total=len(items))
 
 
 async def svc_get_legal_review(

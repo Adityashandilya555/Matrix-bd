@@ -67,11 +67,10 @@ export async function submitDetails(siteId, formData, by) {
   });
 }
 
-export async function approveSite(siteId, days, by, spocName) {
+export async function approveSite(siteId, days, by) {
   return transitionSite(siteId, SiteStatus.APPROVED, {
     expectedLoiDays: days,
     by,
-    spocName,
   });
 }
 
