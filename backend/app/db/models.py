@@ -130,6 +130,14 @@ class Site(Base):
     agreement_status: Mapped[Optional[str]] = mapped_column(Text, server_default="pending")
     licensing_status: Mapped[Optional[str]] = mapped_column(Text, server_default="pending")
 
+    # Finance / CA code flow (managed from the Site Tracker Finance tab).
+    # Once ca_code is set it replaces site.code as the display identifier.
+    kyc_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    ca_code: Mapped[Optional[str]] = mapped_column(Text)
+    finance_amount: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    # pending → awaiting_supervisor → awaiting_admin → approved
+    finance_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+
     # Soft-delete / rejection metadata
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
     archive_note: Mapped[Optional[str]] = mapped_column(Text)
