@@ -371,6 +371,11 @@ class LegalDdChecklist(Base):
     fire_noc: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     other_1: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     other_2: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    # User-typed labels for the two free-form other slots. NULL means the slot
+    # is unused. Added 2026-05-29 (migration add_dd_checklist_other_labels)
+    # so the executive's custom check name survives Save Draft round-trips.
+    other_1_label: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    other_2_label: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     final_verdict: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text)

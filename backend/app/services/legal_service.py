@@ -119,6 +119,10 @@ def _dd_to_response(dd: models.LegalDdChecklist) -> DdChecklistResponse:
         fire_noc=dd.fire_noc,
         other_1=dd.other_1,
         other_2=dd.other_2,
+        # Labels are nullable in the DB. getattr-guarded so pre-migration rows
+        # (if any) gracefully degrade to None rather than 500.
+        other_1_label=getattr(dd, "other_1_label", None),
+        other_2_label=getattr(dd, "other_2_label", None),
         final_verdict=dd.final_verdict,
         rejection_reason=dd.rejection_reason,
         reviewed_by=str(dd.reviewed_by) if dd.reviewed_by else None,
@@ -439,6 +443,19 @@ async def svc_save_verification(
             val = getattr(body, field)
             if val is not None:
                 setattr(dd, field, val)
+
+        # Labels round-trip alongside their status. None ⇒ no change (partial
+        # save semantics); empty string ⇒ explicit clear (slot retired by the
+        # user removing the row). Anything else is stored verbatim — the DB
+        # column is plain text with no enum constraint.
+        for label_field in ("other_1_label", "other_2_label"):
+            val = getattr(body, label_field, None)
+            if val is None:
+                continue
+            if val == "":
+                setattr(dd, label_field, None)
+            else:
+                setattr(dd, label_field, val)
 
         dd.reviewed_by = actor["sub"]
 

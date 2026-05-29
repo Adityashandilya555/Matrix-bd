@@ -42,11 +42,23 @@ function coreFromDd(dd) {
 
 function otherRowsFromDd(dd) {
   if (!dd) return [];
+  // A row is materialised whenever the user has invested anything into the
+  // slot — either a typed label or a non-pending status. This preserves
+  // "in progress" rows (label typed, status not yet chosen) across saves,
+  // which is the primary failure mode the dedicated label columns fix.
   return ['other_1', 'other_2']
     .map((slot, index) => {
-      const value = dd[slot];
-      if (!value || value === 'pending') return null;
-      return { id: `other-${index + 1}`, slot, label: `Other ${index + 1}`, status: value };
+      const status = dd[slot];
+      const label  = dd[`${slot}_label`];
+      const hasStatus = status && status !== 'pending';
+      const hasLabel  = typeof label === 'string' && label.trim().length > 0;
+      if (!hasStatus && !hasLabel) return null;
+      return {
+        id: `other-${index + 1}`,
+        slot,
+        label: hasLabel ? label : `Other ${index + 1}`,
+        status: hasStatus ? status : null,
+      };
     })
     .filter(Boolean);
 }
@@ -195,9 +207,27 @@ export default function DdrPage() {
       const v = coreStatuses[check.id];
       if (v === 'yes' || v === 'no') payload[check.id] = v;
     }
+    // Slot semantics:
+    //   • A row with a typed label (any status) writes BOTH label + status
+    //     (status only if 'yes'/'no'). The label persists on Save Draft so
+    //     it survives a round-trip — the primary fix.
+    //   • A slot the user has cleared (no row at this index) writes
+    //     other_N_label="" so the backend knows to null out the persisted
+    //     label. The status reverts to whatever was already there (we do
+    //     not blanket-clear so the supervisor's history is preserved).
+    const filledSlots = new Set();
     otherRows.slice(0, MAX_OTHER_ROWS).forEach((row, idx) => {
       const slot = `other_${idx + 1}`;
+      const labelKey = `${slot}_label`;
+      filledSlots.add(slot);
+      const trimmed = (row.label || '').trim();
+      if (trimmed.length > 0) payload[labelKey] = trimmed;
       if (row.status === 'yes' || row.status === 'no') payload[slot] = row.status;
+    });
+    // Explicit clear: any slot index the user did not fill should release
+    // its prior label so a stale "Mall NOC" doesn't outlive its row.
+    ['other_1', 'other_2'].forEach((slot) => {
+      if (!filledSlots.has(slot)) payload[`${slot}_label`] = '';
     });
     return payload;
   };

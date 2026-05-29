@@ -25,7 +25,10 @@ class SaveVerificationRequest(BaseModel):
     """Save one or more due-diligence checklist items.
 
     All fields are optional so an exec can update a single item at a time.
-    Fields not supplied are left unchanged.
+    Fields not supplied are left unchanged. The two `other_N_label` fields
+    accompany the free-form `other_N` status slots — the FE sends them
+    together so the user-typed custom check name persists alongside its
+    status (without this, a Save Draft round-trip wiped the label).
     """
     title_doc:       Optional[ChecklistValue] = None
     sanctioned_plan: Optional[ChecklistValue] = None
@@ -36,6 +39,10 @@ class SaveVerificationRequest(BaseModel):
     fire_noc:        Optional[ChecklistValue] = None
     other_1:         Optional[ChecklistValue] = None
     other_2:         Optional[ChecklistValue] = None
+    # Sentinel for "clear this label": send an empty string. None means
+    # "no change" (preserves the existing label across partial saves).
+    other_1_label:   Optional[str] = None
+    other_2_label:   Optional[str] = None
 
 
 # ── Step 2 · Finalize DD verdict ─────────────────────────────────────────────
@@ -94,6 +101,9 @@ class DdChecklistResponse(BaseModel):
     fire_noc:        str
     other_1:         str
     other_2:         str
+    # User-typed labels for the two free-form other slots. NULL = slot unused.
+    other_1_label:   Optional[str] = None
+    other_2_label:   Optional[str] = None
     final_verdict:   str
     rejection_reason: Optional[str] = None
     reviewed_by:     Optional[str] = None
