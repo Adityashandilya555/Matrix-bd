@@ -44,7 +44,7 @@ const input = {
   color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, width: '100%',
 };
 
-function DeliverableCard({ kind, deliverable, isActive, isExecutive, isSupervisor, busy, onSubmit, onReview }) {
+function DeliverableCard({ kind, deliverable, isActive, isExecutive, isSupervisor, canSelfUpload, busy, onSubmit, onReview }) {
   const status = deliverable?.status || 'pending';
   const tone = DELIV_TONE[status] || DELIV_TONE.pending;
   const [fileUrl, setFileUrl] = React.useState('');
@@ -52,7 +52,7 @@ function DeliverableCard({ kind, deliverable, isActive, isExecutive, isSuperviso
   const [amount, setAmount] = React.useState('');
   const [comments, setComments] = React.useState('');
 
-  const canUpload = isExecutive && isActive && status !== 'approved';
+  const canUpload = (isExecutive || canSelfUpload) && isActive && status !== 'approved';
   const canReview = isSupervisor && isActive && status === 'submitted';
   const dim = !isActive && status === 'pending';
 
@@ -100,7 +100,7 @@ function DeliverableCard({ kind, deliverable, isActive, isExecutive, isSuperviso
           )}
           <button type="button" disabled={busy} style={{ ...btn('var(--zm-accent)'), alignSelf: 'flex-start', opacity: busy ? 0.6 : 1 }}
             onClick={() => onSubmit(kind, { fileUrl, fileName, estimatedAmount: amount })}>
-            {status === 'rejected' ? 'Re-upload' : 'Submit for review'}<Icon name="arrow-right" size={12}/>
+            {status === 'rejected' ? 'Re-upload' : canSelfUpload ? 'Upload & approve' : 'Submit for review'}<Icon name="arrow-right" size={12}/>
           </button>
         </div>
       )}
@@ -247,19 +247,26 @@ export default function DesignReviewPage() {
               <Badge label={`Allocated · ${allocation.delegateName || allocation.delegateEmail}`} color="var(--zm-accent)"/>
               <button type="button" disabled={busy} onClick={onRevoke} style={{ ...btn('var(--zm-danger)'), opacity: busy ? 0.6 : 1 }}>Revoke</button>
             </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <select value={chosenExec} onChange={(e) => setChosenExec(e.target.value)} style={{ ...input, width: 240 }}>
-                <option value="">Select a design executive…</option>
-                {team.map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
-              </select>
-              <button type="button" disabled={busy || !chosenExec} onClick={onAllocate} style={{ ...btn('var(--zm-accent)'), opacity: (busy || !chosenExec) ? 0.6 : 1 }}>
-                Allocate
-              </button>
-              {team.length === 0 && (
-                <span style={{ fontSize: 12, color: 'var(--zm-fg-3)' }}>No design executives on your team yet.</span>
-              )}
+          ) : r.designStatus === 'pending' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <select value={chosenExec} onChange={(e) => setChosenExec(e.target.value)} style={{ ...input, width: 240 }}>
+                  <option value="">Select a design executive…</option>
+                  {team.map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
+                </select>
+                <button type="button" disabled={busy || !chosenExec} onClick={onAllocate} style={{ ...btn('var(--zm-accent)'), opacity: (busy || !chosenExec) ? 0.6 : 1 }}>
+                  Allocate
+                </button>
+                {team.length === 0 && (
+                  <span style={{ fontSize: 12, color: 'var(--zm-fg-3)' }}>No design executives on your team yet.</span>
+                )}
+              </div>
+              <span style={{ fontSize: 12, color: 'var(--zm-fg-3)' }}>
+                — or just upload the deliverables below to handle this site yourself (only the admin's GFC approval is then required).
+              </span>
             </div>
+          ) : (
+            <Badge label="Handling directly · no executive" color="var(--zm-accent)"/>
           )}
         </div>
       )}
@@ -274,6 +281,7 @@ export default function DesignReviewPage() {
             isActive={r.currentStage === kind}
             isExecutive={isExecutive}
             isSupervisor={isSupervisor}
+            canSelfUpload={isSupervisor && !allocation}
             busy={busy}
             onSubmit={onSubmit}
             onReview={onReview}
