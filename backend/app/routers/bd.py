@@ -60,7 +60,7 @@ router = APIRouter(prefix="/bd", tags=["BD"])
 async def create_draft(
     body: CreateDraftRequest,
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE))],
+    current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))],
     tenant_id: TenantId,
 ) -> SiteResponse:
     return await svc_create_draft(
@@ -253,5 +253,4 @@ async def my_change_requests(
     tenant_id: TenantId,
 ) -> ChangeRequestListResponse:
     return await svc_list_my_requests(db, tenant_id=tenant_id, actor=current_user)
-
 

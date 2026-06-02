@@ -3,7 +3,7 @@ import { ROLE } from './roles.js';
 // ACTION -> allowed roles map
 // Keep in sync with backend app/rbac/permissions.py
 export const PERMISSIONS = {
-  create_draft:               [ROLE.EXECUTIVE],
+  create_draft:               [ROLE.EXECUTIVE, ROLE.SUPERVISOR],
   save_draft_details:         [ROLE.EXECUTIVE],
   submit_details_for_review:  [ROLE.EXECUTIVE],
   upload_loi:                 [ROLE.EXECUTIVE],

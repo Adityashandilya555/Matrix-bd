@@ -6,6 +6,7 @@ import { listSites } from '../../../services/api/siteService.js';
 import { getSiteTrackerView } from '../../../services/api/siteTrackerApi.js';
 import { siteTrackerDetailRoute } from '../../../router/routes.js';
 import { normalizeAgreementStatus } from '../../../lib/agreementStatus.js';
+import { useSiteDataRefresh } from '../../../hooks/useSiteDataRefresh.js';
 
 // A site becomes a staging tracker item as soon as BD uploads the signed LOI.
 // Legal owns the editable checklist data; this BD surface reads the live mirror
@@ -807,6 +808,11 @@ export default function SiteTrackerListPage() {
     if (!activeSite) return undefined;
     return loadLegalStatus(activeSite);
   }, [activeSite, loadLegalStatus]);
+
+  useSiteDataRefresh(React.useCallback(() => {
+    loadSites();
+    if (activeSite) loadLegalStatus(activeSite);
+  }, [activeSite, loadLegalStatus, loadSites]));
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();

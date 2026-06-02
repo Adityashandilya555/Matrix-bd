@@ -106,7 +106,14 @@ export default function ExecStagingPage({ onOpenSite: onOpenSiteProp, showToast:
   const filtered = applyStagingFilters(visibleStaging, filters);
   const overdueCount = visibleStaging.filter(s => s.daysSinceApproval > s.expectedLoiDays && !s.loiUploaded).length;
 
-  const onUpload = (site, file) => { uploadLOI(site, file); showToast?.(`LOI uploaded · ${file.name} · ${site.name}. Supervisor will review and push.`); };
+  const onUpload = async (site, file) => {
+    try {
+      await uploadLOI(site, file);
+      showToast?.(`LOI uploaded · ${file.name} · ${site.name}. Supervisor will review and push.`);
+    } catch (err) {
+      showToast?.(`LOI upload failed: ${err?.detail || err?.message || 'Unknown error'}`, 'danger');
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>

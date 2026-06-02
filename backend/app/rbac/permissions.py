@@ -9,7 +9,7 @@ from app.rbac.roles import Role
 
 PERMISSIONS: dict[str, list[Role]] = {
     # ── Executive (any module) ────────────────────────────────────────────────
-    "create_draft":               [Role.EXECUTIVE],
+    "create_draft":               [Role.EXECUTIVE, Role.SUPERVISOR],
     "save_draft_details":         [Role.EXECUTIVE],
     "submit_details_for_review":  [Role.EXECUTIVE],
     "upload_loi":                 [Role.EXECUTIVE],

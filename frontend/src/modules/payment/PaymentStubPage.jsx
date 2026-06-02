@@ -5,6 +5,7 @@ import Icon from '../shared/primitives/Icon.jsx';
 import { listSites } from '../../services/api/siteService.js';
 import { getSiteTrackerView } from '../../services/api/siteTrackerApi.js';
 import { siteTrackerDetailRoute } from '../../router/routes.js';
+import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 
 const PAYMENT_STATUSES = [
   'loi_uploaded',
@@ -358,6 +359,7 @@ export default function PaymentStubPage() {
   }, []);
 
   React.useEffect(() => load(), [load]);
+  useSiteDataRefresh(load);
 
   const rows = state.rows;
   const counts = rows.reduce((acc, site) => {

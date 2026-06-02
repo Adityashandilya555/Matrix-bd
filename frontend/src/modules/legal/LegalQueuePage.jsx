@@ -7,6 +7,7 @@ import { getLegalQueue } from '../../services/api/legalApi.js';
 import { listLegalDelegationsForSite } from '../../services/api/legalDelegationApi.js';
 import { legalSiteAgreementRoute, legalSiteDdrRoute, legalSiteLicensingRoute } from '../../router/routes.js';
 import { agreementAllowsLicensing, normalizeAgreementStatus } from '../../lib/agreementStatus.js';
+import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 
 const STATUS_LABELS = {
   pending:   { label: 'Awaiting review',    tone: 'var(--zm-fg-3)' },
@@ -61,7 +62,7 @@ export default function LegalQueuePage() {
   // siteId -> delegate name string (supervisor view only)
   const [delegateNames, setDelegateNames] = React.useState({});
 
-  React.useEffect(() => {
+  const load = React.useCallback(() => {
     let cancelled = false;
     setState({ status: 'loading', items: [], total: 0, error: null });
     getLegalQueue()
@@ -75,6 +76,9 @@ export default function LegalQueuePage() {
       });
     return () => { cancelled = true; };
   }, []);
+
+  React.useEffect(() => load(), [load]);
+  useSiteDataRefresh(load);
 
   // Supervisor view: best-effort hydration of delegate names per visible row.
   // Failures degrade silently — the row just won't show a delegated badge.
