@@ -27,6 +27,7 @@ import SiteStatusPage        from '../modules/bd/site-status/SiteStatusPage.jsx'
 import DdFailedPage          from '../modules/bd/dd-failed/DdFailedPage.jsx';
 import SiteTrackerListPage   from '../modules/bd/site-tracker/SiteTrackerListPage.jsx';
 import SiteTrackerDetailPage from '../modules/bd/site-tracker/SiteTrackerDetailPage.jsx';
+import DashboardMinimalPreview from '../modules/bd/dashboard-preview/DashboardMinimalPreview.jsx';
 import LicensingPage         from '../modules/payment/licensing/LicensingPage.jsx';
 import PaymentStubPage       from '../modules/payment/PaymentStubPage.jsx';
 import AdminPortalPage       from '../modules/admin/AdminPortalPage.jsx';
@@ -208,6 +209,14 @@ export default function AppRouter() {
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <RequireModule modules={['bd']}>
               <SiteTrackerDetailPage/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+
+        <Route path={ROUTES.DASHBOARD_MINIMAL_PREVIEW} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['bd']}>
+              <DashboardMinimalPreview/>
             </RequireModule>
           </RequireRole>
         }/>

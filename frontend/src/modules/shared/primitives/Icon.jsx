@@ -3,6 +3,16 @@ import React from 'react';
 // Render body preserved exactly from Primitives.jsx.
 export default function Icon({ name, size = 16, stroke = 1.5, style }) {
   const paths = {
+    dashboard: <><rect x="3" y="3" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/><rect x="13" y="3" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/><rect x="3" y="13" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/><rect x="13" y="13" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/></>,
+    document: <><path d="M7 3h7l5 5v13H7z" fill="currentColor" opacity=".16" stroke="none"/><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M10 13h6M10 17h4"/></>,
+    bookmark: <><path d="M7 4h10a1 1 0 011 1v16l-6-3.5L6 21V5a1 1 0 011-1z" fill="currentColor" opacity=".16" stroke="none"/><path d="M7 4h10a1 1 0 011 1v16l-6-3.5L6 21V5a1 1 0 011-1z"/></>,
+    layers: <><path d="M12 3l9 5-9 5-9-5z" fill="currentColor" opacity=".16" stroke="none"/><path d="M12 3l9 5-9 5-9-5z"/><path d="M4 12l8 4.5 8-4.5"/><path d="M4 16l8 4.5 8-4.5"/></>,
+    archiveBox: <><path d="M4 8h16v12H4z" fill="currentColor" opacity=".14" stroke="none"/><path d="M3 5h18v3H3z"/><path d="M4 8h16v12H4z"/><path d="M9 12h6"/></>,
+    warning: <><path d="M12 3l10 18H2z" fill="currentColor" opacity=".14" stroke="none"/><path d="M12 3l10 18H2z"/><path d="M12 9v5M12 17h.01"/></>,
+    route: <><path d="M6 6h7a4 4 0 010 8H9a3 3 0 000 6h9"/><circle cx="6" cy="6" r="3" fill="currentColor" opacity=".16"/><circle cx="18" cy="20" r="3" fill="currentColor" opacity=".16"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="20" r="3"/></>,
+    users: <><path d="M9 11a4 4 0 100-8 4 4 0 000 8zM17 10a3 3 0 100-6 3 3 0 000 6z" fill="currentColor" opacity=".14" stroke="none"/><circle cx="9" cy="7" r="4"/><path d="M2.5 21a6.5 6.5 0 0113 0"/><path d="M15 11a5.5 5.5 0 016.5 5.4V21"/><circle cx="17" cy="7" r="3"/></>,
+    legalShield: <><path d="M12 2l9 4v6c0 5-3.5 9.7-9 10-5.5-.3-9-5-9-10V6z" fill="currentColor" opacity=".14" stroke="none"/><path d="M12 2l9 4v6c0 5-3.5 9.7-9 10-5.5-.3-9-5-9-10V6z"/><path d="M8 12l3 3 6-6"/></>,
+    paymentCard: <><rect x="3" y="5" width="18" height="14" rx="2" fill="currentColor" opacity=".14" stroke="none"/><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M8 15h3M15 15h2"/></>,
     grid: <><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></>,
     box: <><path d="M2 9l10-6 10 6-10 6z"/><path d="M2 9v6l10 6 10-6V9"/></>,
     list: <><path d="M3 6h18M3 12h18M3 18h12"/></>,

@@ -193,7 +193,7 @@ function PipelineFilter({ stage, onStage, counts, advanced, onAdvanced }) {
       <FilterChip label="All"       count={counts.all}       active={stage === 'all'}       onClick={() => onStage('all')}/>
       <FilterChip label="Draft"     count={counts.draft}     active={stage === 'draft'}     onClick={() => onStage('draft')}     color={STAGES.draft.color}/>
       <FilterChip label="Shortlist" count={counts.shortlist} active={stage === 'shortlist'} onClick={() => onStage('shortlist')} color={STAGES.shortlist.color}/>
-      <FilterChip label="Staging"   count={counts.staging}   active={stage === 'staging'}   onClick={() => onStage('staging')}   color={STAGES.staging.color}/>
+      <FilterChip label="Sites in process" count={counts.staging} active={stage === 'staging'} onClick={() => onStage('staging')} color={STAGES.staging.color}/>
       <span style={{ flex: 1 }}/>
       {active && (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 10px', borderRadius: 999, background: 'var(--zm-accent-soft)', color: 'var(--zm-accent)', fontFamily: 'var(--zm-font-mono)', fontSize: 11, fontWeight: 600 }}><Icon name="calendar" size={11}/> {summary}<button onClick={() => onAdvanced({ month: '', preset: '', from: '', to: '' })} style={{ background: 'transparent', border: 'none', color: 'inherit', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', marginLeft: 4, opacity: 0.7 }}><Icon name="x" size={11}/></button></span>)}
       <div ref={popRef} style={{ position: 'relative' }}>
@@ -293,8 +293,8 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
       <PageHeader
         file="№ 01" eyebrow="Overview" title="Sites"
         lede={role === 'supervisor'
-          ? `Synced 2 min ago — all sites in your tenant. ${totalMotion} files across draft, shortlist and staging.`
-          : `Synced 2 min ago — your sites, ${ME}. ${totalMotion} files across draft, shortlist and staging.`}
+          ? `Synced 2 min ago — all sites in your tenant. ${totalMotion} files across draft, shortlist and sites in process.`
+          : `Synced 2 min ago — your sites, ${ME}. ${totalMotion} files across draft, shortlist and sites in process.`}
         right={<>
           <HeaderTag icon="clock" label="LIVE · 2M LAG"/>
           <HeaderTag icon="shield" label={role === 'supervisor' ? 'TENANT SCOPE' : 'PERSONAL SCOPE'} tone="accent"/>

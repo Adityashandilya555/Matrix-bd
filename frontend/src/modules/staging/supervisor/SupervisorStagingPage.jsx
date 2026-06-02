@@ -113,7 +113,7 @@ export default function SupervisorStagingPage({ onOpenSite: onOpenSiteProp, show
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader file="№ 04" eyebrow="Workflow · Staging" title={<>LOIs <em>awaiting</em> legal</>}
+      <PageHeader file="№ 04" eyebrow="Workflow · Sites in process" title={<>LOIs <em>awaiting</em> legal</>}
         lede={`${visibleStaging.length} site${visibleStaging.length === 1 ? '' : 's'} with uploaded LOI — review the draft → LOI timeline and send clear sites into Legal review.`}
         right={<HeaderTag icon="check" label="ON TRACK"/>}
       />

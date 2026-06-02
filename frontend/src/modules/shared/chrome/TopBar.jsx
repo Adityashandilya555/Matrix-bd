@@ -4,7 +4,7 @@ import Avatar from '../primitives/Avatar.jsx';
 import { useSession } from '../../../state/SessionContext.jsx';
 
 // Render body preserved exactly from Chrome.jsx TopBar component.
-export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, onSearch }) {
+export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, onSearch, sidebarCollapsed = false, onToggleSidebar }) {
   const { signOut, session } = useSession();
   // BD-only action — legal and payment supervisors don't open pipeline drafts.
   const showNewPipeline = session?.module !== 'legal' && session?.module !== 'payment';
@@ -36,12 +36,15 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
       flex: '0 0 auto',
     }}>
       <div className="zm-brand-plate" style={{
-        width: 232, flex: '0 0 232px',
-        display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px',
+        width: sidebarCollapsed ? 72 : 232, flex: `0 0 ${sidebarCollapsed ? 72 : 232}px`,
+        display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+        gap: 10, padding: sidebarCollapsed ? '0 10px' : '0 12px',
         color: '#F5F2EC',
         borderRight: '1px solid var(--zm-line)',
+        position: 'relative',
+        transition: 'width 220ms var(--zm-ease), flex-basis 220ms var(--zm-ease), padding 220ms var(--zm-ease)',
       }}>
-        <svg className="zm-brand-cube" width="34" height="34" viewBox="0 0 64 64" fill="none" style={{ display: 'block', flex: '0 0 auto', position: 'relative', zIndex: 1 }}>
+        <svg className="zm-brand-cube" width={sidebarCollapsed ? 30 : 34} height={sidebarCollapsed ? 30 : 34} viewBox="0 0 64 64" fill="none" style={{ display: 'block', flex: '0 0 auto', position: 'relative', zIndex: 1 }}>
           <g stroke="#7AE7DA" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.55">
             <path d="M22 10 L58 10 L58 46 L22 46 Z"/>
             <path d="M6 22 L22 10"/><path d="M42 22 L58 10"/>
@@ -56,6 +59,7 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
           fontFamily: 'var(--zm-font-serif)', fontStyle: 'italic', fontWeight: 400,
           fontSize: 30, color: '#F5F2EC', letterSpacing: '-0.012em', lineHeight: 1,
           whiteSpace: 'nowrap', position: 'relative', zIndex: 1,
+          display: sidebarCollapsed ? 'none' : 'inline',
           textShadow: '0 1px 0 rgba(0,0,0,0.35), 0 0 24px rgba(122,231,218,0.15)',
         }}>z‑matrix</span>
         <span style={{
@@ -64,6 +68,37 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
           background: '#E0A659', boxShadow: '0 0 8px rgba(224,166,89,0.7)',
           zIndex: 1,
         }}/>
+        {onToggleSidebar && (
+          <button
+            type="button"
+            className="zm-sidebar-toggle"
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            onClick={onToggleSidebar}
+            style={{
+              position: 'absolute',
+              right: sidebarCollapsed ? -12 : 8,
+              bottom: 12,
+              width: 24,
+              height: 24,
+              borderRadius: 8,
+              border: '1px solid rgba(245,242,236,0.28)',
+              background: 'rgba(9, 20, 20, 0.62)',
+              color: '#F5F2EC',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              zIndex: 3,
+              boxShadow: '0 8px 18px rgba(0,0,0,0.18)',
+              transition: 'right 220ms var(--zm-ease), transform 160ms var(--zm-ease), background 160ms var(--zm-ease)',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(9, 20, 20, 0.78)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(9, 20, 20, 0.62)'; }}
+          >
+            <Icon name="chevron" size={14} style={{ transform: sidebarCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}/>
+          </button>
+        )}
       </div>
 
       <div style={{

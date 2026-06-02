@@ -23,6 +23,7 @@ export const ROUTES = {
   LOI_TIMELINE:           '/shortlist/:code/timeline',
   SITE_TRACKER:           '/staging-flow',
   SITE_TRACKER_DETAIL:    '/staging-flow/:siteId',
+  DASHBOARD_MINIMAL_PREVIEW: '/dashboard-minimal-preview',
 };
 
 export function siteRoute(id) {

@@ -110,7 +110,7 @@ export default function ExecStagingPage({ onOpenSite: onOpenSiteProp, showToast:
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader file="№ 04" eyebrow="Workflow · Staging" title={<>Sites <em>awaiting</em> LOI</>}
+      <PageHeader file="№ 04" eyebrow="Workflow · Sites in process" title={<>Sites <em>awaiting</em> LOI</>}
         lede={`${visibleStaging.length} of your own approved site${visibleStaging.length === 1 ? '' : 's'} — ${overdueCount} overdue against expected timeline.`}
         right={overdueCount > 0 ? <HeaderTag icon="alert" label={`${overdueCount} OVERDUE`} tone="accent"/> : <HeaderTag icon="check" label="ON TRACK"/>}
       />
