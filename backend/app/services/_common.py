@@ -88,6 +88,7 @@ def _int_or_none(value) -> int | None:
 def site_to_response(
     site: models.Site,
     created_by_name: str | None = None,
+    assigned_to_name: str | None = None,
     details: models.SiteDetail | None = None,
 ) -> SiteResponse:
     """Map an ORM Site into the API SiteResponse Pydantic model."""
@@ -103,6 +104,8 @@ def site_to_response(
         status=SiteStatus(site.status),
         created_by=created_by_name or "",
         submitted_by=str(site.submitted_by),
+        assigned_to=str(site.assigned_to) if site.assigned_to else None,
+        assigned_to_name=assigned_to_name,
         supervisor_id=str(site.supervisor_id) if site.supervisor_id else None,
         visit_date=site.visit_date,
         days=_days_since(site.visit_date),

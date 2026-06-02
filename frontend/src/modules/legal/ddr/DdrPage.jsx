@@ -64,6 +64,58 @@ function otherRowsFromDd(dd) {
     .filter(Boolean);
 }
 
+function DdrVerdictOverrideModal({ issueCount, onPositive, onNegative, onCancel, busy }) {
+  const [reason, setReason] = React.useState('');
+  const [error, setError] = React.useState('');
+
+  const submitNegative = () => {
+    const trimmed = reason.trim();
+    if (!trimmed) {
+      setError('Enter the rejection reason before finalising as negative.');
+      return;
+    }
+    onNegative(trimmed);
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)', zIndex: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: 560, maxWidth: '94%', padding: 26, borderRadius: 14, background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', boxShadow: 'var(--zm-shadow-pop)', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-warning)' }}>
+            DDR contains {issueCount} No item{issueCount === 1 ? '' : 's'}
+          </span>
+          <h2 style={{ margin: '6px 0 8px', fontFamily: 'var(--zm-font-display)', fontSize: 22, fontWeight: 750, letterSpacing: '-0.02em', color: 'var(--zm-fg)' }}>
+            Do you want to finalise DDR as positive?
+          </h2>
+          <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 13.5, color: 'var(--zm-fg-3)', lineHeight: 1.55 }}>
+            Choose positive only if Legal has accepted the open observations and the Agreement/Licensing process should continue. The override will be recorded in the activity trail.
+          </p>
+        </div>
+
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
+            Rejection reason if finalising negative
+          </span>
+          <textarea
+            value={reason}
+            onChange={(e) => { setReason(e.target.value); setError(''); }}
+            disabled={busy}
+            placeholder="Example: Fire NOC not available from landlord."
+            style={{ minHeight: 86, resize: 'vertical', padding: 12, borderRadius: 9, border: '1px solid var(--zm-line)', background: 'var(--zm-bg)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13.5, outline: 'none' }}
+          />
+          {error && <span style={{ color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12 }}>{error}</span>}
+        </label>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={onCancel} disabled={busy} className="zm-btn" style={{ height: 36, padding: '0 15px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 650, cursor: busy ? 'wait' : 'pointer' }}>Cancel</button>
+          <button onClick={submitNegative} disabled={busy} className="zm-btn" style={{ height: 36, padding: '0 15px', borderRadius: 8, border: '1px solid rgba(185,28,28,0.28)', background: 'rgba(185,28,28,0.08)', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 750, cursor: busy ? 'wait' : 'pointer' }}>No, finalise negative</button>
+          <button onClick={onPositive} disabled={busy} className="zm-btn-primary" style={{ height: 36, padding: '0 15px', borderRadius: 8, border: 'none', background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 750, cursor: busy ? 'wait' : 'pointer', boxShadow: 'var(--zm-shadow-1)' }}>Yes, finalise positive</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DdrPage() {
   const { siteId } = useParams();
   const navigate = useNavigate();
@@ -79,6 +131,7 @@ export default function DdrPage() {
   const [saving, setSaving] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [submittingForReview, setSubmittingForReview] = React.useState(false);
+  const [overrideSnapshot, setOverrideSnapshot] = React.useState(null);
 
   // Delegations: supervisor-only "Delegate to executive" UI; also drives the
   // executive's licensing CTA unlock once DD is published positive.
@@ -304,35 +357,49 @@ export default function DdrPage() {
     }
   };
 
-  const handleSubmit = async (snapshot) => {
-    if (snapshot.issueCount > 0) {
-      const reason = window.prompt('At least one item is marked No. Enter the rejection reason to finalise as NEGATIVE:');
-      if (!reason) return;
-      try {
-        setSubmitting(true);
-        await saveDdItems(siteId, buildPayload(snapshot));
-        const next = await finalizeDd(siteId, { finalVerdict: 'negative', rejectionReason: reason });
-        setReview(next);
-        showToast?.('DDR finalised as negative. BD notified.', 'danger');
-      } catch (err) {
-        showToast?.(err?.detail || err?.message || 'Finalise failed', 'danger');
-      } finally {
-        setSubmitting(false);
-      }
-      return;
-    }
+  const finalizePositive = async (snapshot, overrideReason = null) => {
     try {
       setSubmitting(true);
       await saveDdItems(siteId, buildPayload(snapshot));
-      const next = await finalizeDd(siteId, { finalVerdict: 'positive' });
+      const next = await finalizeDd(siteId, {
+        finalVerdict: 'positive',
+        overrideReason,
+      });
       setReview(next);
-      showToast?.('DDR finalised as positive.', 'success');
+      setOverrideSnapshot(null);
+      showToast?.(
+        overrideReason ? 'DDR finalised as positive with supervisor override.' : 'DDR finalised as positive.',
+        'success',
+      );
       navigate(legalSiteAgreementRoute(siteId));
     } catch (err) {
       showToast?.(err?.detail || err?.message || 'Finalise failed', 'danger');
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const finalizeNegative = async (snapshot, reason) => {
+    try {
+      setSubmitting(true);
+      await saveDdItems(siteId, buildPayload(snapshot));
+      const next = await finalizeDd(siteId, { finalVerdict: 'negative', rejectionReason: reason });
+      setReview(next);
+      setOverrideSnapshot(null);
+      showToast?.('DDR finalised as negative. BD notified.', 'danger');
+    } catch (err) {
+      showToast?.(err?.detail || err?.message || 'Finalise failed', 'danger');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSubmit = async (snapshot) => {
+    if (snapshot.issueCount > 0) {
+      setOverrideSnapshot(snapshot);
+      return;
+    }
+    await finalizePositive(snapshot);
   };
 
   const site = {
@@ -613,7 +680,7 @@ export default function DdrPage() {
       header={{
         file: 'No. 05',
         eyebrow: 'Legal module · DDR',
-        title: <>Due diligence <em>review</em></>,
+        title: <>Due diligence review</>,
         lede: 'Mark each due-diligence check as Yes or No before the legal supervisor confirms the site verdict.',
         tagIcon: 'shield',
       }}
@@ -648,6 +715,18 @@ export default function DdrPage() {
             : `DDR is ${stage.replace('_', ' ')} and cannot be edited by this role.`
       }
     />
+    {overrideSnapshot && (
+      <DdrVerdictOverrideModal
+        issueCount={overrideSnapshot.issueCount}
+        busy={submitting}
+        onCancel={() => setOverrideSnapshot(null)}
+        onPositive={() => finalizePositive(
+          overrideSnapshot,
+          `Supervisor override: ${overrideSnapshot.issueCount} DDR item${overrideSnapshot.issueCount === 1 ? '' : 's'} marked No but finalised as positive.`,
+        )}
+        onNegative={(reason) => finalizeNegative(overrideSnapshot, reason)}
+      />
+    )}
     </>
   );
 }

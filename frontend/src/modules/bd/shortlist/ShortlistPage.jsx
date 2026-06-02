@@ -179,16 +179,109 @@ function DelegationModal({ site, onClose, onChanged, showToast }) {
   );
 }
 
+function AssignDetailsModal({ site, currentUserId, onClose, onAssigned, showToast }) {
+  const [loading, setLoading] = React.useState(true);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState(null);
+  const [candidates, setCandidates] = React.useState([]);
+  const [pickedUserId, setPickedUserId] = React.useState(site.assignedToId || site.assignedTo?.id || '');
+  const assignedName = site.assignedToName || site.assignedTo?.name || '';
+
+  React.useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    siteService.listUsers()
+      .then((users) => {
+        if (!alive) return;
+        setCandidates(users.filter((u) => u.role === 'executive' && String(u.id) !== String(currentUserId || '')));
+        setError(null);
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setError(err?.message || 'Failed to load executives');
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => { alive = false; };
+  }, [currentUserId]);
+
+  const assign = async () => {
+    if (!pickedUserId || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await siteService.assignSite(site.id, pickedUserId);
+      const exec = candidates.find((u) => String(u.id) === String(pickedUserId));
+      showToast?.(`Delegated · ${site.name} assigned to ${exec?.name || 'executive'}.`, 'success');
+      await onAssigned?.();
+      onClose?.();
+    } catch (err) {
+      const message = err?.detail || err?.message || 'Could not assign executive';
+      setError(message);
+      showToast?.(message, 'danger');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)', zIndex: 112, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 14, width: 520, maxWidth: '94%', padding: 26, boxShadow: 'var(--zm-shadow-pop)', display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-accent)' }}>Delegate for details · {site.code}</span>
+            <h2 style={{ margin: '4px 0 6px', fontFamily: 'var(--zm-font-display)', fontWeight: 750, fontSize: 21, letterSpacing: '-0.02em', color: 'var(--zm-fg)' }}>Choose the executive who will fill Add Details</h2>
+            <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>
+              The site stays in Shortlisted sites. The assigned executive completes the details form, then sends it back for your approval.
+            </p>
+          </div>
+          <button onClick={onClose} disabled={busy} className="zm-icon-btn" style={{ background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)', borderRadius: 8, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--zm-fg-2)', cursor: busy ? 'wait' : 'pointer' }}><Icon name="x" size={14}/></button>
+        </div>
+
+        {assignedName && (
+          <div style={{ padding: '10px 12px', borderRadius: 9, background: 'var(--zm-accent-soft)', border: '1px solid var(--zm-accent-line)', color: 'var(--zm-accent)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 650 }}>
+            Currently assigned to {assignedName}
+          </div>
+        )}
+
+        {error && <div style={{ padding: '9px 12px', borderRadius: 9, background: 'rgba(185,28,28,0.08)', border: '1px solid rgba(185,28,28,0.28)', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5 }}>{error}</div>}
+
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 750, fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>Executive</span>
+          <select value={pickedUserId} onChange={(e) => setPickedUserId(e.target.value)} disabled={busy || loading} style={{ height: 42, padding: '0 12px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-bg)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13.5, outline: 'none' }}>
+            <option value="">{loading ? 'Loading executives...' : 'Pick an executive...'}</option>
+            {candidates.map((u) => (
+              <option key={u.id} value={u.id}>{u.name} · {u.email}{u.assignedCity ? ` · ${u.assignedCity}` : ''}</option>
+            ))}
+          </select>
+        </label>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button onClick={onClose} disabled={busy} className="zm-btn" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: busy ? 'var(--zm-fg-4)' : 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 650, cursor: busy ? 'wait' : 'pointer' }}>Cancel</button>
+          <button onClick={assign} disabled={!pickedUserId || busy} className="zm-btn-primary" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: pickedUserId && !busy ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: pickedUserId && !busy ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 750, cursor: pickedUserId && !busy ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+            <Icon name="user" size={13}/>{busy ? 'Delegating...' : 'Delegate for details'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ShortlistCard({ item, role, currentUserId, onView, onAddDetails, onApprove, onDelegate }) {
   const supervisor = role === 'supervisor';
-  const supervisorAutoShortlist =
+  const assignedToId = item.assignedToId || item.assignedTo?.id || '';
+  const assignedToName = item.assignedToName || item.assignedTo?.name || '';
+  const supervisorCreatedShortlist =
     supervisor &&
     item.status === 'shortlisted' &&
     item.submittedBy &&
     item.supervisorId &&
     String(item.submittedBy) === String(currentUserId) &&
     String(item.supervisorId) === String(currentUserId);
-  const reviewable = item.inReview === true || supervisorAutoShortlist;
+  const needsAssignment = supervisorCreatedShortlist && !assignedToId;
+  const waitingForAssignedDetails = supervisorCreatedShortlist && !!assignedToId && !item.inReview;
+  const reviewable = item.inReview === true;
   const hasDraft = !!item.details && !reviewable;
   return (
     <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, boxShadow: 'var(--zm-shadow-1)' }}>
@@ -219,8 +312,17 @@ function ShortlistCard({ item, role, currentUserId, onView, onAddDetails, onAppr
         <span style={{ flex: 1 }}/>
         {supervisor ? (
           <>
-            <button onClick={() => onDelegate(item)} className="zm-btn" title="Let an executive act on this site" style={{ height: 34, padding: '0 12px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="user" size={13}/> Delegate</button>
-            <button onClick={() => onApprove(item)} disabled={!reviewable} className="zm-btn-primary" title={!reviewable ? 'BD exec must Send for review before approving' : supervisorAutoShortlist ? 'Supervisor-created site can be approved directly' : 'Approve and advance to Sites in process'} style={{ height: 34, padding: '0 14px', border: 'none', borderRadius: 7, background: reviewable ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: reviewable ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: reviewable ? 'pointer' : 'not-allowed', boxShadow: reviewable ? 'var(--zm-shadow-1)' : 'none', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="check" size={13}/> Approve shortlist</button>
+            {(needsAssignment || waitingForAssignedDetails) && (
+              <button onClick={() => onDelegate(item)} className="zm-btn-primary" title={needsAssignment ? 'Assign this site to a BD executive for Add Details' : 'Change the assigned executive'} style={{ height: 34, padding: '0 13px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', boxShadow: 'var(--zm-shadow-1)', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="user" size={13}/> {needsAssignment ? 'Delegate for details' : 'Reassign'}</button>
+            )}
+            {waitingForAssignedDetails && (
+              <span style={{ padding: '6px 10px', borderRadius: 7, background: 'var(--zm-accent-soft)', border: '1px solid var(--zm-accent-line)', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-accent)', fontWeight: 650, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Icon name="clock" size={12}/> Awaiting details{assignedToName ? ` · ${assignedToName}` : ''}
+              </span>
+            )}
+            {!needsAssignment && !waitingForAssignedDetails && (
+              <button onClick={() => onApprove(item)} disabled={!reviewable} className="zm-btn-primary" title={!reviewable ? 'BD exec must Send for review before approving' : 'Approve and advance to Sites in process'} style={{ height: 34, padding: '0 14px', border: 'none', borderRadius: 7, background: reviewable ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: reviewable ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: reviewable ? 'pointer' : 'not-allowed', boxShadow: reviewable ? 'var(--zm-shadow-1)' : 'none', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="check" size={13}/> Approve shortlist</button>
+            )}
           </>
         ) : reviewable ? (
           <span style={{ padding: '6px 10px', borderRadius: 7, background: 'var(--zm-accent-soft)', border: '1px solid var(--zm-accent-line)', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-accent)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="clock" size={12}/> Awaiting supervisor approval</span>
@@ -237,7 +339,7 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
   const onOpenSite = onOpenSiteProp || ctx.onOpenSite;
   const showToast = showToastProp || ctx.showToast;
   const { role, user, session } = useSession();
-  const { shortlist, saveDraftDetails, submitDetailsForReview, approveShortlistToStaging } = useSites();
+  const { shortlist, saveDraftDetails, submitDetailsForReview, approveShortlistToStaging, refresh } = useSites();
   const [approving, setApproving] = React.useState(null);
   const [detailing, setDetailing] = React.useState(null);
   const [detailSaving, setDetailSaving] = React.useState(false);
@@ -248,7 +350,16 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
   const currentUserId = session?.userId || session?.id || session?.sub || user?.id || null;
   // RBAC: isExec = cannot approve shortlist (only supervisor can; executives need a delegation)
   const isExec = !can(role, 'shortlist');
-  const visibleShortlist = isExec ? shortlist.filter(s => s.createdBy === ME) : shortlist;
+  const visibleShortlist = isExec
+    ? shortlist.filter((s) => {
+        const assignedToId = s.assignedToId || s.assignedTo?.id || '';
+        return (
+          String(s.submittedBy || '') === String(currentUserId || '') ||
+          String(assignedToId || '') === String(currentUserId || '') ||
+          s.createdBy === ME
+        );
+      })
+    : shortlist;
 
   const onApprove = (item) => setApproving(item);
   const onTimelineSubmit = async (item, days) => {
@@ -312,7 +423,15 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
       )}
       {approving && <LOITimelineModal site={approving} onCancel={() => setApproving(null)} onSubmit={onTimelineSubmit}/>}
       {detailing && <AddDetailsPage key={detailing.id} item={detailing} onClose={() => { if (!detailSaving) setDetailing(null); }} onSubmit={(formData) => onDetailsSubmit(detailing, formData)} onSaveDraft={(formData) => onDetailsSaveDraft(detailing, formData)} savingDraft={detailSaving} saveError={detailError}/>}
-      {delegating && <DelegationModal site={delegating} onClose={() => setDelegating(null)} showToast={showToast}/>}
+      {delegating && (
+        <AssignDetailsModal
+          site={delegating}
+          currentUserId={currentUserId}
+          onClose={() => setDelegating(null)}
+          onAssigned={refresh}
+          showToast={showToast}
+        />
+      )}
     </div>
   );
 }

@@ -56,6 +56,7 @@ class SaveDueDiligenceRequest(BaseModel):
     """
     final_verdict: Literal["positive", "negative"]
     rejection_reason: Optional[str] = None
+    override_reason: Optional[str] = None
 
     @field_validator("rejection_reason")
     @classmethod

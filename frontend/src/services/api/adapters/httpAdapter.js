@@ -43,7 +43,15 @@ client.interceptors.response.use(
       throw new ApiError({ status: 0, code: 'TIMEOUT', detail: 'Request timed out', cause: err });
     }
     const status = err.response?.status ?? 0;
-    const detail = err.response?.data?.detail || err.message || 'Request failed';
+    const rawDetail = err.response?.data?.detail;
+    const parsedDetail = Array.isArray(rawDetail)
+      ? rawDetail.map((item) => item?.msg || item?.message || JSON.stringify(item)).join('; ')
+      : rawDetail && typeof rawDetail === 'object'
+        ? rawDetail.message || rawDetail.detail || JSON.stringify(rawDetail)
+        : rawDetail || err.message || 'Request failed';
+    const detail = status === 0 && parsedDetail === 'Network Error'
+      ? `Network Error contacting API at ${BASE_URL}. Check backend deployment, CORS, and database migration status.`
+      : parsedDetail;
     // Session expiry — drop the local token so the UI can route to login.
     if (status === 401) clearAuthToken();
     throw new ApiError({ status, detail, code: err.response?.data?.code, cause: err });
@@ -125,6 +133,9 @@ function siteFromServer(s) {
     status: s.status,
     createdBy: { id: s.submitted_by, name: s.created_by },
     submittedBy: s.submitted_by,
+    assignedTo: s.assigned_to
+      ? { id: s.assigned_to, name: s.assigned_to_name || s.assigned_to }
+      : null,
     supervisorId: s.supervisor_id,
     visitDate: s.visit_date,
     days: s.days,
