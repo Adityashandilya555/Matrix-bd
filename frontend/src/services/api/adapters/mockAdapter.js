@@ -41,13 +41,15 @@ export async function createSite(payload) {
   maybeFail();
   const id = 'site_' + Math.random().toString(36).slice(2, 10);
   const cityCode = (payload.city || 'UNK').slice(0, 3).toUpperCase();
+  const isSupervisor = payload.role === 'supervisor' || payload.createdBy?.role === 'supervisor';
+  const initialStatus = isSupervisor ? SiteStatus.SHORTLISTED : SiteStatus.DRAFT_SUBMITTED;
   const site = {
     id,
     code: 'BT-' + cityCode + '-' + Math.floor(Math.random() * 900 + 100),
     name: payload.name,
     city: payload.city,
     tenantId: payload.tenantId || 'bt-tenant-001',
-    status: SiteStatus.DRAFT_SUBMITTED,
+    status: initialStatus,
     createdBy: payload.createdBy,
     assignedTo: null,
     visitDate: payload.visitDate,
@@ -61,13 +63,19 @@ export async function createSite(payload) {
     auditTrail: [
       { id: 'a_' + Math.random().toString(36).slice(2, 8), action: 'create_draft',
         actor: payload.createdBy?.name || 'unknown',
-        toStatus: SiteStatus.DRAFT_SUBMITTED, createdAt: new Date().toISOString() },
+        toStatus: initialStatus,
+        detail: isSupervisor ? 'supervisor auto-promote' : null,
+        createdAt: new Date().toISOString() },
     ],
     // Pipeline-stage fields — also rendered into the shortlist edit form.
     model: payload.model ?? '',
     googlePin: payload.googlePin ?? '',
+    googleMapsUrl: payload.googleMapsUrl ?? '',
     rentType: payload.rentType ?? '',
     expectedRent: payload.expectedRent ?? null,
+    expectedEscalationPct: payload.expectedEscalationPct ?? null,
+    expectedEscalationYears: payload.expectedEscalationYears ?? null,
+    expectedRevsharePct: payload.expectedRevsharePct ?? null,
     score: '', estSales: '', carpet: '', rent: payload.expectedRent ?? '', totalOpCost: 0,
     hue: Math.round(Math.random() * 360),
   };
@@ -423,26 +431,30 @@ export async function saveFinanceDraft(siteId, { kycVerified, caCode, financeAmo
   };
 }
 
-export async function requestFinanceApproval(siteId) {
+export async function requestFinanceApproval(siteId, { kycVerified, caCode, financeAmount } = {}) {
   await delay(200, 400);
   const site = getSiteById(siteId);
   if (!site) throw new Error(`Site not found: ${siteId}`);
-  if (!site.kycVerified) {
+  const draft = { ...site };
+  if (kycVerified !== undefined) draft.kycVerified = kycVerified;
+  if (caCode !== undefined) draft.caCode = caCode || null;
+  if (financeAmount !== undefined) draft.financeAmount = financeAmount;
+  if (!draft.kycVerified) {
     const err = new Error('KYC must be verified before requesting approval.');
     err.status = 422;
     throw err;
   }
-  if (!site.caCode) {
+  if (!draft.caCode) {
     const err = new Error('CA code must be entered before requesting approval.');
     err.status = 422;
     throw err;
   }
-  if (site.financeAmount == null) {
+  if (draft.financeAmount == null) {
     const err = new Error('Amount must be entered before requesting approval.');
     err.status = 422;
     throw err;
   }
-  const updated = { ...site, financeStatus: 'awaiting_supervisor' };
+  const updated = { ...draft, financeStatus: 'awaiting_supervisor' };
   upsertSite(updated);
   return {
     kyc_verified:   updated.kycVerified ?? false,

@@ -15,6 +15,7 @@
 import axios from 'axios';
 import { getAuthToken, clearAuthToken } from './authToken.js';
 import { ApiError } from './adapters/httpAdapter.js';
+import { notifySiteDataChanged } from './siteEvents.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
 const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
@@ -122,6 +123,7 @@ export async function getLegalReview(siteId) {
 // Step 1 — supervisor OR executive may save individual DD items.
 export async function saveDdItems(siteId, body) {
   const data = await client.post(`/legal/${siteId}/dd/items`, body).then((r) => r.data);
+  notifySiteDataChanged({ source: 'legalApi', action: 'save_dd', siteId });
   return reviewFromServer(data);
 }
 
@@ -130,6 +132,7 @@ export async function finalizeDd(siteId, { finalVerdict, rejectionReason }) {
   const body = { final_verdict: finalVerdict };
   if (rejectionReason) body.rejection_reason = rejectionReason;
   const data = await client.post(`/legal/${siteId}/dd/finalize`, body).then((r) => r.data);
+  notifySiteDataChanged({ source: 'legalApi', action: 'finalize_dd', siteId });
   return reviewFromServer(data);
 }
 
@@ -138,6 +141,7 @@ export async function saveAgreement(siteId, { signed, registered, documentUrl })
   const body = { signed: !!signed, registered: !!registered };
   if (documentUrl) body.document_url = documentUrl;
   const data = await client.post(`/legal/${siteId}/agreement`, body).then((r) => r.data);
+  notifySiteDataChanged({ source: 'legalApi', action: 'save_agreement', siteId });
   return reviewFromServer(data);
 }
 
@@ -145,6 +149,7 @@ export async function saveAgreement(siteId, { signed, registered, documentUrl })
 // licensing and auto-transition the site to LEGAL_APPROVED.
 export async function saveLicensing(siteId, items) {
   const data = await client.post(`/legal/${siteId}/licensing`, items).then((r) => r.data);
+  notifySiteDataChanged({ source: 'legalApi', action: 'save_licensing', siteId });
   return reviewFromServer(data);
 }
 
@@ -152,11 +157,13 @@ export async function saveLicensing(siteId, items) {
 // stage from 'draft' → 'pending_review'. Returns the refreshed review.
 export async function submitDdForReview(siteId) {
   const data = await client.post(`/legal/${siteId}/dd/submit-for-review`).then((r) => r.data);
+  notifySiteDataChanged({ source: 'legalApi', action: 'submit_dd_review', siteId });
   return reviewFromServer(data);
 }
 
 // Stage submit — same shape for the licensing row.
 export async function submitLicensingForReview(siteId) {
   const data = await client.post(`/legal/${siteId}/licensing/submit-for-review`).then((r) => r.data);
+  notifySiteDataChanged({ source: 'legalApi', action: 'submit_licensing_review', siteId });
   return reviewFromServer(data);
 }

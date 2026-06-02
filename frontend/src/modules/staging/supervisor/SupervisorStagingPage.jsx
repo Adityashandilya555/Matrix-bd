@@ -107,7 +107,14 @@ export default function SupervisorStagingPage({ onOpenSite: onOpenSiteProp, show
   const visibleStaging = staging.filter(s => s.loiUploaded === true);
   const filtered = applyStagingFilters(visibleStaging, filters);
 
-  const onPush = (site) => { pushSite(site); showToast?.(`Sent · ${site.name} moved to Legal review.`); };
+  const onPush = async (site) => {
+    try {
+      await pushSite(site);
+      showToast?.(`Sent · ${site.name} moved to Legal review.`);
+    } catch (err) {
+      showToast?.(`Send failed: ${err?.detail || err?.message || 'Unknown error'}`, 'danger');
+    }
+  };
   const onViewLOI = (site) => { showToast?.(`Opening LOI · ${site.name} (mock).`); };
   const onViewStatus = (site) => { navigate(bdSiteStatusRoute(site.id)); };
 

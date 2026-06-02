@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { SiteStatus, legacyStageFor } from '../lib/stateMachine.js';
 import * as siteService from '../services/api/siteService.js';
 import { useSession } from './SessionContext.jsx';
+import { notifySiteDataChanged, subscribeSiteDataChanged } from '../services/api/siteEvents.js';
 
 // ============================================================
 // SitesContext — unified site store.
@@ -124,7 +125,7 @@ export function SitesProvider({ children }) {
   const [sites, setSites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const { user, session } = useSession();
+  const { user, session, role } = useSession();
 
   // Initial load from service
   useEffect(() => {
@@ -138,6 +139,28 @@ export function SitesProvider({ children }) {
     const data = await siteService.listSites();
     setSites(data);
   }, []);
+
+  const refreshAndBroadcast = useCallback(async (action) => {
+    await refresh();
+    notifySiteDataChanged({ source: 'SitesContext', action });
+  }, [refresh]);
+
+  useEffect(() => {
+    const run = () => refresh().catch(err => setError(err.message));
+    const unsubscribe = subscribeSiteDataChanged((detail) => {
+      if (detail?.source !== 'SitesContext') run();
+    });
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') run();
+    };
+    window.addEventListener('focus', run);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', run);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [refresh]);
 
   // ---- Derived selectors (memoized) ----
   // These preserve the exact property names that render bodies destructure.
@@ -177,13 +200,13 @@ export function SitesProvider({ children }) {
 
   const moveDraftToShortlist = useCallback(async (draft) => {
     await siteService.shortlistSite(draft.id, 'supervisor');
-    await refresh();
-  }, [refresh]);
+    await refreshAndBroadcast('shortlist');
+  }, [refreshAndBroadcast]);
 
   const rejectDraft = useCallback(async (draft, reasons, comment) => {
     await siteService.rejectSite(draft.id, reasons, comment, 'supervisor');
-    await refresh();
-  }, [refresh]);
+    await refreshAndBroadcast('reject');
+  }, [refreshAndBroadcast]);
 
   const archiveDraft = useCallback(async (draft, note) => {
     // Note is mandatory at the backend (see svc_archive_site). We don't paper
@@ -193,30 +216,30 @@ export function SitesProvider({ children }) {
       throw new Error('A reason is required to archive a site.');
     }
     await siteService.archiveSite(draft.id, String(note).trim(), 'supervisor');
-    await refresh();
-  }, [refresh]);
+    await refreshAndBroadcast('archive');
+  }, [refreshAndBroadcast]);
 
   const reviveSite = useCallback(async (site, note) => {
     // Supervisor-only path on the backend; revives an archived site back to
     // the stage it was at when archived (see backend.bd_service.svc_revive_site).
     await siteService.reviveSite(site.id, note);
-    await refresh();
-  }, [refresh]);
+    await refreshAndBroadcast('revive');
+  }, [refreshAndBroadcast]);
 
   const saveDraftDetails = useCallback(async (item, formData) => {
     await siteService.saveDraftDetails(item.id, formData);
-    await refresh();
-  }, [refresh]);
+    await refreshAndBroadcast('save_details');
+  }, [refreshAndBroadcast]);
 
   const submitDetailsForReview = useCallback(async (item, formData) => {
     await siteService.submitDetails(item.id, formData, 'exec');
-    await refresh();
-  }, [refresh]);
+    await refreshAndBroadcast('submit_details');
+  }, [refreshAndBroadcast]);
 
   const approveShortlistToStaging = useCallback(async (item, days) => {
     await siteService.approveSite(item.id, days, 'supervisor');
-    await refresh();
-  }, [refresh]);
+    await refreshAndBroadcast('approve_shortlist');
+  }, [refreshAndBroadcast]);
 
   const uploadLOI = useCallback(async (site, file) => {
     const blobUrl = file ? URL.createObjectURL(file) : null;
@@ -225,14 +248,15 @@ export function SitesProvider({ children }) {
       size: file?.size,
       type: file?.type,
       blobUrl,
+      raw: file,
     }, site.createdBy);
-    await refresh();
-  }, [refresh]);
+    await refreshAndBroadcast('upload_loi');
+  }, [refreshAndBroadcast]);
 
   const pushSite = useCallback(async (site) => {
     await siteService.pushToPayments(site.id, 'supervisor');
-    await refresh();
-  }, [refresh]);
+    await refreshAndBroadcast('send_to_legal');
+  }, [refreshAndBroadcast]);
 
   const createDraft = useCallback(async (form, createdByName) => {
     // Pipeline-stage fields (model, googlePin, rentType, expectedRent) are
@@ -257,11 +281,12 @@ export function SitesProvider({ children }) {
       expectedEscalationPct: form.expectedEscalation ? Number(form.expectedEscalation) : null,
       expectedEscalationYears: form.expectedEscalationYears ? Number(form.expectedEscalationYears) : null,
       expectedRevsharePct: form.expectedRevshare ? Number(form.expectedRevshare) : null,
-      createdBy: { id: session?.id || session?.sub || undefined, name: sessionDisplayName },
+      createdBy: { id: session?.id || session?.sub || undefined, name: sessionDisplayName, role },
+      role,
       tenantId: user?.tenantId,
     });
-    await refresh();
-  }, [refresh, user, session]);
+    await refreshAndBroadcast('create_draft');
+  }, [refreshAndBroadcast, user, session, role]);
 
   return (
     <SitesContext.Provider value={{

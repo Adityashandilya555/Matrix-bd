@@ -13,6 +13,7 @@
 import axios from 'axios';
 import { getAuthToken, clearAuthToken } from './authToken.js';
 import { ApiError } from './adapters/httpAdapter.js';
+import { notifySiteDataChanged } from './siteEvents.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
 const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
@@ -131,6 +132,7 @@ export async function createChangeRequest({
   };
   if (justification) body.justification = justification;
   const data = await client.post('/bd/change-requests', body).then((r) => r.data);
+  notifySiteDataChanged({ action: 'create_change_request', siteId });
   return changeRequestFromServer(data);
 }
 
@@ -150,6 +152,7 @@ export async function approveChangeRequest(requestId, { reviewerNote } = {}) {
   const body = {};
   if (reviewerNote) body.reviewer_note = reviewerNote;
   const data = await client.post(`/legal/change-requests/${requestId}/approve`, body).then((r) => r.data);
+  notifySiteDataChanged({ action: 'approve_change_request', requestId });
   return changeRequestFromServer(data);
 }
 
@@ -157,5 +160,6 @@ export async function rejectChangeRequest(requestId, { reviewerNote } = {}) {
   const body = {};
   if (reviewerNote) body.reviewer_note = reviewerNote;
   const data = await client.post(`/legal/change-requests/${requestId}/reject`, body).then((r) => r.data);
+  notifySiteDataChanged({ action: 'reject_change_request', requestId });
   return changeRequestFromServer(data);
 }

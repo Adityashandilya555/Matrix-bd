@@ -11,6 +11,7 @@ import {
 import { ROUTES } from '../../../router/routes.js';
 import { agreementStatusLabel, normalizeAgreementStatus } from '../../../lib/agreementStatus.js';
 import { useSession } from '../../../state/SessionContext.jsx';
+import { useSiteDataRefresh } from '../../../hooks/useSiteDataRefresh.js';
 
 // Static LOI-forward hand-over graph. Only the Legal node is interactive in v1;
 // the remaining nodes are placeholders that
@@ -441,7 +442,11 @@ function FinancePanel({ data, role, onClose, onUpdate }) {
   const handleRequestApproval = async () => {
     setRequesting(true);
     try {
-      await requestFinanceApproval(data.siteId);
+      await requestFinanceApproval(data.siteId, {
+        kycVerified,
+        caCode:        caCode.trim() || null,
+        financeAmount: amount !== '' ? Number(amount) : undefined,
+      });
       showToast('Approval requested — supervisor notified.');
       await onUpdate();
     } catch (err) {
@@ -766,6 +771,7 @@ export default function SiteTrackerDetailPage() {
   }, [siteId]);
 
   React.useEffect(() => { load(); }, [load]);
+  useSiteDataRefresh(React.useCallback(() => load(true), [load]));
   React.useEffect(() => {
     if (NODES.some((node) => node.id === requestedNode)) setSelectedNode(requestedNode);
   }, [requestedNode]);

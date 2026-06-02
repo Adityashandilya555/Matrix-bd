@@ -233,7 +233,7 @@ async def get_site_tracker(
 async def create_site(
     body: CreateDraftRequest,
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE))],
+    current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))],
     tenant_id: TenantId,
 ) -> SiteResponse:
     return await svc_create_draft(
@@ -481,9 +481,14 @@ async def finance_request_approval(
         dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))
     ],
     tenant_id: TenantId,
+    body: _FinanceDraftBody | None = None,
 ) -> dict:
+    body = body or _FinanceDraftBody()
     return await svc_finance_request_approval(
         db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
+        kyc_verified=body.kyc_verified,
+        ca_code=body.ca_code,
+        finance_amount=body.finance_amount,
     )
 
 

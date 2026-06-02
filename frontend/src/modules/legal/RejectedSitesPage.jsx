@@ -3,6 +3,7 @@ import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import { listLegalRejectedSites } from '../../services/api/legalApi.js';
 import { getSiteActivity, colorForAction, labelForEntry } from '../../services/api/audit.js';
+import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 
 function formatDate(value) {
   if (!value) return '—';
@@ -282,7 +283,7 @@ export default function RejectedSitesPage() {
   const [activeSite, setActiveSite] = React.useState(null);
   const [history, setHistory] = React.useState({ status: 'idle', items: [], error: null });
 
-  React.useEffect(() => {
+  const load = React.useCallback(() => {
     let cancelled = false;
     setState({ status: 'loading', items: [], total: 0, error: null });
     listLegalRejectedSites()
@@ -296,6 +297,9 @@ export default function RejectedSitesPage() {
       });
     return () => { cancelled = true; };
   }, []);
+
+  React.useEffect(() => load(), [load]);
+  useSiteDataRefresh(load);
 
   const openHistory = React.useCallback((site) => {
     setActiveSite(site);

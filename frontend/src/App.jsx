@@ -152,10 +152,14 @@ export default function App() {
       {showNew && (
         <NewPipelineModal
           onClose={() => setShowNew(false)}
-          onSubmit={(form) => {
+          onSubmit={async (form) => {
+            await createDraft(form, ME);
             setShowNew(false);
-            createDraft(form, ME);
-            showToast(`Pipeline submitted · ${form.name}. Supervisor notified.`);
+            showToast(
+              role === 'supervisor'
+                ? `Pipeline created · ${form.name}. Moved to Shortlisted sites.`
+                : `Pipeline submitted · ${form.name}. Supervisor notified.`,
+            );
           }}
         />
       )}
@@ -194,6 +198,8 @@ const PIPELINE_RENT_TYPES = [
 function NewPipelineModal({ onClose, onSubmit }) {
   const [form, setForm] = useState({ name: '', visitDate: '', city: '', model: '', googlePin: '', googleMapsUrl: '', rentType: '', expectedRent: '', expectedEscalation: '', expectedEscalationYears: '', expectedRevshare: '' });
   const [pinStatus, setPinStatus] = useState(null); // { tone: 'info'|'ok'|'err', msg: string }
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   // Rent-type-specific essentials. Mirrors AddDetailsPage so the data captured
   // upfront matches what the shortlist form expects to prefill from.
@@ -241,6 +247,17 @@ function NewPipelineModal({ onClose, onSubmit }) {
   const clearMapsLink = () => {
     setForm(prev => ({ ...prev, googleMapsUrl: '' }));
     setPinStatus(null);
+  };
+  const handleSubmit = async () => {
+    if (!ready || submitting) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await onSubmit(form);
+    } catch (err) {
+      setSubmitError(err?.detail || err?.message || 'Could not create pipeline.');
+      setSubmitting(false);
+    }
   };
   const inputBase = { height: 38, padding: '0 12px', border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', fontFamily: 'var(--zm-font-body)', fontSize: 13.5, color: 'var(--zm-fg)', outline: 'none' };
   const labelBase = { fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)' };
@@ -394,9 +411,14 @@ function NewPipelineModal({ onClose, onSubmit }) {
           )}
         </div>
         <div style={{ padding: 12, background: 'var(--zm-accent-soft)', borderRadius: 8, fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-2)', display: 'flex', alignItems: 'flex-start', gap: 8 }}><span style={{ color: 'var(--zm-accent)', display: 'inline-flex', marginTop: 1 }}><Icon name="alert" size={14}/></span>Once submitted, your supervisor reviews the shortlist (Yes / No). All seven fields stay editable until then; edits at shortlist are logged into the site Activity feed.</div>
+        {submitError && (
+          <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(185,28,28,0.08)', border: '1px solid var(--zm-danger)', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12 }}>
+            {submitError}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} className="zm-btn" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-          <button disabled={!ready} onClick={() => onSubmit(form)} className="zm-btn-primary" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: ready ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: ready ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: ready ? 'pointer' : 'not-allowed', boxShadow: ready ? 'var(--zm-shadow-1)' : 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>Submit for shortlist <Icon name="arrow" size={14}/></button>
+          <button onClick={onClose} disabled={submitting} className="zm-btn" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: submitting ? 'var(--zm-fg-4)' : 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: submitting ? 'wait' : 'pointer', opacity: submitting ? 0.7 : 1 }}>Cancel</button>
+          <button disabled={!ready || submitting} onClick={handleSubmit} className="zm-btn-primary" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: ready && !submitting ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: ready && !submitting ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: ready && !submitting ? 'pointer' : 'not-allowed', boxShadow: ready && !submitting ? 'var(--zm-shadow-1)' : 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>{submitting ? 'Submitting...' : 'Submit for shortlist'} <Icon name="arrow" size={14}/></button>
         </div>
       </div>
     </div>

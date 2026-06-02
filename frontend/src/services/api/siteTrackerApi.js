@@ -11,6 +11,7 @@ import axios from 'axios';
 import { getAuthToken, clearAuthToken } from './authToken.js';
 import { ApiError } from './adapters/httpAdapter.js';
 import { adapter } from './adapters/index.js';
+import { notifySiteDataChanged } from './siteEvents.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
 const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
@@ -99,21 +100,40 @@ export async function getSiteTrackerView(siteId) {
 export async function saveFinanceDraft(siteId, { kycVerified, caCode, financeAmount } = {}) {
   if (USE_MOCK) {
     const result = await adapter.saveFinanceDraft(siteId, { kycVerified, caCode, financeAmount });
+    notifySiteDataChanged({ source: 'siteTrackerApi', action: 'save_finance', siteId });
     return result;
   }
   const body = {};
   if (kycVerified !== undefined) body.kyc_verified = kycVerified;
   if (caCode !== undefined) body.ca_code = caCode;
   if (financeAmount !== undefined) body.finance_amount = financeAmount;
-  return client.patch(`/sites/${siteId}/finance`, body).then((r) => r.data);
+  const data = await client.patch(`/sites/${siteId}/finance`, body).then((r) => r.data);
+  notifySiteDataChanged({ source: 'siteTrackerApi', action: 'save_finance', siteId });
+  return data;
 }
 
-export async function requestFinanceApproval(siteId) {
-  if (USE_MOCK) return adapter.requestFinanceApproval(siteId);
-  return client.post(`/sites/${siteId}/finance/request-approval`, {}).then((r) => r.data);
+export async function requestFinanceApproval(siteId, { kycVerified, caCode, financeAmount } = {}) {
+  if (USE_MOCK) {
+    const result = await adapter.requestFinanceApproval(siteId, { kycVerified, caCode, financeAmount });
+    notifySiteDataChanged({ source: 'siteTrackerApi', action: 'request_finance', siteId });
+    return result;
+  }
+  const body = {};
+  if (kycVerified !== undefined) body.kyc_verified = kycVerified;
+  if (caCode !== undefined) body.ca_code = caCode;
+  if (financeAmount !== undefined) body.finance_amount = financeAmount;
+  const data = await client.post(`/sites/${siteId}/finance/request-approval`, body).then((r) => r.data);
+  notifySiteDataChanged({ source: 'siteTrackerApi', action: 'request_finance', siteId });
+  return data;
 }
 
 export async function approveFinance(siteId) {
-  if (USE_MOCK) return adapter.approveFinance(siteId);
-  return client.post(`/sites/${siteId}/finance/approve`, {}).then((r) => r.data);
+  if (USE_MOCK) {
+    const result = await adapter.approveFinance(siteId);
+    notifySiteDataChanged({ source: 'siteTrackerApi', action: 'approve_finance', siteId });
+    return result;
+  }
+  const data = await client.post(`/sites/${siteId}/finance/approve`, {}).then((r) => r.data);
+  notifySiteDataChanged({ source: 'siteTrackerApi', action: 'approve_finance', siteId });
+  return data;
 }

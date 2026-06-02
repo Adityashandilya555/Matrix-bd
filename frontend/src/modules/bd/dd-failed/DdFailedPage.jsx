@@ -4,12 +4,13 @@ import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Icon from '../../shared/primitives/Icon.jsx';
 import { getDdFailedQueue } from '../../../services/api/changeRequestApi.js';
 import { bdSiteStatusRoute } from '../../../router/routes.js';
+import { useSiteDataRefresh } from '../../../hooks/useSiteDataRefresh.js';
 
 export default function DdFailedPage() {
   const navigate = useNavigate();
   const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
 
-  React.useEffect(() => {
+  const load = React.useCallback(() => {
     let cancelled = false;
     setState({ status: 'loading', items: [], total: 0, error: null });
     getDdFailedQueue()
@@ -23,6 +24,9 @@ export default function DdFailedPage() {
       });
     return () => { cancelled = true; };
   }, []);
+
+  React.useEffect(() => load(), [load]);
+  useSiteDataRefresh(load);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>

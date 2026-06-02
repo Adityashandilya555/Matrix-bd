@@ -91,6 +91,9 @@ async def svc_finance_request_approval(
     tenant_id: str | UUID,
     actor: dict,
     site_id: str | UUID,
+    kyc_verified: Optional[bool] = None,
+    ca_code: Optional[str] = None,
+    finance_amount: Optional[float] = None,
 ) -> dict:
     """Exec requests supervisor approval.
 
@@ -105,6 +108,19 @@ async def svc_finance_request_approval(
                 http_status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Finance approval can only be requested after the LOI is uploaded.",
             )
+        if site.finance_status != "pending":
+            raise HTTPException(
+                http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Already in '{site.finance_status}' — cannot re-submit.",
+            )
+
+        if kyc_verified is not None:
+            site.kyc_verified = kyc_verified
+        if ca_code is not None:
+            site.ca_code = ca_code.strip() or None
+        if finance_amount is not None:
+            site.finance_amount = finance_amount
+
         if not site.kyc_verified:
             raise HTTPException(
                 http_status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -119,11 +135,6 @@ async def svc_finance_request_approval(
             raise HTTPException(
                 http_status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Amount must be entered before requesting approval.",
-            )
-        if site.finance_status != "pending":
-            raise HTTPException(
-                http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Already in '{site.finance_status}' — cannot re-submit.",
             )
 
         site.finance_status = "awaiting_supervisor"
