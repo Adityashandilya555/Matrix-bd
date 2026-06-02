@@ -154,6 +154,13 @@ CREATE TABLE public.sites (
   address text,
   city text NOT NULL,
   google_maps_pin text,
+  google_maps_url text,
+  expected_rent numeric(12,2),
+  rent_type text,
+  expected_escalation_pct numeric(6,2),
+  expected_escalation_years integer,
+  expected_revshare_pct numeric(6,2),
+  rent_set_at timestamp with time zone,
   spoc_email text,
   submitted_by uuid NOT NULL,
   pushed_to_payments_at timestamp with time zone,
@@ -177,7 +184,8 @@ CREATE TABLE public.sites (
   CONSTRAINT sites_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id),
   CONSTRAINT sites_submitted_by_fkey FOREIGN KEY (submitted_by) REFERENCES public.users(id),
   CONSTRAINT sites_assigned_to_fkey FOREIGN KEY (assigned_to) REFERENCES public.users(id),
-  CONSTRAINT sites_supervisor_id_fkey FOREIGN KEY (supervisor_id) REFERENCES public.users(id)
+  CONSTRAINT sites_supervisor_id_fkey FOREIGN KEY (supervisor_id) REFERENCES public.users(id),
+  CONSTRAINT chk_sites_rent_type CHECK ((rent_type = ANY (ARRAY['fixed'::text, 'revshare'::text, 'mg_revshare'::text])) OR (rent_type IS NULL))
 );
 CREATE TABLE public.stage_events (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),

@@ -262,15 +262,15 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
   const cityCount = new Set([...visibleDrafts.map(d => d.city), ...visibleShortlist.map(s => s.city), ...visibleStaging.map(s => s.city)]).size;
 
   const metrics = {
-    inMotion: { value: String(totalMotion).padStart(2,'0'), delta: isExec ? `your sites · ${ME.split(' ')[0]}` : 'tenant-wide', sub: `across ${cityCount} cit${cityCount === 1 ? 'y' : 'ies'}` },
-    drafts: { value: String(visibleDrafts.length).padStart(2,'0'), delta: oldestDraft > 0 ? `oldest · ${oldestDraft}d` : 'none open', deltaTone: staleDrafts > 0 ? 'neg' : 'pos', sub: role === 'supervisor' ? (staleDrafts > 0 ? `${staleDrafts} past 7-day SLA` : 'awaiting your decision') : 'awaiting supervisor' },
-    shortlist: { value: String(visibleShortlist.length).padStart(2,'0'), delta: inReview > 0 ? `${inReview} in review` : 'all need details', sub: role === 'supervisor' ? 'ready to approve' : 'fill 17 fields' },
-    loi: { value: String(loiOverdue + loiDue).padStart(2,'0'), delta: loiOverdue > 0 ? `▲ ${loiOverdue} overdue` : 'on track', deltaTone: loiOverdue > 0 ? 'neg' : 'pos', sub: `${loiDue} due · ${loiOverdue} past timeline` },
+    inMotion: { value: String(totalMotion).padStart(2,'0'), delta: isExec ? `Your sites · ${ME.split(' ')[0]}` : 'Tenant-wide', sub: `Across ${cityCount} cit${cityCount === 1 ? 'y' : 'ies'}` },
+    drafts: { value: String(visibleDrafts.length).padStart(2,'0'), delta: oldestDraft > 0 ? `Oldest · ${oldestDraft}d` : 'None open', deltaTone: staleDrafts > 0 ? 'neg' : 'pos', sub: role === 'supervisor' ? (staleDrafts > 0 ? `${staleDrafts} past 7-day SLA` : 'Awaiting your decision') : 'Awaiting supervisor' },
+    shortlist: { value: String(visibleShortlist.length).padStart(2,'0'), delta: inReview > 0 ? `${inReview} In review` : 'All need details', sub: role === 'supervisor' ? 'Ready to approve' : 'Fill 17 fields' },
+    loi: { value: String(loiOverdue + loiDue).padStart(2,'0'), delta: loiOverdue > 0 ? `▲ ${loiOverdue} overdue` : 'On track', deltaTone: loiOverdue > 0 ? 'neg' : 'pos', sub: `${loiDue} due · ${loiOverdue} past timeline` },
   };
 
   const allMotion = [
-    ...visibleDrafts.map(d => ({ id: d.id, code: d.code, name: d.name, city: d.city, stage: 'draft', days: d.days, owner: d.createdBy, when: d.visitDate, meta: 'visit ' + d.visitDate })),
-    ...visibleShortlist.map(s => ({ id: s.code, code: s.code, name: s.name, city: s.city, stage: s.inReview ? 'inReview' : 'shortlist', days: 3, owner: s.createdBy, when: s.visitDate, meta: s.inReview ? 'in review' : 'awaiting details' })),
+    ...visibleDrafts.map(d => ({ id: d.id, code: d.code, name: d.name, city: d.city, stage: 'draft', days: d.days, owner: d.createdBy, when: d.visitDate, meta: 'Visit ' + d.visitDate })),
+    ...visibleShortlist.map(s => ({ id: s.code, code: s.code, name: s.name, city: s.city, stage: s.inReview ? 'inReview' : 'shortlist', days: 3, owner: s.createdBy, when: s.visitDate, meta: s.inReview ? 'In review' : 'Awaiting details' })),
     ...visibleStaging.map(s => { const overdue = s.daysSinceApproval > s.expectedLoiDays && !s.loiUploaded; return { id: s.id, code: s.code, name: s.name, city: s.city, stage: s.pushed ? 'completed' : s.loiUploaded ? 'uploaded' : (overdue ? 'overdue' : 'staging'), days: s.daysSinceApproval, owner: s.createdBy, when: s.draftDate || s.approvedDate, meta: `LOI ${s.daysSinceApproval}/${s.expectedLoiDays}d` }; }),
   ];
 
@@ -294,8 +294,8 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
       <PageHeader
         file="№ 01" eyebrow="Overview" title="Sites"
         lede={role === 'supervisor'
-          ? `Synced 2 min ago — all sites in your tenant. ${totalMotion} files across draft, shortlist and sites in process.`
-          : `Synced 2 min ago — your sites, ${ME}. ${totalMotion} files across draft, shortlist and sites in process.`}
+          ? `Synced 2 min ago — All sites in your tenant. ${totalMotion} files across draft, shortlist and sites in process.`
+          : `Synced 2 min ago — Your sites, ${ME}. ${totalMotion} files across draft, shortlist and sites in process.`}
         right={<>
           <HeaderTag icon="clock" label="LIVE · 2M LAG"/>
           <HeaderTag icon="shield" label={role === 'supervisor' ? 'TENANT SCOPE' : 'PERSONAL SCOPE'} tone="accent"/>

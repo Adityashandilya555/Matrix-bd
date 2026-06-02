@@ -247,7 +247,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
           <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Ask Matrix</span>
         </div>
         <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-fg-2)', lineHeight: 1.45 }}>
-          "Sites in process overdue &gt; 14 days" — answer in the desktop workspace.
+          "Sites in process overdue &gt; 14 days" — Answer in the desktop workspace.
         </p>
         </div>
       )}

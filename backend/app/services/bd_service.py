@@ -318,8 +318,17 @@ async def svc_approve_shortlist(
 ) -> SiteResponse:
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        _assert_not_self_approval(actor, site)
-        assert_transition(SiteStatus(site.status), SiteStatus.APPROVED)
+        current_status = SiteStatus(site.status)
+        actor_id = str(actor["sub"])
+        supervisor_created_shortlist = (
+            current_status == SiteStatus.SHORTLISTED
+            and str(site.submitted_by) == actor_id
+            and str(site.supervisor_id) == actor_id
+            and (actor.get("role") or "").lower() == "supervisor"
+        )
+        if not supervisor_created_shortlist:
+            _assert_not_self_approval(actor, site)
+            assert_transition(current_status, SiteStatus.APPROVED)
         approved_at = datetime.now(timezone.utc)
         site.status = SiteStatus.APPROVED.value
         site.approved_at = approved_at
@@ -346,8 +355,8 @@ async def svc_approve_shortlist(
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor["name"],
-            action="approve_details",
-            from_status=SiteStatus.DETAILS_SUBMITTED.value,
+            action="approve_shortlist" if supervisor_created_shortlist else "approve_details",
+            from_status=current_status.value,
             to_status=SiteStatus.APPROVED.value,
             detail=f"expected_loi_days={expected_loi_days}",
         )

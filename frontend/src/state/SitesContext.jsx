@@ -60,6 +60,8 @@ function toShortlistShape(site) {
     name: site.name,
     city: site.city,
     visitDate: site.visitDate,
+    submittedBy: site.submittedBy || site.createdBy?.id || '',
+    supervisorId: site.supervisorId || '',
     createdBy: site.createdBy?.name || site.createdBy || '',
     score: site.score,
     estSales: site.estSales,

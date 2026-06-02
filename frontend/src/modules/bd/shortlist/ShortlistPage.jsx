@@ -179,9 +179,16 @@ function DelegationModal({ site, onClose, onChanged, showToast }) {
   );
 }
 
-function ShortlistCard({ item, role, onView, onAddDetails, onApprove, onDelegate }) {
+function ShortlistCard({ item, role, currentUserId, onView, onAddDetails, onApprove, onDelegate }) {
   const supervisor = role === 'supervisor';
-  const reviewable = item.inReview === true;
+  const supervisorAutoShortlist =
+    supervisor &&
+    item.status === 'shortlisted' &&
+    item.submittedBy &&
+    item.supervisorId &&
+    String(item.submittedBy) === String(currentUserId) &&
+    String(item.supervisorId) === String(currentUserId);
+  const reviewable = item.inReview === true || supervisorAutoShortlist;
   const hasDraft = !!item.details && !reviewable;
   return (
     <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, boxShadow: 'var(--zm-shadow-1)' }}>
@@ -193,7 +200,7 @@ function ShortlistCard({ item, role, onView, onAddDetails, onApprove, onDelegate
             {reviewable ? <StatusPill stage="inReview"/> : <StatusPill stage="shortlist"/>}
           </span>
           <h3 style={{ margin: 0, fontFamily: 'var(--zm-font-display)', fontWeight: 600, fontSize: 17, color: 'var(--zm-fg)' }}>{item.name}</h3>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>{item.city} · visit {item.visitDate} · created by {item.createdBy}</span>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>{item.city} · Visit {item.visitDate} · Created by {item.createdBy}</span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
           <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>Score</span>
@@ -213,7 +220,7 @@ function ShortlistCard({ item, role, onView, onAddDetails, onApprove, onDelegate
         {supervisor ? (
           <>
             <button onClick={() => onDelegate(item)} className="zm-btn" title="Let an executive act on this site" style={{ height: 34, padding: '0 12px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="user" size={13}/> Delegate</button>
-            <button onClick={() => onApprove(item)} disabled={!reviewable} className="zm-btn-primary" title={!reviewable ? 'BD exec must Send for review before approving' : 'Approve and advance to staging'} style={{ height: 34, padding: '0 14px', border: 'none', borderRadius: 7, background: reviewable ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: reviewable ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: reviewable ? 'pointer' : 'not-allowed', boxShadow: reviewable ? 'var(--zm-shadow-1)' : 'none', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="check" size={13}/> Approve shortlist</button>
+            <button onClick={() => onApprove(item)} disabled={!reviewable} className="zm-btn-primary" title={!reviewable ? 'BD exec must Send for review before approving' : supervisorAutoShortlist ? 'Supervisor-created site can be approved directly' : 'Approve and advance to Sites in process'} style={{ height: 34, padding: '0 14px', border: 'none', borderRadius: 7, background: reviewable ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: reviewable ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: reviewable ? 'pointer' : 'not-allowed', boxShadow: reviewable ? 'var(--zm-shadow-1)' : 'none', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="check" size={13}/> Approve shortlist</button>
           </>
         ) : reviewable ? (
           <span style={{ padding: '6px 10px', borderRadius: 7, background: 'var(--zm-accent-soft)', border: '1px solid var(--zm-accent-line)', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-accent)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="clock" size={12}/> Awaiting supervisor approval</span>
@@ -229,7 +236,7 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
   const ctx = usePageContext();
   const onOpenSite = onOpenSiteProp || ctx.onOpenSite;
   const showToast = showToastProp || ctx.showToast;
-  const { role, user } = useSession();
+  const { role, user, session } = useSession();
   const { shortlist, saveDraftDetails, submitDetailsForReview, approveShortlistToStaging } = useSites();
   const [approving, setApproving] = React.useState(null);
   const [detailing, setDetailing] = React.useState(null);
@@ -238,15 +245,20 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
   const [delegating, setDelegating] = React.useState(null);
 
   const ME = user.name;
+  const currentUserId = session?.userId || session?.id || session?.sub || user?.id || null;
   // RBAC: isExec = cannot approve shortlist (only supervisor can; executives need a delegation)
   const isExec = !can(role, 'shortlist');
   const visibleShortlist = isExec ? shortlist.filter(s => s.createdBy === ME) : shortlist;
 
   const onApprove = (item) => setApproving(item);
-  const onTimelineSubmit = (item, days) => {
-    setApproving(null);
-    approveShortlistToStaging(item, days);
-    showToast?.(`Approved · ${item.name}. LOI expected in ${days}d. Moved to Sites in process.`);
+  const onTimelineSubmit = async (item, days) => {
+    try {
+      await approveShortlistToStaging(item, days);
+      setApproving(null);
+      showToast?.(`Approved · ${item.name}. LOI expected in ${days}d. Moved to Sites in process.`);
+    } catch (err) {
+      showToast?.(`Approval failed: ${err?.detail || err?.message || 'Unknown error'}`, 'danger');
+    }
   };
   const onAddDetails = (item) => {
     setDetailError(null);
@@ -283,12 +295,12 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
         file="№ 03" eyebrow="Workflow · Shortlist"
         title={<>Shortlist</>}
         lede={role === 'supervisor'
-          ? `${visibleShortlist.length} site${visibleShortlist.length === 1 ? '' : 's'} cleared from pipeline — approve once the exec marks them as in review.`
-          : `${visibleShortlist.length} of your own shortlisted site${visibleShortlist.length === 1 ? '' : 's'} — add the 17 essential fields, then send for review.`}
+          ? `${visibleShortlist.length} site${visibleShortlist.length === 1 ? '' : 's'} cleared from pipeline — Approve once the exec marks them as in review.`
+          : `${visibleShortlist.length} of your own shortlisted site${visibleShortlist.length === 1 ? '' : 's'} — Add the 17 essential fields, then send for review.`}
         right={<HeaderTag icon="clock" label="OLDEST FIRST"/>}
       />
       {visibleShortlist.map(item => (
-        <ShortlistCard key={item.code} item={item} role={role}
+        <ShortlistCard key={item.code} item={item} role={role} currentUserId={currentUserId}
           onView={onOpenSite || (() => {})} onAddDetails={onAddDetails} onApprove={onApprove}
           onDelegate={setDelegating}/>
       ))}

@@ -177,7 +177,7 @@ export default function DraftsPage({ onOpenSite: onOpenSiteProp, showToast: show
         lede={
           role === 'supervisor'
             ? `${visibleDrafts.length} draft${visibleDrafts.length === 1 ? '' : 's'} from all your BD execs. Supervisor SLA: 7 days. Tap Yes, No, or Archive.`
-            : `${visibleDrafts.length} of your own draft${visibleDrafts.length === 1 ? '' : 's'} awaiting supervisor decision — you only see what you created.`
+            : `${visibleDrafts.length} of your own draft${visibleDrafts.length === 1 ? '' : 's'} awaiting supervisor decision — You only see what you created.`
         }
         right={overdueCount > 0 ? <HeaderTag icon="alert" label={`${overdueCount} PAST SLA`} tone="accent"/> : <HeaderTag icon="check" label="SLA CLEAR"/>}
       />

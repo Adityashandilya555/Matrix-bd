@@ -417,7 +417,7 @@ export default function SiteDrawer({ site, onClose }) {
             </span>
             <h2 style={{ margin: 0, fontFamily: 'var(--zm-font-display)', fontWeight: 700, fontSize: 24, letterSpacing: '-0.02em', color: 'var(--zm-fg)' }}>{site.name}</h2>
             <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>
-              {display(site.city, '—')} · {display(site.model)} · created by {display(site.createdBy, '—')} · {formatDate(site.createdAt)}
+              {display(site.city, '—')} · {display(site.model)} · Created by {display(site.createdBy, '—')} · {formatDate(site.createdAt)}
             </span>
             <div style={{ marginTop: 18, display: 'flex', gap: 0, borderTop: '1px solid var(--zm-line)' }}>
               <Tab label="Overview"  active={tab === 'overview'}  onClick={() => setTab('overview')}/>

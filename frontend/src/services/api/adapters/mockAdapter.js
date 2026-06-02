@@ -43,6 +43,7 @@ export async function createSite(payload) {
   const cityCode = (payload.city || 'UNK').slice(0, 3).toUpperCase();
   const isSupervisor = payload.role === 'supervisor' || payload.createdBy?.role === 'supervisor';
   const initialStatus = isSupervisor ? SiteStatus.SHORTLISTED : SiteStatus.DRAFT_SUBMITTED;
+  const submittedBy = payload.createdBy?.id || 'mock_user';
   const site = {
     id,
     code: 'BT-' + cityCode + '-' + Math.floor(Math.random() * 900 + 100),
@@ -51,6 +52,8 @@ export async function createSite(payload) {
     tenantId: payload.tenantId || 'bt-tenant-001',
     status: initialStatus,
     createdBy: payload.createdBy,
+    submittedBy,
+    supervisorId: isSupervisor ? submittedBy : null,
     assignedTo: null,
     visitDate: payload.visitDate,
     expectedLoiDays: null,
@@ -87,7 +90,15 @@ export async function patchSiteStatus(id, newStatus, payload = {}) {
   maybeFail();
   const site = getSiteById(id);
   if (!site) throw new Error(`Site not found: ${id}`);
-  assertTransition(site.status, newStatus);
+  const supervisorAutoApproval =
+    newStatus === SiteStatus.APPROVED &&
+    site.status === SiteStatus.SHORTLISTED &&
+    site.submittedBy &&
+    site.supervisorId &&
+    String(site.submittedBy) === String(site.supervisorId);
+  if (!supervisorAutoApproval) {
+    assertTransition(site.status, newStatus);
+  }
   const auditEntry = {
     id: Math.random().toString(36).slice(2, 10),
     at: new Date().toISOString(),

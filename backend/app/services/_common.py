@@ -102,6 +102,8 @@ def site_to_response(
         tenant_id=str(site.tenant_id),
         status=SiteStatus(site.status),
         created_by=created_by_name or "",
+        submitted_by=str(site.submitted_by),
+        supervisor_id=str(site.supervisor_id) if site.supervisor_id else None,
         visit_date=site.visit_date,
         days=_days_since(site.visit_date),
         stage=_legacy_stage_for(site.status),

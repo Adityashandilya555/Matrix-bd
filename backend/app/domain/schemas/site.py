@@ -115,6 +115,8 @@ class SiteResponse(BaseModel):
     tenant_id: str
     status: SiteStatus
     created_by: str
+    submitted_by: Optional[str] = None
+    supervisor_id: Optional[str] = None
     visit_date: Optional[date] = None
     days: Optional[int] = None
     stage: Optional[str] = None
