@@ -1,5 +1,5 @@
 import React from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Icon from '../../shared/primitives/Icon.jsx';
 import {
@@ -23,6 +23,24 @@ const NODES = [
   { id: 'project', label: 'Project Execution',    icon: 'box',     interactive: false },
   { id: 'final',   label: 'Final Approval',       icon: 'check',   interactive: false },
 ];
+
+const NODE_TONES = {
+  complete: {
+    bg: 'var(--zm-success-soft, rgba(45,122,72,0.08))',
+    border: 'var(--zm-success, #2D7A48)',
+    color: 'var(--zm-success, #2D7A48)',
+  },
+  active: {
+    bg: 'var(--zm-warning-soft, #F8EEDC)',
+    border: 'var(--zm-warning, #B0712E)',
+    color: 'var(--zm-warning, #B0712E)',
+  },
+  future: {
+    bg: 'rgba(255,255,255,0.56)',
+    border: 'var(--zm-line-faint)',
+    color: 'var(--zm-fg-4)',
+  },
+};
 
 const DD_LABELS = [
   ['title_doc',       'Title / ownership'],
@@ -55,15 +73,15 @@ function verdictTone(verdict) {
   return { color: 'var(--zm-fg-3)', label: 'PENDING' };
 }
 
-function NodeCard({ node, selected, onClick, statusOverride }) {
-  const completed = node.id === 'loi';
-  const greyed = !node.interactive && !completed;
-  const defaultLabel = node.interactive ? 'OPEN' : completed ? 'DONE' : 'QUEUED';
-  const defaultColor = node.interactive
-    ? 'var(--zm-accent)'
-    : completed ? 'var(--zm-success, #2D7A48)' : 'var(--zm-fg-3)';
+function NodeCard({ node, selected, onClick, state, statusOverride }) {
+  const tone = NODE_TONES[state] || NODE_TONES.future;
+  const greyed = state === 'future';
+  const defaultLabel =
+    state === 'complete' ? (node.id === 'loi' ? 'DONE' : 'COMPLETE') :
+    state === 'active' ? (node.id === 'ca' ? 'PENDING' : 'OPEN') :
+    'QUEUED';
   const statusLabel = statusOverride?.label ?? defaultLabel;
-  const statusColor = statusOverride?.color ?? defaultColor;
+  const statusColor = statusOverride?.color ?? tone.color;
   return (
     <button
       type="button"
@@ -73,22 +91,22 @@ function NodeCard({ node, selected, onClick, statusOverride }) {
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
         padding: '14px 10px', minWidth: 120,
         borderRadius: 12,
-        border: '1px solid ' + (selected ? 'var(--zm-accent)' : 'var(--zm-line)'),
-        background: selected
-          ? 'var(--zm-accent-soft, var(--zm-surface-2))'
-          : completed ? 'rgba(45,122,72,0.06)' : greyed ? 'var(--zm-surface-2)' : 'var(--zm-surface)',
+        border: '1px solid ' + (selected ? tone.border : tone.border),
+        background: tone.bg,
         color: greyed ? 'var(--zm-fg-3)' : 'var(--zm-fg)',
         cursor: node.interactive ? 'pointer' : 'default',
         opacity: greyed ? 0.7 : 1,
-        boxShadow: selected ? 'var(--zm-shadow-1)' : 'none',
+        boxShadow: selected ? '0 0 0 2px rgba(14,91,69,0.12), var(--zm-shadow-1)' : 'none',
+        textDecoration: 'none',
       }}
     >
-      <span style={{ color: selected ? 'var(--zm-accent)' : (completed ? 'var(--zm-success, #2D7A48)' : greyed ? 'var(--zm-fg-3)' : 'var(--zm-fg-2)') }}>
+      <span style={{ color: tone.color }}>
         <Icon name={node.icon} size={20}/>
       </span>
       <span style={{
         fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 700,
         textTransform: 'uppercase', letterSpacing: '0.08em',
+        textDecoration: 'none',
       }}>{node.label}</span>
       <span style={{
         fontFamily: 'var(--zm-font-body)', fontSize: 10, fontWeight: 600,
@@ -108,9 +126,45 @@ function financeStatusOverride(financeStatus) {
   return null; // default 'OPEN'
 }
 
-function NodeDiagram({ selected, onSelect, financeStatus }) {
-  // Static, hard-coded SVG-on-grid layout. Edges run left to right in one row.
-  // The arrow heads are inline so we don't need defs.
+function legalNodeState(data) {
+  if (data.siteStatus === 'legal_rejected' || data.legalDdStatus === 'negative') return 'rejected';
+  if (
+    data.siteStatus === 'legal_approved' ||
+    data.siteStatus === 'pushed_to_payments' ||
+    (data.legalDdStatus === 'positive' && normalizeAgreementStatus(data) === 'registered' && data.licensingStatus === 'complete')
+  ) {
+    return 'complete';
+  }
+  return 'active';
+}
+
+function detailNodeState(data, nodeId) {
+  if (nodeId === 'loi') return 'complete';
+  if (nodeId === 'legal') return legalNodeState(data) === 'rejected' ? 'active' : legalNodeState(data);
+  if (nodeId === 'ca') {
+    if (data.financeStatus === 'approved' || data.siteStatus === 'pushed_to_payments') return 'complete';
+    if (legalNodeState(data) === 'complete') return 'active';
+  }
+  return 'future';
+}
+
+function NodeConnector({ complete }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: 20,
+        height: 2,
+        flex: '0 0 20px',
+        borderRadius: 999,
+        background: complete ? 'var(--zm-success, #2D7A48)' : 'var(--zm-line)',
+        opacity: complete ? 0.62 : 0.78,
+      }}
+    />
+  );
+}
+
+function NodeDiagram({ selected, onSelect, data }) {
   return (
     <div style={{
       position: 'relative',
@@ -118,43 +172,28 @@ function NodeDiagram({ selected, onSelect, financeStatus }) {
       borderRadius: 12, padding: '24px 16px',
       overflowX: 'auto',
     }}>
-      {/* Arrow row sits behind the cards. SVG width chosen to comfortably
-          contain the six node cards. */}
-      <svg
-        viewBox="0 0 840 60"
-        preserveAspectRatio="none"
-        style={{
-          position: 'absolute', left: 16, right: 16, top: '50%',
-          width: 'calc(100% - 32px)', height: 60,
-          transform: 'translateY(-50%)', pointerEvents: 'none',
-        }}
-      >
-        {Array.from({ length: NODES.length - 1 }, (_, i) => {
-          const x1 = 78 + i * 140;
-          const x2 = x1 + 82;
+      <div style={{
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
+        minWidth: 860,
+      }}>
+        {NODES.map((n, index) => {
+          const state = detailNodeState(data, n.id);
+          const prev = index > 0 ? detailNodeState(data, NODES[index - 1].id) : null;
           return (
-            <g key={i} stroke="var(--zm-line)" strokeWidth="1.5" fill="none">
-              <line x1={x1} y1="30" x2={x2 - 6} y2="30"/>
-              <polyline points={`${x2 - 10},25 ${x2 - 4},30 ${x2 - 10},35`}/>
-            </g>
+            <React.Fragment key={n.id}>
+              {index > 0 && <NodeConnector complete={prev === 'complete' && (state === 'complete' || state === 'active')}/>}
+              <NodeCard
+                node={n}
+                selected={selected === n.id}
+                onClick={() => onSelect(n.id)}
+                state={state}
+                statusOverride={n.id === 'ca' ? financeStatusOverride(data.financeStatus) : undefined}
+              />
+            </React.Fragment>
           );
         })}
-      </svg>
-
-      <div style={{
-        position: 'relative', display: 'grid',
-        gridTemplateColumns: `repeat(${NODES.length}, minmax(120px, 1fr))`,
-        gap: 20, alignItems: 'center',
-      }}>
-        {NODES.map((n) => (
-          <NodeCard
-            key={n.id}
-            node={n}
-            selected={selected === n.id}
-            onClick={() => onSelect(n.id)}
-            statusOverride={n.id === 'ca' ? financeStatusOverride(financeStatus) : undefined}
-          />
-        ))}
       </div>
     </div>
   );
@@ -319,8 +358,8 @@ function LegalPanel({ data, onClose }) {
   );
 }
 
-const LOI_AND_BEYOND = new Set([
-  'loi_uploaded', 'legal_review', 'legal_approved', 'pushed_to_payments',
+const PAYMENT_READY_STATUSES = new Set([
+  'legal_approved', 'pushed_to_payments',
 ]);
 
 const FINANCE_STATUS_LABELS = {
@@ -352,7 +391,7 @@ function FinanceStatusBadge({ status }) {
 
 function FinancePanel({ data, role, onClose, onUpdate }) {
   const siteStatus   = data.siteStatus ?? '';
-  const accessible   = LOI_AND_BEYOND.has(siteStatus);
+  const accessible   = PAYMENT_READY_STATUSES.has(siteStatus) || data.licensingStatus === 'complete';
   const financeStatus = data.financeStatus ?? 'pending';
   const isLocked     = financeStatus !== 'pending';
   const isApproved   = financeStatus === 'approved';
@@ -508,8 +547,7 @@ function FinancePanel({ data, role, onClose, onUpdate }) {
             background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)',
             fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-3)',
           }}>
-            Finance details are available once the LOI is uploaded and the site enters
-            legal review.
+            Payment details unlock after Legal clears the site and licensing is complete.
           </div>
         )}
 
@@ -708,9 +746,13 @@ function ComingSoonPanel({ node, onClose }) {
 export default function SiteTrackerDetailPage() {
   const { siteId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { role } = useSession();
   const [state, setState] = React.useState({ status: 'loading', data: null, error: null });
-  const [selectedNode, setSelectedNode] = React.useState('legal');
+  const requestedNode = searchParams.get('node');
+  const [selectedNode, setSelectedNode] = React.useState(
+    NODES.some((node) => node.id === requestedNode) ? requestedNode : 'legal',
+  );
 
   const load = React.useCallback((silent = false) => {
     if (!siteId) return;
@@ -724,6 +766,9 @@ export default function SiteTrackerDetailPage() {
   }, [siteId]);
 
   React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => {
+    if (NODES.some((node) => node.id === requestedNode)) setSelectedNode(requestedNode);
+  }, [requestedNode]);
 
   if (state.status === 'loading') {
     return <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>Loading…</div>;
@@ -743,7 +788,7 @@ export default function SiteTrackerDetailPage() {
       <PageHeader
         file="No. 08"
         eyebrow={`Site · ${displayCode}`}
-        title={<>{data.siteName} <em>flow</em></>}
+        title={`${data.siteName} flow`}
         lede={`${data.city}${data.submittedByName ? ' · drafted by ' + data.submittedByName : ''}`}
         right={<HeaderTag icon="shield" label={`DD ${verdict.label}`}/>}
       />
@@ -751,7 +796,7 @@ export default function SiteTrackerDetailPage() {
       <NodeDiagram
         selected={selectedNode}
         onSelect={setSelectedNode}
-        financeStatus={data.financeStatus}
+        data={data}
       />
 
       <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start', flexWrap: 'wrap' }}>

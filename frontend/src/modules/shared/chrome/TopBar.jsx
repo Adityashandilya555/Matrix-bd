@@ -56,8 +56,8 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
           </g>
         </svg>
         <span className="zm-brand-word" style={{
-          fontFamily: 'var(--zm-font-serif)', fontStyle: 'italic', fontWeight: 400,
-          fontSize: 30, color: '#F5F2EC', letterSpacing: '-0.012em', lineHeight: 1,
+          fontFamily: 'var(--zm-font-display)', fontStyle: 'normal', fontWeight: 800,
+          fontSize: 24, color: '#F5F2EC', letterSpacing: '-0.03em', lineHeight: 1,
           whiteSpace: 'nowrap', position: 'relative', zIndex: 1,
           display: sidebarCollapsed ? 'none' : 'inline',
           textShadow: '0 1px 0 rgba(0,0,0,0.35), 0 0 24px rgba(122,231,218,0.15)',

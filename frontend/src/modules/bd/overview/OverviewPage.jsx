@@ -61,8 +61,9 @@ function MetricCard({ eyebrow, value, rule = 'var(--zm-copper)', delta, deltaTon
         }}>{eyebrow}</span>
       </div>
       <span style={{
-        fontFamily: 'var(--zm-font-serif)', fontWeight: 400, fontStyle: 'italic',
-        fontSize: 68, letterSpacing: '-0.025em', color: 'var(--zm-fg)', lineHeight: 0.95,
+        fontFamily: 'var(--zm-font-display)', fontWeight: 800, fontStyle: 'normal',
+        fontSize: 64, letterSpacing: '-0.035em', color: 'var(--zm-fg)', lineHeight: 0.95,
+        fontVariantNumeric: 'tabular-nums',
         fontFeatureSettings: "'tnum' 1",
       }}>{value}</span>
       <span style={{ width: 36, height: 1, background: rule, opacity: 0.7 }}/>
@@ -72,7 +73,7 @@ function MetricCard({ eyebrow, value, rule = 'var(--zm-copper)', delta, deltaTon
           color: deltaTone === 'pos' ? 'var(--zm-success)' : deltaTone === 'neg' ? 'var(--zm-danger)' : 'var(--zm-fg-3)',
         }}>{delta}</span>
       )}
-      {sub && <span style={{ fontFamily: 'var(--zm-font-serif)', fontStyle: 'italic', fontSize: 13, color: 'var(--zm-fg-3)' }}>{sub}</span>}
+      {sub && <span style={{ fontFamily: 'var(--zm-font-body)', fontStyle: 'normal', fontSize: 12.5, color: 'var(--zm-fg-3)', lineHeight: 1.35 }}>{sub}</span>}
     </div>
   );
 }

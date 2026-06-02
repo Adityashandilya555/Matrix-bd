@@ -47,12 +47,15 @@ const PIPELINE_NODES = [
   { id: 'final',  label: 'Final Approval',      short: 'Final',   icon: 'check' },
 ];
 
+const PIPELINE_NODE_WIDTH = 142;
+const PIPELINE_CONNECTOR_WIDTH = 22;
+
 const STATUS_TONES = {
-  waiting:  { color: 'var(--zm-fg-3)', border: 'var(--zm-line)', bg: 'var(--zm-surface)', label: 'Waiting' },
-  active:   { color: 'var(--zm-accent)', border: 'var(--zm-accent)', bg: 'var(--zm-accent-soft, var(--zm-surface-2))', label: 'In review' },
-  complete: { color: 'var(--zm-success, #2D7A48)', border: 'var(--zm-success, #2D7A48)', bg: 'rgba(45,122,72,0.08)', label: 'Complete' },
+  waiting:  { color: 'var(--zm-warning, #B0712E)', border: 'var(--zm-warning, #B0712E)', bg: 'var(--zm-warning-soft, #F8EEDC)', label: 'Open' },
+  active:   { color: 'var(--zm-warning, #B0712E)', border: 'var(--zm-warning, #B0712E)', bg: 'var(--zm-warning-soft, #F8EEDC)', label: 'Open' },
+  complete: { color: 'var(--zm-success, #2D7A48)', border: 'var(--zm-success, #2D7A48)', bg: 'var(--zm-success-soft, rgba(45,122,72,0.08))', label: 'Complete' },
   rejected: { color: 'var(--zm-danger, #B91C1C)', border: 'var(--zm-danger, #B91C1C)', bg: 'rgba(185,28,28,0.08)', label: 'Rejected' },
-  future:   { color: 'var(--zm-fg-4)', border: 'var(--zm-line-faint)', bg: 'var(--zm-surface-2)', label: 'Queued' },
+  future:   { color: 'var(--zm-fg-4)', border: 'var(--zm-line-faint)', bg: 'rgba(255,255,255,0.56)', label: 'Queued' },
 };
 
 function pretty(value) {
@@ -92,12 +95,16 @@ function legalNodeState(site) {
   ) {
     return 'active';
   }
-  return 'waiting';
+  return 'active';
 }
 
 function nodeState(site, nodeId) {
   if (nodeId === 'loi') return 'complete';
   if (nodeId === 'legal') return legalNodeState(site);
+  if (nodeId === 'ca') {
+    if (site.financeStatus === 'approved' || site.status === 'pushed_to_payments') return 'complete';
+    if (legalNodeState(site) === 'complete') return 'active';
+  }
   return 'future';
 }
 
@@ -208,7 +215,11 @@ function PipelineNode({ site, node, onOpenLegal }) {
   const state = nodeState(site, node.id);
   const tone = STATUS_TONES[state] || STATUS_TONES.future;
   const interactive = node.interactive;
-  const label = node.id === 'legal' ? tone.label : (node.id === 'loi' ? 'Done' : 'Queued');
+  const label =
+    state === 'complete' ? (node.id === 'loi' ? 'Done' : 'Complete') :
+    state === 'active' ? (node.id === 'ca' ? 'Pending' : 'Open') :
+    state === 'rejected' ? 'Rejected' :
+    'Queued';
 
   return (
     <button
@@ -218,7 +229,8 @@ function PipelineNode({ site, node, onOpenLegal }) {
       title={interactive ? 'Open Legal status' : `${node.label} will be connected in a later module`}
       style={{
         position: 'relative',
-        minWidth: 142,
+        zIndex: 2,
+        minWidth: PIPELINE_NODE_WIDTH,
         height: 74,
         padding: '10px 12px',
         borderRadius: 12,
@@ -233,6 +245,7 @@ function PipelineNode({ site, node, onOpenLegal }) {
         justifyContent: 'space-between',
         boxShadow: interactive ? 'var(--zm-shadow-1)' : 'none',
         textAlign: 'left',
+        textDecoration: 'none',
       }}
     >
       <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
@@ -248,6 +261,7 @@ function PipelineNode({ site, node, onOpenLegal }) {
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
+          textDecoration: 'none',
         }}>
           {node.short}
         </span>
@@ -258,6 +272,7 @@ function PipelineNode({ site, node, onOpenLegal }) {
         fontWeight: 700,
         color: state === 'future' ? 'var(--zm-fg-3)' : 'var(--zm-fg)',
         lineHeight: 1.2,
+        textDecoration: 'none',
       }}>
         {node.label}
       </span>
@@ -271,6 +286,25 @@ function PipelineNode({ site, node, onOpenLegal }) {
         {label}
       </span>
     </button>
+  );
+}
+
+function PipelineConnector({ from, to }) {
+  const fromState = nodeState(from.site, from.node.id);
+  const toState = nodeState(to.site, to.node.id);
+  const done = fromState === 'complete' && (toState === 'complete' || toState === 'active');
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: PIPELINE_CONNECTOR_WIDTH,
+        height: 2,
+        borderRadius: 999,
+        background: done ? 'var(--zm-success, #2D7A48)' : 'var(--zm-line)',
+        opacity: done ? 0.62 : 0.8,
+        flex: `0 0 ${PIPELINE_CONNECTOR_WIDTH}px`,
+      }}
+    />
   );
 }
 
@@ -319,28 +353,25 @@ function PipelineRow({ site, onOpenLegal, onOpenDetail }) {
         <div style={{ minWidth: 0, overflowX: 'auto', padding: '4px 2px' }}>
           <div style={{
             position: 'relative',
-            display: 'grid',
-            gridTemplateColumns: `repeat(${PIPELINE_NODES.length}, 142px)`,
-            gap: 22,
+            display: 'flex',
+            alignItems: 'center',
             width: 'max-content',
             minWidth: '100%',
           }}>
-            <div style={{
-              position: 'absolute',
-              left: 24,
-              right: 24,
-              top: 37,
-              height: 1,
-              background: 'linear-gradient(90deg, var(--zm-accent), var(--zm-line) 48%, var(--zm-line-faint))',
-              pointerEvents: 'none',
-            }}/>
-            {PIPELINE_NODES.map((node) => (
-              <PipelineNode
-                key={node.id}
-                site={site}
-                node={node}
-                onOpenLegal={onOpenLegal}
-              />
+            {PIPELINE_NODES.map((node, index) => (
+              <React.Fragment key={node.id}>
+                {index > 0 && (
+                  <PipelineConnector
+                    from={{ site, node: PIPELINE_NODES[index - 1] }}
+                    to={{ site, node }}
+                  />
+                )}
+                <PipelineNode
+                  site={site}
+                  node={node}
+                  onOpenLegal={onOpenLegal}
+                />
+              </React.Fragment>
             ))}
           </div>
         </div>
@@ -805,7 +836,7 @@ export default function SiteTrackerListPage() {
       <PageHeader
         file="No. 08"
         eyebrow="BD module"
-        title={<>Process <em>flow</em></>}
+        title="Process flow"
         lede="Signed LOIs flow through Legal, CA, Design, Project, and Final Approval. Legal status is live from the module records."
         right={<HeaderTag icon="activity" label={`${filtered.length} IN FLOW`}/>}
       />

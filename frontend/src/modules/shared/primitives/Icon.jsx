@@ -20,6 +20,8 @@ export default function Icon({ name, size = 16, stroke = 1.5, style }) {
     calendar: <><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></>,
     file: <><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></>,
     clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
+    lock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></>,
+    refresh: <><path d="M20 6v6h-6"/><path d="M4 18v-6h6"/><path d="M19 12a7 7 0 00-12.2-4.7L4 12"/><path d="M5 12a7 7 0 0012.2 4.7L20 12"/></>,
     check: <><path d="M20 6L9 17l-5-5"/></>,
     alert: <><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></>,
     search: <><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></>,

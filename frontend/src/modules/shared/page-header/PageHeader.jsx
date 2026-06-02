@@ -21,7 +21,7 @@ export function HeaderTag({ icon, label, tone = 'default' }) {
   );
 }
 
-export default function PageHeader({ file, eyebrow, title, lede, right, italic = true }) {
+export default function PageHeader({ file, eyebrow, title, lede, right }) {
   return (
     <header style={{
       display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24,
@@ -46,11 +46,12 @@ export default function PageHeader({ file, eyebrow, title, lede, right, italic =
           }}>{eyebrow}</span>
         </div>
 
-        <h1 style={{
+        <h1 className="zm-page-title" style={{
           margin: 0, color: 'var(--zm-fg)',
-          fontFamily: 'var(--zm-font-serif)', fontWeight: 400,
-          fontSize: 48, lineHeight: 1, letterSpacing: '-0.015em',
-          fontStyle: italic ? 'italic' : 'normal',
+          fontFamily: 'var(--zm-font-display)', fontWeight: 800,
+          fontSize: 44, lineHeight: 1.04, letterSpacing: '-0.03em',
+          fontStyle: 'normal',
+          textWrap: 'balance',
         }}>{title}</h1>
 
         {lede && (

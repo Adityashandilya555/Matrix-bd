@@ -207,7 +207,7 @@ export default function AppRouter() {
         }/>
         <Route path={ROUTES.SITE_TRACKER_DETAIL} element={
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
-            <RequireModule modules={['bd']}>
+            <RequireModule modules={['bd', 'payment']}>
               <SiteTrackerDetailPage/>
             </RequireModule>
           </RequireRole>

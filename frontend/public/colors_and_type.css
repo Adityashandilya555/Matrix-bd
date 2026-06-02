@@ -13,17 +13,17 @@
    ------------------------------------------------------------- */
 :root {
   /* Background plane — warm off-white, never pure */
-  --zm-bg:            #F6F2EA;   /* warm cream */
-  --zm-bg-2:          #EFEAE0;
-  --zm-surface:       #FBF8F1;   /* soft paper card */
-  --zm-surface-2:     #F4F0E6;
-  --zm-surface-hover: #EFEAE0;
-  --zm-surface-sunken:#E7E0D2;
+  --zm-bg:            #FDFBF7;   /* warm cream */
+  --zm-bg-2:          #F6F2EA;
+  --zm-surface:       #FFFFFF;   /* clean white card */
+  --zm-surface-2:     #F8F4EC;
+  --zm-surface-hover: #F1ECE2;
+  --zm-surface-sunken:#ECE4D8;
 
   /* Linework — warm graphite */
-  --zm-line:          #E4DCC9;
-  --zm-line-strong:   #C8BFA9;
-  --zm-line-faint:    #EFE9DA;
+  --zm-line:          #E7DECD;
+  --zm-line-strong:   #CFC3AD;
+  --zm-line-faint:    #F1EBDD;
   --zm-grid:          rgba(28, 24, 18, 0.04);
 
   /* Text — warm near-black */
@@ -34,11 +34,11 @@
   --zm-fg-inv:        #FBF8F1;
 
   /* Brand accent — Matrix Teal */
-  --zm-accent:        #0F5D5C;
-  --zm-accent-hover:  #0C4B4A;
-  --zm-accent-press:  #093C3B;
-  --zm-accent-soft:   #E5EEED;
-  --zm-accent-line:   #9CC1C0;
+  --zm-accent:        #0E5B45;
+  --zm-accent-hover:  #0A4937;
+  --zm-accent-press:  #083B2D;
+  --zm-accent-soft:   #E7F0EA;
+  --zm-accent-line:   #9DBEAD;
   --zm-accent-on:     #FFFFFF;   /* foreground on accent surface */
   /* CTA button tokens — light mode mirrors --zm-accent. */
   --zm-cta-bg:        #0F5D5C;
@@ -57,9 +57,9 @@
 
   /* Semantic */
   --zm-success:       #2F7A4A;
-  --zm-success-soft:  #DCE9DC;
+  --zm-success-soft:  #E7F2E9;
   --zm-warning:       #B0712E;
-  --zm-warning-soft:  #F4E8D6;
+  --zm-warning-soft:  #F8EEDC;
   --zm-danger:        #9B2A2A;
   --zm-danger-soft:   #F0D6D2;
   --zm-info:          #2A4FA0;
@@ -75,9 +75,9 @@
   --zm-stage-handover:     #A2407C;
 
   /* Layered glass shadows */
-  --zm-shadow-1: 0 1px 0 rgba(28,24,18,0.04), 0 1px 3px rgba(28,24,18,0.06);
-  --zm-shadow-2: 0 1px 0 rgba(28,24,18,0.04), 0 4px 14px rgba(28,24,18,0.06), 0 1px 4px rgba(28,24,18,0.04);
-  --zm-shadow-3: 0 12px 32px rgba(28,24,18,0.10), 0 4px 10px rgba(28,24,18,0.06);
+  --zm-shadow-1: 0 1px 0 rgba(28,24,18,0.03), 0 2px 6px rgba(28,24,18,0.05);
+  --zm-shadow-2: 0 1px 0 rgba(28,24,18,0.03), 0 8px 18px rgba(28,24,18,0.06), 0 1px 4px rgba(28,24,18,0.04);
+  --zm-shadow-3: 0 18px 42px rgba(28,24,18,0.10), 0 4px 12px rgba(28,24,18,0.05);
   --zm-shadow-pop: 0 24px 60px rgba(28,24,18,0.18), 0 6px 18px rgba(28,24,18,0.08);
   --zm-glass: 0 1px 0 rgba(255,255,255,0.6) inset, 0 1px 2px rgba(28,24,18,0.04), 0 8px 24px rgba(28,24,18,0.06);
   --zm-ring-focus: 0 0 0 3px rgba(15,93,92,0.20);
@@ -272,6 +272,12 @@
 .zm-num         { font-family: var(--zm-font-mono); font-feature-settings: 'tnum' 1; }
 .zm-num-hero    { font-family: var(--zm-font-mono); font-feature-settings: 'tnum' 1; font-size: var(--zm-fs-num-hero); font-weight: 600; letter-spacing: -0.02em; color: var(--zm-fg); }
 .zm-num-lg      { font-family: var(--zm-font-mono); font-feature-settings: 'tnum' 1; font-size: var(--zm-fs-num-lg);   font-weight: 600; color: var(--zm-fg); }
+
+.zm-page-title,
+.zm-page-title em {
+  font-family: var(--zm-font-display);
+  font-style: normal;
+}
 
 /* -------------------------------------------------------------
    5. Element-level defaults — opt in by adding .zm-prose
