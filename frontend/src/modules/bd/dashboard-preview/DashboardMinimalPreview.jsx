@@ -280,7 +280,7 @@ export default function DashboardMinimalPreview() {
         </div>
         <div className="mdp-actions">
           <TopAction icon="plus" label="New pipeline" tone="teal"/>
-          <TopAction icon="activity" label="Sites in process flow" tone="amber"/>
+          <TopAction icon="activity" label="Process flow" tone="amber"/>
           <TopAction icon="rupee" label="Payment ready" tone="green"/>
         </div>
       </section>
