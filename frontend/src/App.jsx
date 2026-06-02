@@ -24,6 +24,13 @@ export default function App() {
   const [openSite, setOpenSite] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [toast, setToast] = useState(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem('zm-sidebar-collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const mainRef = useRef(null);
 
   useEffect(() => {
@@ -31,6 +38,14 @@ export default function App() {
     const t = setTimeout(() => setToast(null), 3400);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('zm-sidebar-collapsed', sidebarCollapsed ? 'true' : 'false');
+    } catch {
+      // localStorage may be unavailable in restrictive browser contexts.
+    }
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     if (mainRef.current) mainRef.current.scrollTop = 0;
@@ -98,9 +113,11 @@ export default function App() {
   };
 
   const ME = user.name;
+  const sidebarWidth = sidebarCollapsed ? 72 : 232;
 
   return (
-    <div data-screen-label="01 Sites" data-theme={dark ? 'dark' : 'light'} style={{
+    <div data-screen-label="01 Sites" data-theme={dark ? 'dark' : 'light'} data-sidebar-collapsed={sidebarCollapsed ? 'true' : 'false'} style={{
+      '--zm-sidebar-width': `${sidebarWidth}px`,
       width: '100%', height: '100vh', display: 'flex', flexDirection: 'column',
       background: 'var(--zm-bg)', color: 'var(--zm-fg)', overflow: 'hidden',
     }}>
@@ -110,9 +127,11 @@ export default function App() {
         dark={dark}
         onToggleDark={toggleDark}
         onNewPipeline={() => setShowNew(true)}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
       />
       <div style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
-        <Sidebar counts={counts} role={role} onRole={setRole}/>
+        <Sidebar counts={counts} role={role} onRole={setRole} collapsed={sidebarCollapsed}/>
 
         <main ref={mainRef} className="zm-app-main" style={{
           flex: 1, overflowY: 'auto', padding: '24px 32px 64px',

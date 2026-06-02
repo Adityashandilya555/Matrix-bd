@@ -30,7 +30,7 @@ function LOITimelineModal({ site, onCancel, onSubmit }) {
           <div style={{ flex: 1 }}>
             <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-accent)' }}>Approving · {site.code}</span>
             <h2 style={{ margin: '4px 0 6px', fontFamily: 'var(--zm-font-display)', fontWeight: 700, fontSize: 20, letterSpacing: '-0.02em', color: 'var(--zm-fg)' }}>Expected LOI timeline</h2>
-            <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>By when should the BD exec have the signed LOI uploaded? Sites that miss this date highlight in staging.</p>
+            <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>By when should the BD exec have the signed LOI uploaded? Sites that miss this date highlight in Sites in process.</p>
           </div>
           <button onClick={onCancel} className="zm-icon-btn" style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 8, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--zm-fg-2)', cursor: 'pointer', flex: '0 0 30px' }}><Icon name="x" size={14}/></button>
         </div>
@@ -46,7 +46,7 @@ function LOITimelineModal({ site, onCancel, onSubmit }) {
         </div>
         <div style={{ padding: 12, background: 'var(--zm-accent-soft)', borderRadius: 8, fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-2)', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
           <span style={{ color: 'var(--zm-accent)', display: 'inline-flex', marginTop: 1 }}><Icon name="alert" size={14}/></span>
-          On approval, this site moves to Staging. The BD exec is notified and the timer starts.
+          On approval, this site moves to Sites in process. The BD exec is notified and the timer starts.
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onCancel} className="zm-btn" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
@@ -246,7 +246,7 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
   const onTimelineSubmit = (item, days) => {
     setApproving(null);
     approveShortlistToStaging(item, days);
-    showToast?.(`Approved · ${item.name}. LOI expected in ${days}d. Moved to staging.`);
+    showToast?.(`Approved · ${item.name}. LOI expected in ${days}d. Moved to Sites in process.`);
   };
   const onAddDetails = (item) => {
     setDetailError(null);

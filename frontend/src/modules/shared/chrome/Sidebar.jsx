@@ -10,28 +10,55 @@ import { useSession } from '../../../state/SessionContext.jsx';
 //   - SidebarItem.onClick now calls navigate(); active derives from useLocation()
 //   - Role switcher uses <select> for the role dropdown.
 
-function SidebarItem({ icon, label, count, active, onClick }) {
+function SidebarItem({ icon, label, count, active, onClick, collapsed = false }) {
   return (
-    <div onClick={onClick} className="zm-sb-item" style={{
-      display: 'flex', alignItems: 'center', gap: 10,
-      padding: '7px 10px', borderRadius: 7, cursor: 'pointer',
+    <div
+      onClick={onClick}
+      className="zm-sb-item"
+      title={collapsed ? label : undefined}
+      aria-label={label}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick?.();
+        }
+      }}
+      style={{
+      display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', gap: collapsed ? 0 : 10,
+      minHeight: collapsed ? 40 : 'auto',
+      padding: collapsed ? '8px 0' : '7px 10px', borderRadius: collapsed ? 14 : 7, cursor: 'pointer',
       background: active ? 'var(--zm-accent-soft)' : 'transparent',
       color: active ? 'var(--zm-fg)' : 'var(--zm-fg-2)',
       fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: active ? 600 : 500,
       position: 'relative',
+      transition: 'background 160ms var(--zm-ease), color 160ms var(--zm-ease), border-radius 160ms var(--zm-ease)',
     }}
     onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--zm-surface-hover)'; }}
     onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
     >
-      {active && <span style={{ position: 'absolute', left: 0, top: 8, bottom: 8, width: 2, background: 'var(--zm-accent)', borderRadius: 2 }}/>}
+      {active && <span style={{ position: 'absolute', left: collapsed ? 5 : 0, top: 8, bottom: 8, width: 2, background: 'var(--zm-accent)', borderRadius: 2 }}/>}
       <span style={{ color: active ? 'var(--zm-accent)' : 'var(--zm-fg-3)', display: 'inline-flex' }}>
-        <Icon name={icon} size={16}/>
+        <Icon name={icon} size={collapsed ? 19 : 16} stroke={collapsed ? 1.8 : 1.5}/>
       </span>
-      {label}
-      {count != null && (
+      {!collapsed && label}
+      {count != null && !collapsed && (
         <span style={{
           marginLeft: 'auto', fontFamily: 'var(--zm-font-mono)', fontSize: 11,
           color: active ? 'var(--zm-accent)' : 'var(--zm-fg-3)', fontWeight: 500,
+        }}>{count}</span>
+      )}
+      {count != null && collapsed && (
+        <span style={{
+          position: 'absolute', top: 4, right: 5,
+          minWidth: 15, height: 15, padding: '0 3px', borderRadius: 999,
+          background: active ? 'var(--zm-accent)' : 'var(--zm-surface-2)',
+          border: '1px solid var(--zm-line)',
+          color: active ? '#fff' : 'var(--zm-fg-3)',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: 'var(--zm-font-mono)', fontSize: 9, fontWeight: 700,
+          lineHeight: 1,
         }}>{count}</span>
       )}
     </div>
@@ -51,7 +78,7 @@ const SECTION_HEADING_STYLE = {
   padding: '14px 10px 6px',
 };
 
-export default function Sidebar({ counts, role, onRole }) {
+export default function Sidebar({ counts, role, onRole, collapsed = false }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { session } = useSession();
@@ -69,7 +96,7 @@ export default function Sidebar({ counts, role, onRole }) {
     path === ROUTES.OVERVIEW                              ? 'overview'  :
     path === ROUTES.PIPELINE                             ? 'pipeline'  :
     path === ROUTES.SHORTLIST || path.startsWith('/shortlist/') ? 'shortlist' :
-    path.startsWith('/staging-flow') || path.startsWith('/site-tracker') ? 'site-tracker' :
+    path.startsWith('/staging-flow') || path.startsWith('/site-tracker') || path === ROUTES.DASHBOARD_MINIMAL_PREVIEW ? 'site-tracker' :
     path.startsWith('/staging')                          ? 'staging'   :
     path === ROUTES.ARCHIVE                              ? 'archive'   :
     path === ROUTES.DD_FAILED                            ? 'dd-failed' :
@@ -86,72 +113,78 @@ export default function Sidebar({ counts, role, onRole }) {
 
   return (
     <aside className="zm-sidebar" style={{
-      width: 232, flex: '0 0 232px', padding: '14px 12px',
+      width: collapsed ? 72 : 232, flex: `0 0 ${collapsed ? 72 : 232}px`, padding: collapsed ? '14px 10px' : '14px 12px',
       background: 'var(--zm-surface)', borderRight: '1px solid var(--zm-line)',
       display: 'flex', flexDirection: 'column', gap: 2,
       overflowY: 'auto',
+      transition: 'width 220ms var(--zm-ease), flex-basis 220ms var(--zm-ease), padding 220ms var(--zm-ease)',
     }}>
       {!isModuleSurface && (
         <>
-          <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Overview</div>
-          <SidebarItem icon="trend" label="Sites" active={activeView === 'overview'} onClick={() => go(ROUTES.OVERVIEW)}/>
-          <div style={SECTION_HEADING_STYLE}>Workflow</div>
-          <SidebarItem icon="file"   label="Pipeline"        count={counts.pipeline}  active={activeView === 'pipeline'}  onClick={() => go(ROUTES.PIPELINE)}/>
-          <SidebarItem icon="shield" label="Shortlist queue" count={counts.shortlist} active={activeView === 'shortlist'} onClick={() => go(ROUTES.SHORTLIST)}/>
-          <SidebarItem icon="box"    label="Staging"         count={counts.staging}   active={activeView === 'staging'}   onClick={() => go(ROUTES.STAGING)}/>
+          {!collapsed && <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Overview</div>}
+          <SidebarItem icon="dashboard" label="Sites" active={activeView === 'overview'} onClick={() => go(ROUTES.OVERVIEW)} collapsed={collapsed}/>
+          {!collapsed && <div style={SECTION_HEADING_STYLE}>Workflow</div>}
+          <SidebarItem icon="document" label="Pipeline" count={counts.pipeline} active={activeView === 'pipeline'} onClick={() => go(ROUTES.PIPELINE)} collapsed={collapsed}/>
+          <SidebarItem icon="bookmark" label="Shortlisted sites" count={counts.shortlist} active={activeView === 'shortlist'} onClick={() => go(ROUTES.SHORTLIST)} collapsed={collapsed}/>
+          <SidebarItem icon="layers" label="Sites in process" count={counts.staging} active={activeView === 'staging'} onClick={() => go(ROUTES.STAGING)} collapsed={collapsed}/>
           {role === 'supervisor' && (
-            <SidebarItem icon="folder" label="Archive" count={counts.archive} active={activeView === 'archive'} onClick={() => go(ROUTES.ARCHIVE)}/>
+            <SidebarItem icon="archiveBox" label="Archive" count={counts.archive} active={activeView === 'archive'} onClick={() => go(ROUTES.ARCHIVE)} collapsed={collapsed}/>
           )}
-          <SidebarItem icon="alert" label="DD failed" active={activeView === 'dd-failed'} onClick={() => go(ROUTES.DD_FAILED)}/>
-          <SidebarItem icon="activity" label="Staging flow" active={activeView === 'site-tracker'} onClick={() => go(ROUTES.SITE_TRACKER)}/>
+          <SidebarItem icon="warning" label="DD failed" active={activeView === 'dd-failed'} onClick={() => go(ROUTES.DD_FAILED)} collapsed={collapsed}/>
+          <SidebarItem icon="route" label="Process flow" active={activeView === 'site-tracker'} onClick={() => go(ROUTES.SITE_TRACKER)} collapsed={collapsed}/>
         </>
       )}
 
       {userModule === 'legal' && (
         <>
-          <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Legal</div>
+          {!collapsed && <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Legal</div>}
           <SidebarItem
-            icon="shield"
+            icon="legalShield"
             label="Legal queue"
             active={activeView === 'legal-ddr'}
             onClick={() => go(ROUTES.LEGAL)}
+            collapsed={collapsed}
           />
           <SidebarItem
-            icon="alert"
+            icon="warning"
             label="Change requests"
             active={activeView === 'legal-change-requests'}
             onClick={() => go(ROUTES.LEGAL_CHANGE_REQUESTS)}
+            collapsed={collapsed}
           />
           <SidebarItem
-            icon="folder"
+            icon="archiveBox"
             label="Rejected sites"
             active={activeView === 'legal-rejected'}
             onClick={() => go(ROUTES.LEGAL_REJECTED)}
+            collapsed={collapsed}
           />
         </>
       )}
 
       {userModule === 'payment' && (
         <>
-          <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Payment</div>
+          {!collapsed && <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Payment</div>}
           <SidebarItem
-            icon="card"
+            icon="paymentCard"
             label="Payment"
             active={activeView === 'payment-licensing'}
             onClick={() => go(ROUTES.PAYMENT)}
+            collapsed={collapsed}
           />
         </>
       )}
 
       {canSeeTeam && (
         <>
-          <div style={SECTION_HEADING_STYLE}>Workspace</div>
+          {!collapsed && <div style={SECTION_HEADING_STYLE}>Workspace</div>}
           <SidebarItem
-            icon="user"
+            icon="users"
             label="Team"
             count={counts.pendingUsers}
             active={activeView === 'team'}
             onClick={() => go(ROUTES.TEAM)}
+            collapsed={collapsed}
           />
         </>
       )}
@@ -159,7 +192,7 @@ export default function Sidebar({ counts, role, onRole }) {
       <div style={{ flex: 1 }}/>
 
       {/* Role switcher — mock only; uses <select> to stay within 232px column */}
-      {onRole && (
+      {onRole && !collapsed && (
         <div style={{
           padding: 10, margin: '0 4px 8px',
           border: '1px solid var(--zm-line)', borderRadius: 10,
@@ -184,7 +217,26 @@ export default function Sidebar({ counts, role, onRole }) {
         </div>
       )}
 
-      <div style={{
+      {collapsed ? (
+        <div
+          title="Ask Matrix"
+          aria-label="Ask Matrix"
+          style={{
+            height: 42,
+            margin: '0 2px',
+            border: '1px solid var(--zm-line)',
+            borderRadius: 14,
+            background: 'var(--zm-surface-2)',
+            color: 'var(--zm-accent)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Icon name="chat" size={18}/>
+        </div>
+      ) : (
+        <div style={{
         padding: 12, margin: '0 4px',
         border: '1px solid var(--zm-line)', borderRadius: 10,
         background: 'var(--zm-surface-2)',
@@ -195,9 +247,10 @@ export default function Sidebar({ counts, role, onRole }) {
           <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Ask Matrix</span>
         </div>
         <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-fg-2)', lineHeight: 1.45 }}>
-          "Staging sites overdue &gt; 14 days" — answer in the desktop workspace.
+          "Sites in process overdue &gt; 14 days" — answer in the desktop workspace.
         </p>
-      </div>
+        </div>
+      )}
     </aside>
   );
 }

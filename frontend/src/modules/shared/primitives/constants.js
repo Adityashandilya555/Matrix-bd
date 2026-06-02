@@ -16,7 +16,7 @@ export const STAGES = {
   overdueDraft: { name: 'Draft · overdue', tone: 'danger',  color: '#9B2A2A' },
   shortlist:    { name: 'Shortlist',       tone: 'info',    color: '#2A4FA0' },
   inReview:     { name: 'In review',       tone: 'plum',    color: '#6B4789' },
-  staging:      { name: 'Staging · LOI',   tone: 'copper',  color: '#B0712E' },
+  staging:      { name: 'Sites in process · LOI', tone: 'copper', color: '#B0712E' },
   overdue:      { name: 'LOI overdue',     tone: 'danger',  color: '#9B2A2A' },
   uploaded:     { name: 'LOI uploaded',    tone: 'accent',  color: '#0F5D5C' },
   legal_review: { name: 'Legal review',    tone: 'plum',    color: '#6B4789' },
