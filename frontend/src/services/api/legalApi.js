@@ -127,10 +127,11 @@ export async function saveDdItems(siteId, body) {
   return reviewFromServer(data);
 }
 
-// Step 2 — supervisor only. Pass { finalVerdict, rejectionReason? }.
-export async function finalizeDd(siteId, { finalVerdict, rejectionReason }) {
+// Step 2 — supervisor only. Pass { finalVerdict, rejectionReason?, overrideReason? }.
+export async function finalizeDd(siteId, { finalVerdict, rejectionReason, overrideReason }) {
   const body = { final_verdict: finalVerdict };
   if (rejectionReason) body.rejection_reason = rejectionReason;
+  if (overrideReason) body.override_reason = overrideReason;
   const data = await client.post(`/legal/${siteId}/dd/finalize`, body).then((r) => r.data);
   notifySiteDataChanged({ source: 'legalApi', action: 'finalize_dd', siteId });
   return reviewFromServer(data);

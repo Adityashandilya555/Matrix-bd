@@ -639,11 +639,12 @@ async def svc_save_due_diligence(
         else:
             # ── Positive path ────────────────────────────────────────────────
             site.legal_dd_status = "positive"
+            detail = body.override_reason or "Positive DD — proceeding to Agreement"
             await write_audit_event(
                 session, tenant_id=tenant_id, site_id=site.id,
                 actor_id=actor["sub"], actor_name=actor["name"],
                 action="legal_dd_positive",
-                detail="Positive DD — proceeding to Agreement",
+                detail=detail,
             )
 
             # Auto-inherit licensing: the same `site_delegations` row (module='legal')

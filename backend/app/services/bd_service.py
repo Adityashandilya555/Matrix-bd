@@ -20,6 +20,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -54,11 +55,32 @@ def _assert_not_self_approval(actor: dict, site: models.Site) -> None:
     """Self-approval guard. The submitter cannot also be the approver/rejecter
     of the same draft. A supervisor draft never reaches here because it
     auto-promotes — see svc_create_draft."""
-    if str(site.submitted_by) == str(actor["sub"]):
+    delegated_supervisor_created_site = (
+        (actor.get("role") or "").lower() == "supervisor"
+        and site.status == SiteStatus.DETAILS_SUBMITTED.value
+        and site.assigned_to is not None
+        and str(site.assigned_to) != str(actor["sub"])
+        and str(site.submitted_by) == str(actor["sub"])
+        and str(site.supervisor_id or "") == str(actor["sub"])
+    )
+    if str(site.submitted_by) == str(actor["sub"]) and not delegated_supervisor_created_site:
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
             detail="You cannot approve or reject a draft you submitted.",
         )
+
+
+def _assert_can_edit_details(actor: dict, site: models.Site) -> None:
+    """Executives may fill details only for their own or assigned sites."""
+    if (actor.get("role") or "").lower() != "executive":
+        return
+    actor_id = str(actor["sub"])
+    if str(site.submitted_by) == actor_id or str(site.assigned_to or "") == actor_id:
+        return
+    raise HTTPException(
+        status_code=http_status.HTTP_403_FORBIDDEN,
+        detail="This site is not assigned to you.",
+    )
 
 
 # ── Create draft ──────────────────────────────────────────────────────────
@@ -204,6 +226,7 @@ async def svc_save_details(
     details = _normalise_detail_keys(details or {})
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        _assert_can_edit_details(actor, site)
         before = {
             "model": site.model,
             "spoc_name": site.spoc_name,
@@ -257,6 +280,7 @@ async def svc_submit_details(
     details = _normalise_detail_keys(details or {})
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        _assert_can_edit_details(actor, site)
         assert_transition(SiteStatus(site.status), SiteStatus.DETAILS_SUBMITTED)
         if details:
             before = {
@@ -319,16 +343,8 @@ async def svc_approve_shortlist(
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         current_status = SiteStatus(site.status)
-        actor_id = str(actor["sub"])
-        supervisor_created_shortlist = (
-            current_status == SiteStatus.SHORTLISTED
-            and str(site.submitted_by) == actor_id
-            and str(site.supervisor_id) == actor_id
-            and (actor.get("role") or "").lower() == "supervisor"
-        )
-        if not supervisor_created_shortlist:
-            _assert_not_self_approval(actor, site)
-            assert_transition(current_status, SiteStatus.APPROVED)
+        _assert_not_self_approval(actor, site)
+        assert_transition(current_status, SiteStatus.APPROVED)
         approved_at = datetime.now(timezone.utc)
         site.status = SiteStatus.APPROVED.value
         site.approved_at = approved_at
@@ -355,7 +371,7 @@ async def svc_approve_shortlist(
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor["name"],
-            action="approve_shortlist" if supervisor_created_shortlist else "approve_details",
+            action="approve_details",
             from_status=current_status.value,
             to_status=SiteStatus.APPROVED.value,
             detail=f"expected_loi_days={expected_loi_days}",
@@ -542,6 +558,23 @@ async def svc_reassign_site(
 ) -> OkResponse:
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        assignee = (await session.execute(
+            select(models.User).where(
+                models.User.id == new_owner_id,
+                models.User.tenant_id == tenant_id,
+                models.User.is_active.is_(True),
+            )
+        )).scalar_one_or_none()
+        if assignee is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail="Executive not found in this workspace.",
+            )
+        if (assignee.role or "").lower() != "executive":
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Sites can only be assigned to an executive.",
+            )
         old_owner_id = site.assigned_to
         site.assigned_to = new_owner_id
         await write_audit_event(

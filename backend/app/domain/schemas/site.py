@@ -116,6 +116,8 @@ class SiteResponse(BaseModel):
     status: SiteStatus
     created_by: str
     submitted_by: Optional[str] = None
+    assigned_to: Optional[str] = None
+    assigned_to_name: Optional[str] = None
     supervisor_id: Optional[str] = None
     visit_date: Optional[date] = None
     days: Optional[int] = None

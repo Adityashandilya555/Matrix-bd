@@ -90,15 +90,7 @@ export async function patchSiteStatus(id, newStatus, payload = {}) {
   maybeFail();
   const site = getSiteById(id);
   if (!site) throw new Error(`Site not found: ${id}`);
-  const supervisorAutoApproval =
-    newStatus === SiteStatus.APPROVED &&
-    site.status === SiteStatus.SHORTLISTED &&
-    site.submittedBy &&
-    site.supervisorId &&
-    String(site.submittedBy) === String(site.supervisorId);
-  if (!supervisorAutoApproval) {
-    assertTransition(site.status, newStatus);
-  }
+  assertTransition(site.status, newStatus);
   const auditEntry = {
     id: Math.random().toString(36).slice(2, 10),
     at: new Date().toISOString(),

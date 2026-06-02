@@ -79,12 +79,14 @@ async def list_sites(
     stmt = stmt.order_by(desc(models.Site.updated_at)).limit(limit)
     rows = (await session.execute(stmt)).scalars().all()
 
-    # Resolve names for the SiteResponse.created_by field in one query.
+    # Resolve names for the SiteResponse.created_by / assigned_to fields in one query.
     submitter_ids = {r.submitted_by for r in rows if r.submitted_by}
+    assignee_ids = {r.assigned_to for r in rows if r.assigned_to}
     site_ids = [r.id for r in rows]
     names = {}
-    if submitter_ids:
-        u_stmt = select(models.User.id, models.User.name).where(models.User.id.in_(submitter_ids))
+    user_ids = submitter_ids | assignee_ids
+    if user_ids:
+        u_stmt = select(models.User.id, models.User.name).where(models.User.id.in_(user_ids))
         names = dict((u_id, n) for u_id, n in (await session.execute(u_stmt)).all())
     detail_by_site = {}
     if site_ids:
@@ -96,6 +98,7 @@ async def list_sites(
         site_to_response(
             r,
             created_by_name=names.get(r.submitted_by, ""),
+            assigned_to_name=names.get(r.assigned_to, "") if r.assigned_to else None,
             details=detail_by_site.get(r.id),
         )
         for r in rows
@@ -117,9 +120,13 @@ async def get_site(
 
     name_stmt = select(models.User.name).where(models.User.id == site.submitted_by)
     name = (await session.execute(name_stmt)).scalar_one_or_none()
+    assigned_to_name = None
+    if site.assigned_to:
+        assigned_name_stmt = select(models.User.name).where(models.User.id == site.assigned_to)
+        assigned_to_name = (await session.execute(assigned_name_stmt)).scalar_one_or_none()
     detail_stmt = select(models.SiteDetail).where(models.SiteDetail.site_id == site.id)
     details = (await session.execute(detail_stmt)).scalar_one_or_none()
-    return site_to_response(site, created_by_name=name or "", details=details)
+    return site_to_response(site, created_by_name=name or "", assigned_to_name=assigned_to_name, details=details)
 
 
 async def list_site_activity(
