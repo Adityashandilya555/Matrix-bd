@@ -140,6 +140,7 @@ def site_to_response(
         legal_dd_status=site.legal_dd_status,
         agreement_status=site.agreement_status,
         licensing_status=site.licensing_status,
+        design_status=site.design_status,
     )
 
 

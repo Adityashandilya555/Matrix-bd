@@ -154,6 +154,7 @@ class SiteResponse(BaseModel):
     legal_dd_status: Optional[str] = None
     agreement_status: Optional[str] = None
     licensing_status: Optional[str] = None
+    design_status: Optional[str] = None
 
 
 class SiteListResponse(BaseModel):

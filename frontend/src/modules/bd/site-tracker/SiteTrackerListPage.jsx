@@ -106,6 +106,10 @@ function nodeState(site, nodeId) {
     if (site.financeStatus === 'approved' || site.status === 'pushed_to_payments') return 'complete';
     if (legalNodeState(site) === 'complete') return 'active';
   }
+  if (nodeId === 'design') {
+    if (site.designStatus === 'approved') return 'complete';
+    if (site.financeStatus === 'approved' && site.status === 'pushed_to_payments') return 'active';
+  }
   return 'future';
 }
 

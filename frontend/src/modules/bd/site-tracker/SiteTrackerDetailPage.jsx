@@ -146,6 +146,10 @@ function detailNodeState(data, nodeId) {
     if (data.financeStatus === 'approved' || data.siteStatus === 'pushed_to_payments') return 'complete';
     if (legalNodeState(data) === 'complete') return 'active';
   }
+  if (nodeId === 'design') {
+    if (data.designStatus === 'approved') return 'complete';
+    if (data.financeStatus === 'approved' && data.siteStatus === 'pushed_to_payments') return 'active';
+  }
   return 'future';
 }
 

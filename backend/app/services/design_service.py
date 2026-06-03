@@ -1,19 +1,22 @@
 """Design Department workflow service.
 
-A PARALLEL track that opens once a site's DDR is positive
-(sites.legal_dd_status == 'positive'). It does NOT mutate the linear site status
-(state_machine.py is untouched) — progress is tracked by:
+A PARALLEL track that opens once a site's DDR is positive and Finance admin
+approval has pushed the site to the payments handoff
+(sites.legal_dd_status == 'positive', sites.finance_status == 'approved',
+sites.status == 'pushed_to_payments'). It does NOT mutate the linear site status
+after that handoff — progress is tracked by:
 
   sites.design_status   — mirror column BD/dashboards read
   design_reviews         — one row per site (active stage + business_admin GFC gate)
   design_deliverables    — one row per (site, kind): recce | 2d | 3d | boq
 
 Swimlane:
-  Supervisor allocates a DDR-positive site to a *design* executive (separate pool,
-  module='design'). The executive uploads each deliverable; the supervisor reviews
-  it yes/no with comments (reject → re-upload loop). When the BOQ is approved the
-  site reaches the GFC gate, where the **business_admin** gives the final
-  Good-For-Construction approval (a comments dialog visible to the supervisor).
+  Supervisor allocates a finance-approved site to a *design* executive (separate
+  pool, module='design'). The executive uploads each deliverable; the supervisor
+  reviews it yes/no with comments (reject → re-upload loop). When the BOQ is
+  approved the site reaches the GFC gate, where the **business_admin** gives the
+  final Good-For-Construction approval (a comments dialog visible to the
+  supervisor).
 
 Mirror column sites.design_status:
   pending | allocated | in_progress | gfc_pending | approved | rejected
@@ -196,8 +199,8 @@ async def _build_design_response(
     )
 
 
-def _assert_ddr_positive(site: models.Site) -> None:
-    """The design module only opens once DDR is positive."""
+def _assert_design_unlocked(site: models.Site) -> None:
+    """The design module opens after DDR is positive and finance admin approves."""
     if (site.legal_dd_status or "pending") != "positive":
         raise HTTPException(
             status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -205,6 +208,11 @@ def _assert_ddr_positive(site: models.Site) -> None:
                 f"Design is gated on a positive DDR. Site legal_dd_status is "
                 f"'{site.legal_dd_status}', not 'positive'."
             ),
+        )
+    if (site.finance_status or "pending") != "approved" or site.status != "pushed_to_payments":
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Design is gated on Finance admin approval.",
         )
 
 
@@ -216,7 +224,7 @@ async def svc_design_queue(
     tenant_id: str | UUID,
     restrict_to_site_ids: Optional[list[str]] = None,
 ) -> DesignQueueResponse:
-    """DDR-positive sites that are still active in design (design_status != approved).
+    """Finance-approved sites that are still active in design (design_status != approved).
 
     `restrict_to_site_ids` is the additive filter the router passes for an
     executive caller (so they only see sites delegated to them). None = the
@@ -227,6 +235,8 @@ async def svc_design_queue(
         .where(
             models.Site.tenant_id == tenant_id,
             models.Site.legal_dd_status == "positive",
+            models.Site.finance_status == "approved",
+            models.Site.status == "pushed_to_payments",
             models.Site.design_status != "approved",
         )
         .order_by(models.Site.updated_at.asc())
@@ -261,6 +271,7 @@ async def svc_get_design_review(
     session: AsyncSession, *, site_id: str | UUID, tenant_id: str | UUID,
 ) -> DesignReviewResponse:
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+    _assert_design_unlocked(site)
     return await _build_design_response(session, site)
 
 
@@ -275,7 +286,7 @@ async def svc_allocate_design(
     delegate_user_id: str | UUID,
     notes: Optional[str] = None,
 ) -> DesignReviewResponse:
-    """Supervisor allocates a DDR-positive site to a design executive.
+    """Supervisor allocates a finance-approved site to a design executive.
 
     Creates a site_delegations row (module='design'), opens the design_reviews
     row at stage 'recce', and mirrors sites.design_status = 'allocated'.
@@ -293,7 +304,7 @@ async def svc_allocate_design(
 
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        _assert_ddr_positive(site)
+        _assert_design_unlocked(site)
 
         delegate = (await session.execute(
             select(models.User).where(
@@ -583,7 +594,7 @@ async def svc_submit_deliverable(
 
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        _assert_ddr_positive(site)
+        _assert_design_unlocked(site)
         is_supervisor = (actor.get("role") or "").lower() == "supervisor"
         review = await _fetch_review_or_none(session, site_id=site.id)
         if review is None:
@@ -731,6 +742,7 @@ async def svc_review_deliverable(
 
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        _assert_design_unlocked(site)
         review = await _fetch_review_or_404(session, site_id=site.id)
         deliverable = await _fetch_deliverable_or_none(session, site_id=site.id, kind=kind)
 

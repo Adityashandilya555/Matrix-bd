@@ -6,11 +6,11 @@ Access control:
   - The business_admin (tenant-wide, no module claim) uses the GFC routes —
     require_role(BUSINESS_ADMIN) only, NO module guard.
 
-Opens once sites.legal_dd_status == 'positive' (DDR cleared). Does NOT touch the
-linear site state machine; progress is mirrored on sites.design_status.
+Opens once DDR is positive and Finance admin approval has pushed the site to
+payments handoff. Progress is mirrored on sites.design_status.
 
 Endpoints:
-  GET    /design/queue                                 → design pipeline (DDR-positive sites)
+  GET    /design/queue                                 → design pipeline (finance-approved sites)
   GET    /design/gfc-queue                             → sites awaiting GFC (business admin)
   GET    /design/gfc/{site_id}                         → read package for GFC review (business admin)
   POST   /design/gfc/{site_id}                         → GFC decision approve/reject (business admin)
@@ -78,7 +78,7 @@ def _is_executive(user: dict) -> bool:
 @router.get(
     "/queue",
     response_model=DesignQueueResponse,
-    summary="List DDR-positive sites in the design pipeline",
+    summary="List finance-approved sites in the design pipeline",
 )
 async def design_queue(
     db: DbDep,
@@ -193,7 +193,7 @@ async def list_design_delegations(
 @router.post(
     "/{site_id}/allocate",
     response_model=DesignReviewResponse,
-    summary="Allocate a DDR-positive site to a design executive",
+    summary="Allocate a finance-approved site to a design executive",
 )
 async def allocate_design(
     site_id: str,

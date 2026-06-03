@@ -28,7 +28,7 @@ ReviewDecision = Literal["approve", "reject"]
 # ── Requests ──────────────────────────────────────────────────────────────────
 
 class AllocateDesignRequest(BaseModel):
-    """Supervisor allocates a DDR-positive site to a design executive."""
+    """Supervisor allocates a finance-approved site to a design executive."""
     executive_id: str
     notes: Optional[str] = None
 

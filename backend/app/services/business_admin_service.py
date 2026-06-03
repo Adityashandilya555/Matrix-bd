@@ -17,11 +17,14 @@ import secrets
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db import models
 from app.db.session import transaction
 from app.domain.schemas.business_admin import Module
+from app.services._common import fetch_user_name
+from app.services.finance_service import svc_finance_approve
 
 
 _PENDING_MODULE_PREFIX = "pending_module:"
@@ -160,3 +163,52 @@ async def reject_supervisor(
             """),
             {"uid": user_id, "tid": tenant_id},
         )
+
+
+async def list_finance_approvals(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+) -> list[dict]:
+    rows = (await session.execute(
+        select(models.Site)
+        .where(
+            models.Site.tenant_id == tenant_id,
+            models.Site.finance_status == "awaiting_admin",
+        )
+        .order_by(models.Site.updated_at.asc())
+    )).scalars().all()
+
+    items: list[dict] = []
+    for site in rows:
+        items.append({
+            "site_id": str(site.id),
+            "site_code": site.ca_code or site.code or "",
+            "site_name": site.name,
+            "city": site.city,
+            "site_status": site.status,
+            "submitted_by_name": await fetch_user_name(session, site.submitted_by),
+            "ca_code": site.ca_code,
+            "finance_amount": (
+                float(site.finance_amount)
+                if site.finance_amount is not None
+                else None
+            ),
+            "kyc_verified": bool(site.kyc_verified),
+            "finance_status": site.finance_status,
+            "updated_at": site.updated_at,
+        })
+    return items
+
+
+async def approve_finance(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+    site_id: str | UUID,
+    actor: dict,
+) -> dict:
+    return await svc_finance_approve(
+        session,
+        tenant_id=tenant_id,
+        actor=actor,
+        site_id=site_id,
+    )

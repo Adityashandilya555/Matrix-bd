@@ -206,6 +206,7 @@ async def get_site_tracker(
         legal_dd_status=site.legal_dd_status,
         agreement_status=site.agreement_status,
         licensing_status=site.licensing_status,
+        design_status=getattr(site, "design_status", "pending") or "pending",
         dd=dd_resp,
         agreement=agreement_resp,
         licensing=licensing_resp,

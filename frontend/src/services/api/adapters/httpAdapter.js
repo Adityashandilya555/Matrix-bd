@@ -169,6 +169,7 @@ function siteFromServer(s) {
     legalDdStatus: s.legal_dd_status,
     agreementStatus: s.agreement_status,
     licensingStatus: s.licensing_status,
+    designStatus: s.design_status,
   };
 }
 
@@ -427,6 +428,28 @@ export async function approveSupervisor(userId, moduleKey) {
 
 export async function rejectSupervisor(userId) {
   return post(`/business-admin/pending-supervisors/${userId}/reject`);
+}
+
+export async function listFinanceApprovals() {
+  const data = await get('/business-admin/finance-approvals');
+  const items = data?.items || data || [];
+  return items.map(row => ({
+    siteId:          row.site_id,
+    siteCode:        row.site_code,
+    siteName:        row.site_name,
+    city:            row.city,
+    siteStatus:      row.site_status,
+    submittedByName: row.submitted_by_name,
+    caCode:          row.ca_code,
+    financeAmount:   row.finance_amount,
+    kycVerified:     row.kyc_verified,
+    financeStatus:   row.finance_status,
+    updatedAt:       row.updated_at,
+  }));
+}
+
+export async function approveFinanceApproval(siteId) {
+  return post(`/business-admin/finance-approvals/${siteId}/approve`, {});
 }
 
 // ── Per-supervisor invite codes & pending-executive approvals ──────────────

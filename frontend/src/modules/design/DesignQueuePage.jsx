@@ -63,11 +63,11 @@ export default function DesignQueuePage() {
       <PageHeader
         file="No. 06"
         eyebrow="Design module"
-        title={<>Design <em>queue</em></>}
+        title="Design queue"
         lede={isSupervisor
-          ? 'DDR-positive sites. Open a row to allocate it to an executive and review deliverables.'
+          ? 'Finance-approved sites. Open a row to allocate it to an executive and review deliverables.'
           : 'Sites allocated to you. Open a row to upload Recce → 2D → 3D → BOQ.'}
-        right={<HeaderTag icon="box" label="DDR_POSITIVE"/>}
+        right={<HeaderTag icon="box" label="FINANCE APPROVED"/>}
       />
 
       {state.status === 'loading' && (
@@ -87,8 +87,8 @@ export default function DesignQueuePage() {
           <Icon name="box" size={20}/>
           <p style={{ margin: '12px 0 0' }}>
             {isSupervisor
-              ? 'No DDR-positive sites are waiting for design right now.'
-              : 'No sites have been allocated to you yet.'}
+              ? 'No finance-approved sites are waiting for design right now. Waiting for Finance admin approval.'
+              : 'No sites have been allocated to you yet. Design opens after Finance admin approval.'}
           </p>
         </div>
       )}

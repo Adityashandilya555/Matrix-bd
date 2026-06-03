@@ -15,6 +15,7 @@ from app.core.deps import DbDep, TenantId
 from app.domain.schemas.business_admin import (
     ApproveSupervisorIn,
     DeptCodeRotateOut,
+    FinanceApprovalOut,
     Module,
     ModuleCodeOut,
     PendingSupervisorOut,
@@ -80,3 +81,25 @@ async def reject_supervisor(
     tenant_id: TenantId,
 ) -> None:
     await svc.reject_supervisor(db, tenant_id, user_id)
+
+
+@router.get("/finance-approvals", response_model=list[FinanceApprovalOut])
+async def list_finance_approvals(
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> list[dict]:
+    return await svc.list_finance_approvals(db, tenant_id)
+
+
+@router.post(
+    "/finance-approvals/{site_id}/approve",
+    response_model=dict,
+)
+async def approve_finance(
+    site_id: str,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> dict:
+    return await svc.approve_finance(db, tenant_id, site_id, current_user)

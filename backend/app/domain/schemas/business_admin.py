@@ -34,3 +34,17 @@ class PendingSupervisorOut(BaseModel):
 
 class ApproveSupervisorIn(BaseModel):
     module: Module
+
+
+class FinanceApprovalOut(BaseModel):
+    site_id: str
+    site_code: str
+    site_name: str
+    city: str
+    site_status: str
+    submitted_by_name: Optional[str] = None
+    ca_code: Optional[str] = None
+    finance_amount: Optional[float] = None
+    kyc_verified: bool = False
+    finance_status: str
+    updated_at: datetime
