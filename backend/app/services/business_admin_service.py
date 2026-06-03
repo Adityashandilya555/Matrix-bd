@@ -19,6 +19,7 @@ from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import desc, select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -223,67 +224,34 @@ async def list_admin_sites(
         .order_by(desc(models.Site.updated_at))
         .limit(safe_limit)
     )).scalars().all()
-    site_ids = [site.id for site in rows]
-    project_by_site = {}
-    if site_ids:
-        project_rows = (await session.execute(
-            select(models.ProjectReview).where(models.ProjectReview.site_id.in_(site_ids))
-        )).scalars().all()
-        project_by_site = {row.site_id: row for row in project_rows}
 
+    # Snapshot site fields before the optional Project join. If the deployed
+    # database has not run the Project migration yet, Postgres aborts the
+    # transaction and a rollback can expire ORM instances. Keeping primitive
+    # values here lets the admin timeline remain available while Project is
+    # treated as an empty optional source.
+    site_rows = []
     user_ids = set()
     for site in rows:
-        if site.submitted_by:
-            user_ids.add(site.submitted_by)
-        if site.assigned_to:
-            user_ids.add(site.assigned_to)
-        if site.supervisor_id:
-            user_ids.add(site.supervisor_id)
-
-    names: dict = {}
-    if user_ids:
-        pairs = (await session.execute(
-            select(models.User.id, models.User.name).where(models.User.id.in_(user_ids))
-        )).all()
-        names = {uid: name for uid, name in pairs}
-
-    items = []
-    now = datetime.now(timezone.utc)
-    for site in rows:
-        project = project_by_site.get(site.id)
-        created_at = site.created_at or site.updated_at or now
-        updated_at = site.updated_at or site.created_at or now
-        try:
-            finance_amount = (
-                float(site.finance_amount)
-                if site.finance_amount is not None
-                else None
-            )
-        except (TypeError, ValueError):
-            finance_amount = None
-        items.append({
-            "site_id": str(site.id),
-            "site_code": site.ca_code or site.code or f"SITE-{str(site.id)[:8].upper()}",
-            "site_name": site.name or "Unnamed site",
-            "city": site.city or "Unknown city",
-            "site_status": site.status or "pending",
-            "submitted_by_name": names.get(site.submitted_by),
-            "assigned_to_name": names.get(site.assigned_to) if site.assigned_to else None,
-            "supervisor_name": names.get(site.supervisor_id) if site.supervisor_id else None,
+        data = {
+            "id": site.id,
+            "submitted_by": site.submitted_by,
+            "assigned_to": site.assigned_to,
+            "supervisor_id": site.supervisor_id,
+            "ca_code": site.ca_code,
+            "code": site.code,
+            "name": site.name,
+            "city": site.city,
+            "status": site.status,
             "legal_dd_status": site.legal_dd_status,
             "agreement_status": site.agreement_status,
             "licensing_status": site.licensing_status,
-            "finance_status": site.finance_status or "pending",
-            "design_status": site.design_status or "pending",
-            "project_status": project.project_status if project else "pending",
-            "project_current_stage": project.current_stage if project else None,
-            "project_budget_status": project.budget_status if project else None,
-            "project_completed_at": project.project_completed_at if project else None,
-            "ca_code": site.ca_code,
-            "finance_amount": finance_amount,
-            "kyc_verified": bool(site.kyc_verified),
-            "created_at": created_at,
-            "updated_at": updated_at,
+            "finance_status": site.finance_status,
+            "design_status": site.design_status,
+            "finance_amount": site.finance_amount,
+            "kyc_verified": site.kyc_verified,
+            "created_at": site.created_at,
+            "updated_at": site.updated_at,
             "draft_submitted_at": site.draft_submitted_at,
             "shortlisted_at": site.shortlisted_at,
             "details_submitted_at": site.details_submitted_at,
@@ -295,6 +263,87 @@ async def list_admin_sites(
             "pushed_to_payments_at": site.pushed_to_payments_at,
             "design_approved_at": site.design_approved_at,
             "rejection_reason": site.rejection_reason,
+        }
+        site_rows.append(data)
+        for key in ("submitted_by", "assigned_to", "supervisor_id"):
+            if data[key]:
+                user_ids.add(data[key])
+
+    site_ids = [site["id"] for site in site_rows]
+    project_by_site = {}
+    if site_ids:
+        try:
+            project_rows = (await session.execute(
+                select(models.ProjectReview).where(models.ProjectReview.site_id.in_(site_ids))
+            )).scalars().all()
+            project_by_site = {
+                row.site_id: {
+                    "project_status": row.project_status,
+                    "current_stage": row.current_stage,
+                    "budget_status": row.budget_status,
+                    "project_completed_at": row.project_completed_at,
+                }
+                for row in project_rows
+            }
+        except SQLAlchemyError:
+            await session.rollback()
+            project_by_site = {}
+
+    names: dict = {}
+    if user_ids:
+        pairs = (await session.execute(
+            select(models.User.id, models.User.name).where(models.User.id.in_(user_ids))
+        )).all()
+        names = {uid: name for uid, name in pairs}
+
+    items = []
+    now = datetime.now(timezone.utc)
+    for site in site_rows:
+        project = project_by_site.get(site["id"], {})
+        created_at = site["created_at"] or site["updated_at"] or now
+        updated_at = site["updated_at"] or site["created_at"] or now
+        try:
+            finance_amount = (
+                float(site["finance_amount"])
+                if site["finance_amount"] is not None
+                else None
+            )
+        except (TypeError, ValueError):
+            finance_amount = None
+        items.append({
+            "site_id": str(site["id"]),
+            "site_code": site["ca_code"] or site["code"] or f"SITE-{str(site['id'])[:8].upper()}",
+            "site_name": site["name"] or "Unnamed site",
+            "city": site["city"] or "Unknown city",
+            "site_status": site["status"] or "pending",
+            "submitted_by_name": names.get(site["submitted_by"]),
+            "assigned_to_name": names.get(site["assigned_to"]) if site["assigned_to"] else None,
+            "supervisor_name": names.get(site["supervisor_id"]) if site["supervisor_id"] else None,
+            "legal_dd_status": site["legal_dd_status"],
+            "agreement_status": site["agreement_status"],
+            "licensing_status": site["licensing_status"],
+            "finance_status": site["finance_status"] or "pending",
+            "design_status": site["design_status"] or "pending",
+            "project_status": project.get("project_status", "pending"),
+            "project_current_stage": project.get("current_stage"),
+            "project_budget_status": project.get("budget_status"),
+            "project_completed_at": project.get("project_completed_at"),
+            "ca_code": site["ca_code"],
+            "finance_amount": finance_amount,
+            "kyc_verified": bool(site["kyc_verified"]),
+            "created_at": created_at,
+            "updated_at": updated_at,
+            "draft_submitted_at": site["draft_submitted_at"],
+            "shortlisted_at": site["shortlisted_at"],
+            "details_submitted_at": site["details_submitted_at"],
+            "approved_at": site["approved_at"],
+            "loi_uploaded_at": site["loi_uploaded_at"],
+            "legal_review_at": site["legal_review_at"],
+            "legal_approved_at": site["legal_approved_at"],
+            "legal_rejected_at": site["legal_rejected_at"],
+            "pushed_to_payments_at": site["pushed_to_payments_at"],
+            "design_approved_at": site["design_approved_at"],
+            "rejection_reason": site["rejection_reason"],
         })
     return {"items": items, "total": len(items)}
 

@@ -59,6 +59,8 @@ const ADMIN_SOURCE_LABELS = {
   audit: 'Tenant audit log',
 };
 
+const OPTIONAL_ADMIN_SOURCES = new Set(['sites', 'projectBudget', 'audit']);
+
 function emptyQueue() {
   return { items: [], total: 0 };
 }
@@ -884,6 +886,9 @@ export default function TeamDashboard({ onLogout }) {
         } else {
           next[key] = toArray(result.value);
         }
+        return;
+      }
+      if (OPTIONAL_ADMIN_SOURCES.has(key)) {
         return;
       }
       errors.push(`${ADMIN_SOURCE_LABELS[key] || key}: ${errorMessage(result.reason)}`);

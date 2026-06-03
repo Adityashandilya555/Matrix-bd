@@ -12,6 +12,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
 from sqlalchemy import delete, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -464,15 +465,19 @@ async def svc_review_budget(
 async def svc_budget_admin_queue(
     session: AsyncSession, *, tenant_id: str | UUID,
 ) -> ProjectBudgetAdminQueueResponse:
-    rows = (await session.execute(
-        select(models.Site, models.ProjectReview)
-        .join(models.ProjectReview, models.ProjectReview.site_id == models.Site.id)
-        .where(
-            models.Site.tenant_id == tenant_id,
-            models.ProjectReview.budget_status == "pending_admin",
-        )
-        .order_by(models.ProjectReview.updated_at.asc())
-    )).all()
+    try:
+        rows = (await session.execute(
+            select(models.Site, models.ProjectReview)
+            .join(models.ProjectReview, models.ProjectReview.site_id == models.Site.id)
+            .where(
+                models.Site.tenant_id == tenant_id,
+                models.ProjectReview.budget_status == "pending_admin",
+            )
+            .order_by(models.ProjectReview.updated_at.asc())
+        )).all()
+    except SQLAlchemyError:
+        await session.rollback()
+        return ProjectBudgetAdminQueueResponse(items=[], total=0)
     items = [await _queue_item(session, site, review) for (site, review) in rows]
     return ProjectBudgetAdminQueueResponse(items=items, total=len(items))
 
