@@ -20,6 +20,8 @@ export const ROUTES = {
   PAYMENT_SITE_LICENSING: '/payment/sites/:siteId/licensing',
   DESIGN:                 '/design',
   DESIGN_SITE:            '/design/sites/:siteId',
+  RECCE:                  '/recce',
+  PROJECT:                '/project',
   SITE:                   '/sites/:id',
   ADD_DETAILS:            '/shortlist/:code/details',
   LOI_TIMELINE:           '/shortlist/:code/timeline',

@@ -32,8 +32,10 @@ import SiteTrackerDetailPage from '../modules/bd/site-tracker/SiteTrackerDetailP
 import DashboardMinimalPreview from '../modules/bd/dashboard-preview/DashboardMinimalPreview.jsx';
 import LicensingPage         from '../modules/payment/licensing/LicensingPage.jsx';
 import PaymentStubPage       from '../modules/payment/PaymentStubPage.jsx';
-import AdminPortalPage       from '../modules/admin/AdminPortalPage.jsx';
-import BusinessAdminPortalPage from '../modules/business-admin/BusinessAdminPortalPage.jsx';
+import AdminPortalPage          from '../modules/admin/AdminPortalPage.jsx';
+import BusinessAdminPortalPage  from '../modules/business-admin/BusinessAdminPortalPage.jsx';
+import RecceStubPage            from '../modules/recce/RecceStubPage.jsx';
+import ProjectStubPage          from '../modules/project/ProjectStubPage.jsx';
 
 // In HTTP (non-mock) mode the landing page is the unauthenticated entry. The
 // existing app chrome only renders after a Supabase session is established.
@@ -45,7 +47,9 @@ function homeForRoleModule(role, module) {
   if (module === 'legal')        return ROUTES.LEGAL;
   if (module === 'payment')      return ROUTES.PAYMENT;
   if (module === 'design')       return ROUTES.DESIGN;
-  return ROUTES.OVERVIEW; // BD (or unknown → default to BD)
+  if (module === 'recce')        return ROUTES.RECCE;
+  if (module === 'project')      return ROUTES.PROJECT;
+  return ROUTES.OVERVIEW; // BD / unknown → default to BD overview
 }
 
 function RequireAuth({ children }) {
@@ -76,14 +80,16 @@ function LandingRedirectIfAuthed() {
 }
 
 function IndexRedirect() {
-  // The root `/` defaults to the BD overview. For legal/payment supervisors
-  // that's the wrong chrome — bounce them to their module stub.
+  // The root `/` defaults to the BD overview. Non-BD module members bounce
+  // to their own module home on first load.
   const { role, session } = useSession();
   const module = session?.module;
   if (USE_MOCK) return <OverviewPage/>; // mock mode stays on BD
-  if (module === 'legal')   return <Navigate to="/legal" replace/>;
-  if (module === 'payment') return <Navigate to="/payment" replace/>;
-  if (module === 'design')  return <Navigate to="/design" replace/>;
+  if (module === 'legal')   return <Navigate to={ROUTES.LEGAL}   replace/>;
+  if (module === 'payment') return <Navigate to={ROUTES.PAYMENT} replace/>;
+  if (module === 'design')  return <Navigate to={ROUTES.DESIGN}  replace/>;
+  if (module === 'recce')   return <Navigate to={ROUTES.RECCE}   replace/>;
+  if (module === 'project') return <Navigate to={ROUTES.PROJECT} replace/>;
   return <OverviewPage/>;
 }
 
@@ -203,6 +209,24 @@ export default function AppRouter() {
           </RequireRole>
         }/>
         <Route path="/design/*" element={<Navigate to={ROUTES.DESIGN} replace/>}/>
+
+        <Route path={ROUTES.RECCE} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['recce']}>
+              <RecceStubPage/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path="/recce/*" element={<Navigate to={ROUTES.RECCE} replace/>}/>
+
+        <Route path={ROUTES.PROJECT} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['project']}>
+              <ProjectStubPage/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path="/project/*" element={<Navigate to={ROUTES.PROJECT} replace/>}/>
 
         <Route path={ROUTES.DD_FAILED} element={
           <RequireRole roles={['supervisor', 'executive', 'exec']}>

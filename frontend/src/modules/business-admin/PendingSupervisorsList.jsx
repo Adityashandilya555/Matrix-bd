@@ -6,6 +6,8 @@ const FILTERS = [
   { key: 'bd',      label: 'BD' },
   { key: 'legal',   label: 'Legal' },
   { key: 'payment', label: 'Payment' },
+  { key: 'recce',   label: 'Recce' },
+  { key: 'project', label: 'Project' },
 ];
 
 export default function PendingSupervisorsList() {
