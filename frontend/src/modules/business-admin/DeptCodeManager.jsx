@@ -2,10 +2,11 @@ import React from 'react';
 import { getDeptCodes, rotateDeptCode } from '../../services/api/adapters/httpAdapter.js';
 
 // Recce is part of the Design module (Recce → 2D → 3D → BOQ), not a standalone
-// department; Payment is not onboarded via a dept code. Both intentionally omitted.
+// department.
 const MODULES = [
   { key: 'bd',      label: 'BD' },
   { key: 'legal',   label: 'Legal' },
+  { key: 'payment', label: 'Finance / CA' },
   { key: 'design',  label: 'Design' },
   { key: 'project', label: 'Project' },
 ];

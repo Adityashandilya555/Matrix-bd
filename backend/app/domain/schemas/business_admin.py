@@ -48,3 +48,40 @@ class FinanceApprovalOut(BaseModel):
     kyc_verified: bool = False
     finance_status: str
     updated_at: datetime
+
+
+class AdminSiteOut(BaseModel):
+    site_id: str
+    site_code: str
+    site_name: str
+    city: str
+    site_status: str
+    submitted_by_name: Optional[str] = None
+    assigned_to_name: Optional[str] = None
+    supervisor_name: Optional[str] = None
+    legal_dd_status: Optional[str] = None
+    agreement_status: Optional[str] = None
+    licensing_status: Optional[str] = None
+    finance_status: str = "pending"
+    design_status: Optional[str] = None
+    ca_code: Optional[str] = None
+    finance_amount: Optional[float] = None
+    kyc_verified: bool = False
+    created_at: datetime
+    updated_at: datetime
+    draft_submitted_at: Optional[datetime] = None
+    shortlisted_at: Optional[datetime] = None
+    details_submitted_at: Optional[datetime] = None
+    approved_at: Optional[datetime] = None
+    loi_uploaded_at: Optional[datetime] = None
+    legal_review_at: Optional[datetime] = None
+    legal_approved_at: Optional[datetime] = None
+    legal_rejected_at: Optional[datetime] = None
+    pushed_to_payments_at: Optional[datetime] = None
+    design_approved_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
+
+
+class AdminSitesResponse(BaseModel):
+    items: list[AdminSiteOut]
+    total: int

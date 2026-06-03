@@ -1,51 +1,758 @@
 import React from 'react';
 import { getAuthToken } from '../../services/api/authToken.js';
-import { decodeJwtPayload } from './jwt.js';
+import { getSiteActivity, labelForEntry } from '../../services/api/audit.js';
+import {
+  approveFinanceApproval,
+  approveSupervisor,
+  getTenantAudit,
+  listBusinessAdminSites,
+  listFinanceApprovals,
+  listPendingSupervisors,
+  rejectSupervisor,
+} from '../../services/api/adapters/httpAdapter.js';
+import { getDesignAdminQueue, getDesignGfcQueue } from '../../services/api/designApi.js';
 import DeptCodeManager from './DeptCodeManager.jsx';
-import PendingSupervisorsList from './PendingSupervisorsList.jsx';
 import DesignGfcQueue from './DesignGfcQueue.jsx';
 import DesignDeliverableApprovals from './DesignDeliverableApprovals.jsx';
-import FinanceApprovals from './FinanceApprovals.jsx';
+import { decodeJwtPayload } from './jwt.js';
+import './TeamDashboard.css';
+
+const MODULES = [
+  { key: 'all', label: 'All' },
+  { key: 'bd', label: 'BD' },
+  { key: 'legal', label: 'Legal' },
+  { key: 'payment', label: 'Finance / CA' },
+  { key: 'design', label: 'Design' },
+  { key: 'project', label: 'Project' },
+];
+
+const MODULE_LABEL = {
+  bd: 'BD',
+  legal: 'Legal',
+  payment: 'Finance / CA',
+  design: 'Design',
+  project: 'Project',
+};
+
+const STATUS_LABEL = {
+  draft_submitted: 'Pipeline created',
+  shortlisted: 'Shortlisted',
+  details_submitted: 'Details submitted',
+  approved: 'Ready for LOI',
+  loi_uploaded: 'LOI uploaded',
+  legal_review: 'Legal review',
+  legal_approved: 'Legal approved',
+  legal_rejected: 'Legal rejected',
+  pushed_to_payments: 'Payments handoff',
+  rejected: 'Rejected',
+  archived: 'Archived',
+};
+
+function formatDate(value) {
+  if (!value) return null;
+  return new Intl.DateTimeFormat('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
+function formatShortDate(value) {
+  if (!value) return 'Not recorded';
+  return new Intl.DateTimeFormat('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
+function waitingAge(value) {
+  if (!value) return 'New';
+  const diff = Date.now() - new Date(value).getTime();
+  const hours = Math.max(0, Math.floor(diff / 36e5));
+  if (hours < 1) return 'Under 1h';
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+function money(value) {
+  if (value == null || value === '') return 'Not set';
+  return `₹${Number(value).toLocaleString('en-IN')}`;
+}
+
+function statusText(value) {
+  if (!value) return 'Pending';
+  return STATUS_LABEL[value] || String(value).replace(/_/g, ' ');
+}
+
+function iconFor(key) {
+  const map = {
+    approvals: '✓',
+    supervisors: '👥',
+    finance: '₹',
+    design: '◇',
+    blocked: '!',
+    audit: '↺',
+  };
+  return map[key] || '•';
+}
+
+function normalizeStageStatus(status) {
+  if (status === 'Done') return 'done';
+  if (status === 'In review' || status === 'Waiting') return 'review';
+  if (status === 'Blocked') return 'blocked';
+  if (status === 'Rejected') return 'rejected';
+  return 'waiting';
+}
+
+function buildTimeline(site) {
+  if (!site) return [];
+  const rejected = site.siteStatus === 'legal_rejected' || site.siteStatus === 'rejected';
+  const legalDone = site.siteStatus === 'legal_approved' || site.siteStatus === 'pushed_to_payments' || site.legalDdStatus === 'positive';
+  const agreementDone = ['signed', 'executed', 'registered'].includes(site.agreementStatus);
+  const licensingDone = site.licensingStatus === 'complete';
+  const financeDone = site.financeStatus === 'approved' && site.siteStatus === 'pushed_to_payments';
+  const designDone = site.designStatus === 'approved';
+
+  return [
+    {
+      key: 'pipeline',
+      stage: 'Pipeline Created',
+      team: 'BD',
+      status: site.draftSubmittedAt || site.createdAt ? 'Done' : 'Waiting',
+      sentAt: site.createdAt,
+      approvedAt: site.draftSubmittedAt,
+      owner: site.submittedByName,
+      blocker: null,
+    },
+    {
+      key: 'shortlist',
+      stage: 'Shortlisted',
+      team: 'BD supervisor',
+      status: site.shortlistedAt ? 'Done' : site.siteStatus === 'draft_submitted' ? 'In review' : 'Waiting',
+      sentAt: site.draftSubmittedAt,
+      approvedAt: site.shortlistedAt,
+      owner: site.supervisorName || 'BD supervisor',
+      blocker: site.siteStatus === 'draft_submitted' ? 'Waiting for shortlist decision' : null,
+    },
+    {
+      key: 'details',
+      stage: 'Details Submitted',
+      team: 'BD executive',
+      status: site.detailsSubmittedAt ? 'Done' : site.siteStatus === 'shortlisted' ? 'In review' : 'Waiting',
+      sentAt: site.shortlistedAt,
+      approvedAt: site.detailsSubmittedAt,
+      owner: site.assignedToName || site.submittedByName,
+      blocker: site.siteStatus === 'shortlisted' ? 'Waiting for executive details' : null,
+    },
+    {
+      key: 'loi',
+      stage: 'LOI Uploaded',
+      team: 'BD',
+      status: site.loiUploadedAt ? 'Done' : site.siteStatus === 'approved' ? 'In review' : 'Waiting',
+      sentAt: site.approvedAt,
+      approvedAt: site.loiUploadedAt,
+      owner: site.submittedByName,
+      blocker: site.siteStatus === 'approved' ? 'Waiting for LOI upload' : null,
+    },
+    {
+      key: 'legal-ddr',
+      stage: 'Legal DDR',
+      team: 'Legal',
+      status: rejected ? 'Rejected' : legalDone ? 'Done' : site.siteStatus === 'legal_review' ? 'In review' : 'Waiting',
+      sentAt: site.legalReviewAt,
+      approvedAt: site.legalApprovedAt || site.legalRejectedAt,
+      owner: 'Legal supervisor',
+      blocker: rejected ? (site.rejectionReason || 'DDR rejected') : null,
+    },
+    {
+      key: 'agreement',
+      stage: 'Agreement',
+      team: 'Legal',
+      status: agreementDone ? 'Done' : legalDone ? 'In review' : 'Waiting',
+      sentAt: site.legalApprovedAt,
+      approvedAt: agreementDone ? site.updatedAt : null,
+      owner: 'Legal supervisor',
+      blocker: legalDone && !agreementDone ? 'Waiting for agreement execution' : 'Not reached yet',
+    },
+    {
+      key: 'licensing',
+      stage: 'Licensing',
+      team: 'Legal',
+      status: licensingDone ? 'Done' : agreementDone ? 'In review' : 'Waiting',
+      sentAt: agreementDone ? site.updatedAt : null,
+      approvedAt: licensingDone ? site.updatedAt : null,
+      owner: 'Legal executive',
+      blocker: agreementDone ? 'Waiting for licensing checklist' : 'Blocked by agreement',
+    },
+    {
+      key: 'finance',
+      stage: 'Finance / CA',
+      team: 'Finance / CA',
+      status: financeDone ? 'Done' : licensingDone || site.financeStatus !== 'pending' ? 'In review' : 'Waiting',
+      sentAt: licensingDone ? site.updatedAt : null,
+      approvedAt: site.pushedToPaymentsAt,
+      owner: 'Finance supervisor',
+      blocker: site.financeStatus === 'awaiting_admin'
+        ? 'Waiting for business admin approval'
+        : site.financeStatus === 'awaiting_supervisor'
+          ? 'Waiting for supervisor approval'
+          : 'Blocked by licensing',
+    },
+    {
+      key: 'design',
+      stage: 'Design',
+      team: 'Design',
+      status: designDone ? 'Done' : financeDone ? 'In review' : 'Blocked',
+      sentAt: financeDone ? site.pushedToPaymentsAt : null,
+      approvedAt: site.designApprovedAt,
+      owner: 'Design supervisor',
+      blocker: financeDone ? 'Waiting for design package' : 'Blocked by Finance approval',
+    },
+    {
+      key: 'project',
+      stage: 'Project Execution',
+      team: 'Project',
+      status: designDone ? 'In review' : 'Waiting',
+      sentAt: site.designApprovedAt,
+      approvedAt: null,
+      owner: 'Project supervisor',
+      blocker: designDone ? 'Waiting for project allocation' : 'Not reached yet',
+    },
+    {
+      key: 'final',
+      stage: 'Final Approval',
+      team: 'Business admin',
+      status: 'Waiting',
+      sentAt: null,
+      approvedAt: null,
+      owner: 'Business admin',
+      blocker: 'Not reached yet',
+    },
+  ];
+}
+
+function primarySite(sites, financeApprovals) {
+  if (financeApprovals[0]) {
+    return sites.find((s) => s.siteId === financeApprovals[0].siteId) || null;
+  }
+  return sites.find((s) => s.financeStatus === 'awaiting_admin')
+    || sites.find((s) => s.siteStatus === 'legal_review')
+    || sites.find((s) => s.designStatus === 'gfc_pending')
+    || sites[0]
+    || null;
+}
+
+function deriveDepartments({ sites, supervisors, financeApprovals, designAdmin, designGfc }) {
+  const siteCount = (predicate) => sites.filter(predicate).length;
+  return [
+    {
+      key: 'bd',
+      label: 'BD',
+      pending: siteCount((s) => ['draft_submitted', 'details_submitted'].includes(s.siteStatus)),
+      ready: siteCount((s) => ['shortlisted', 'approved', 'loi_uploaded'].includes(s.siteStatus)),
+      blocked: siteCount((s) => ['rejected', 'archived'].includes(s.siteStatus)),
+      latest: sites.find((s) => ['draft_submitted', 'details_submitted'].includes(s.siteStatus))?.siteName || 'No BD queue items',
+    },
+    {
+      key: 'legal',
+      label: 'Legal',
+      pending: siteCount((s) => s.siteStatus === 'legal_review'),
+      ready: siteCount((s) => s.siteStatus === 'legal_approved'),
+      blocked: siteCount((s) => s.siteStatus === 'legal_rejected'),
+      latest: sites.find((s) => s.siteStatus === 'legal_review')?.siteName || 'No legal review waiting',
+    },
+    {
+      key: 'payment',
+      label: 'Finance / CA',
+      pending: financeApprovals.length,
+      ready: siteCount((s) => s.financeStatus === 'approved'),
+      blocked: siteCount((s) => s.financeStatus === 'pending' && s.siteStatus === 'legal_approved'),
+      latest: financeApprovals[0]?.siteName || 'No admin approvals waiting',
+    },
+    {
+      key: 'design',
+      label: 'Design',
+      pending: (designAdmin?.total || 0) + (designGfc?.total || 0),
+      ready: siteCount((s) => s.designStatus === 'approved'),
+      blocked: siteCount((s) => s.siteStatus === 'pushed_to_payments' && s.financeStatus !== 'approved'),
+      latest: designGfc?.items?.[0]?.siteName || designAdmin?.items?.[0]?.siteName || 'No design handoff waiting',
+    },
+    {
+      key: 'project',
+      label: 'Project',
+      pending: siteCount((s) => s.designStatus === 'approved'),
+      ready: 0,
+      blocked: 0,
+      latest: sites.find((s) => s.designStatus === 'approved')?.siteName || 'Project module not active',
+    },
+  ].map((dept) => ({
+    ...dept,
+    supervisorRequests: supervisors.filter((s) => s.module === dept.key).length,
+  }));
+}
+
+function KPI({ icon, label, value, hint, tone }) {
+  return (
+    <div className="ba-card ba-kpi">
+      <span className={`ba-icon ${tone || ''}`}>{iconFor(icon)}</span>
+      <div>
+        <p className="ba-kpi-value">{String(value).padStart(2, '0')}</p>
+        <div className="ba-kpi-label">{label}</div>
+        <div className="ba-muted" style={{ fontSize: 12, lineHeight: 1.35 }}>{hint}</div>
+      </div>
+    </div>
+  );
+}
+
+function ErrorBlock({ message, onRetry }) {
+  return (
+    <div className="ba-error">
+      <strong>Unable to load approvals.</strong>
+      <p style={{ margin: '6px 0 12px' }}>{message || 'Check backend connection or retry.'}</p>
+      <button className="ba-button" type="button" onClick={onRetry}>Retry</button>
+    </div>
+  );
+}
+
+function ApprovalCenter({ items, filter, onFilter, onOpen }) {
+  const visible = filter === 'all' ? items : items.filter((item) => item.module === filter);
+  return (
+    <section className="ba-section">
+      <div className="ba-section-head">
+        <div>
+          <div className="ba-label">Supervisor approval center</div>
+          <h2 className="ba-section-title">Access requests by department</h2>
+        </div>
+      </div>
+      <div className="ba-tabs">
+        {MODULES.map((module) => {
+          const count = module.key === 'all'
+            ? items.length
+            : items.filter((item) => item.module === module.key).length;
+          return (
+            <button
+              key={module.key}
+              type="button"
+              className={`ba-tab ${filter === module.key ? 'active' : ''}`}
+              onClick={() => onFilter(module.key)}
+            >
+              {module.label} <span className="ba-mono">{count}</span>
+            </button>
+          );
+        })}
+      </div>
+      {visible.length === 0 ? (
+        <div className="ba-empty">No supervisor requests in this lane.</div>
+      ) : (
+        <div className="ba-list">
+          {visible.map((item) => (
+            <button key={item.id} className="ba-approval-row" type="button" onClick={() => onOpen({ type: 'supervisor', item })}>
+              <div>
+                <div className="ba-row">
+                  <span className="ba-chip warning">Supervisor access</span>
+                  <span className="ba-chip muted">{MODULE_LABEL[item.module] || item.module}</span>
+                  <span className="ba-chip muted ba-mono">{waitingAge(item.createdAt)} waiting</span>
+                </div>
+                <div className="ba-row-title">{MODULE_LABEL[item.module] || item.module} supervisor request</div>
+                <div className="ba-muted">
+                  {item.email} · Sent {formatShortDate(item.createdAt)}
+                </div>
+              </div>
+              <div className="ba-row" style={{ justifyContent: 'flex-end' }}>
+                <span className="ba-button">Review</span>
+                <span className="ba-button">View history</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DepartmentQueues({ departments, onOpen }) {
+  return (
+    <section className="ba-section">
+      <div className="ba-section-head">
+        <div>
+          <div className="ba-label">Department approval queues</div>
+          <h2 className="ba-section-title">Where work is waiting</h2>
+        </div>
+      </div>
+      <div className="ba-dept-grid">
+        {departments.map((dept) => (
+          <button key={dept.key} className="ba-card ba-dept-card" type="button" onClick={() => onOpen({ type: 'department', item: dept })} style={{ textAlign: 'left', color: 'inherit', cursor: 'pointer' }}>
+            <div className="ba-row" style={{ justifyContent: 'space-between' }}>
+              <strong>{dept.label}</strong>
+              <span className="ba-icon" style={{ width: 30, height: 30 }}>{dept.pending}</span>
+            </div>
+            <div className="ba-mini-grid" style={{ margin: '14px 0' }}>
+              <span><span className="ba-label">Pending</span><br/><strong className="ba-mono">{dept.pending}</strong></span>
+              <span><span className="ba-label">Ready</span><br/><strong className="ba-mono">{dept.ready}</strong></span>
+              <span><span className="ba-label">Blocked</span><br/><strong className="ba-mono">{dept.blocked}</strong></span>
+            </div>
+            <div className="ba-muted" style={{ fontSize: 12, lineHeight: 1.4 }}>Latest: {dept.latest}</div>
+            {dept.supervisorRequests > 0 && (
+              <div className="ba-chip warning" style={{ marginTop: 10 }}>{dept.supervisorRequests} supervisor request</div>
+            )}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProcessTimeline({ site, onOpen }) {
+  const stages = buildTimeline(site);
+  return (
+    <section className="ba-section">
+      <div className="ba-section-head">
+        <div>
+          <div className="ba-label">Full process timeline</div>
+          <h2 className="ba-section-title">{site ? site.siteName : 'No active site selected'}</h2>
+          {site && (
+            <div className="ba-muted" style={{ marginTop: 5 }}>
+              <span className="ba-mono">{site.siteCode || 'NO-CODE'}</span> · {site.city} · {statusText(site.siteStatus)}
+            </div>
+          )}
+        </div>
+        {site && <span className="ba-chip success">Tenant scoped</span>}
+      </div>
+      {!site ? (
+        <div className="ba-empty">No site timeline is available yet.</div>
+      ) : (
+        <div className="ba-timeline">
+          {stages.map((stage) => (
+            <button key={stage.key} type="button" className={`ba-stage ${normalizeStageStatus(stage.status)}`} onClick={() => onOpen({ type: 'timeline', site, item: stage })}>
+              <div>
+                <div className="ba-label">{stage.team}</div>
+                <strong>{stage.stage}</strong>
+              </div>
+              <div className="ba-muted" style={{ fontSize: 12, lineHeight: 1.45 }}>
+                <div>Sent: {formatDate(stage.sentAt) || stage.blocker || 'Not reached yet'}</div>
+                <div>Approved: {formatDate(stage.approvedAt) || (stage.status === 'Done' ? 'Recorded' : stage.blocker || 'Waiting for supervisor')}</div>
+              </div>
+              <span className={`ba-chip ${stage.status === 'Done' ? 'success' : stage.status === 'Rejected' || stage.status === 'Blocked' ? 'danger' : 'warning'}`}>
+                {stage.status}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function Drawer({ selection, history, busy, onClose, onApproveSupervisor, onRejectSupervisor, onApproveFinance }) {
+  if (!selection) return null;
+  const isSupervisor = selection.type === 'supervisor';
+  const isFinance = selection.type === 'finance';
+  const isTimeline = selection.type === 'timeline';
+  const title = isSupervisor
+    ? `${MODULE_LABEL[selection.item.module] || selection.item.module} supervisor request`
+    : isFinance
+      ? selection.item.siteName
+      : isTimeline
+        ? selection.item.stage
+        : selection.item.label || 'Approval detail';
+  const site = selection.site || selection.item;
+  return (
+    <div className="ba-overlay" role="dialog" aria-modal="true">
+      <aside className="ba-drawer">
+        <div className="ba-drawer-head">
+          <div>
+            <div className="ba-label">Approval detail</div>
+            <h2 style={{ margin: '6px 0 4px', fontSize: 24, letterSpacing: '-0.035em' }}>{title}</h2>
+            <div className="ba-muted">
+              {isSupervisor
+                ? `${selection.item.email} · ${MODULE_LABEL[selection.item.module] || selection.item.module}`
+                : `${site?.siteCode || 'Workspace'} · ${site?.city || 'Tenant scope'}`}
+            </div>
+          </div>
+          <button className="ba-button" type="button" onClick={onClose}>Close</button>
+        </div>
+
+        <div className="ba-grid">
+          <div className="ba-card">
+            <div className="ba-label">Current stage</div>
+            <p style={{ margin: '8px 0 0', fontWeight: 800 }}>
+              {isSupervisor ? 'Supervisor access review' : isTimeline ? selection.item.status : statusText(site?.siteStatus)}
+            </p>
+          </div>
+          <div className="ba-card">
+            <div className="ba-label">Department owner</div>
+            <p style={{ margin: '8px 0 0', fontWeight: 800 }}>
+              {isSupervisor ? MODULE_LABEL[selection.item.module] : isTimeline ? selection.item.team : 'Finance / CA'}
+            </p>
+          </div>
+          <div className="ba-card">
+            <div className="ba-label">Current blocker</div>
+            <p style={{ margin: '8px 0 0', color: 'rgba(248,250,247,0.78)' }}>
+              {isTimeline ? selection.item.blocker || 'No blocker recorded' : isFinance ? 'Waiting for business admin approval' : 'Waiting for admin decision'}
+            </p>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 18 }} className="ba-card">
+          <div className="ba-label">Approval trail</div>
+          {history.status === 'loading' && <div className="ba-loading" style={{ marginTop: 12 }}>Loading history…</div>}
+          {history.status === 'error' && <div className="ba-error" style={{ marginTop: 12 }}>{history.error}</div>}
+          {history.status === 'ready' && history.items.length === 0 && <div className="ba-empty" style={{ marginTop: 12 }}>No site history available for this item.</div>}
+          {history.status === 'ready' && history.items.length > 0 && (
+            <div className="ba-history">
+              {history.items.slice(0, 10).map((entry) => (
+                <div key={entry.id} className="ba-history-item">
+                  <strong>{labelForEntry(entry)}</strong>
+                  <div className="ba-muted" style={{ fontSize: 12 }}>
+                    {entry.actor} · {formatDate(entry.createdAt)}
+                  </div>
+                  {entry.detail && <div className="ba-muted" style={{ fontSize: 12, marginTop: 3 }}>{entry.detail}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="ba-row" style={{ marginTop: 18 }}>
+          {isSupervisor && (
+            <>
+              <button className="ba-button primary" type="button" disabled={busy} onClick={() => onApproveSupervisor(selection.item)}>
+                Approve
+              </button>
+              <button className="ba-button danger" type="button" disabled={busy} onClick={() => onRejectSupervisor(selection.item)}>
+                Reject
+              </button>
+            </>
+          )}
+          {isFinance && (
+            <button className="ba-button primary" type="button" disabled={busy} onClick={() => onApproveFinance(selection.item.siteId)}>
+              Approve Finance / CA
+            </button>
+          )}
+          {!isSupervisor && !isFinance && (
+            <button className="ba-button primary" type="button" onClick={onClose}>Open module</button>
+          )}
+        </div>
+      </aside>
+    </div>
+  );
+}
 
 export default function TeamDashboard({ onLogout }) {
   const payload = decodeJwtPayload(getAuthToken());
-  const company = payload.workspace_name || payload.tenant_name || payload.company || '';
+  const company = payload.workspace_name || payload.tenant_name || payload.company || 'Workspace';
+  const [state, setState] = React.useState({
+    status: 'loading',
+    supervisors: [],
+    finance: [],
+    sites: [],
+    designAdmin: { items: [], total: 0 },
+    designGfc: { items: [], total: 0 },
+    audit: { items: [], total: 0 },
+    error: null,
+  });
+  const [filter, setFilter] = React.useState('all');
+  const [selection, setSelection] = React.useState(null);
+  const [history, setHistory] = React.useState({ status: 'idle', items: [], error: null });
+  const [busy, setBusy] = React.useState(false);
+  const [lastSync, setLastSync] = React.useState(null);
+
+  const load = React.useCallback(async () => {
+    setState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const [supervisors, finance, sites, designAdmin, designGfc, audit] = await Promise.all([
+        listPendingSupervisors(),
+        listFinanceApprovals(),
+        listBusinessAdminSites(100),
+        getDesignAdminQueue(),
+        getDesignGfcQueue(),
+        getTenantAudit(30),
+      ]);
+      setState({ status: 'ready', supervisors, finance, sites, designAdmin, designGfc, audit, error: null });
+      setLastSync(new Date());
+    } catch (err) {
+      setState((prev) => ({ ...prev, status: 'error', error: err?.detail || err?.message || 'Check backend connection or retry.' }));
+    }
+  }, []);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  React.useEffect(() => {
+    if (!selection) return;
+    if (selection.type === 'audit') {
+      setHistory({ status: 'ready', items: state.audit.items || [], error: null });
+      return;
+    }
+    const siteId = selection.site?.siteId || selection.item?.siteId;
+    if (!siteId) {
+      setHistory({ status: 'ready', items: [], error: null });
+      return;
+    }
+    setHistory({ status: 'loading', items: [], error: null });
+    getSiteActivity(siteId)
+      .then((data) => setHistory({ status: 'ready', items: data.items || [], error: null }))
+      .catch((err) => setHistory({ status: 'error', items: [], error: err?.detail || err?.message || 'Failed to load history' }));
+  }, [selection, state.audit.items]);
+
+  const refresh = () => load();
+  const openAudit = () => {
+    setSelection({ type: 'audit', item: { label: 'Tenant audit log' } });
+  };
+
+  const handleApproveSupervisor = async (item) => {
+    setBusy(true);
+    try {
+      await approveSupervisor(item.id, item.module);
+      setSelection(null);
+      await load();
+    } catch (err) {
+      setHistory({ status: 'error', items: [], error: err?.detail || err?.message || 'Supervisor approval failed' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRejectSupervisor = async (item) => {
+    setBusy(true);
+    try {
+      await rejectSupervisor(item.id);
+      setSelection(null);
+      await load();
+    } catch (err) {
+      setHistory({ status: 'error', items: [], error: err?.detail || err?.message || 'Supervisor rejection failed' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleApproveFinance = async (siteId) => {
+    setBusy(true);
+    try {
+      await approveFinanceApproval(siteId);
+      setSelection(null);
+      await load();
+    } catch (err) {
+      setHistory({ status: 'error', items: [], error: err?.detail || err?.message || 'Finance approval failed' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const departments = deriveDepartments(state);
+  const focusSite = primarySite(state.sites, state.finance);
+  const blockedSites = state.sites.filter((s) => ['legal_rejected', 'rejected', 'archived'].includes(s.siteStatus)).length;
+  const pendingApprovalCount = state.supervisors.length + state.finance.length + (state.designAdmin.total || 0) + (state.designGfc.total || 0);
 
   return (
-    <div style={{ minHeight: '100vh', maxHeight: '100vh', overflowY: 'auto', background: '#0B0C10', color: '#fff', padding: '32px 40px' }}>
-      <header style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 28, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)' }}>Matrix · Business admin</div>
-          <h1 style={{ margin: '4px 0 0', fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', color: '#fff' }}>{company || 'Workspace'}</h1>
+    <div className="ba-shell">
+      <main className="ba-page">
+        <header className="ba-hero">
+          <div>
+            <div className="ba-eyebrow">Matrix · Business admin · {company}</div>
+            <h1 className="ba-title">Business Admin Command Center</h1>
+            <p className="ba-subtitle">Approve cross-functional handoffs and keep store openings moving.</p>
+            <div className="ba-pills">
+              <span className="ba-pill">● Live</span>
+              <span className="ba-pill">Tenant scope</span>
+              <span className="ba-pill">Last synced {lastSync ? formatShortDate(lastSync) : 'not yet'}</span>
+            </div>
+          </div>
+          <div className="ba-actions">
+            <button className="ba-button" type="button" onClick={refresh}>Refresh</button>
+            <button className="ba-button" type="button" onClick={openAudit}>View audit log</button>
+            <button className="ba-button" type="button" onClick={onLogout}>Sign out</button>
+          </div>
+        </header>
+
+        <div className="ba-grid kpis">
+          <KPI icon="approvals" label="Pending approvals" value={pendingApprovalCount} hint="Supervisor, finance and design decisions"/>
+          <KPI icon="supervisors" label="Supervisor requests" value={state.supervisors.length} hint="Workspace access awaiting review"/>
+          <KPI icon="finance" label="Finance / CA approvals" value={state.finance.length} hint="Forwarded by module supervisors"/>
+          <KPI icon="design" label="Design approvals" value={(state.designAdmin.total || 0) + (state.designGfc.total || 0)} hint="2D / 3D and GFC gates"/>
+          <KPI icon="blocked" label="Blocked sites" value={blockedSites} hint="Rejected or archived workflow items"/>
         </div>
-        <span style={{ flex: 1 }}/>
-        <button onClick={onLogout} style={{ height: 32, padding: '0 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.25)', background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Sign out</button>
-      </header>
 
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 14px', color: 'rgba(255,255,255,0.92)' }}>Department codes</h2>
-        <DeptCodeManager/>
-      </section>
+        {state.status === 'error' && <ErrorBlock message={state.error} onRetry={refresh}/>}
+        {state.status === 'loading' && <div className="ba-loading">Loading command center…</div>}
 
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 14px', color: 'rgba(255,255,255,0.92)' }}>Finance · CA approvals</h2>
-        <FinanceApprovals/>
-      </section>
+        {state.status !== 'loading' && (
+          <>
+            <div className="ba-main-grid">
+              <ApprovalCenter items={state.supervisors} filter={filter} onFilter={setFilter} onOpen={setSelection}/>
+              <section className="ba-section">
+                <div className="ba-section-head">
+                  <div>
+                    <div className="ba-label">Priority handoff</div>
+                    <h2 className="ba-section-title">{state.finance[0]?.siteName || focusSite?.siteName || 'No urgent handoff'}</h2>
+                  </div>
+                  <span className="ba-chip warning">{state.finance.length ? 'Finance waiting' : 'Stable'}</span>
+                </div>
+                {state.finance[0] ? (
+                  <button className="ba-approval-row" type="button" onClick={() => setSelection({ type: 'finance', item: state.finance[0] })}>
+                    <div>
+                      <div className="ba-row">
+                        <span className="ba-chip warning">Awaiting admin</span>
+                        <span className="ba-chip muted ba-mono">{state.finance[0].caCode || state.finance[0].siteCode}</span>
+                      </div>
+                      <div className="ba-row-title">Approve CA / finance handoff</div>
+                      <div className="ba-muted">{state.finance[0].city} · {money(state.finance[0].financeAmount)}</div>
+                    </div>
+                    <span className="ba-button primary">Review</span>
+                  </button>
+                ) : (
+                  <div className="ba-empty">No Finance / CA request is waiting for business-admin approval.</div>
+                )}
+              </section>
+            </div>
 
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 14px', color: 'rgba(255,255,255,0.92)' }}>Design · 2D / 3D approvals</h2>
-        <DesignDeliverableApprovals/>
-      </section>
+            <DepartmentQueues departments={departments} onOpen={setSelection}/>
+            <ProcessTimeline site={focusSite} onOpen={setSelection}/>
 
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 14px', color: 'rgba(255,255,255,0.92)' }}>Design · GFC approvals</h2>
-        <DesignGfcQueue/>
-      </section>
+            <section className="ba-section">
+              <div className="ba-section-head">
+                <div>
+                  <div className="ba-label">Live design approval workbench</div>
+                  <h2 className="ba-section-title">Design handoffs that still need admin action</h2>
+                </div>
+              </div>
+              <div className="ba-main-grid">
+                <div>
+                  <div className="ba-label" style={{ marginBottom: 10 }}>2D / 3D approvals</div>
+                  <DesignDeliverableApprovals/>
+                </div>
+                <div>
+                  <div className="ba-label" style={{ marginBottom: 10 }}>GFC approvals</div>
+                  <DesignGfcQueue/>
+                </div>
+              </div>
+            </section>
 
-      <section>
-        <h2 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 14px', color: 'rgba(255,255,255,0.92)' }}>Pending supervisor approvals</h2>
-        <PendingSupervisorsList/>
-      </section>
+            <section className="ba-section">
+              <div className="ba-section-head">
+                <div>
+                  <div className="ba-label">Access & routing codes</div>
+                  <h2 className="ba-section-title">Department codes</h2>
+                </div>
+              </div>
+              <DeptCodeManager/>
+            </section>
+          </>
+        )}
+      </main>
+
+      <Drawer
+        selection={selection}
+        history={history}
+        busy={busy}
+        onClose={() => setSelection(null)}
+        onApproveSupervisor={handleApproveSupervisor}
+        onRejectSupervisor={handleRejectSupervisor}
+        onApproveFinance={handleApproveFinance}
+      />
     </div>
   );
 }

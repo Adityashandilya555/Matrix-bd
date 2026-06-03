@@ -430,6 +430,42 @@ export async function rejectSupervisor(userId) {
   return post(`/business-admin/pending-supervisors/${userId}/reject`);
 }
 
+export async function listBusinessAdminSites(limit = 80) {
+  const data = await get('/business-admin/sites', { limit });
+  const items = data?.items || data || [];
+  return items.map(row => ({
+    siteId:             row.site_id,
+    siteCode:           row.site_code,
+    siteName:           row.site_name,
+    city:               row.city,
+    siteStatus:         row.site_status,
+    submittedByName:    row.submitted_by_name,
+    assignedToName:     row.assigned_to_name,
+    supervisorName:     row.supervisor_name,
+    legalDdStatus:      row.legal_dd_status,
+    agreementStatus:    row.agreement_status,
+    licensingStatus:    row.licensing_status,
+    financeStatus:      row.finance_status,
+    designStatus:       row.design_status,
+    caCode:             row.ca_code,
+    financeAmount:      row.finance_amount,
+    kycVerified:        row.kyc_verified,
+    createdAt:          row.created_at,
+    updatedAt:          row.updated_at,
+    draftSubmittedAt:   row.draft_submitted_at,
+    shortlistedAt:      row.shortlisted_at,
+    detailsSubmittedAt: row.details_submitted_at,
+    approvedAt:         row.approved_at,
+    loiUploadedAt:      row.loi_uploaded_at,
+    legalReviewAt:      row.legal_review_at,
+    legalApprovedAt:    row.legal_approved_at,
+    legalRejectedAt:    row.legal_rejected_at,
+    pushedToPaymentsAt: row.pushed_to_payments_at,
+    designApprovedAt:   row.design_approved_at,
+    rejectionReason:    row.rejection_reason,
+  }));
+}
+
 export async function listFinanceApprovals() {
   const data = await get('/business-admin/finance-approvals');
   const items = data?.items || data || [];
@@ -450,6 +486,27 @@ export async function listFinanceApprovals() {
 
 export async function approveFinanceApproval(siteId) {
   return post(`/business-admin/finance-approvals/${siteId}/approve`, {});
+}
+
+export async function getTenantAudit(limit = 50) {
+  const data = await get('/audit', { limit });
+  const items = data?.items || [];
+  return {
+    total: data?.total ?? items.length,
+    items: items.map(e => ({
+      id: e.id,
+      siteId: e.site_id,
+      actor: e.actor,
+      action: e.action,
+      fromStatus: e.from_status ?? null,
+      toStatus: e.to_status ?? null,
+      fieldName: e.field_name ?? null,
+      fromValue: e.from_value ?? null,
+      toValue: e.to_value ?? null,
+      detail: e.detail ?? '',
+      createdAt: e.created_at,
+    })),
+  };
 }
 
 // ── Per-supervisor invite codes & pending-executive approvals ──────────────

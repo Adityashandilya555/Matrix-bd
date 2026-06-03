@@ -17,7 +17,7 @@ import secrets
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import desc, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -198,6 +198,74 @@ async def list_finance_approvals(
             "updated_at": site.updated_at,
         })
     return items
+
+
+async def list_admin_sites(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+    limit: int = 80,
+) -> dict:
+    rows = (await session.execute(
+        select(models.Site)
+        .where(models.Site.tenant_id == tenant_id)
+        .order_by(desc(models.Site.updated_at))
+        .limit(limit)
+    )).scalars().all()
+
+    user_ids = set()
+    for site in rows:
+        if site.submitted_by:
+            user_ids.add(site.submitted_by)
+        if site.assigned_to:
+            user_ids.add(site.assigned_to)
+        if site.supervisor_id:
+            user_ids.add(site.supervisor_id)
+
+    names: dict = {}
+    if user_ids:
+        pairs = (await session.execute(
+            select(models.User.id, models.User.name).where(models.User.id.in_(user_ids))
+        )).all()
+        names = {uid: name for uid, name in pairs}
+
+    items = []
+    for site in rows:
+        items.append({
+            "site_id": str(site.id),
+            "site_code": site.ca_code or site.code or "",
+            "site_name": site.name,
+            "city": site.city,
+            "site_status": site.status,
+            "submitted_by_name": names.get(site.submitted_by),
+            "assigned_to_name": names.get(site.assigned_to) if site.assigned_to else None,
+            "supervisor_name": names.get(site.supervisor_id) if site.supervisor_id else None,
+            "legal_dd_status": site.legal_dd_status,
+            "agreement_status": site.agreement_status,
+            "licensing_status": site.licensing_status,
+            "finance_status": site.finance_status,
+            "design_status": site.design_status,
+            "ca_code": site.ca_code,
+            "finance_amount": (
+                float(site.finance_amount)
+                if site.finance_amount is not None
+                else None
+            ),
+            "kyc_verified": bool(site.kyc_verified),
+            "created_at": site.created_at,
+            "updated_at": site.updated_at,
+            "draft_submitted_at": site.draft_submitted_at,
+            "shortlisted_at": site.shortlisted_at,
+            "details_submitted_at": site.details_submitted_at,
+            "approved_at": site.approved_at,
+            "loi_uploaded_at": site.loi_uploaded_at,
+            "legal_review_at": site.legal_review_at,
+            "legal_approved_at": site.legal_approved_at,
+            "legal_rejected_at": site.legal_rejected_at,
+            "pushed_to_payments_at": site.pushed_to_payments_at,
+            "design_approved_at": site.design_approved_at,
+            "rejection_reason": site.rejection_reason,
+        })
+    return {"items": items, "total": len(items)}
 
 
 async def approve_finance(

@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, status
 from app.core.deps import DbDep, TenantId
 from app.domain.schemas.business_admin import (
     ApproveSupervisorIn,
+    AdminSitesResponse,
     DeptCodeRotateOut,
     FinanceApprovalOut,
     Module,
@@ -81,6 +82,16 @@ async def reject_supervisor(
     tenant_id: TenantId,
 ) -> None:
     await svc.reject_supervisor(db, tenant_id, user_id)
+
+
+@router.get("/sites", response_model=AdminSitesResponse)
+async def list_admin_sites(
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+    limit: int = 80,
+) -> dict:
+    return await svc.list_admin_sites(db, tenant_id, limit=limit)
 
 
 @router.get("/finance-approvals", response_model=list[FinanceApprovalOut])
