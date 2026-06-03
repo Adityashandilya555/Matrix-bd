@@ -364,7 +364,7 @@ function LegalPanel({ data, onClose }) {
 }
 
 const PAYMENT_READY_STATUSES = new Set([
-  'legal_approved', 'pushed_to_payments',
+  'loi_uploaded', 'legal_review', 'legal_approved', 'pushed_to_payments',
 ]);
 
 const FINANCE_STATUS_LABELS = {
@@ -396,7 +396,7 @@ function FinanceStatusBadge({ status }) {
 
 function FinancePanel({ data, role, onClose, onUpdate }) {
   const siteStatus   = data.siteStatus ?? '';
-  const accessible   = PAYMENT_READY_STATUSES.has(siteStatus) || data.licensingStatus === 'complete';
+  const accessible   = PAYMENT_READY_STATUSES.has(siteStatus) || Boolean(data.loiUploadedAt);
   const financeStatus = data.financeStatus ?? 'pending';
   const isLocked     = financeStatus !== 'pending';
   const isApproved   = financeStatus === 'approved';
@@ -556,7 +556,7 @@ function FinancePanel({ data, role, onClose, onUpdate }) {
             background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)',
             fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-3)',
           }}>
-            Payment details unlock after Legal clears the site and licensing is complete.
+            Finance / CA unlocks after LOI upload and can run in parallel with Legal.
           </div>
         )}
 

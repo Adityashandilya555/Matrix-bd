@@ -11,6 +11,7 @@ import {
   rejectSupervisor,
 } from '../../services/api/adapters/httpAdapter.js';
 import { getDesignAdminQueue, getDesignGfcQueue } from '../../services/api/designApi.js';
+import { adminReviewProjectBudget, getProjectBudgetAdminQueue } from '../../services/api/projectApi.js';
 import DeptCodeManager from './DeptCodeManager.jsx';
 import DesignGfcQueue from './DesignGfcQueue.jsx';
 import DesignDeliverableApprovals from './DesignDeliverableApprovals.jsx';
@@ -54,6 +55,7 @@ const ADMIN_SOURCE_LABELS = {
   sites: 'Site timeline',
   designAdmin: '2D / 3D design approvals',
   designGfc: 'GFC design approvals',
+  projectBudget: 'Project budget approvals',
   audit: 'Tenant audit log',
 };
 
@@ -69,6 +71,7 @@ function initialAdminState() {
     sites: [],
     designAdmin: emptyQueue(),
     designGfc: emptyQueue(),
+    projectBudget: emptyQueue(),
     audit: emptyQueue(),
     error: null,
     errors: [],
@@ -152,6 +155,7 @@ function iconFor(key) {
     supervisors: '👥',
     finance: '₹',
     design: '◇',
+    project: '▣',
     blocked: '!',
     audit: '↺',
   };
@@ -172,8 +176,10 @@ function buildTimeline(site) {
   const legalDone = site.siteStatus === 'legal_approved' || site.siteStatus === 'pushed_to_payments' || site.legalDdStatus === 'positive';
   const agreementDone = ['signed', 'executed', 'registered'].includes(site.agreementStatus);
   const licensingDone = site.licensingStatus === 'complete';
-  const financeDone = site.financeStatus === 'approved' && site.siteStatus === 'pushed_to_payments';
+  const financeStarted = site.financeStatus && site.financeStatus !== 'pending';
+  const financeDone = site.financeStatus === 'approved';
   const designDone = site.designStatus === 'approved';
+  const designReady = legalDone && financeDone;
 
   return [
     {
@@ -250,35 +256,39 @@ function buildTimeline(site) {
       key: 'finance',
       stage: 'Finance / CA',
       team: 'Finance / CA',
-      status: financeDone ? 'Done' : licensingDone || site.financeStatus !== 'pending' ? 'In review' : 'Waiting',
-      sentAt: licensingDone ? site.updatedAt : null,
+      status: financeDone ? 'Done' : financeStarted || site.loiUploadedAt ? 'In review' : 'Waiting',
+      sentAt: site.loiUploadedAt,
       approvedAt: site.pushedToPaymentsAt,
       owner: 'Finance supervisor',
       blocker: site.financeStatus === 'awaiting_admin'
         ? 'Waiting for business admin approval'
         : site.financeStatus === 'awaiting_supervisor'
           ? 'Waiting for supervisor approval'
-          : 'Blocked by licensing',
+          : site.loiUploadedAt ? 'Finance can start in parallel with Legal' : 'Waiting for LOI upload',
     },
     {
       key: 'design',
       stage: 'Design',
       team: 'Design',
-      status: designDone ? 'Done' : financeDone ? 'In review' : 'Blocked',
+      status: designDone ? 'Done' : designReady ? 'In review' : 'Blocked',
       sentAt: financeDone ? site.pushedToPaymentsAt : null,
       approvedAt: site.designApprovedAt,
       owner: 'Design supervisor',
-      blocker: financeDone ? 'Waiting for design package' : 'Blocked by Finance approval',
+      blocker: designReady
+        ? 'Waiting for design package'
+        : site.legalDdStatus !== 'positive'
+          ? 'Waiting for positive DDR'
+          : 'Waiting for Finance admin approval',
     },
     {
       key: 'project',
       stage: 'Project Execution',
       team: 'Project',
-      status: designDone ? 'In review' : 'Waiting',
+      status: site.projectStatus === 'done' ? 'Done' : designDone ? 'In review' : 'Waiting',
       sentAt: site.designApprovedAt,
-      approvedAt: null,
+      approvedAt: site.projectCompletedAt,
       owner: 'Project supervisor',
-      blocker: designDone ? 'Waiting for project allocation' : 'Not reached yet',
+      blocker: designDone ? (site.projectBudgetStatus === 'pending_admin' ? 'Budget waiting for business admin approval' : 'Waiting for project allocation') : 'Not reached yet',
     },
     {
       key: 'final',
@@ -306,12 +316,13 @@ function primarySite(sites = [], financeApprovals = []) {
     || null;
 }
 
-function deriveDepartments({ sites, supervisors, financeApprovals, designAdmin, designGfc } = {}) {
+function deriveDepartments({ sites, supervisors, financeApprovals, designAdmin, designGfc, projectBudget } = {}) {
   const safeSites = toArray(sites);
   const safeSupervisors = toArray(supervisors);
   const safeFinance = toArray(financeApprovals);
   const safeDesignAdmin = toQueue(designAdmin);
   const safeDesignGfc = toQueue(designGfc);
+  const safeProjectBudget = toQueue(projectBudget);
   const siteCount = (predicate) => safeSites.filter(predicate).length;
   return [
     {
@@ -335,7 +346,7 @@ function deriveDepartments({ sites, supervisors, financeApprovals, designAdmin, 
       label: 'Finance / CA',
       pending: safeFinance.length,
       ready: siteCount((s) => s.financeStatus === 'approved'),
-      blocked: siteCount((s) => s.financeStatus === 'pending' && s.siteStatus === 'legal_approved'),
+      blocked: siteCount((s) => s.financeStatus === 'pending' && !s.loiUploadedAt),
       latest: safeFinance[0]?.siteName || 'No admin approvals waiting',
     },
     {
@@ -343,16 +354,16 @@ function deriveDepartments({ sites, supervisors, financeApprovals, designAdmin, 
       label: 'Design',
       pending: safeDesignAdmin.total + safeDesignGfc.total,
       ready: siteCount((s) => s.designStatus === 'approved'),
-      blocked: siteCount((s) => s.siteStatus === 'pushed_to_payments' && s.financeStatus !== 'approved'),
+      blocked: siteCount((s) => s.legalDdStatus === 'positive' && s.financeStatus !== 'approved'),
       latest: safeDesignGfc.items[0]?.siteName || safeDesignAdmin.items[0]?.siteName || 'No design handoff waiting',
     },
     {
       key: 'project',
       label: 'Project',
-      pending: siteCount((s) => s.designStatus === 'approved'),
-      ready: 0,
+      pending: safeProjectBudget.total,
+      ready: siteCount((s) => s.projectStatus === 'done'),
       blocked: 0,
-      latest: safeSites.find((s) => s.designStatus === 'approved')?.siteName || 'Project module not active',
+      latest: safeProjectBudget.items[0]?.siteName || safeSites.find((s) => s.designStatus === 'approved')?.siteName || 'No project budget waiting',
     },
   ].map((dept) => ({
     ...dept,
@@ -378,6 +389,7 @@ const ADMIN_NAV = [
   { key: 'approvals', label: 'Approval center', icon: '✓' },
   { key: 'timeline', label: 'Process timeline', icon: '↗' },
   { key: 'design', label: 'Design approvals', icon: '◇' },
+  { key: 'project', label: 'Project budgets', icon: '▣' },
   { key: 'codes', label: 'Department codes', icon: '#' },
   { key: 'audit', label: 'Audit / History', icon: '↺' },
 ];
@@ -386,10 +398,10 @@ function AdminSidebar({ active, collapsed, counts, onSelect, onToggle, onLogout 
   return (
     <aside className={`ba-admin-sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="ba-admin-brand">
-        <span className="ba-admin-mark">M</span>
+        <span className="ba-admin-mark">S</span>
         {!collapsed && (
           <div>
-            <div className="ba-label">Matrix</div>
+            <div className="ba-label">Scale</div>
             <strong>Business admin</strong>
           </div>
         )}
@@ -679,6 +691,59 @@ function AuditSection({ audit, onOpen }) {
   );
 }
 
+function ProjectBudgetApprovals({ queue, busy, onReview }) {
+  const safeQueue = toQueue(queue);
+  return (
+    <section className="ba-section">
+      <div className="ba-section-head">
+        <div>
+          <div className="ba-label">Project budget approvals</div>
+          <h2 className="ba-section-title">Budgets waiting for admin decision</h2>
+        </div>
+        <span className="ba-chip muted">{safeQueue.total} pending</span>
+      </div>
+      {safeQueue.items.length === 0 ? (
+        <div className="ba-empty">No project budgets are waiting for business-admin approval.</div>
+      ) : (
+        <div className="ba-list">
+          {safeQueue.items.map((item) => (
+            <article key={item.siteId} className="ba-approval-row">
+              <div>
+                <div className="ba-row">
+                  <span className="ba-chip warning">Budget approval</span>
+                  <span className="ba-chip muted ba-mono">{item.siteCode}</span>
+                </div>
+                <div className="ba-row-title">{item.siteName}</div>
+                <div className="ba-muted">
+                  {item.city} · {money(item.budgetTotal)} · {item.allocatedToName || 'Project owner not set'}
+                </div>
+              </div>
+              <div className="ba-row-actions">
+                <button
+                  className="ba-button primary"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onReview(item.siteId, 'approve')}
+                >
+                  Approve budget
+                </button>
+                <button
+                  className="ba-button danger"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onReview(item.siteId, 'reject')}
+                >
+                  Reject
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function Drawer({ selection, history, busy, onClose, onApproveSupervisor, onRejectSupervisor, onApproveFinance }) {
   if (!selection) return null;
   const item = selection.item || {};
@@ -804,6 +869,7 @@ export default function TeamDashboard({ onLogout }) {
       ['sites', () => listBusinessAdminSites(100)],
       ['designAdmin', getDesignAdminQueue],
       ['designGfc', getDesignGfcQueue],
+      ['projectBudget', getProjectBudgetAdminQueue],
       ['audit', () => getTenantAudit(30)],
     ];
     const results = await Promise.allSettled(requests.map(([, request]) => request()));
@@ -813,7 +879,7 @@ export default function TeamDashboard({ onLogout }) {
     results.forEach((result, index) => {
       const [key] = requests[index];
       if (result.status === 'fulfilled') {
-        if (['designAdmin', 'designGfc', 'audit'].includes(key)) {
+        if (['designAdmin', 'designGfc', 'projectBudget', 'audit'].includes(key)) {
           next[key] = toQueue(result.value);
         } else {
           next[key] = toArray(result.value);
@@ -909,17 +975,19 @@ export default function TeamDashboard({ onLogout }) {
   const sites = toArray(state.sites);
   const designAdmin = toQueue(state.designAdmin);
   const designGfc = toQueue(state.designGfc);
-  const departments = deriveDepartments({ sites, supervisors, financeApprovals: finance, designAdmin, designGfc });
+  const projectBudget = toQueue(state.projectBudget);
+  const departments = deriveDepartments({ sites, supervisors, financeApprovals: finance, designAdmin, designGfc, projectBudget });
   const focusSite = primarySite(sites, finance);
   const selectedTimelineSite = timelineSiteId
     ? sites.find((site) => site.siteId === timelineSiteId) || null
     : null;
   const blockedSites = sites.filter((s) => ['legal_rejected', 'rejected', 'archived'].includes(s.siteStatus)).length;
-  const pendingApprovalCount = supervisors.length + finance.length + designAdmin.total + designGfc.total;
+  const pendingApprovalCount = supervisors.length + finance.length + designAdmin.total + designGfc.total + projectBudget.total;
   const adminCounts = {
     approvals: pendingApprovalCount,
     timeline: sites.length,
     design: designAdmin.total + designGfc.total,
+    project: projectBudget.total,
     codes: 5,
     audit: toQueue(state.audit).total,
   };
@@ -937,7 +1005,7 @@ export default function TeamDashboard({ onLogout }) {
       <main className="ba-page">
         <header className="ba-hero">
           <div>
-            <div className="ba-eyebrow">Matrix · Business admin · {company}</div>
+            <div className="ba-eyebrow">Scale · Business admin · {company}</div>
             <h1 className="ba-title">Business Admin Command Center</h1>
             <p className="ba-subtitle">Approve cross-functional handoffs and keep store openings moving.</p>
             <div className="ba-pills">
@@ -957,6 +1025,7 @@ export default function TeamDashboard({ onLogout }) {
           <KPI icon="supervisors" label="Supervisor requests" value={supervisors.length} hint="Workspace access awaiting review"/>
           <KPI icon="finance" label="Finance / CA approvals" value={finance.length} hint="Forwarded by module supervisors"/>
           <KPI icon="design" label="Design approvals" value={designAdmin.total + designGfc.total} hint="2D / 3D and GFC gates"/>
+          <KPI icon="project" label="Project budget approvals" value={projectBudget.total} hint="Budget gates before execution"/>
           <KPI icon="blocked" label="Blocked sites" value={blockedSites} hint="Rejected or archived workflow items"/>
         </div>
 
@@ -1052,6 +1121,27 @@ export default function TeamDashboard({ onLogout }) {
                   </div>
                 </div>
               </section>
+            )}
+
+            {activeSection === 'project' && (
+              <ProjectBudgetApprovals
+                queue={projectBudget}
+                busy={busy}
+                onReview={async (siteId, decision) => {
+                  setBusy(true);
+                  try {
+                    await adminReviewProjectBudget(siteId, { decision, comments: decision === 'reject' ? 'Budget needs revision.' : null });
+                    await load();
+                  } catch (err) {
+                    setState((prev) => ({
+                      ...prev,
+                      error: errorMessage(err),
+                    }));
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              />
             )}
 
             {activeSection === 'codes' && (

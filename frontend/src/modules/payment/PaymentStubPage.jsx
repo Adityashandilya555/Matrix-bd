@@ -22,9 +22,7 @@ const FINANCE_LABELS = {
 };
 
 function isPaymentReady(site) {
-  return site.siteStatus === 'legal_approved' ||
-    site.siteStatus === 'pushed_to_payments' ||
-    site.licensingStatus === 'complete';
+  return PAYMENT_STATUSES.includes(site.siteStatus) || Boolean(site.loiUploadedAt);
 }
 
 function paymentState(site) {
@@ -82,12 +80,9 @@ function unlockCopy(site) {
     if (site.financeStatus === 'approved') return 'Finance approved and ready for final handoff.';
     if (site.financeStatus === 'awaiting_admin') return 'Supervisor approved. Admin approval is pending.';
     if (site.financeStatus === 'awaiting_supervisor') return 'Draft is complete. Supervisor approval is pending.';
-    return 'Legal cleared the site. Finance can prepare the CA code and amount.';
+    return 'LOI is uploaded. Finance can prepare the CA code and amount in parallel with Legal.';
   }
-  if (site.legalDdStatus !== 'positive') return 'Waiting for positive due diligence.';
-  if (site.agreementStatus !== 'registered' && site.agreementStatus !== 'executed' && site.agreementStatus !== 'signed') return 'Waiting for agreement execution.';
-  if (site.licensingStatus !== 'complete') return 'Payment unlocks after licensing is complete.';
-  return 'Waiting for Legal to clear the site.';
+  return 'Waiting for LOI upload before Finance / CA can start.';
 }
 
 function Metric({ icon, label, value, tone = 'accent' }) {
@@ -277,7 +272,7 @@ function PaymentRow({ site, onOpen }) {
           gap: 6,
         }}
       >
-        {state === 'locked' ? 'View flow' : 'Open payment'}
+        {state === 'locked' ? 'View flow' : 'Open CA panel'}
         <Icon name="arrow" size={12}/>
       </button>
     </article>
@@ -419,7 +414,7 @@ export default function PaymentStubPage() {
               letterSpacing: '-0.02em',
               color: 'var(--zm-fg)',
             }}>
-              Sites waiting for finance
+              Sites waiting for Finance / CA
             </h2>
             <p style={{
               margin: '5px 0 0',
@@ -427,7 +422,7 @@ export default function PaymentStubPage() {
               fontSize: 12.5,
               color: 'var(--zm-fg-2)',
             }}>
-              Payment unlocks after licensing completes and Legal clears the site.
+              Finance / CA starts after LOI upload and runs in parallel with Legal. Design waits for both Finance approval and positive DDR.
             </p>
           </div>
           <button
@@ -479,7 +474,7 @@ export default function PaymentStubPage() {
           <div style={{ padding: 42, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
             <Icon name="paymentCard" size={24}/>
             <p style={{ margin: '10px 0 0', fontFamily: 'var(--zm-font-body)' }}>
-              No LOI-stage sites are ready for payment tracking yet.
+              No LOI-stage sites are ready for Finance / CA tracking yet.
             </p>
           </div>
         )}

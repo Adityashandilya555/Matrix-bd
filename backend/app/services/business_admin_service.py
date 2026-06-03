@@ -223,6 +223,13 @@ async def list_admin_sites(
         .order_by(desc(models.Site.updated_at))
         .limit(safe_limit)
     )).scalars().all()
+    site_ids = [site.id for site in rows]
+    project_by_site = {}
+    if site_ids:
+        project_rows = (await session.execute(
+            select(models.ProjectReview).where(models.ProjectReview.site_id.in_(site_ids))
+        )).scalars().all()
+        project_by_site = {row.site_id: row for row in project_rows}
 
     user_ids = set()
     for site in rows:
@@ -243,6 +250,7 @@ async def list_admin_sites(
     items = []
     now = datetime.now(timezone.utc)
     for site in rows:
+        project = project_by_site.get(site.id)
         created_at = site.created_at or site.updated_at or now
         updated_at = site.updated_at or site.created_at or now
         try:
@@ -267,6 +275,10 @@ async def list_admin_sites(
             "licensing_status": site.licensing_status,
             "finance_status": site.finance_status or "pending",
             "design_status": site.design_status or "pending",
+            "project_status": project.project_status if project else "pending",
+            "project_current_stage": project.current_stage if project else None,
+            "project_budget_status": project.budget_status if project else None,
+            "project_completed_at": project.project_completed_at if project else None,
             "ca_code": site.ca_code,
             "finance_amount": finance_amount,
             "kyc_verified": bool(site.kyc_verified),

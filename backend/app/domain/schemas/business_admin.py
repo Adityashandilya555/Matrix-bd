@@ -64,6 +64,10 @@ class AdminSiteOut(BaseModel):
     licensing_status: Optional[str] = None
     finance_status: str = "pending"
     design_status: Optional[str] = None
+    project_status: Optional[str] = None
+    project_current_stage: Optional[str] = None
+    project_budget_status: Optional[str] = None
+    project_completed_at: Optional[datetime] = None
     ca_code: Optional[str] = None
     finance_amount: Optional[float] = None
     kyc_verified: bool = False

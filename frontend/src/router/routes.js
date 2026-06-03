@@ -21,6 +21,7 @@ export const ROUTES = {
   DESIGN:                 '/design',
   DESIGN_SITE:            '/design/sites/:siteId',
   PROJECT:                '/project',
+  PROJECT_SITE:           '/project/:siteId',
   SITE:                   '/sites/:id',
   ADD_DETAILS:            '/shortlist/:code/details',
   LOI_TIMELINE:           '/shortlist/:code/timeline',
@@ -59,6 +60,10 @@ export function paymentSiteLicensingRoute(siteId) {
 
 export function designSiteRoute(siteId) {
   return ROUTES.DESIGN_SITE.replace(':siteId', siteId);
+}
+
+export function projectSiteRoute(siteId) {
+  return ROUTES.PROJECT_SITE.replace(':siteId', siteId);
 }
 
 export function bdSiteStatusRoute(siteId) {
