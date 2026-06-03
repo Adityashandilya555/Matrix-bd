@@ -1,10 +1,9 @@
 """Design Department workflow service.
 
 A PARALLEL track that opens once a site's DDR is positive and Finance admin
-approval has pushed the site to the payments handoff
-(sites.legal_dd_status == 'positive', sites.finance_status == 'approved',
-sites.status == 'pushed_to_payments'). It does NOT mutate the linear site status
-after that handoff — progress is tracked by:
+approval is complete
+(sites.legal_dd_status == 'positive', sites.finance_status == 'approved').
+It does NOT depend on the linear site status — progress is tracked by:
 
   sites.design_status   — mirror column BD/dashboards read
   design_reviews         — one row per site (active stage + business_admin GFC gate)
@@ -209,7 +208,7 @@ def _assert_design_unlocked(site: models.Site) -> None:
                 f"'{site.legal_dd_status}', not 'positive'."
             ),
         )
-    if (site.finance_status or "pending") != "approved" or site.status != "pushed_to_payments":
+    if (site.finance_status or "pending") != "approved":
         raise HTTPException(
             status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Design is gated on Finance admin approval.",
@@ -236,7 +235,6 @@ async def svc_design_queue(
             models.Site.tenant_id == tenant_id,
             models.Site.legal_dd_status == "positive",
             models.Site.finance_status == "approved",
-            models.Site.status == "pushed_to_payments",
             or_(models.Site.design_status.is_(None), models.Site.design_status != "approved"),
         )
         .order_by(models.Site.updated_at.asc())

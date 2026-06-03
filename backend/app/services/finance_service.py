@@ -6,7 +6,6 @@ finance_status column tracks the sub-workflow:
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -14,9 +13,10 @@ from fastapi import HTTPException, status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import transaction
-from app.domain.state_machine import SiteStatus, assert_transition
+from app.domain.state_machine import SiteStatus
 from app.services._common import fetch_site_or_404
 from app.services.audit_service import write_audit_event
+from app.services.workflow_unlocks import maybe_unlock_design
 from app.services.notification_service import (
     enqueue as notify_enqueue,
     recipients_for_supervisors,
@@ -219,34 +219,33 @@ async def svc_finance_approve(
                     http_status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail=f"Expected awaiting_admin, got '{site.finance_status}'.",
                 )
-            if site.status != SiteStatus.LEGAL_APPROVED.value:
-                raise HTTPException(
-                    http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=(
-                        "Finance admin approval can only hand off sites that "
-                        f"are legal_approved; current site status is '{site.status}'."
-                    ),
-                )
-            assert_transition(SiteStatus(site.status), SiteStatus.PUSHED_TO_PAYMENTS)
             site.finance_status = "approved"
-            site.status = SiteStatus.PUSHED_TO_PAYMENTS.value
-            site.pushed_to_payments_at = datetime.now(timezone.utc)
-            if not site.design_status:
-                site.design_status = "pending"
+            design_unlocked = await maybe_unlock_design(
+                session,
+                tenant_id=tenant_id,
+                actor=actor,
+                site=site,
+                reason="finance_admin_approved",
+            )
             action = "finance_admin_approved"
             detail = (
                 f"Admin approved. ca_code={site.ca_code} amount={site.finance_amount}; "
-                "site pushed to payments handoff."
+                + (
+                    "Design is available because DDR is already positive."
+                    if design_unlocked or (site.legal_dd_status or "pending") == "positive"
+                    else "Finance approved; Design waits for positive DDR."
+                )
             )
 
-            await write_audit_event(
-                session, tenant_id=tenant_id, site_id=site.id,
-                actor_id=actor["sub"], actor_name=actor["name"],
-                action="payment_handoff",
-                from_status=SiteStatus.LEGAL_APPROVED.value,
-                to_status=SiteStatus.PUSHED_TO_PAYMENTS.value,
-                detail="Finance admin approval completed CA / Commercial Code.",
-            )
+            if site.status == SiteStatus.PUSHED_TO_PAYMENTS.value:
+                await write_audit_event(
+                    session, tenant_id=tenant_id, site_id=site.id,
+                    actor_id=actor["sub"], actor_name=actor["name"],
+                    action="payment_handoff",
+                    from_status=SiteStatus.LEGAL_APPROVED.value,
+                    to_status=SiteStatus.PUSHED_TO_PAYMENTS.value,
+                    detail="Finance admin approval completed CA / Commercial Code.",
+                )
 
             # Notify site owner and supervisors
             owners = await recipients_for_site_owner(session, site=site)

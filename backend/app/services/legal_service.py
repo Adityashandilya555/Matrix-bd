@@ -50,6 +50,7 @@ from app.services.notification_service import (
     recipients_for_legal_supervisors,
     recipients_for_site_owner,
 )
+from app.services.workflow_unlocks import maybe_unlock_design
 
 logger = logging.getLogger(__name__)
 
@@ -675,6 +676,14 @@ async def svc_save_due_diligence(
                     ),
                 )
 
+            await maybe_unlock_design(
+                session,
+                tenant_id=tenant_id,
+                actor=actor,
+                site=site,
+                reason="legal_dd_positive",
+            )
+
     return await _build_review_response(session, site)
 
 
@@ -840,6 +849,13 @@ async def svc_save_licensing(
             assert_transition(SiteStatus(site.status), SiteStatus.LEGAL_APPROVED)
             site.status = SiteStatus.LEGAL_APPROVED.value
             site.legal_approved_at = datetime.now(timezone.utc)
+            await maybe_unlock_design(
+                session,
+                tenant_id=tenant_id,
+                actor=actor,
+                site=site,
+                reason="legal_approved",
+            )
 
             await write_audit_event(
                 session, tenant_id=tenant_id, site_id=site.id,

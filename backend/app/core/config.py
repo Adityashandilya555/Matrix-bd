@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     )
 
     # ── App ─────────────────────────────────────────────────────────────────
-    app_name: str = "Z-Matrix BD Platform"
+    app_name: str = "Scale BD Platform"
     api_prefix: str = "/api"
     debug: bool = False
     log_level: str = "INFO"

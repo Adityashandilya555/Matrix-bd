@@ -251,8 +251,8 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
 
       {collapsed ? (
         <div
-          title="Ask Matrix"
-          aria-label="Ask Matrix"
+          title="Ask Scale"
+          aria-label="Ask Scale"
           style={{
             height: 42,
             margin: '0 2px',
@@ -276,7 +276,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--zm-accent)' }}>
           <Icon name="chat" size={14}/>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Ask Matrix</span>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Ask Scale</span>
         </div>
         <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-fg-2)', lineHeight: 1.45 }}>
           "Sites in process overdue &gt; 14 days" — Answer in the desktop workspace.

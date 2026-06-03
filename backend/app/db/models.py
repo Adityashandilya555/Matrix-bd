@@ -352,7 +352,7 @@ class SiteDelegation(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     __table_args__ = (
-        CheckConstraint("module IN ('bd','legal','payment','design')", name="chk_site_delegations_module"),
+        CheckConstraint("module IN ('bd','legal','payment','design','project')", name="chk_site_delegations_module"),
     )
 
 
@@ -635,4 +635,95 @@ class DesignDeliverable(Base):
         CheckConstraint("status IN ('pending','submitted','approved','rejected')", name="chk_design_deliverable_status"),
         CheckConstraint("admin_status IN ('pending','approved','rejected')", name="chk_design_deliverable_admin_status"),
         Index("idx_design_deliverables_site", "site_id"),
+    )
+
+
+# ── Project execution workflow ────────────────────────────────────────────────
+# Opens after business_admin GFC approval marks sites.design_status='approved'.
+
+class ProjectReview(Base):
+    """One row per site for the Project Execution module."""
+    __tablename__ = "project_reviews"
+
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True,
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False,
+    )
+    project_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    current_stage: Mapped[str] = mapped_column(Text, nullable=False, server_default="budget")
+    allocated_to: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+    budget_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="draft")
+    budget_total: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    budget_supervisor_comments: Mapped[Optional[str]] = mapped_column(Text)
+    budget_admin_comments: Mapped[Optional[str]] = mapped_column(Text)
+
+    initialization_date: Mapped[Optional[date]] = mapped_column(Date)
+    initialization_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    initialization_comments: Mapped[Optional[str]] = mapped_column(Text)
+    expected_completion_date: Mapped[Optional[date]] = mapped_column(Date)
+    expected_completion_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    expected_completion_comments: Mapped[Optional[str]] = mapped_column(Text)
+    inspection_date: Mapped[Optional[date]] = mapped_column(Date)
+    quality_audit_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    quality_audit_comments: Mapped[Optional[str]] = mapped_column(Text)
+    final_completion_date: Mapped[Optional[date]] = mapped_column(Date)
+    project_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "project_status IN ('pending','allocated','budgeting','in_progress','done')",
+            name="chk_project_status",
+        ),
+        CheckConstraint(
+            "current_stage IN ('budget','execution','done')",
+            name="chk_project_current_stage",
+        ),
+        CheckConstraint(
+            "budget_status IN ('draft','pending_supervisor','pending_admin','approved','rejected')",
+            name="chk_project_budget_status",
+        ),
+        CheckConstraint(
+            "initialization_status IN ('pending','submitted','approved','rejected')",
+            name="chk_project_initialization_status",
+        ),
+        CheckConstraint(
+            "expected_completion_status IN ('pending','submitted','approved','rejected')",
+            name="chk_project_expected_completion_status",
+        ),
+        CheckConstraint(
+            "quality_audit_status IN ('pending','submitted','approved','rejected')",
+            name="chk_project_quality_status",
+        ),
+        Index("idx_project_reviews_tenant_status", "tenant_id", "project_status"),
+        Index("idx_project_reviews_budget_status", "tenant_id", "budget_status"),
+    )
+
+
+class ProjectBudgetItem(Base):
+    """Budget line items for a project review."""
+    __tablename__ = "project_budget_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), nullable=False)
+    idx: Mapped[int] = mapped_column(Integer, nullable=False)
+    label: Mapped[Optional[str]] = mapped_column(Text)
+    amount: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint("site_id", "idx", name="uq_project_budget_site_idx"),
+        CheckConstraint("idx BETWEEN 1 AND 10", name="chk_project_budget_idx"),
+        Index("idx_project_budget_items_site", "site_id"),
     )

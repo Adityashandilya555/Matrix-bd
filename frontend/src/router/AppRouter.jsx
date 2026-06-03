@@ -34,7 +34,8 @@ import LicensingPage         from '../modules/payment/licensing/LicensingPage.js
 import PaymentStubPage       from '../modules/payment/PaymentStubPage.jsx';
 import AdminPortalPage          from '../modules/admin/AdminPortalPage.jsx';
 import BusinessAdminPortalPage  from '../modules/business-admin/BusinessAdminPortalPage.jsx';
-import ProjectStubPage          from '../modules/project/ProjectStubPage.jsx';
+import ProjectQueuePage         from '../modules/project/ProjectQueuePage.jsx';
+import ProjectReviewPage        from '../modules/project/ProjectReviewPage.jsx';
 
 // In HTTP (non-mock) mode the landing page is the unauthenticated entry. The
 // existing app chrome only renders after a Supabase session is established.
@@ -206,7 +207,14 @@ export default function AppRouter() {
         <Route path={ROUTES.PROJECT} element={
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <RequireModule modules={['project']}>
-              <ProjectStubPage/>
+              <ProjectQueuePage/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.PROJECT_SITE} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['project']}>
+              <ProjectReviewPage/>
             </RequireModule>
           </RequireRole>
         }/>

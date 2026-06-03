@@ -30,7 +30,7 @@ class BusinessAdminErrorBoundary extends React.Component {
         <main className="ba-page">
           <section className="ba-hero">
             <div>
-              <div className="ba-eyebrow">Matrix · Business admin</div>
+              <div className="ba-eyebrow">Scale · Business admin</div>
               <h1 className="ba-title">Business Admin Command Center</h1>
               <p className="ba-subtitle">
                 The command center hit a display error. Refresh the view, or sign out and sign back in.
