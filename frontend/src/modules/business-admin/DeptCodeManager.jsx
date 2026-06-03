@@ -5,6 +5,8 @@ const MODULES = [
   { key: 'bd',      label: 'BD' },
   { key: 'legal',   label: 'Legal' },
   { key: 'payment', label: 'Payment' },
+  { key: 'recce',   label: 'Recce' },
+  { key: 'project', label: 'Project' },
 ];
 
 export default function DeptCodeManager() {
@@ -45,7 +47,7 @@ export default function DeptCodeManager() {
   return (
     <div>
       {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(220,38,38,0.18)', color: '#FCA5A5', marginBottom: 16, fontSize: 13 }}>{error}</div>}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14 }}>
         {MODULES.map(({ key, label }) => {
           const entry = codesByModule[key];
           const isRotating = rotatingModule === key;

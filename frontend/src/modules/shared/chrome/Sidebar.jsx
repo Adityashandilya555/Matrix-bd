@@ -87,9 +87,16 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
   // current URL when the session has no module claim (mock-mode previews, where
   // we still want the right menu to render based on where the user clicked).
   const path = location.pathname;
-  const routeModule = path.startsWith('/legal') ? 'legal' : path.startsWith('/payment') ? 'payment' : path.startsWith('/design') ? 'design' : 'bd';
+  const routeModule =
+    path.startsWith('/legal')   ? 'legal'   :
+    path.startsWith('/payment') ? 'payment' :
+    path.startsWith('/design')  ? 'design'  :
+    path.startsWith('/recce')   ? 'recce'   :
+    path.startsWith('/project') ? 'project' :
+    'bd';
   const userModule = session?.module || routeModule;
-  const isModuleSurface = userModule === 'legal' || userModule === 'payment' || userModule === 'design';
+  const isModuleSurface = userModule === 'legal' || userModule === 'payment'
+    || userModule === 'design' || userModule === 'recce' || userModule === 'project';
 
   // Active view derived from current URL path
   const activeView =
@@ -106,6 +113,8 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
     path.startsWith('/legal')                            ? 'legal-ddr' :
     path.startsWith('/payment')                          ? 'payment-licensing' :
     path.startsWith('/design')                           ? 'design' :
+    path.startsWith('/recce')                            ? 'recce-home' :
+    path.startsWith('/project')                          ? 'project-home' :
     'overview';
 
   const go = (route) => navigate(route);
@@ -184,6 +193,30 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
             label="Design queue"
             active={activeView === 'design'}
             onClick={() => go(ROUTES.DESIGN)}
+          />
+        </>
+      )}
+
+      {userModule === 'recce' && (
+        <>
+          <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Recce</div>
+          <SidebarItem
+            icon="pin"
+            label="Site recce"
+            active={activeView === 'recce-home'}
+            onClick={() => go(ROUTES.RECCE)}
+          />
+        </>
+      )}
+
+      {userModule === 'project' && (
+        <>
+          <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Project</div>
+          <SidebarItem
+            icon="box"
+            label="Project execution"
+            active={activeView === 'project-home'}
+            onClick={() => go(ROUTES.PROJECT)}
           />
         </>
       )}
