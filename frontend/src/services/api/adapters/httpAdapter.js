@@ -11,6 +11,7 @@
 
 import axios from 'axios';
 import { clearAuthToken, getAuthToken } from '../authToken.js';
+import { notifySiteDataChanged } from '../siteEvents.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
 const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
@@ -485,7 +486,9 @@ export async function listFinanceApprovals() {
 }
 
 export async function approveFinanceApproval(siteId) {
-  return post(`/business-admin/finance-approvals/${siteId}/approve`, {});
+  const result = await post(`/business-admin/finance-approvals/${siteId}/approve`, {});
+  notifySiteDataChanged({ source: 'businessAdmin', action: 'approve_finance_admin', siteId });
+  return result;
 }
 
 export async function getTenantAudit(limit = 50) {

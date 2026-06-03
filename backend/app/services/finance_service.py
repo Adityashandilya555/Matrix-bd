@@ -231,6 +231,8 @@ async def svc_finance_approve(
             site.finance_status = "approved"
             site.status = SiteStatus.PUSHED_TO_PAYMENTS.value
             site.pushed_to_payments_at = datetime.now(timezone.utc)
+            if not site.design_status:
+                site.design_status = "pending"
             action = "finance_admin_approved"
             detail = (
                 f"Admin approved. ca_code={site.ca_code} amount={site.finance_amount}; "

@@ -376,9 +376,9 @@ export default function PaymentStubPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <PageHeader
         file="No. 09"
-        eyebrow="Payment module"
-        title="Payment readiness"
-        lede="See which sites are locked, which have cleared Legal, and which finance approvals need movement."
+        eyebrow="BD module"
+        title="Payment"
+        lede="Track CA / Commercial Code readiness, approval status, and finance handoff from the process flow."
         right={<HeaderTag icon="paymentCard" label={`${counts.ready + counts.awaiting} ACTIVE`}/>}
       />
 

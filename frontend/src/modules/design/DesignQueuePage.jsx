@@ -5,6 +5,7 @@ import Icon from '../shared/primitives/Icon.jsx';
 import { useSession } from '../../state/SessionContext.jsx';
 import { getDesignQueue } from '../../services/api/designApi.js';
 import { designSiteRoute } from '../../router/routes.js';
+import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 
 const STATUS_LABELS = {
   pending:     { label: 'Awaiting allocation', tone: 'var(--zm-fg-3)' },
@@ -39,7 +40,7 @@ export default function DesignQueuePage() {
   const isSupervisor = role === 'supervisor';
   const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
 
-  React.useEffect(() => {
+  const load = React.useCallback(() => {
     let cancelled = false;
     setState({ status: 'loading', items: [], total: 0, error: null });
     getDesignQueue()
@@ -53,6 +54,9 @@ export default function DesignQueuePage() {
       });
     return () => { cancelled = true; };
   }, []);
+
+  React.useEffect(() => load(), [load]);
+  useSiteDataRefresh(load);
 
   const open = (row) => navigate(designSiteRoute(row.siteId));
 

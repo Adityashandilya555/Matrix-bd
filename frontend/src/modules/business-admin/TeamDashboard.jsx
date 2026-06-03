@@ -373,6 +373,63 @@ function KPI({ icon, label, value, hint, tone }) {
   );
 }
 
+const ADMIN_NAV = [
+  { key: 'overview', label: 'Overview', icon: '▦' },
+  { key: 'approvals', label: 'Approval center', icon: '✓' },
+  { key: 'timeline', label: 'Process timeline', icon: '↗' },
+  { key: 'design', label: 'Design approvals', icon: '◇' },
+  { key: 'codes', label: 'Department codes', icon: '#' },
+  { key: 'audit', label: 'Audit / History', icon: '↺' },
+];
+
+function AdminSidebar({ active, collapsed, counts, onSelect, onToggle, onLogout }) {
+  return (
+    <aside className={`ba-admin-sidebar ${collapsed ? 'collapsed' : ''}`}>
+      <div className="ba-admin-brand">
+        <span className="ba-admin-mark">M</span>
+        {!collapsed && (
+          <div>
+            <div className="ba-label">Matrix</div>
+            <strong>Business admin</strong>
+          </div>
+        )}
+        <button
+          type="button"
+          className="ba-sidebar-toggle"
+          onClick={onToggle}
+          aria-label={collapsed ? 'Expand business admin sidebar' : 'Collapse business admin sidebar'}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? '›' : '‹'}
+        </button>
+      </div>
+      <nav className="ba-admin-nav" aria-label="Business admin sections">
+        {ADMIN_NAV.map((item) => {
+          const count = counts[item.key];
+          return (
+            <button
+              key={item.key}
+              type="button"
+              className={`ba-admin-nav-item ${active === item.key ? 'active' : ''}`}
+              title={collapsed ? item.label : undefined}
+              aria-label={item.label}
+              onClick={() => onSelect(item.key)}
+            >
+              <span className="ba-admin-nav-icon">{item.icon}</span>
+              {!collapsed && <span>{item.label}</span>}
+              {count != null && count > 0 && <span className="ba-admin-nav-badge">{count}</span>}
+            </button>
+          );
+        })}
+      </nav>
+      <button type="button" className="ba-admin-signout" onClick={onLogout} title={collapsed ? 'Sign out' : undefined}>
+        <span className="ba-admin-nav-icon">⎋</span>
+        {!collapsed && <span>Sign out</span>}
+      </button>
+    </aside>
+  );
+}
+
 function ErrorBlock({ message, messages, onRetry }) {
   const details = toArray(messages);
   return (
@@ -434,9 +491,79 @@ function ApprovalCenter({ items, filter, onFilter, onOpen }) {
                   {item.email} · Sent {formatShortDate(item.createdAt)}
                 </div>
               </div>
-              <div className="ba-row" style={{ justifyContent: 'flex-end' }}>
+              <div className="ba-row-actions">
                 <span className="ba-button">Review</span>
                 <span className="ba-button">View history</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TimelineBrowser({ sites, query, selectedSite, onQuery, onSelect, onOpen }) {
+  const safeSites = toArray(sites);
+  const q = query.trim().toLowerCase();
+  const filtered = safeSites.filter((site) => {
+    if (!q) return true;
+    return [
+      site.siteName,
+      site.siteCode,
+      site.caCode,
+      site.city,
+      statusText(site.siteStatus),
+      site.financeStatus,
+      site.designStatus,
+    ].filter(Boolean).join(' ').toLowerCase().includes(q);
+  });
+
+  if (selectedSite) {
+    return (
+      <div>
+        <div className="ba-timeline-toolbar">
+          <button className="ba-button" type="button" onClick={() => onSelect(null)}>Back to sites</button>
+          <span className="ba-chip success">Timeline selected</span>
+        </div>
+        <ProcessTimeline site={selectedSite} onOpen={onOpen}/>
+      </div>
+    );
+  }
+
+  return (
+    <section className="ba-section">
+      <div className="ba-section-head">
+        <div>
+          <div className="ba-label">Process timeline</div>
+          <h2 className="ba-section-title">Choose a site to inspect the full flow</h2>
+        </div>
+        <span className="ba-chip muted">{filtered.length} sites</span>
+      </div>
+      <input
+        className="ba-search"
+        value={query}
+        onChange={(e) => onQuery(e.target.value)}
+        placeholder="Search by site, code, city or status..."
+      />
+      {filtered.length === 0 ? (
+        <div className="ba-empty" style={{ marginTop: 12 }}>No sites match this search.</div>
+      ) : (
+        <div className="ba-site-list">
+          {filtered.map((site) => (
+            <button key={site.siteId} className="ba-site-row" type="button" onClick={() => onSelect(site.siteId)}>
+              <div>
+                <div className="ba-mono ba-muted">{site.siteCode || site.caCode || site.siteId}</div>
+                <div className="ba-row-title">{site.siteName}</div>
+                <div className="ba-muted">{site.city} · {statusText(site.siteStatus)}</div>
+              </div>
+              <div className="ba-site-row-meta">
+                <span className={`ba-chip ${site.financeStatus === 'approved' ? 'success' : site.financeStatus === 'awaiting_admin' ? 'warning' : 'muted'}`}>
+                  Finance: {site.financeStatus || 'pending'}
+                </span>
+                <span className={`ba-chip ${site.designStatus === 'approved' ? 'success' : site.designStatus ? 'warning' : 'muted'}`}>
+                  Design: {site.designStatus || 'pending'}
+                </span>
               </div>
             </button>
           ))}
@@ -513,6 +640,38 @@ function ProcessTimeline({ site, onOpen }) {
                 {stage.status}
               </span>
             </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AuditSection({ audit, onOpen }) {
+  const queue = toQueue(audit);
+  return (
+    <section className="ba-section">
+      <div className="ba-section-head">
+        <div>
+          <div className="ba-label">Audit / History</div>
+          <h2 className="ba-section-title">Recent tenant activity</h2>
+        </div>
+        <button className="ba-button" type="button" onClick={() => onOpen({ type: 'audit', item: { label: 'Tenant audit log' } })}>
+          Open drawer
+        </button>
+      </div>
+      {queue.items.length === 0 ? (
+        <div className="ba-empty">No recent audit activity.</div>
+      ) : (
+        <div className="ba-history ba-history-list">
+          {queue.items.slice(0, 18).map((entry) => (
+            <div key={entry.id} className="ba-history-item">
+              <strong>{labelForEntry(entry)}</strong>
+              <div className="ba-muted" style={{ fontSize: 12 }}>
+                {entry.actor} · {formatDate(entry.createdAt)}
+              </div>
+              {entry.detail && <div className="ba-muted" style={{ fontSize: 12, marginTop: 3 }}>{entry.detail}</div>}
+            </div>
           ))}
         </div>
       )}
@@ -622,10 +781,20 @@ export default function TeamDashboard({ onLogout }) {
   const company = payload.workspace_name || payload.tenant_name || payload.company || 'Workspace';
   const [state, setState] = React.useState(() => initialAdminState());
   const [filter, setFilter] = React.useState('all');
+  const [activeSection, setActiveSection] = React.useState('overview');
+  const [timelineQuery, setTimelineQuery] = React.useState('');
+  const [timelineSiteId, setTimelineSiteId] = React.useState(null);
   const [selection, setSelection] = React.useState(null);
   const [history, setHistory] = React.useState({ status: 'idle', items: [], error: null });
   const [busy, setBusy] = React.useState(false);
   const [lastSync, setLastSync] = React.useState(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(() => {
+    try {
+      return window.localStorage.getItem('matrix-business-admin-sidebar-collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   const load = React.useCallback(async () => {
     setState((prev) => ({ ...prev, status: 'loading', error: null, errors: [] }));
@@ -664,6 +833,14 @@ export default function TeamDashboard({ onLogout }) {
   }, []);
 
   React.useEffect(() => { load(); }, [load]);
+
+  React.useEffect(() => {
+    try {
+      window.localStorage.setItem('matrix-business-admin-sidebar-collapsed', sidebarCollapsed ? 'true' : 'false');
+    } catch {
+      // Ignore persistence failures in private/restricted browser contexts.
+    }
+  }, [sidebarCollapsed]);
 
   React.useEffect(() => {
     if (!selection) return;
@@ -734,11 +911,29 @@ export default function TeamDashboard({ onLogout }) {
   const designGfc = toQueue(state.designGfc);
   const departments = deriveDepartments({ sites, supervisors, financeApprovals: finance, designAdmin, designGfc });
   const focusSite = primarySite(sites, finance);
+  const selectedTimelineSite = timelineSiteId
+    ? sites.find((site) => site.siteId === timelineSiteId) || null
+    : null;
   const blockedSites = sites.filter((s) => ['legal_rejected', 'rejected', 'archived'].includes(s.siteStatus)).length;
   const pendingApprovalCount = supervisors.length + finance.length + designAdmin.total + designGfc.total;
+  const adminCounts = {
+    approvals: pendingApprovalCount,
+    timeline: sites.length,
+    design: designAdmin.total + designGfc.total,
+    codes: 5,
+    audit: toQueue(state.audit).total,
+  };
 
   return (
-    <div className="ba-shell">
+    <div className={`ba-shell ${sidebarCollapsed ? 'admin-sidebar-collapsed' : ''}`}>
+      <AdminSidebar
+        active={activeSection}
+        collapsed={sidebarCollapsed}
+        counts={adminCounts}
+        onSelect={setActiveSection}
+        onToggle={() => setSidebarCollapsed((value) => !value)}
+        onLogout={onLogout}
+      />
       <main className="ba-page">
         <header className="ba-hero">
           <div>
@@ -754,7 +949,6 @@ export default function TeamDashboard({ onLogout }) {
           <div className="ba-actions">
             <button className="ba-button" type="button" onClick={refresh}>Refresh</button>
             <button className="ba-button" type="button" onClick={openAudit}>View audit log</button>
-            <button className="ba-button" type="button" onClick={onLogout}>Sign out</button>
           </div>
         </header>
 
@@ -773,65 +967,108 @@ export default function TeamDashboard({ onLogout }) {
 
         {state.status !== 'loading' && (
           <>
-            <div className="ba-main-grid">
+            {activeSection === 'overview' && (
+              <>
+                <div className="ba-main-grid">
+                  <section className="ba-section">
+                    <div className="ba-section-head">
+                      <div>
+                        <div className="ba-label">Priority handoff</div>
+                        <h2 className="ba-section-title">{finance[0]?.siteName || focusSite?.siteName || 'No urgent handoff'}</h2>
+                      </div>
+                      <span className="ba-chip warning">{finance.length ? 'Finance waiting' : 'Stable'}</span>
+                    </div>
+                    {finance[0] ? (
+                      <button className="ba-approval-row" type="button" onClick={() => setSelection({ type: 'finance', item: finance[0] })}>
+                        <div>
+                          <div className="ba-row">
+                            <span className="ba-chip warning">Awaiting admin</span>
+                            <span className="ba-chip muted ba-mono">{finance[0].caCode || finance[0].siteCode}</span>
+                          </div>
+                          <div className="ba-row-title">Approve CA / finance handoff</div>
+                          <div className="ba-muted">{finance[0].city} · {money(finance[0].financeAmount)}</div>
+                        </div>
+                        <span className="ba-button primary">Review</span>
+                      </button>
+                    ) : (
+                      <div className="ba-empty">No Finance / CA request is waiting for business-admin approval.</div>
+                    )}
+                  </section>
+                  <section className="ba-section">
+                    <div className="ba-section-head">
+                      <div>
+                        <div className="ba-label">Process timeline</div>
+                        <h2 className="ba-section-title">{focusSite?.siteName || 'No active site selected'}</h2>
+                      </div>
+                      <button className="ba-button" type="button" onClick={() => setActiveSection('timeline')}>Open timeline</button>
+                    </div>
+                    {focusSite ? (
+                      <div className="ba-empty">
+                        <strong>{statusText(focusSite.siteStatus)}</strong>
+                        <div className="ba-muted" style={{ marginTop: 6 }}>
+                          Open the Process timeline section to inspect every stage for this site.
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="ba-empty">No active site timeline is available yet.</div>
+                    )}
+                  </section>
+                </div>
+                <DepartmentQueues departments={departments} onOpen={setSelection}/>
+              </>
+            )}
+
+            {activeSection === 'approvals' && (
               <ApprovalCenter items={supervisors} filter={filter} onFilter={setFilter} onOpen={setSelection}/>
+            )}
+
+            {activeSection === 'timeline' && (
+              <TimelineBrowser
+                sites={sites}
+                query={timelineQuery}
+                selectedSite={selectedTimelineSite}
+                onQuery={setTimelineQuery}
+                onSelect={setTimelineSiteId}
+                onOpen={setSelection}
+              />
+            )}
+
+            {activeSection === 'design' && (
               <section className="ba-section">
                 <div className="ba-section-head">
                   <div>
-                    <div className="ba-label">Priority handoff</div>
-                    <h2 className="ba-section-title">{finance[0]?.siteName || focusSite?.siteName || 'No urgent handoff'}</h2>
+                    <div className="ba-label">Live design approval workbench</div>
+                    <h2 className="ba-section-title">Design handoffs that still need admin action</h2>
                   </div>
-                  <span className="ba-chip warning">{finance.length ? 'Finance waiting' : 'Stable'}</span>
                 </div>
-                {finance[0] ? (
-                  <button className="ba-approval-row" type="button" onClick={() => setSelection({ type: 'finance', item: finance[0] })}>
-                    <div>
-                      <div className="ba-row">
-                        <span className="ba-chip warning">Awaiting admin</span>
-                        <span className="ba-chip muted ba-mono">{finance[0].caCode || finance[0].siteCode}</span>
-                      </div>
-                      <div className="ba-row-title">Approve CA / finance handoff</div>
-                      <div className="ba-muted">{finance[0].city} · {money(finance[0].financeAmount)}</div>
-                    </div>
-                    <span className="ba-button primary">Review</span>
-                  </button>
-                ) : (
-                  <div className="ba-empty">No Finance / CA request is waiting for business-admin approval.</div>
-                )}
+                <div className="ba-main-grid">
+                  <div>
+                    <div className="ba-label" style={{ marginBottom: 10 }}>2D / 3D approvals</div>
+                    <DesignDeliverableApprovals/>
+                  </div>
+                  <div>
+                    <div className="ba-label" style={{ marginBottom: 10 }}>GFC approvals</div>
+                    <DesignGfcQueue/>
+                  </div>
+                </div>
               </section>
-            </div>
+            )}
 
-            <DepartmentQueues departments={departments} onOpen={setSelection}/>
-            <ProcessTimeline site={focusSite} onOpen={setSelection}/>
+            {activeSection === 'codes' && (
+              <section className="ba-section">
+                <div className="ba-section-head">
+                  <div>
+                    <div className="ba-label">Access & routing codes</div>
+                    <h2 className="ba-section-title">Department codes</h2>
+                  </div>
+                </div>
+                <DeptCodeManager/>
+              </section>
+            )}
 
-            <section className="ba-section">
-              <div className="ba-section-head">
-                <div>
-                  <div className="ba-label">Live design approval workbench</div>
-                  <h2 className="ba-section-title">Design handoffs that still need admin action</h2>
-                </div>
-              </div>
-              <div className="ba-main-grid">
-                <div>
-                  <div className="ba-label" style={{ marginBottom: 10 }}>2D / 3D approvals</div>
-                  <DesignDeliverableApprovals/>
-                </div>
-                <div>
-                  <div className="ba-label" style={{ marginBottom: 10 }}>GFC approvals</div>
-                  <DesignGfcQueue/>
-                </div>
-              </div>
-            </section>
-
-            <section className="ba-section">
-              <div className="ba-section-head">
-                <div>
-                  <div className="ba-label">Access & routing codes</div>
-                  <h2 className="ba-section-title">Department codes</h2>
-                </div>
-              </div>
-              <DeptCodeManager/>
-            </section>
+            {activeSection === 'audit' && (
+              <AuditSection audit={state.audit} onOpen={setSelection}/>
+            )}
           </>
         )}
       </main>

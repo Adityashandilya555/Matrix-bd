@@ -94,7 +94,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
     path.startsWith('/project') ? 'project' :
     'bd';
   const userModule = session?.module || routeModule;
-  const isModuleSurface = userModule === 'legal' || userModule === 'payment'
+  const isModuleSurface = userModule === 'legal'
     || userModule === 'design' || userModule === 'project';
 
   // Active view derived from current URL path
@@ -117,6 +117,8 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
 
   const go = (route) => navigate(route);
   const canSeeTeam = role === 'supervisor' || role === 'executive' || role === 'exec';
+  const canSeePayment = role === 'supervisor' || userModule === 'payment';
+  const paymentOnlySurface = userModule === 'payment';
   const executiveLabel = isModuleSurface ? 'Executive' : 'BD exec';
 
   return (
@@ -129,17 +131,28 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
     }}>
       {!isModuleSurface && (
         <>
-          {!collapsed && <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Overview</div>}
-          <SidebarItem icon="dashboard" label="Sites" active={activeView === 'overview'} onClick={() => go(ROUTES.OVERVIEW)} collapsed={collapsed}/>
-          {!collapsed && <div style={SECTION_HEADING_STYLE}>Workflow</div>}
-          <SidebarItem icon="document" label="Pipeline" count={counts.pipeline} active={activeView === 'pipeline'} onClick={() => go(ROUTES.PIPELINE)} collapsed={collapsed}/>
-          <SidebarItem icon="bookmark" label="Shortlisted sites" count={counts.shortlist} active={activeView === 'shortlist'} onClick={() => go(ROUTES.SHORTLIST)} collapsed={collapsed}/>
-          <SidebarItem icon="layers" label="Sites in process" count={counts.staging} active={activeView === 'staging'} onClick={() => go(ROUTES.STAGING)} collapsed={collapsed}/>
-          {role === 'supervisor' && (
-            <SidebarItem icon="archiveBox" label="Archive" count={counts.archive} active={activeView === 'archive'} onClick={() => go(ROUTES.ARCHIVE)} collapsed={collapsed}/>
+          {!paymentOnlySurface && (
+            <>
+              {!collapsed && <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Overview</div>}
+              <SidebarItem icon="dashboard" label="Sites" active={activeView === 'overview'} onClick={() => go(ROUTES.OVERVIEW)} collapsed={collapsed}/>
+            </>
           )}
-          <SidebarItem icon="warning" label="DD failed" active={activeView === 'dd-failed'} onClick={() => go(ROUTES.DD_FAILED)} collapsed={collapsed}/>
+          {!collapsed && <div style={SECTION_HEADING_STYLE}>Workflow</div>}
+          {!paymentOnlySurface && (
+            <>
+              <SidebarItem icon="document" label="Pipeline" count={counts.pipeline} active={activeView === 'pipeline'} onClick={() => go(ROUTES.PIPELINE)} collapsed={collapsed}/>
+              <SidebarItem icon="bookmark" label="Shortlisted sites" count={counts.shortlist} active={activeView === 'shortlist'} onClick={() => go(ROUTES.SHORTLIST)} collapsed={collapsed}/>
+              <SidebarItem icon="layers" label="Sites in process" count={counts.staging} active={activeView === 'staging'} onClick={() => go(ROUTES.STAGING)} collapsed={collapsed}/>
+              {role === 'supervisor' && (
+                <SidebarItem icon="archiveBox" label="Archive" count={counts.archive} active={activeView === 'archive'} onClick={() => go(ROUTES.ARCHIVE)} collapsed={collapsed}/>
+              )}
+              <SidebarItem icon="warning" label="DD failed" active={activeView === 'dd-failed'} onClick={() => go(ROUTES.DD_FAILED)} collapsed={collapsed}/>
+            </>
+          )}
           <SidebarItem icon="route" label="Process flow" active={activeView === 'site-tracker'} onClick={() => go(ROUTES.SITE_TRACKER)} collapsed={collapsed}/>
+          {canSeePayment && (
+            <SidebarItem icon="paymentCard" label="Payment" active={activeView === 'payment-licensing'} onClick={() => go(ROUTES.PAYMENT)} collapsed={collapsed}/>
+          )}
         </>
       )}
 
@@ -165,19 +178,6 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
             label="Rejected sites"
             active={activeView === 'legal-rejected'}
             onClick={() => go(ROUTES.LEGAL_REJECTED)}
-            collapsed={collapsed}
-          />
-        </>
-      )}
-
-      {userModule === 'payment' && (
-        <>
-          {!collapsed && <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Payment</div>}
-          <SidebarItem
-            icon="paymentCard"
-            label="Payment"
-            active={activeView === 'payment-licensing'}
-            onClick={() => go(ROUTES.PAYMENT)}
             collapsed={collapsed}
           />
         </>

@@ -266,7 +266,7 @@ async def list_admin_sites(
             "agreement_status": site.agreement_status,
             "licensing_status": site.licensing_status,
             "finance_status": site.finance_status or "pending",
-            "design_status": site.design_status,
+            "design_status": site.design_status or "pending",
             "ca_code": site.ca_code,
             "finance_amount": finance_amount,
             "kyc_verified": bool(site.kyc_verified),

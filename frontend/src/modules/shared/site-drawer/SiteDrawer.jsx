@@ -384,7 +384,7 @@ function SitePaymentsTab({ site }) {
   return (
     <div style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
       {ready
-        ? 'Legal has cleared this site for the payment module.'
+        ? 'Legal has cleared this site for the Payment section.'
         : 'Payment details are not available until Legal approves DDR, agreement, and licensing.'}
     </div>
   );

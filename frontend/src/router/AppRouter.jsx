@@ -180,11 +180,7 @@ export default function AppRouter() {
         <Route path="/legal/*" element={<Navigate to={ROUTES.LEGAL} replace/>}/>
 
         <Route path={ROUTES.PAYMENT} element={
-          <RequireRole roles={['supervisor', 'executive', 'exec']}>
-            <RequireModule modules={['payment']}>
-              <PaymentStubPage/>
-            </RequireModule>
-          </RequireRole>
+          <PaymentRoute/>
         }/>
         <Route path={ROUTES.PAYMENT_SITE_LICENSING} element={
           <PaymentLicensingRedirect/>
@@ -232,7 +228,7 @@ export default function AppRouter() {
 
         <Route path={ROUTES.SITE_TRACKER} element={
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
-            <RequireModule modules={['bd']}>
+            <RequireModule modules={['bd', 'payment']}>
               <SiteTrackerListPage/>
             </RequireModule>
           </RequireRole>
@@ -273,6 +269,20 @@ function StagingRedirect() {
 function PaymentLicensingRedirect() {
   const { siteId } = useParams();
   return <Navigate to={ROUTES.LEGAL_SITE_LICENSING.replace(':siteId', siteId)} replace/>;
+}
+
+function PaymentRoute() {
+  const { role, session } = useSession();
+  const isPaymentModule = session?.module === 'payment';
+  const isBdSupervisor = (!session?.module || session?.module === 'bd') && role === 'supervisor';
+  if (!isPaymentModule && !isBdSupervisor) {
+    return <Navigate to={ROUTES.OVERVIEW} replace/>;
+  }
+  return (
+    <RequireModule modules={['bd', 'payment']}>
+      <PaymentStubPage/>
+    </RequireModule>
+  );
 }
 
 function LegacySiteFlowRedirect() {

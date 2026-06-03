@@ -29,7 +29,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -237,7 +237,7 @@ async def svc_design_queue(
             models.Site.legal_dd_status == "positive",
             models.Site.finance_status == "approved",
             models.Site.status == "pushed_to_payments",
-            models.Site.design_status != "approved",
+            or_(models.Site.design_status.is_(None), models.Site.design_status != "approved"),
         )
         .order_by(models.Site.updated_at.asc())
     )
