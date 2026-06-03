@@ -48,30 +48,86 @@ const STATUS_LABEL = {
   archived: 'Archived',
 };
 
-function formatDate(value) {
+const ADMIN_SOURCE_LABELS = {
+  supervisors: 'Supervisor requests',
+  finance: 'Finance / CA approvals',
+  sites: 'Site timeline',
+  designAdmin: '2D / 3D design approvals',
+  designGfc: 'GFC design approvals',
+  audit: 'Tenant audit log',
+};
+
+function emptyQueue() {
+  return { items: [], total: 0 };
+}
+
+function initialAdminState() {
+  return {
+    status: 'loading',
+    supervisors: [],
+    finance: [],
+    sites: [],
+    designAdmin: emptyQueue(),
+    designGfc: emptyQueue(),
+    audit: emptyQueue(),
+    error: null,
+    errors: [],
+  };
+}
+
+function toArray(value) {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.items)) return value.items;
+  return [];
+}
+
+function toQueue(value) {
+  const items = toArray(value);
+  const total = Number(value?.total);
+  return {
+    items,
+    total: Number.isFinite(total) ? total : items.length,
+  };
+}
+
+function errorMessage(err) {
+  if (!err) return 'Request failed.';
+  return err.detail || err.message || String(err);
+}
+
+function parseDate(value) {
   if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatDate(value) {
+  const date = parseDate(value);
+  if (!date) return null;
   return new Intl.DateTimeFormat('en-IN', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(new Date(value));
+  }).format(date);
 }
 
 function formatShortDate(value) {
-  if (!value) return 'Not recorded';
+  const date = parseDate(value);
+  if (!date) return 'Not recorded';
   return new Intl.DateTimeFormat('en-IN', {
     day: '2-digit',
     month: 'short',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(new Date(value));
+  }).format(date);
 }
 
 function waitingAge(value) {
-  if (!value) return 'New';
-  const diff = Date.now() - new Date(value).getTime();
+  const date = parseDate(value);
+  if (!date) return 'New';
+  const diff = Date.now() - date.getTime();
   const hours = Math.max(0, Math.floor(diff / 36e5));
   if (hours < 1) return 'Under 1h';
   if (hours < 24) return `${hours}h`;
@@ -80,7 +136,9 @@ function waitingAge(value) {
 
 function money(value) {
   if (value == null || value === '') return 'Not set';
-  return `₹${Number(value).toLocaleString('en-IN')}`;
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return 'Not set';
+  return `₹${amount.toLocaleString('en-IN')}`;
 }
 
 function statusText(value) {
@@ -235,19 +293,26 @@ function buildTimeline(site) {
   ];
 }
 
-function primarySite(sites, financeApprovals) {
-  if (financeApprovals[0]) {
-    return sites.find((s) => s.siteId === financeApprovals[0].siteId) || null;
+function primarySite(sites = [], financeApprovals = []) {
+  const safeSites = toArray(sites);
+  const safeFinance = toArray(financeApprovals);
+  if (safeFinance[0]) {
+    return safeSites.find((s) => s.siteId === safeFinance[0].siteId) || null;
   }
-  return sites.find((s) => s.financeStatus === 'awaiting_admin')
-    || sites.find((s) => s.siteStatus === 'legal_review')
-    || sites.find((s) => s.designStatus === 'gfc_pending')
-    || sites[0]
+  return safeSites.find((s) => s.financeStatus === 'awaiting_admin')
+    || safeSites.find((s) => s.siteStatus === 'legal_review')
+    || safeSites.find((s) => s.designStatus === 'gfc_pending')
+    || safeSites[0]
     || null;
 }
 
-function deriveDepartments({ sites, supervisors, financeApprovals, designAdmin, designGfc }) {
-  const siteCount = (predicate) => sites.filter(predicate).length;
+function deriveDepartments({ sites, supervisors, financeApprovals, designAdmin, designGfc } = {}) {
+  const safeSites = toArray(sites);
+  const safeSupervisors = toArray(supervisors);
+  const safeFinance = toArray(financeApprovals);
+  const safeDesignAdmin = toQueue(designAdmin);
+  const safeDesignGfc = toQueue(designGfc);
+  const siteCount = (predicate) => safeSites.filter(predicate).length;
   return [
     {
       key: 'bd',
@@ -255,7 +320,7 @@ function deriveDepartments({ sites, supervisors, financeApprovals, designAdmin, 
       pending: siteCount((s) => ['draft_submitted', 'details_submitted'].includes(s.siteStatus)),
       ready: siteCount((s) => ['shortlisted', 'approved', 'loi_uploaded'].includes(s.siteStatus)),
       blocked: siteCount((s) => ['rejected', 'archived'].includes(s.siteStatus)),
-      latest: sites.find((s) => ['draft_submitted', 'details_submitted'].includes(s.siteStatus))?.siteName || 'No BD queue items',
+      latest: safeSites.find((s) => ['draft_submitted', 'details_submitted'].includes(s.siteStatus))?.siteName || 'No BD queue items',
     },
     {
       key: 'legal',
@@ -263,23 +328,23 @@ function deriveDepartments({ sites, supervisors, financeApprovals, designAdmin, 
       pending: siteCount((s) => s.siteStatus === 'legal_review'),
       ready: siteCount((s) => s.siteStatus === 'legal_approved'),
       blocked: siteCount((s) => s.siteStatus === 'legal_rejected'),
-      latest: sites.find((s) => s.siteStatus === 'legal_review')?.siteName || 'No legal review waiting',
+      latest: safeSites.find((s) => s.siteStatus === 'legal_review')?.siteName || 'No legal review waiting',
     },
     {
       key: 'payment',
       label: 'Finance / CA',
-      pending: financeApprovals.length,
+      pending: safeFinance.length,
       ready: siteCount((s) => s.financeStatus === 'approved'),
       blocked: siteCount((s) => s.financeStatus === 'pending' && s.siteStatus === 'legal_approved'),
-      latest: financeApprovals[0]?.siteName || 'No admin approvals waiting',
+      latest: safeFinance[0]?.siteName || 'No admin approvals waiting',
     },
     {
       key: 'design',
       label: 'Design',
-      pending: (designAdmin?.total || 0) + (designGfc?.total || 0),
+      pending: safeDesignAdmin.total + safeDesignGfc.total,
       ready: siteCount((s) => s.designStatus === 'approved'),
       blocked: siteCount((s) => s.siteStatus === 'pushed_to_payments' && s.financeStatus !== 'approved'),
-      latest: designGfc?.items?.[0]?.siteName || designAdmin?.items?.[0]?.siteName || 'No design handoff waiting',
+      latest: safeDesignGfc.items[0]?.siteName || safeDesignAdmin.items[0]?.siteName || 'No design handoff waiting',
     },
     {
       key: 'project',
@@ -287,11 +352,11 @@ function deriveDepartments({ sites, supervisors, financeApprovals, designAdmin, 
       pending: siteCount((s) => s.designStatus === 'approved'),
       ready: 0,
       blocked: 0,
-      latest: sites.find((s) => s.designStatus === 'approved')?.siteName || 'Project module not active',
+      latest: safeSites.find((s) => s.designStatus === 'approved')?.siteName || 'Project module not active',
     },
   ].map((dept) => ({
     ...dept,
-    supervisorRequests: supervisors.filter((s) => s.module === dept.key).length,
+    supervisorRequests: safeSupervisors.filter((s) => s.module === dept.key).length,
   }));
 }
 
@@ -308,18 +373,25 @@ function KPI({ icon, label, value, hint, tone }) {
   );
 }
 
-function ErrorBlock({ message, onRetry }) {
+function ErrorBlock({ message, messages, onRetry }) {
+  const details = toArray(messages);
   return (
     <div className="ba-error">
-      <strong>Unable to load approvals.</strong>
+      <strong>{details.length ? 'Some admin data could not load.' : 'Unable to load approvals.'}</strong>
       <p style={{ margin: '6px 0 12px' }}>{message || 'Check backend connection or retry.'}</p>
+      {details.length > 0 && (
+        <ul style={{ margin: '0 0 12px', paddingLeft: 18 }}>
+          {details.map((item) => <li key={item}>{item}</li>)}
+        </ul>
+      )}
       <button className="ba-button" type="button" onClick={onRetry}>Retry</button>
     </div>
   );
 }
 
 function ApprovalCenter({ items, filter, onFilter, onOpen }) {
-  const visible = filter === 'all' ? items : items.filter((item) => item.module === filter);
+  const safeItems = toArray(items);
+  const visible = filter === 'all' ? safeItems : safeItems.filter((item) => item.module === filter);
   return (
     <section className="ba-section">
       <div className="ba-section-head">
@@ -331,8 +403,8 @@ function ApprovalCenter({ items, filter, onFilter, onOpen }) {
       <div className="ba-tabs">
         {MODULES.map((module) => {
           const count = module.key === 'all'
-            ? items.length
-            : items.filter((item) => item.module === module.key).length;
+            ? safeItems.length
+            : safeItems.filter((item) => item.module === module.key).length;
           return (
             <button
               key={module.key}
@@ -375,6 +447,7 @@ function ApprovalCenter({ items, filter, onFilter, onOpen }) {
 }
 
 function DepartmentQueues({ departments, onOpen }) {
+  const safeDepartments = toArray(departments);
   return (
     <section className="ba-section">
       <div className="ba-section-head">
@@ -384,7 +457,7 @@ function DepartmentQueues({ departments, onOpen }) {
         </div>
       </div>
       <div className="ba-dept-grid">
-        {departments.map((dept) => (
+        {safeDepartments.map((dept) => (
           <button key={dept.key} className="ba-card ba-dept-card" type="button" onClick={() => onOpen({ type: 'department', item: dept })} style={{ textAlign: 'left', color: 'inherit', cursor: 'pointer' }}>
             <div className="ba-row" style={{ justifyContent: 'space-between' }}>
               <strong>{dept.label}</strong>
@@ -449,17 +522,19 @@ function ProcessTimeline({ site, onOpen }) {
 
 function Drawer({ selection, history, busy, onClose, onApproveSupervisor, onRejectSupervisor, onApproveFinance }) {
   if (!selection) return null;
+  const item = selection.item || {};
+  const historyItems = toArray(history?.items);
   const isSupervisor = selection.type === 'supervisor';
   const isFinance = selection.type === 'finance';
   const isTimeline = selection.type === 'timeline';
   const title = isSupervisor
-    ? `${MODULE_LABEL[selection.item.module] || selection.item.module} supervisor request`
+    ? `${MODULE_LABEL[item.module] || item.module || 'Module'} supervisor request`
     : isFinance
-      ? selection.item.siteName
+      ? item.siteName
       : isTimeline
-        ? selection.item.stage
-        : selection.item.label || 'Approval detail';
-  const site = selection.site || selection.item;
+        ? item.stage
+        : item.label || 'Approval detail';
+  const site = selection.site || item;
   return (
     <div className="ba-overlay" role="dialog" aria-modal="true">
       <aside className="ba-drawer">
@@ -469,7 +544,7 @@ function Drawer({ selection, history, busy, onClose, onApproveSupervisor, onReje
             <h2 style={{ margin: '6px 0 4px', fontSize: 24, letterSpacing: '-0.035em' }}>{title}</h2>
             <div className="ba-muted">
               {isSupervisor
-                ? `${selection.item.email} · ${MODULE_LABEL[selection.item.module] || selection.item.module}`
+                ? `${item.email || 'No email'} · ${MODULE_LABEL[item.module] || item.module || 'Module'}`
                 : `${site?.siteCode || 'Workspace'} · ${site?.city || 'Tenant scope'}`}
             </div>
           </div>
@@ -480,19 +555,19 @@ function Drawer({ selection, history, busy, onClose, onApproveSupervisor, onReje
           <div className="ba-card">
             <div className="ba-label">Current stage</div>
             <p style={{ margin: '8px 0 0', fontWeight: 800 }}>
-              {isSupervisor ? 'Supervisor access review' : isTimeline ? selection.item.status : statusText(site?.siteStatus)}
+              {isSupervisor ? 'Supervisor access review' : isTimeline ? item.status : statusText(site?.siteStatus)}
             </p>
           </div>
           <div className="ba-card">
             <div className="ba-label">Department owner</div>
             <p style={{ margin: '8px 0 0', fontWeight: 800 }}>
-              {isSupervisor ? MODULE_LABEL[selection.item.module] : isTimeline ? selection.item.team : 'Finance / CA'}
+              {isSupervisor ? MODULE_LABEL[item.module] : isTimeline ? item.team : 'Finance / CA'}
             </p>
           </div>
           <div className="ba-card">
             <div className="ba-label">Current blocker</div>
             <p style={{ margin: '8px 0 0', color: 'rgba(248,250,247,0.78)' }}>
-              {isTimeline ? selection.item.blocker || 'No blocker recorded' : isFinance ? 'Waiting for business admin approval' : 'Waiting for admin decision'}
+              {isTimeline ? item.blocker || 'No blocker recorded' : isFinance ? 'Waiting for business admin approval' : 'Waiting for admin decision'}
             </p>
           </div>
         </div>
@@ -501,10 +576,10 @@ function Drawer({ selection, history, busy, onClose, onApproveSupervisor, onReje
           <div className="ba-label">Approval trail</div>
           {history.status === 'loading' && <div className="ba-loading" style={{ marginTop: 12 }}>Loading history…</div>}
           {history.status === 'error' && <div className="ba-error" style={{ marginTop: 12 }}>{history.error}</div>}
-          {history.status === 'ready' && history.items.length === 0 && <div className="ba-empty" style={{ marginTop: 12 }}>No site history available for this item.</div>}
-          {history.status === 'ready' && history.items.length > 0 && (
+          {history.status === 'ready' && historyItems.length === 0 && <div className="ba-empty" style={{ marginTop: 12 }}>No site history available for this item.</div>}
+          {history.status === 'ready' && historyItems.length > 0 && (
             <div className="ba-history">
-              {history.items.slice(0, 10).map((entry) => (
+              {historyItems.slice(0, 10).map((entry) => (
                 <div key={entry.id} className="ba-history-item">
                   <strong>{labelForEntry(entry)}</strong>
                   <div className="ba-muted" style={{ fontSize: 12 }}>
@@ -520,16 +595,16 @@ function Drawer({ selection, history, busy, onClose, onApproveSupervisor, onReje
         <div className="ba-row" style={{ marginTop: 18 }}>
           {isSupervisor && (
             <>
-              <button className="ba-button primary" type="button" disabled={busy} onClick={() => onApproveSupervisor(selection.item)}>
+              <button className="ba-button primary" type="button" disabled={busy} onClick={() => onApproveSupervisor(item)}>
                 Approve
               </button>
-              <button className="ba-button danger" type="button" disabled={busy} onClick={() => onRejectSupervisor(selection.item)}>
+              <button className="ba-button danger" type="button" disabled={busy} onClick={() => onRejectSupervisor(item)}>
                 Reject
               </button>
             </>
           )}
           {isFinance && (
-            <button className="ba-button primary" type="button" disabled={busy} onClick={() => onApproveFinance(selection.item.siteId)}>
+            <button className="ba-button primary" type="button" disabled={busy} onClick={() => onApproveFinance(item.siteId)}>
               Approve Finance / CA
             </button>
           )}
@@ -545,16 +620,7 @@ function Drawer({ selection, history, busy, onClose, onApproveSupervisor, onReje
 export default function TeamDashboard({ onLogout }) {
   const payload = decodeJwtPayload(getAuthToken());
   const company = payload.workspace_name || payload.tenant_name || payload.company || 'Workspace';
-  const [state, setState] = React.useState({
-    status: 'loading',
-    supervisors: [],
-    finance: [],
-    sites: [],
-    designAdmin: { items: [], total: 0 },
-    designGfc: { items: [], total: 0 },
-    audit: { items: [], total: 0 },
-    error: null,
-  });
+  const [state, setState] = React.useState(() => initialAdminState());
   const [filter, setFilter] = React.useState('all');
   const [selection, setSelection] = React.useState(null);
   const [history, setHistory] = React.useState({ status: 'idle', items: [], error: null });
@@ -562,29 +628,48 @@ export default function TeamDashboard({ onLogout }) {
   const [lastSync, setLastSync] = React.useState(null);
 
   const load = React.useCallback(async () => {
-    setState((prev) => ({ ...prev, status: 'loading', error: null }));
-    try {
-      const [supervisors, finance, sites, designAdmin, designGfc, audit] = await Promise.all([
-        listPendingSupervisors(),
-        listFinanceApprovals(),
-        listBusinessAdminSites(100),
-        getDesignAdminQueue(),
-        getDesignGfcQueue(),
-        getTenantAudit(30),
-      ]);
-      setState({ status: 'ready', supervisors, finance, sites, designAdmin, designGfc, audit, error: null });
-      setLastSync(new Date());
-    } catch (err) {
-      setState((prev) => ({ ...prev, status: 'error', error: err?.detail || err?.message || 'Check backend connection or retry.' }));
-    }
+    setState((prev) => ({ ...prev, status: 'loading', error: null, errors: [] }));
+    const requests = [
+      ['supervisors', listPendingSupervisors],
+      ['finance', listFinanceApprovals],
+      ['sites', () => listBusinessAdminSites(100)],
+      ['designAdmin', getDesignAdminQueue],
+      ['designGfc', getDesignGfcQueue],
+      ['audit', () => getTenantAudit(30)],
+    ];
+    const results = await Promise.allSettled(requests.map(([, request]) => request()));
+    const next = initialAdminState();
+    const errors = [];
+
+    results.forEach((result, index) => {
+      const [key] = requests[index];
+      if (result.status === 'fulfilled') {
+        if (['designAdmin', 'designGfc', 'audit'].includes(key)) {
+          next[key] = toQueue(result.value);
+        } else {
+          next[key] = toArray(result.value);
+        }
+        return;
+      }
+      errors.push(`${ADMIN_SOURCE_LABELS[key] || key}: ${errorMessage(result.reason)}`);
+    });
+
+    next.status = errors.length === requests.length ? 'error' : errors.length ? 'partial' : 'ready';
+    next.errors = errors;
+    next.error = errors.length
+      ? `${errors.length} admin data source${errors.length === 1 ? '' : 's'} failed to load.`
+      : null;
+    setState(next);
+    setLastSync(new Date());
   }, []);
 
   React.useEffect(() => { load(); }, [load]);
 
   React.useEffect(() => {
     if (!selection) return;
+    const auditQueue = toQueue(state.audit);
     if (selection.type === 'audit') {
-      setHistory({ status: 'ready', items: state.audit.items || [], error: null });
+      setHistory({ status: 'ready', items: auditQueue.items, error: null });
       return;
     }
     const siteId = selection.site?.siteId || selection.item?.siteId;
@@ -594,9 +679,9 @@ export default function TeamDashboard({ onLogout }) {
     }
     setHistory({ status: 'loading', items: [], error: null });
     getSiteActivity(siteId)
-      .then((data) => setHistory({ status: 'ready', items: data.items || [], error: null }))
-      .catch((err) => setHistory({ status: 'error', items: [], error: err?.detail || err?.message || 'Failed to load history' }));
-  }, [selection, state.audit.items]);
+      .then((data) => setHistory({ status: 'ready', items: toArray(data), error: null }))
+      .catch((err) => setHistory({ status: 'error', items: [], error: errorMessage(err) || 'Failed to load history' }));
+  }, [selection, state.audit]);
 
   const refresh = () => load();
   const openAudit = () => {
@@ -642,10 +727,15 @@ export default function TeamDashboard({ onLogout }) {
     }
   };
 
-  const departments = deriveDepartments(state);
-  const focusSite = primarySite(state.sites, state.finance);
-  const blockedSites = state.sites.filter((s) => ['legal_rejected', 'rejected', 'archived'].includes(s.siteStatus)).length;
-  const pendingApprovalCount = state.supervisors.length + state.finance.length + (state.designAdmin.total || 0) + (state.designGfc.total || 0);
+  const supervisors = toArray(state.supervisors);
+  const finance = toArray(state.finance);
+  const sites = toArray(state.sites);
+  const designAdmin = toQueue(state.designAdmin);
+  const designGfc = toQueue(state.designGfc);
+  const departments = deriveDepartments({ sites, supervisors, financeApprovals: finance, designAdmin, designGfc });
+  const focusSite = primarySite(sites, finance);
+  const blockedSites = sites.filter((s) => ['legal_rejected', 'rejected', 'archived'].includes(s.siteStatus)).length;
+  const pendingApprovalCount = supervisors.length + finance.length + designAdmin.total + designGfc.total;
 
   return (
     <div className="ba-shell">
@@ -670,36 +760,38 @@ export default function TeamDashboard({ onLogout }) {
 
         <div className="ba-grid kpis">
           <KPI icon="approvals" label="Pending approvals" value={pendingApprovalCount} hint="Supervisor, finance and design decisions"/>
-          <KPI icon="supervisors" label="Supervisor requests" value={state.supervisors.length} hint="Workspace access awaiting review"/>
-          <KPI icon="finance" label="Finance / CA approvals" value={state.finance.length} hint="Forwarded by module supervisors"/>
-          <KPI icon="design" label="Design approvals" value={(state.designAdmin.total || 0) + (state.designGfc.total || 0)} hint="2D / 3D and GFC gates"/>
+          <KPI icon="supervisors" label="Supervisor requests" value={supervisors.length} hint="Workspace access awaiting review"/>
+          <KPI icon="finance" label="Finance / CA approvals" value={finance.length} hint="Forwarded by module supervisors"/>
+          <KPI icon="design" label="Design approvals" value={designAdmin.total + designGfc.total} hint="2D / 3D and GFC gates"/>
           <KPI icon="blocked" label="Blocked sites" value={blockedSites} hint="Rejected or archived workflow items"/>
         </div>
 
-        {state.status === 'error' && <ErrorBlock message={state.error} onRetry={refresh}/>}
+        {(state.status === 'error' || state.status === 'partial') && (
+          <ErrorBlock message={state.error} messages={state.errors} onRetry={refresh}/>
+        )}
         {state.status === 'loading' && <div className="ba-loading">Loading command center…</div>}
 
         {state.status !== 'loading' && (
           <>
             <div className="ba-main-grid">
-              <ApprovalCenter items={state.supervisors} filter={filter} onFilter={setFilter} onOpen={setSelection}/>
+              <ApprovalCenter items={supervisors} filter={filter} onFilter={setFilter} onOpen={setSelection}/>
               <section className="ba-section">
                 <div className="ba-section-head">
                   <div>
                     <div className="ba-label">Priority handoff</div>
-                    <h2 className="ba-section-title">{state.finance[0]?.siteName || focusSite?.siteName || 'No urgent handoff'}</h2>
+                    <h2 className="ba-section-title">{finance[0]?.siteName || focusSite?.siteName || 'No urgent handoff'}</h2>
                   </div>
-                  <span className="ba-chip warning">{state.finance.length ? 'Finance waiting' : 'Stable'}</span>
+                  <span className="ba-chip warning">{finance.length ? 'Finance waiting' : 'Stable'}</span>
                 </div>
-                {state.finance[0] ? (
-                  <button className="ba-approval-row" type="button" onClick={() => setSelection({ type: 'finance', item: state.finance[0] })}>
+                {finance[0] ? (
+                  <button className="ba-approval-row" type="button" onClick={() => setSelection({ type: 'finance', item: finance[0] })}>
                     <div>
                       <div className="ba-row">
                         <span className="ba-chip warning">Awaiting admin</span>
-                        <span className="ba-chip muted ba-mono">{state.finance[0].caCode || state.finance[0].siteCode}</span>
+                        <span className="ba-chip muted ba-mono">{finance[0].caCode || finance[0].siteCode}</span>
                       </div>
                       <div className="ba-row-title">Approve CA / finance handoff</div>
-                      <div className="ba-muted">{state.finance[0].city} · {money(state.finance[0].financeAmount)}</div>
+                      <div className="ba-muted">{finance[0].city} · {money(finance[0].financeAmount)}</div>
                     </div>
                     <span className="ba-button primary">Review</span>
                   </button>

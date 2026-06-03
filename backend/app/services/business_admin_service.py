@@ -14,6 +14,7 @@ membership; on rejection we delete the row.
 from __future__ import annotations
 
 import secrets
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -179,23 +180,29 @@ async def list_finance_approvals(
     )).scalars().all()
 
     items: list[dict] = []
+    now = datetime.now(timezone.utc)
     for site in rows:
-        items.append({
-            "site_id": str(site.id),
-            "site_code": site.ca_code or site.code or "",
-            "site_name": site.name,
-            "city": site.city,
-            "site_status": site.status,
-            "submitted_by_name": await fetch_user_name(session, site.submitted_by),
-            "ca_code": site.ca_code,
-            "finance_amount": (
+        updated_at = site.updated_at or site.created_at or now
+        try:
+            finance_amount = (
                 float(site.finance_amount)
                 if site.finance_amount is not None
                 else None
-            ),
+            )
+        except (TypeError, ValueError):
+            finance_amount = None
+        items.append({
+            "site_id": str(site.id),
+            "site_code": site.ca_code or site.code or f"SITE-{str(site.id)[:8].upper()}",
+            "site_name": site.name or "Unnamed site",
+            "city": site.city or "Unknown city",
+            "site_status": site.status or "pending",
+            "submitted_by_name": await fetch_user_name(session, site.submitted_by),
+            "ca_code": site.ca_code,
+            "finance_amount": finance_amount,
             "kyc_verified": bool(site.kyc_verified),
-            "finance_status": site.finance_status,
-            "updated_at": site.updated_at,
+            "finance_status": site.finance_status or "awaiting_admin",
+            "updated_at": updated_at,
         })
     return items
 
@@ -205,11 +212,16 @@ async def list_admin_sites(
     tenant_id: str | UUID,
     limit: int = 80,
 ) -> dict:
+    try:
+        safe_limit = int(limit)
+    except (TypeError, ValueError):
+        safe_limit = 80
+    safe_limit = max(1, min(safe_limit, 200))
     rows = (await session.execute(
         select(models.Site)
         .where(models.Site.tenant_id == tenant_id)
         .order_by(desc(models.Site.updated_at))
-        .limit(limit)
+        .limit(safe_limit)
     )).scalars().all()
 
     user_ids = set()
@@ -229,30 +241,37 @@ async def list_admin_sites(
         names = {uid: name for uid, name in pairs}
 
     items = []
+    now = datetime.now(timezone.utc)
     for site in rows:
+        created_at = site.created_at or site.updated_at or now
+        updated_at = site.updated_at or site.created_at or now
+        try:
+            finance_amount = (
+                float(site.finance_amount)
+                if site.finance_amount is not None
+                else None
+            )
+        except (TypeError, ValueError):
+            finance_amount = None
         items.append({
             "site_id": str(site.id),
-            "site_code": site.ca_code or site.code or "",
-            "site_name": site.name,
-            "city": site.city,
-            "site_status": site.status,
+            "site_code": site.ca_code or site.code or f"SITE-{str(site.id)[:8].upper()}",
+            "site_name": site.name or "Unnamed site",
+            "city": site.city or "Unknown city",
+            "site_status": site.status or "pending",
             "submitted_by_name": names.get(site.submitted_by),
             "assigned_to_name": names.get(site.assigned_to) if site.assigned_to else None,
             "supervisor_name": names.get(site.supervisor_id) if site.supervisor_id else None,
             "legal_dd_status": site.legal_dd_status,
             "agreement_status": site.agreement_status,
             "licensing_status": site.licensing_status,
-            "finance_status": site.finance_status,
+            "finance_status": site.finance_status or "pending",
             "design_status": site.design_status,
             "ca_code": site.ca_code,
-            "finance_amount": (
-                float(site.finance_amount)
-                if site.finance_amount is not None
-                else None
-            ),
+            "finance_amount": finance_amount,
             "kyc_verified": bool(site.kyc_verified),
-            "created_at": site.created_at,
-            "updated_at": site.updated_at,
+            "created_at": created_at,
+            "updated_at": updated_at,
             "draft_submitted_at": site.draft_submitted_at,
             "shortlisted_at": site.shortlisted_at,
             "details_submitted_at": site.details_submitted_at,
