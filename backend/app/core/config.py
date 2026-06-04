@@ -29,8 +29,9 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
     # Optional regex applied in addition to cors_origins — lets us whitelist a
     # whole pattern of preview URLs (e.g. Vercel's per-commit previews) without
-    # listing each one. Empty string disables the regex matcher.
-    cors_origin_regex: str = ""
+    # listing each one. By default, keep local Vite preview ports usable even
+    # when production CORS_ORIGINS is narrowed to the deployed Vercel domain.
+    cors_origin_regex: str = r"^http://(localhost|127\.0\.0\.1):51[0-9]{2}$"
 
     @property
     def cors_origin_list(self) -> list[str]:
