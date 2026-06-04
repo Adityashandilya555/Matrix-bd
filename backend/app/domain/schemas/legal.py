@@ -189,3 +189,20 @@ class LegalRejectedSiteItem(BaseModel):
 class LegalRejectedSitesResponse(BaseModel):
     items: list[LegalRejectedSiteItem]
     total: int
+
+
+class LegalHistoryItem(BaseModel):
+    """Row in the Legal history list — covers both approved and rejected outcomes."""
+    site_id: str
+    site_code: str
+    site_name: str
+    city: str
+    submitted_by_name: Optional[str] = None
+    outcome: Literal["approved", "rejected"]
+    outcome_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
+
+
+class LegalHistoryResponse(BaseModel):
+    items: list[LegalHistoryItem]
+    total: int

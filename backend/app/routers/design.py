@@ -34,6 +34,7 @@ from app.domain.schemas.design import (
     AllocateDesignRequest,
     DesignAdminQueueResponse,
     DesignGfcQueueResponse,
+    DesignHistoryResponse,
     DesignQueueResponse,
     DesignReviewResponse,
     GfcDecisionRequest,
@@ -48,6 +49,7 @@ from app.services.design_service import (
     svc_allocate_design,
     svc_design_admin_queue,
     svc_design_gfc_queue,
+    svc_design_history,
     svc_design_queue,
     svc_get_design_review,
     svc_gfc_decision,
@@ -93,6 +95,20 @@ async def design_queue(
             db, tenant_id=tenant_id, user_id=current_user["sub"], module="design",
         )
     return await svc_design_queue(db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to)
+
+
+@router.get(
+    "/history",
+    response_model=DesignHistoryResponse,
+    summary="List all design-completed sites (design_status = approved)",
+)
+async def design_history(
+    db: DbDep,
+    current_user: DesignMember,
+    _module: InDesignModule,
+    tenant_id: TenantId,
+) -> DesignHistoryResponse:
+    return await svc_design_history(db, tenant_id=tenant_id)
 
 
 # ── Business-admin GFC gate (require_role only — NO module guard) ─────────────

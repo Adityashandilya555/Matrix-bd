@@ -31,6 +31,8 @@ from app.db.session import transaction
 from app.domain.schemas.legal import (
     AgreementResponse,
     DdChecklistResponse,
+    LegalHistoryItem,
+    LegalHistoryResponse,
     LegalQueueItem,
     LegalQueueResponse,
     LegalRejectedSiteItem,
@@ -370,6 +372,45 @@ async def svc_legal_rejected_sites(
         ))
 
     return LegalRejectedSitesResponse(items=items, total=len(items))
+
+
+async def svc_legal_history(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+) -> LegalHistoryResponse:
+    """Return all sites that have completed the legal stage — both approved and rejected."""
+    stmt = (
+        select(models.Site)
+        .where(
+            models.Site.tenant_id == tenant_id,
+            models.Site.status.in_([
+                SiteStatus.LEGAL_APPROVED.value,
+                SiteStatus.LEGAL_REJECTED.value,
+            ]),
+        )
+        .order_by(desc(models.Site.updated_at))
+    )
+    sites = (await session.execute(stmt)).scalars().all()
+
+    items: list[LegalHistoryItem] = []
+    for site in sites:
+        dd = await _fetch_dd_or_none(session, site_id=site.id)
+        submitted_by_name = await fetch_user_name(session, site.submitted_by)
+        is_approved = site.status == SiteStatus.LEGAL_APPROVED.value
+        outcome_at = site.legal_approved_at if is_approved else site.legal_rejected_at
+        items.append(LegalHistoryItem(
+            site_id=str(site.id),
+            site_code=site.code or "",
+            site_name=site.name,
+            city=site.city,
+            submitted_by_name=submitted_by_name,
+            outcome="approved" if is_approved else "rejected",
+            outcome_at=outcome_at,
+            rejection_reason=(dd.rejection_reason if dd else None) if not is_approved else None,
+        ))
+
+    return LegalHistoryResponse(items=items, total=len(items))
 
 
 async def svc_get_legal_review(

@@ -173,13 +173,6 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
             onClick={() => go(ROUTES.LEGAL_CHANGE_REQUESTS)}
             collapsed={collapsed}
           />
-          <SidebarItem
-            icon="archiveBox"
-            label="Rejected sites"
-            active={activeView === 'legal-rejected'}
-            onClick={() => go(ROUTES.LEGAL_REJECTED)}
-            collapsed={collapsed}
-          />
         </>
       )}
 

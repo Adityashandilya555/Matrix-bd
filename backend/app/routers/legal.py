@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from app.core.deps import DbDep, TenantId
 from app.domain.schemas.common import OkResponse
 from app.domain.schemas.legal import (
+    LegalHistoryResponse,
     LegalQueueResponse,
     LegalRejectedSitesResponse,
     LegalReviewResponse,
@@ -52,6 +53,7 @@ from app.services.delegation_service import (
 )
 from app.services.legal_service import (
     svc_get_legal_review,
+    svc_legal_history,
     svc_legal_queue,
     svc_legal_rejected_sites,
     svc_save_agreement,
@@ -110,6 +112,20 @@ async def legal_rejected_sites(
     tenant_id: TenantId,
 ) -> LegalRejectedSitesResponse:
     return await svc_legal_rejected_sites(db, tenant_id=tenant_id)
+
+
+@router.get(
+    "/history",
+    response_model=LegalHistoryResponse,
+    summary="List all legal-processed sites (approved + rejected)",
+)
+async def legal_history(
+    db: DbDep,
+    current_user: LegalMember,
+    _module: InLegalModule,
+    tenant_id: TenantId,
+) -> LegalHistoryResponse:
+    return await svc_legal_history(db, tenant_id=tenant_id)
 
 
 # ── Delegations ───────────────────────────────────────────────────────────────

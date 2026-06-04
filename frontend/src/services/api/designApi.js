@@ -145,6 +145,22 @@ export async function getDesignQueue() {
   return { items: (data.items || []).map(queueItemFromServer), total: data.total ?? 0 };
 }
 
+function designHistoryItemFromServer(row) {
+  return {
+    siteId:            row.site_id,
+    siteCode:          row.site_code,
+    siteName:          row.site_name,
+    city:              row.city,
+    submittedByName:   row.submitted_by_name,
+    designApprovedAt:  row.design_approved_at,
+  };
+}
+
+export async function getDesignHistory() {
+  const data = await client.get('/design/history').then((r) => r.data);
+  return { items: (data.items || []).map(designHistoryItemFromServer), total: data.total ?? 0 };
+}
+
 export async function getDesignReview(siteId) {
   const data = await client.get(`/design/${siteId}`).then((r) => r.data);
   return reviewFromServer(data);

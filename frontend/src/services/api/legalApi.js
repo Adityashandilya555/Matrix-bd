@@ -113,6 +113,27 @@ export async function listLegalRejectedSites() {
   };
 }
 
+function historyItemFromServer(row) {
+  return {
+    siteId:          row.site_id,
+    siteCode:        row.site_code,
+    siteName:        row.site_name,
+    city:            row.city,
+    submittedByName: row.submitted_by_name,
+    outcome:         row.outcome,          // 'approved' | 'rejected'
+    outcomeAt:       row.outcome_at,
+    rejectionReason: row.rejection_reason,
+  };
+}
+
+export async function getLegalHistory() {
+  const data = await client.get('/legal/history').then((r) => r.data);
+  return {
+    items: (data.items || []).map(historyItemFromServer),
+    total: data.total ?? 0,
+  };
+}
+
 export async function getLegalReview(siteId) {
   const data = await client.get(`/legal/${siteId}`).then((r) => r.data);
   return reviewFromServer(data);

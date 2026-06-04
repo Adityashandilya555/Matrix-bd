@@ -181,3 +181,18 @@ class DesignAdminQueueSite(BaseModel):
 class DesignAdminQueueResponse(BaseModel):
     items: list[DesignAdminQueueSite]
     total: int
+
+
+class DesignHistoryItem(BaseModel):
+    """Row in the Design history list — sites that have completed all design stages."""
+    site_id: str
+    site_code: str
+    site_name: str
+    city: str
+    submitted_by_name: Optional[str] = None
+    design_approved_at: Optional[datetime] = None
+
+
+class DesignHistoryResponse(BaseModel):
+    items: list[DesignHistoryItem]
+    total: int

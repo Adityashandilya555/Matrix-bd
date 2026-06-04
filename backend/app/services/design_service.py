@@ -42,6 +42,8 @@ from app.domain.schemas.design import (
     DesignAdminQueueSite,
     DesignGfcQueueItem,
     DesignGfcQueueResponse,
+    DesignHistoryItem,
+    DesignHistoryResponse,
     DesignQueueItem,
     DesignQueueResponse,
     DesignReviewResponse,
@@ -263,6 +265,38 @@ async def svc_design_queue(
             submitted_by_name=submitted_by_name,
         ))
     return DesignQueueResponse(items=items, total=len(items))
+
+
+async def svc_design_history(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+) -> DesignHistoryResponse:
+    """Return all sites that completed the full design process (design_status = 'approved')."""
+    from sqlalchemy import desc
+    stmt = (
+        select(models.Site)
+        .where(
+            models.Site.tenant_id == tenant_id,
+            models.Site.design_status == "approved",
+        )
+        .order_by(desc(models.Site.design_approved_at).nulls_last(), desc(models.Site.updated_at))
+    )
+    sites = (await session.execute(stmt)).scalars().all()
+
+    items: list[DesignHistoryItem] = []
+    for site in sites:
+        submitted_by_name = await fetch_user_name(session, site.submitted_by)
+        items.append(DesignHistoryItem(
+            site_id=str(site.id),
+            site_code=site.code or "",
+            site_name=site.name,
+            city=site.city,
+            submitted_by_name=submitted_by_name,
+            design_approved_at=site.design_approved_at,
+        ))
+
+    return DesignHistoryResponse(items=items, total=len(items))
 
 
 async def svc_get_design_review(
