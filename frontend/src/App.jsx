@@ -151,6 +151,7 @@ export default function App() {
 
       {showNew && (
         <NewPipelineModal
+          dark={dark}
           onClose={() => setShowNew(false)}
           onSubmit={async (form) => {
             await createDraft(form, ME);
@@ -195,7 +196,7 @@ const PIPELINE_RENT_TYPES = [
   { id: 'fixed', label: 'Fixed + escalation', sub: 'monthly fixed + % per year' },
   { id: 'mg_revshare', label: 'MG + Revenue share', sub: 'minimum guarantee + % of sales' },
 ];
-function NewPipelineModal({ onClose, onSubmit }) {
+function NewPipelineModal({ onClose, onSubmit, dark }) {
   const [form, setForm] = useState({ name: '', visitDate: '', city: '', model: '', googlePin: '', googleMapsUrl: '', rentType: '', expectedRent: '', expectedEscalation: '', expectedEscalationYears: '', expectedRevshare: '' });
   const [pinStatus, setPinStatus] = useState(null); // { tone: 'info'|'ok'|'err', msg: string }
   const [submitting, setSubmitting] = useState(false);
@@ -259,7 +260,7 @@ function NewPipelineModal({ onClose, onSubmit }) {
       setSubmitting(false);
     }
   };
-  const inputBase = { height: 38, padding: '0 12px', border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', fontFamily: 'var(--zm-font-body)', fontSize: 13.5, color: 'var(--zm-fg)', outline: 'none' };
+  const inputBase = { height: 38, padding: '0 12px', border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', fontFamily: 'var(--zm-font-body)', fontSize: 13.5, color: 'var(--zm-fg)', outline: 'none', colorScheme: dark ? 'dark' : 'light' };
   const labelBase = { fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)' };
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'zm-fade 200ms var(--zm-ease)' }}>

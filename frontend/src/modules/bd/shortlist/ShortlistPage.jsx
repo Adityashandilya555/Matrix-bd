@@ -77,8 +77,9 @@ function DelegationModal({ site, onClose, onChanged, showToast }) {
         siteService.listUsers(),
       ]);
       setDelegations(list);
-      // Only executives are eligible delegates per the product rules.
-      setCandidates(users.filter(u => u.role === 'executive'));
+      // Only BD executives are eligible delegates — filter by both role and module
+      // so executives from legal/payment/design/project are not shown.
+      setCandidates(users.filter(u => u.role === 'executive' && (u.module === 'bd' || u.module == null)));
     } catch (err) {
       setError(err?.message || 'Failed to load delegations');
     } finally {
@@ -193,7 +194,7 @@ function AssignDetailsModal({ site, currentUserId, onClose, onAssigned, showToas
     siteService.listUsers()
       .then((users) => {
         if (!alive) return;
-        setCandidates(users.filter((u) => u.role === 'executive' && String(u.id) !== String(currentUserId || '')));
+        setCandidates(users.filter((u) => u.role === 'executive' && (u.module === 'bd' || u.module == null) && String(u.id) !== String(currentUserId || '')));
         setError(null);
       })
       .catch((err) => {

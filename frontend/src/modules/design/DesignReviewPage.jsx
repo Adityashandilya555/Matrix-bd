@@ -67,7 +67,9 @@ function DeliverableCard({ kind, deliverable, isActive, isExecutive, isSuperviso
   const [amount, setAmount] = React.useState('');
   const [comments, setComments] = React.useState('');
 
-  const canUpload = (isExecutive || canSelfUpload) && isActive && status !== 'approved';
+  // Only show the upload form when a file hasn't been submitted yet (or was sent back).
+  // Hide it once the file is 'submitted' (awaiting review) to avoid confusion.
+  const canUpload = (isExecutive || canSelfUpload) && isActive && (status === 'pending' || status === 'rejected');
   const canReview = isSupervisor && isActive && status === 'submitted';
   const awaitingAdmin = needsAdmin && status === 'approved' && adminStatus !== 'approved';
   const dim = !isActive && status === 'pending';
@@ -229,7 +231,13 @@ export default function DesignReviewPage() {
   const onUpload = async (kind, file) => {
     if (!file) return;
     setBusy(true);
-    try { const r = await uploadDeliverable(siteId, kind, file); setReview(r); }
+    try {
+      const r = await uploadDeliverable(siteId, kind, file);
+      setReview(r);
+      // After a successful upload the DeliverableCard hides its file input
+      // (status flips to 'submitted'), so we don't need to reset local file
+      // state explicitly — the card unmounts/remounts with fresh state.
+    }
     catch (err) { window.alert(err?.detail || err?.message || 'Upload failed'); }
     finally { setBusy(false); }
   };

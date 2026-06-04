@@ -16,6 +16,30 @@ const STATUS_LABELS = {
   rejected:    { label: 'Rejected',            tone: 'var(--zm-danger)' },
 };
 
+// Stage-based filter chips shown above the queue table.
+// Each chip maps to a `currentStage` value returned by the backend.
+const STAGE_FILTERS = [
+  { id: 'all',  label: 'All' },
+  { id: 'recce', label: 'Recce' },
+  { id: '2d',    label: '2D Approved' },  // site is at/past 2d stage
+  { id: '3d',    label: '3D Approved' },  // site is at/past 3d stage
+  { id: 'boq',   label: 'BOQ Approved' },
+  { id: 'gfc',   label: 'GFC Approved' },
+];
+
+// Stage ordering so "2D Approved" shows sites where 2d is done (stage ≥ 3d)
+const STAGE_ORDER = ['recce', '2d', '3d', 'boq', 'gfc', 'done'];
+function stageIndex(s) { return STAGE_ORDER.indexOf(s); }
+
+function matchesStageFilter(row, filterId) {
+  if (filterId === 'all') return true;
+  const idx = stageIndex(row.currentStage);
+  const filterIdx = stageIndex(filterId);
+  if (filterId === 'recce') return row.currentStage === 'recce';
+  // "2D Approved" means stage has advanced past 2d (currently at 3d or later)
+  return idx > filterIdx;
+}
+
 const STAGE_LABELS = {
   recce: 'Recce', '2d': '2D', '3d': '3D', boq: 'BOQ', gfc: 'GFC', done: 'Done',
 };
@@ -39,6 +63,7 @@ export default function DesignQueuePage() {
   const { role } = useSession();
   const isSupervisor = role === 'supervisor';
   const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
+  const [stageFilter, setStageFilter] = React.useState('all');
 
   const load = React.useCallback(() => {
     let cancelled = false;
@@ -98,6 +123,38 @@ export default function DesignQueuePage() {
       )}
 
       {state.status === 'ready' && state.items.length > 0 && (
+        <>
+          {/* Stage filter chips */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {STAGE_FILTERS.map((f) => {
+              const active = stageFilter === f.id;
+              const count = f.id === 'all'
+                ? state.items.length
+                : state.items.filter((r) => matchesStageFilter(r, f.id)).length;
+              return (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setStageFilter(f.id)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    height: 30, padding: '0 12px', borderRadius: 999, cursor: 'pointer',
+                    border: `1px solid ${active ? 'var(--zm-accent)' : 'var(--zm-line)'}`,
+                    background: active ? 'var(--zm-accent-soft)' : 'var(--zm-surface)',
+                    color: active ? 'var(--zm-accent)' : 'var(--zm-fg-2)',
+                    fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 700,
+                  }}
+                >
+                  {f.label}
+                  <span style={{
+                    fontFamily: 'var(--zm-font-mono)', fontSize: 10.5,
+                    color: active ? 'var(--zm-accent)' : 'var(--zm-fg-3)',
+                  }}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
+
         <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
           <div style={{
             display: 'grid', gridTemplateColumns: COLS,
@@ -114,7 +171,7 @@ export default function DesignQueuePage() {
             <span style={{ textAlign: 'right' }}>Action</span>
           </div>
 
-          {state.items.map((row) => (
+          {state.items.filter((r) => matchesStageFilter(r, stageFilter)).map((row) => (
             <div
               key={row.siteId}
               onClick={() => open(row)}
@@ -167,6 +224,7 @@ export default function DesignQueuePage() {
             </div>
           ))}
         </div>
+        </>
       )}
     </div>
   );

@@ -445,9 +445,9 @@
 }
 
 .ba-tab.active {
-  color: #0c1512;
-  background: #e7fff1;
-  border-color: rgba(231, 255, 241, 0.75);
+  color: #e7fff1;
+  background: rgba(126, 215, 164, 0.28);
+  border-color: rgba(126, 215, 164, 0.55);
 }
 
 .ba-list {

@@ -300,7 +300,7 @@ export async function assignSite(id, execId)              { return post(`/sites/
 export async function listUsers() {
   const data = await get('/users');
   return (data?.items || []).map(u => ({
-    id: u.id, name: u.name, email: u.email, role: u.role, assignedCity: u.assigned_city,
+    id: u.id, name: u.name, email: u.email, role: u.role, module: u.module ?? null, assignedCity: u.assigned_city,
   }));
 }
 

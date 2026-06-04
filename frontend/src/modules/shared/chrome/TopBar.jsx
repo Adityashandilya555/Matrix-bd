@@ -106,42 +106,6 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
         flex: 1, display: 'flex', alignItems: 'center', gap: 12,
         padding: '0 20px', minWidth: 0,
       }}>
-        <button className="zm-tb-btn" style={{
-          display: 'inline-flex', alignItems: 'center', gap: 8,
-          height: 34, padding: '0 10px 0 12px', borderRadius: 8,
-          border: '1px solid var(--zm-line)', background: 'var(--zm-surface)',
-          fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600, color: 'var(--zm-fg)',
-          cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1, flex: '0 0 auto',
-        }}>
-          <Icon name="folder" size={14} style={{ color: 'var(--zm-fg-3)' }}/>
-          <span>New store opening</span>
-          <Icon name="chevronDown" size={12} style={{ color: 'var(--zm-fg-3)', marginLeft: 2 }}/>
-        </button>
-
-        <div style={{ flex: 1, position: 'relative', minWidth: 200, maxWidth: 480 }}>
-          <Icon name="search" size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--zm-fg-3)', pointerEvents: 'none' }}/>
-          <input
-            className="zm-tb-search"
-            placeholder="Search sites…"
-            onChange={(e) => onSearch?.(e.target.value)}
-            style={{
-              width: '100%', minWidth: 0, boxSizing: 'border-box',
-              height: 34, padding: '0 56px 0 34px',
-              background: 'var(--zm-bg)', border: '1px solid var(--zm-line)',
-              borderRadius: 8, fontFamily: 'var(--zm-font-body)', fontSize: 13,
-              color: 'var(--zm-fg)', outline: 'none', textOverflow: 'ellipsis',
-            }}
-          />
-          <kbd style={{
-            position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
-            fontFamily: 'var(--zm-font-mono)', fontSize: 10.5, fontWeight: 500, color: 'var(--zm-fg-3)',
-            background: 'var(--zm-surface)', border: '1px solid var(--zm-line)',
-            padding: '2px 6px', borderRadius: 4, lineHeight: 1,
-            display: 'inline-flex', alignItems: 'center', gap: 2, whiteSpace: 'nowrap',
-            pointerEvents: 'none',
-          }}>⌘K</kbd>
-        </div>
-
         <span style={{ flex: 1 }}/>
 
         <button onClick={onToggleDark} title={dark ? 'Switch to light' : 'Switch to dark'} className="zm-tb-btn" style={{
