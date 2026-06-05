@@ -16,6 +16,7 @@
 import axios from 'axios';
 import { getAuthToken, clearAuthToken } from './authToken.js';
 import { ApiError } from './adapters/httpAdapter.js';
+import { notifySiteDataChanged } from './siteEvents.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
 const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
@@ -138,6 +139,22 @@ function gfcQueueItemFromServer(row) {
   };
 }
 
+function historyItemFromServer(row) {
+  return {
+    siteId: row.site_id,
+    siteCode: row.site_code,
+    siteName: row.site_name,
+    city: row.city,
+    submittedByName: row.submitted_by_name,
+    designStatus: row.design_status,
+    currentStage: row.current_stage,
+    gfcStatus: row.gfc_status,
+    legalDdStatus: row.legal_dd_status,
+    financeStatus: row.finance_status,
+    updatedAt: row.updated_at,
+  };
+}
+
 // ── Queue / read ────────────────────────────────────────────────────────────
 
 export async function getDesignQueue() {
@@ -148,6 +165,11 @@ export async function getDesignQueue() {
 export async function getDesignReview(siteId) {
   const data = await client.get(`/design/${siteId}`).then((r) => r.data);
   return reviewFromServer(data);
+}
+
+export async function listDesignHistory(statusFilter = 'all') {
+  const data = await client.get('/design/history', { params: { status_filter: statusFilter } }).then((r) => r.data);
+  return { items: (data.items || []).map(historyItemFromServer), total: data.total ?? 0 };
 }
 
 export async function listDesignDelegationsForSite(siteId) {
@@ -161,11 +183,13 @@ export async function allocateDesign(siteId, executiveId, notes) {
   const body = { executive_id: executiveId };
   if (notes) body.notes = notes;
   const data = await client.post(`/design/${siteId}/allocate`, body).then((r) => r.data);
+  notifySiteDataChanged({ source: 'design', action: 'allocate', siteId });
   return reviewFromServer(data);
 }
 
 export async function revokeDesignAllocation(siteId, userId) {
   const data = await client.delete(`/design/${siteId}/allocate/${userId}`).then((r) => r.data);
+  notifySiteDataChanged({ source: 'design', action: 'revoke_allocation', siteId });
   return data; // { ok, message }
 }
 
@@ -177,6 +201,7 @@ export async function submitDeliverable(siteId, kind, { fileUrl, fileName, estim
   if (fileName != null && fileName !== '') body.file_name = fileName;
   if (estimatedAmount != null && estimatedAmount !== '') body.estimated_amount = Number(estimatedAmount);
   const data = await client.post(`/design/${siteId}/deliverables/${kind}`, body).then((r) => r.data);
+  notifySiteDataChanged({ source: 'design', action: 'submit_deliverable', siteId });
   return reviewFromServer(data);
 }
 
@@ -184,6 +209,7 @@ export async function reviewDeliverable(siteId, kind, { decision, comments }) {
   const body = { decision };
   if (comments) body.comments = comments;
   const data = await client.post(`/design/${siteId}/deliverables/${kind}/review`, body).then((r) => r.data);
+  notifySiteDataChanged({ source: 'design', action: 'review_deliverable', siteId });
   return reviewFromServer(data);
 }
 
@@ -203,6 +229,7 @@ export async function decideGfc(siteId, { decision, comments }) {
   const body = { decision };
   if (comments) body.comments = comments;
   const data = await client.post(`/design/gfc/${siteId}`, body).then((r) => r.data);
+  notifySiteDataChanged({ source: 'design', action: 'gfc_decision', siteId });
   return reviewFromServer(data);
 }
 
@@ -213,6 +240,7 @@ export async function uploadDeliverable(siteId, kind, file) {
   form.append('file', file);
   // axios sets the multipart Content-Type (with boundary) automatically for FormData.
   const data = await client.post(`/design/${siteId}/deliverables/${kind}/upload`, form).then((r) => r.data);
+  notifySiteDataChanged({ source: 'design', action: 'upload_deliverable', siteId });
   return reviewFromServer(data);
 }
 
@@ -227,5 +255,6 @@ export async function adminReviewDeliverable(siteId, kind, { decision, comments 
   const body = { decision };
   if (comments) body.comments = comments;
   const data = await client.post(`/design/${siteId}/deliverables/${kind}/admin-review`, body).then((r) => r.data);
+  notifySiteDataChanged({ source: 'design', action: 'admin_review_deliverable', siteId });
   return reviewFromServer(data);
 }

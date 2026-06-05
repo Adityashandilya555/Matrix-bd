@@ -108,10 +108,12 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
     path === ROUTES.DD_FAILED                            ? 'dd-failed' :
     path === ROUTES.TEAM                                 ? 'team'      :
     path === ROUTES.LEGAL_CHANGE_REQUESTS                ? 'legal-change-requests' :
-    path === ROUTES.LEGAL_REJECTED                       ? 'legal-rejected' :
+    path === ROUTES.LEGAL_REJECTED || path.startsWith('/legal/history') ? 'legal-history' :
     path.startsWith('/legal')                            ? 'legal-ddr' :
     path.startsWith('/payment')                          ? 'payment-licensing' :
+    path.startsWith('/design/history')                   ? 'design-history' :
     path.startsWith('/design')                           ? 'design' :
+    path.startsWith('/project/history')                  ? 'project-history' :
     path.startsWith('/project')                          ? 'project-home' :
     'overview';
 
@@ -175,9 +177,9 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
           />
           <SidebarItem
             icon="archiveBox"
-            label="Rejected sites"
-            active={activeView === 'legal-rejected'}
-            onClick={() => go(ROUTES.LEGAL_REJECTED)}
+            label="History"
+            active={activeView === 'legal-history'}
+            onClick={() => go(ROUTES.LEGAL_HISTORY)}
             collapsed={collapsed}
           />
         </>
@@ -185,24 +187,40 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
 
       {userModule === 'design' && (
         <>
-          <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Design</div>
+          {!collapsed && <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Design</div>}
           <SidebarItem
             icon="box"
             label="Sites"
             active={activeView === 'design'}
             onClick={() => go(ROUTES.DESIGN)}
+            collapsed={collapsed}
+          />
+          <SidebarItem
+            icon="archiveBox"
+            label="History"
+            active={activeView === 'design-history'}
+            onClick={() => go(ROUTES.DESIGN_HISTORY)}
+            collapsed={collapsed}
           />
         </>
       )}
 
       {userModule === 'project' && (
         <>
-          <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Project</div>
+          {!collapsed && <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Project</div>}
           <SidebarItem
             icon="box"
             label="Project execution"
             active={activeView === 'project-home'}
             onClick={() => go(ROUTES.PROJECT)}
+            collapsed={collapsed}
+          />
+          <SidebarItem
+            icon="archiveBox"
+            label="History"
+            active={activeView === 'project-history'}
+            onClick={() => go(ROUTES.PROJECT_HISTORY)}
+            collapsed={collapsed}
           />
         </>
       )}

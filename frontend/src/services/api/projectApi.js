@@ -51,6 +51,22 @@ function queueItemFromServer(row) {
   };
 }
 
+function historyItemFromServer(row) {
+  return {
+    siteId: row.site_id,
+    siteCode: row.site_code,
+    siteName: row.site_name,
+    city: row.city,
+    submittedByName: row.submitted_by_name,
+    designStatus: row.design_status,
+    projectStatus: row.project_status,
+    currentStage: row.current_stage,
+    budgetStatus: row.budget_status,
+    projectCompletedAt: row.project_completed_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function stateFromServer(row) {
   if (!row) return row;
   return {
@@ -105,8 +121,18 @@ export async function getProjectQueue() {
   return { items: (data.items || []).map(queueItemFromServer), total: data.total ?? 0 };
 }
 
+export async function listProjectHistory(statusFilter = 'all') {
+  const data = await client.get('/project/history', { params: { status_filter: statusFilter } }).then((r) => r.data);
+  return { items: (data.items || []).map(historyItemFromServer), total: data.total ?? 0 };
+}
+
 export async function getProject(siteId) {
   const data = await client.get(`/project/${siteId}`).then((r) => r.data);
+  return stateFromServer(data);
+}
+
+export async function getProjectHistoryDetail(siteId) {
+  const data = await client.get(`/project/history/${siteId}`).then((r) => r.data);
   return stateFromServer(data);
 }
 

@@ -67,9 +67,20 @@ function DeliverableCard({ kind, deliverable, isActive, isExecutive, isSuperviso
   const [amount, setAmount] = React.useState('');
   const [comments, setComments] = React.useState('');
 
-  // Only show the upload form when a file hasn't been submitted yet (or was sent back).
-  // Hide it once the file is 'submitted' (awaiting review) to avoid confusion.
-  const canUpload = (isExecutive || canSelfUpload) && isActive && (status === 'pending' || status === 'rejected');
+  React.useEffect(() => {
+    setFile(null);
+    setAmount(deliverable?.estimatedAmount ?? '');
+    setComments('');
+  }, [deliverable?.estimatedAmount, deliverable?.fileName, deliverable?.downloadUrl, status]);
+
+  const hasSubmittedArtifact = isBoq
+    ? deliverable?.estimatedAmount != null
+    : Boolean(deliverable?.fileName || deliverable?.downloadUrl || deliverable?.fileUrl);
+  // Only show upload/edit controls before a first submission or after an explicit rejection.
+  // Submitted, approved, and admin-pending rows stay read-only until a reviewer sends them back.
+  const canUpload = (isExecutive || canSelfUpload)
+    && isActive
+    && (status === 'rejected' || (status === 'pending' && !hasSubmittedArtifact));
   const canReview = isSupervisor && isActive && status === 'submitted';
   const awaitingAdmin = needsAdmin && status === 'approved' && adminStatus !== 'approved';
   const dim = !isActive && status === 'pending';
@@ -108,6 +119,13 @@ function DeliverableCard({ kind, deliverable, isActive, isExecutive, isSuperviso
       {awaitingAdmin && (
         <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--zm-fg-3)', lineHeight: 1.5 }}>
           Approved by the supervisor — waiting for the business-admin's approval before the next stage.
+        </p>
+      )}
+      {!canUpload && isActive && (status === 'submitted' || status === 'approved') && (
+        <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--zm-fg-3)', lineHeight: 1.5 }}>
+          {status === 'submitted'
+            ? 'Submitted for review — editing is locked until this item is sent back.'
+            : 'Approved — editing is locked unless a reviewer sends this item back.'}
         </p>
       )}
 

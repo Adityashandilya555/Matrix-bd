@@ -189,3 +189,26 @@ class LegalRejectedSiteItem(BaseModel):
 class LegalRejectedSitesResponse(BaseModel):
     items: list[LegalRejectedSiteItem]
     total: int
+
+
+class LegalHistoryItem(BaseModel):
+    """Read-only history row for every site that entered the Legal module."""
+    site_id: str
+    site_code: str
+    site_name: str
+    city: str
+    submitted_by_name: Optional[str] = None
+    site_status: str
+    legal_dd_status: str = "pending"
+    agreement_status: str = "pending"
+    licensing_status: str = "pending"
+    rejection_reason: Optional[str] = None
+    legal_review_at: Optional[datetime] = None
+    legal_approved_at: Optional[datetime] = None
+    legal_rejected_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class LegalHistoryResponse(BaseModel):
+    items: list[LegalHistoryItem]
+    total: int

@@ -11,7 +11,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, desc, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +21,8 @@ from app.domain.schemas.common import OkResponse
 from app.domain.schemas.project import (
     MilestoneRequest,
     ProjectBudgetAdminQueueResponse,
+    ProjectHistoryItem,
+    ProjectHistoryResponse,
     ProjectBudgetItemOut,
     ProjectQueueItem,
     ProjectQueueResponse,
@@ -235,6 +237,62 @@ async def svc_project_queue(
         return ProjectQueueResponse(items=items, total=len(items))
 
 
+async def svc_project_history(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    status_filter: str = "all",
+) -> ProjectHistoryResponse:
+    """Read-only Project history for sites that reached or entered Project."""
+    stmt = (
+        select(models.Site, models.ProjectReview)
+        .outerjoin(models.ProjectReview, models.ProjectReview.site_id == models.Site.id)
+        .where(
+            models.Site.tenant_id == tenant_id,
+            or_(
+                models.ProjectReview.site_id.is_not(None),
+                models.Site.design_status == "approved",
+            ),
+        )
+    )
+
+    if status_filter == "active":
+        stmt = stmt.where(
+            or_(
+                models.ProjectReview.project_status.is_(None),
+                models.ProjectReview.project_status.in_(["pending", "allocated", "budgeting", "in_progress"]),
+            )
+        )
+    elif status_filter in {"approved", "completed"}:
+        stmt = stmt.where(models.ProjectReview.project_status == "done")
+    elif status_filter == "rejected":
+        stmt = stmt.where(models.ProjectReview.budget_status == "rejected")
+
+    rows = (await session.execute(
+        stmt.order_by(
+            desc(models.ProjectReview.updated_at).nulls_last(),
+            desc(models.Site.updated_at),
+        )
+    )).all()
+
+    items: list[ProjectHistoryItem] = []
+    for site, review in rows:
+        items.append(ProjectHistoryItem(
+            site_id=str(site.id),
+            site_code=site.ca_code or site.code or "",
+            site_name=site.name,
+            city=site.city,
+            submitted_by_name=await fetch_user_name(session, site.submitted_by),
+            design_status=site.design_status or "pending",
+            project_status=(review.project_status if review else "pending"),
+            current_stage=(review.current_stage if review else "budget"),
+            budget_status=(review.budget_status if review else "draft"),
+            project_completed_at=(review.project_completed_at if review else None),
+            updated_at=(review.updated_at if review else site.updated_at),
+        ))
+    return ProjectHistoryResponse(items=items, total=len(items))
+
+
 async def svc_get_project(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
 ) -> ProjectStateResponse:
@@ -243,6 +301,36 @@ async def svc_get_project(
         _assert_project_unlocked(site)
         review = await _fetch_review_or_create(session, site=site)
         return await _build_response(session, site, review)
+
+
+async def svc_get_project_history_detail(
+    session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
+) -> ProjectStateResponse:
+    """Read-only Project history detail.
+
+    Unlike the active Project detail route, this must not lazily create a
+    project_reviews row just because someone opened History.
+    """
+    site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+    review = await _fetch_review_or_none(session, site_id=site.id)
+    if review is None:
+        if (site.design_status or "pending") != "approved":
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail="This site has not entered Project history.",
+            )
+        review = models.ProjectReview(
+            tenant_id=site.tenant_id,
+            site_id=site.id,
+            project_status="pending",
+            current_stage="budget",
+            budget_status="draft",
+            initialization_status="pending",
+            expected_completion_status="pending",
+            quality_audit_status="pending",
+        )
+        review.updated_at = site.updated_at
+    return await _build_response(session, site, review)
 
 
 async def svc_list_project_delegations_for_site(

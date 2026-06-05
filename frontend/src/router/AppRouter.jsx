@@ -20,11 +20,11 @@ import AddDetailsPage        from '../modules/loi/details/AddDetailsPage.jsx';
 import TeamPage              from '../modules/team/TeamPage.jsx';
 import LegalQueuePage       from '../modules/legal/LegalQueuePage.jsx';
 import ChangeRequestsPage    from '../modules/legal/ChangeRequestsPage.jsx';
-import RejectedSitesPage     from '../modules/legal/RejectedSitesPage.jsx';
 import DdrPage               from '../modules/legal/ddr/DdrPage.jsx';
 import AgreementPage         from '../modules/legal/agreement/AgreementPage.jsx';
 import DesignQueuePage       from '../modules/design/DesignQueuePage.jsx';
 import DesignReviewPage      from '../modules/design/DesignReviewPage.jsx';
+import ModuleHistoryPage     from '../modules/module-history/ModuleHistoryPage.jsx';
 import SiteStatusPage        from '../modules/bd/site-status/SiteStatusPage.jsx';
 import DdFailedPage          from '../modules/bd/dd-failed/DdFailedPage.jsx';
 import SiteTrackerListPage   from '../modules/bd/site-tracker/SiteTrackerListPage.jsx';
@@ -153,7 +153,21 @@ export default function AppRouter() {
         <Route path={ROUTES.LEGAL_REJECTED} element={
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <RequireModule modules={['legal']}>
-              <RejectedSitesPage/>
+              <ModuleHistoryPage moduleKey="legal" defaultFilter="rejected"/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.LEGAL_HISTORY} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['legal']}>
+              <ModuleHistoryPage moduleKey="legal"/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.LEGAL_HISTORY_SITE} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['legal']}>
+              <ModuleHistoryPage moduleKey="legal"/>
             </RequireModule>
           </RequireRole>
         }/>
@@ -202,6 +216,20 @@ export default function AppRouter() {
             </RequireModule>
           </RequireRole>
         }/>
+        <Route path={ROUTES.DESIGN_HISTORY} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['design']}>
+              <ModuleHistoryPage moduleKey="design"/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.DESIGN_HISTORY_SITE} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['design']}>
+              <ModuleHistoryPage moduleKey="design"/>
+            </RequireModule>
+          </RequireRole>
+        }/>
         <Route path="/design/*" element={<Navigate to={ROUTES.DESIGN} replace/>}/>
 
         <Route path={ROUTES.PROJECT} element={
@@ -215,6 +243,20 @@ export default function AppRouter() {
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <RequireModule modules={['project']}>
               <ProjectReviewPage/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.PROJECT_HISTORY} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['project']}>
+              <ModuleHistoryPage moduleKey="project"/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.PROJECT_HISTORY_SITE} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['project']}>
+              <ModuleHistoryPage moduleKey="project"/>
             </RequireModule>
           </RequireRole>
         }/>

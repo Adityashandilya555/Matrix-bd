@@ -20,7 +20,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import desc, select, text
+from sqlalchemy import desc, or_, select, text
 from sqlalchemy.exc import ProgrammingError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +31,8 @@ from app.db.session import transaction
 from app.domain.schemas.legal import (
     AgreementResponse,
     DdChecklistResponse,
+    LegalHistoryItem,
+    LegalHistoryResponse,
     LegalQueueItem,
     LegalQueueResponse,
     LegalRejectedSiteItem,
@@ -370,6 +372,91 @@ async def svc_legal_rejected_sites(
         ))
 
     return LegalRejectedSitesResponse(items=items, total=len(items))
+
+
+async def svc_legal_history(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    status_filter: str = "all",
+) -> LegalHistoryResponse:
+    """Read-only Legal history for sites that have touched the Legal module."""
+    stmt = (
+        select(models.Site)
+        .where(
+            models.Site.tenant_id == tenant_id,
+            or_(
+                models.Site.legal_review_at.is_not(None),
+                models.Site.legal_approved_at.is_not(None),
+                models.Site.legal_rejected_at.is_not(None),
+                models.Site.legal_dd_status.in_(["in_review", "positive", "negative"]),
+                models.Site.agreement_status.in_(["signed", "registered"]),
+                models.Site.licensing_status.in_(["partial", "complete"]),
+                models.Site.status.in_([
+                    SiteStatus.LEGAL_REVIEW.value,
+                    SiteStatus.LEGAL_APPROVED.value,
+                    SiteStatus.LEGAL_REJECTED.value,
+                    SiteStatus.PUSHED_TO_PAYMENTS.value,
+                ]),
+            ),
+        )
+    )
+
+    if status_filter == "active":
+        stmt = stmt.where(
+            or_(
+                models.Site.status == SiteStatus.LEGAL_REVIEW.value,
+                models.Site.legal_dd_status == "in_review",
+            )
+        )
+    elif status_filter == "approved":
+        stmt = stmt.where(
+            or_(
+                models.Site.status.in_([
+                    SiteStatus.LEGAL_APPROVED.value,
+                    SiteStatus.PUSHED_TO_PAYMENTS.value,
+                ]),
+                models.Site.legal_dd_status == "positive",
+                models.Site.licensing_status == "complete",
+            )
+        )
+    elif status_filter == "rejected":
+        stmt = stmt.where(
+            or_(
+                models.Site.status == SiteStatus.LEGAL_REJECTED.value,
+                models.Site.legal_dd_status == "negative",
+            )
+        )
+
+    stmt = stmt.order_by(
+        desc(models.Site.legal_rejected_at).nulls_last(),
+        desc(models.Site.legal_approved_at).nulls_last(),
+        desc(models.Site.legal_review_at).nulls_last(),
+        desc(models.Site.updated_at),
+    )
+    sites = (await session.execute(stmt)).scalars().all()
+
+    items: list[LegalHistoryItem] = []
+    for site in sites:
+        dd = await _fetch_dd_or_none(session, site_id=site.id)
+        submitted_by_name = await fetch_user_name(session, site.submitted_by)
+        items.append(LegalHistoryItem(
+            site_id=str(site.id),
+            site_code=site.code or "",
+            site_name=site.name,
+            city=site.city,
+            submitted_by_name=submitted_by_name,
+            site_status=site.status,
+            legal_dd_status=site.legal_dd_status or "pending",
+            agreement_status=site.agreement_status or "pending",
+            licensing_status=site.licensing_status or "pending",
+            rejection_reason=dd.rejection_reason if dd else site.rejection_reason,
+            legal_review_at=site.legal_review_at,
+            legal_approved_at=site.legal_approved_at,
+            legal_rejected_at=site.legal_rejected_at,
+            updated_at=site.updated_at,
+        ))
+    return LegalHistoryResponse(items=items, total=len(items))
 
 
 async def svc_get_legal_review(

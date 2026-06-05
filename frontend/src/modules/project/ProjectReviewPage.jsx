@@ -183,6 +183,14 @@ export default function ProjectReviewPage() {
   const review = state.review;
   const budgetTotal = budget.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
   const executionUnlocked = review?.budgetStatus === 'approved';
+  const budgetEditable = review ? ['draft', 'rejected'].includes(review.budgetStatus) : false;
+  const budgetLockedReason = review?.budgetStatus === 'pending_supervisor'
+    ? 'Budget is awaiting supervisor review and is read-only until it is sent back.'
+    : review?.budgetStatus === 'pending_admin'
+      ? 'Budget is awaiting business-admin review and is read-only until it is sent back.'
+      : review?.budgetStatus === 'approved'
+        ? 'Budget is approved and locked.'
+        : null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -279,7 +287,7 @@ export default function ProjectReviewPage() {
                     value={item.amount}
                     inputMode="decimal"
                     onChange={(e) => setBudget((rows) => rows.map((row) => row.idx === item.idx ? { ...row, amount: e.target.value } : row))}
-                    disabled={busy || !['draft', 'rejected'].includes(review.budgetStatus)}
+                    disabled={busy || !budgetEditable}
                     placeholder="0"
                     style={{
                       height: 36,
@@ -287,19 +295,37 @@ export default function ProjectReviewPage() {
                       borderRadius: 8,
                       padding: '0 10px',
                       fontFamily: 'var(--zm-font-mono)',
-                      background: 'var(--zm-surface)',
+                      background: budgetEditable ? 'var(--zm-surface)' : 'var(--zm-surface-2)',
+                      color: budgetEditable ? 'var(--zm-fg)' : 'var(--zm-fg-3)',
                     }}
                   />
                 </label>
               ))}
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <ActionButton disabled={busy || !['draft', 'rejected'].includes(review.budgetStatus)} variant="ghost" onClick={() => mutate(() => saveProjectBudget(siteId, { items: budget, action: 'save' }))}>
-                Save budget draft
-              </ActionButton>
-              <ActionButton disabled={busy || !['draft', 'rejected'].includes(review.budgetStatus)} onClick={() => mutate(() => saveProjectBudget(siteId, { items: budget, action: 'submit' }))}>
-                Submit budget
-              </ActionButton>
+              {budgetEditable && (
+                <>
+                  <ActionButton disabled={busy} variant="ghost" onClick={() => mutate(() => saveProjectBudget(siteId, { items: budget, action: 'save' }))}>
+                    Save budget draft
+                  </ActionButton>
+                  <ActionButton disabled={busy} onClick={() => mutate(() => saveProjectBudget(siteId, { items: budget, action: 'submit' }))}>
+                    Submit budget
+                  </ActionButton>
+                </>
+              )}
+              {!budgetEditable && budgetLockedReason && (
+                <div style={{
+                  minHeight: 36,
+                  padding: '9px 12px',
+                  borderRadius: 8,
+                  border: '1px solid var(--zm-line)',
+                  background: 'var(--zm-surface-2)',
+                  color: 'var(--zm-fg-3)',
+                  fontSize: 12.5,
+                }}>
+                  {budgetLockedReason}
+                </div>
+              )}
               {isSupervisor && review.budgetStatus === 'pending_supervisor' && (
                 <>
                   <ActionButton disabled={busy} onClick={() => mutate(() => reviewProjectBudget(siteId, { decision: 'approve' }))}>

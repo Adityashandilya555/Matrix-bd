@@ -12,6 +12,7 @@ from app.domain.schemas.project import (
     MilestoneRequest,
     ProjectBudgetAdminQueueResponse,
     ProjectDelegationsResponse,
+    ProjectHistoryResponse,
     ProjectQueueResponse,
     ProjectStateResponse,
     ReviewRequest,
@@ -25,8 +26,10 @@ from app.services.project_service import (
     svc_allocate_project,
     svc_budget_admin_queue,
     svc_get_project,
+    svc_get_project_history_detail,
     svc_list_project_delegations_for_site,
     svc_project_queue,
+    svc_project_history,
     svc_push_quality_audit,
     svc_review_budget,
     svc_review_milestone,
@@ -61,6 +64,28 @@ async def project_queue(
             db, tenant_id=tenant_id, user_id=current_user["sub"], module="project",
         )
     return await svc_project_queue(db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to)
+
+
+@router.get("/history", response_model=ProjectHistoryResponse)
+async def project_history(
+    db: DbDep,
+    current_user: ProjectMember,
+    _module: InProjectModule,
+    tenant_id: TenantId,
+    status_filter: str = "all",
+) -> ProjectHistoryResponse:
+    return await svc_project_history(db, tenant_id=tenant_id, status_filter=status_filter)
+
+
+@router.get("/history/{site_id}", response_model=ProjectStateResponse)
+async def project_history_detail(
+    site_id: str,
+    db: DbDep,
+    current_user: ProjectMember,
+    _module: InProjectModule,
+    tenant_id: TenantId,
+) -> ProjectStateResponse:
+    return await svc_get_project_history_detail(db, tenant_id=tenant_id, site_id=site_id)
 
 
 @router.get("/budget-admin-queue", response_model=ProjectBudgetAdminQueueResponse)

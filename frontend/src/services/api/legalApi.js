@@ -70,6 +70,25 @@ function rejectedSiteFromServer(row) {
   };
 }
 
+function historyItemFromServer(row) {
+  return {
+    siteId: row.site_id,
+    siteCode: row.site_code,
+    siteName: row.site_name,
+    city: row.city,
+    submittedByName: row.submitted_by_name,
+    siteStatus: row.site_status,
+    legalDdStatus: row.legal_dd_status,
+    agreementStatus: row.agreement_status,
+    licensingStatus: row.licensing_status,
+    rejectionReason: row.rejection_reason,
+    legalReviewAt: row.legal_review_at,
+    legalApprovedAt: row.legal_approved_at,
+    legalRejectedAt: row.legal_rejected_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function reviewFromServer(row) {
   if (!row) return row;
   // Surface the staging gate on each child row so the UI can render the chip
@@ -109,6 +128,14 @@ export async function listLegalRejectedSites() {
   const data = await client.get('/legal/rejected-sites').then((r) => r.data);
   return {
     items: (data.items || []).map(rejectedSiteFromServer),
+    total: data.total ?? 0,
+  };
+}
+
+export async function listLegalHistory(statusFilter = 'all') {
+  const data = await client.get('/legal/history', { params: { status_filter: statusFilter } }).then((r) => r.data);
+  return {
+    items: (data.items || []).map(historyItemFromServer),
     total: data.total ?? 0,
   };
 }

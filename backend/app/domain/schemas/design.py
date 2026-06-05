@@ -181,3 +181,23 @@ class DesignAdminQueueSite(BaseModel):
 class DesignAdminQueueResponse(BaseModel):
     items: list[DesignAdminQueueSite]
     total: int
+
+
+class DesignHistoryItem(BaseModel):
+    """Read-only history row for every site that entered Design."""
+    site_id: str
+    site_code: str
+    site_name: str
+    city: str
+    submitted_by_name: Optional[str] = None
+    design_status: str = "pending"
+    current_stage: Optional[DesignStage] = None
+    gfc_status: GfcStatus = "pending"
+    legal_dd_status: Optional[str] = None
+    finance_status: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+
+class DesignHistoryResponse(BaseModel):
+    items: list[DesignHistoryItem]
+    total: int

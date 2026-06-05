@@ -116,3 +116,23 @@ class MilestoneRequest(BaseModel):
 class ProjectBudgetAdminQueueResponse(BaseModel):
     items: list[ProjectQueueItem]
     total: int
+
+
+class ProjectHistoryItem(BaseModel):
+    """Read-only history row for every site that entered Project."""
+    site_id: str
+    site_code: str
+    site_name: str
+    city: str
+    submitted_by_name: Optional[str] = None
+    design_status: str
+    project_status: str = "pending"
+    current_stage: str = "budget"
+    budget_status: str = "draft"
+    project_completed_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class ProjectHistoryResponse(BaseModel):
+    items: list[ProjectHistoryItem]
+    total: int

@@ -13,6 +13,8 @@ export const ROUTES = {
   LEGAL:                  '/legal',
   LEGAL_CHANGE_REQUESTS:  '/legal/change-requests',
   LEGAL_REJECTED:         '/legal/rejected',
+  LEGAL_HISTORY:          '/legal/history',
+  LEGAL_HISTORY_SITE:     '/legal/history/:siteId',
   LEGAL_SITE_DDR:         '/legal/sites/:siteId/ddr',
   LEGAL_SITE_AGREEMENT:   '/legal/sites/:siteId/agreement',
   LEGAL_SITE_LICENSING:   '/legal/sites/:siteId/licensing',
@@ -20,8 +22,12 @@ export const ROUTES = {
   PAYMENT_SITE_LICENSING: '/payment/sites/:siteId/licensing',
   DESIGN:                 '/design',
   DESIGN_SITE:            '/design/sites/:siteId',
+  DESIGN_HISTORY:         '/design/history',
+  DESIGN_HISTORY_SITE:    '/design/history/:siteId',
   PROJECT:                '/project',
   PROJECT_SITE:           '/project/:siteId',
+  PROJECT_HISTORY:        '/project/history',
+  PROJECT_HISTORY_SITE:   '/project/history/:siteId',
   SITE:                   '/sites/:id',
   ADD_DETAILS:            '/shortlist/:code/details',
   LOI_TIMELINE:           '/shortlist/:code/timeline',
@@ -54,6 +60,10 @@ export function legalSiteLicensingRoute(siteId) {
   return ROUTES.LEGAL_SITE_LICENSING.replace(':siteId', siteId);
 }
 
+export function legalHistorySiteRoute(siteId) {
+  return ROUTES.LEGAL_HISTORY_SITE.replace(':siteId', siteId);
+}
+
 export function paymentSiteLicensingRoute(siteId) {
   return ROUTES.PAYMENT_SITE_LICENSING.replace(':siteId', siteId);
 }
@@ -62,8 +72,16 @@ export function designSiteRoute(siteId) {
   return ROUTES.DESIGN_SITE.replace(':siteId', siteId);
 }
 
+export function designHistorySiteRoute(siteId) {
+  return ROUTES.DESIGN_HISTORY_SITE.replace(':siteId', siteId);
+}
+
 export function projectSiteRoute(siteId) {
   return ROUTES.PROJECT_SITE.replace(':siteId', siteId);
+}
+
+export function projectHistorySiteRoute(siteId) {
+  return ROUTES.PROJECT_HISTORY_SITE.replace(':siteId', siteId);
 }
 
 export function bdSiteStatusRoute(siteId) {

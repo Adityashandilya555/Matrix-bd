@@ -28,7 +28,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import or_, select
+from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -42,6 +42,8 @@ from app.domain.schemas.design import (
     DesignAdminQueueSite,
     DesignGfcQueueItem,
     DesignGfcQueueResponse,
+    DesignHistoryItem,
+    DesignHistoryResponse,
     DesignQueueItem,
     DesignQueueResponse,
     DesignReviewResponse,
@@ -271,6 +273,68 @@ async def svc_get_design_review(
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
     _assert_design_unlocked(site)
     return await _build_design_response(session, site)
+
+
+async def svc_design_history(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    status_filter: str = "all",
+) -> DesignHistoryResponse:
+    """Read-only Design history for sites that entered or reached Design."""
+    stmt = (
+        select(models.Site, models.DesignReview)
+        .outerjoin(models.DesignReview, models.DesignReview.site_id == models.Site.id)
+        .where(
+            models.Site.tenant_id == tenant_id,
+            or_(
+                models.DesignReview.site_id.is_not(None),
+                models.Site.design_status.in_([
+                    "allocated", "in_progress", "gfc_pending", "approved", "rejected",
+                ]),
+            ),
+        )
+    )
+
+    if status_filter == "active":
+        stmt = stmt.where(
+            models.Site.design_status.in_(["pending", "allocated", "in_progress", "gfc_pending"])
+        )
+    elif status_filter in {"approved", "completed"}:
+        stmt = stmt.where(models.Site.design_status == "approved")
+    elif status_filter == "rejected":
+        stmt = stmt.where(
+            or_(
+                models.Site.design_status == "rejected",
+                models.DesignReview.gfc_status == "rejected",
+            )
+        )
+
+    rows = (await session.execute(
+        stmt.order_by(
+            desc(models.DesignReview.updated_at).nulls_last(),
+            desc(models.Site.design_approved_at).nulls_last(),
+            desc(models.Site.updated_at),
+        )
+    )).all()
+
+    items: list[DesignHistoryItem] = []
+    for site, review in rows:
+        submitted_by_name = await fetch_user_name(session, site.submitted_by)
+        items.append(DesignHistoryItem(
+            site_id=str(site.id),
+            site_code=site.ca_code or site.code or "",
+            site_name=site.name,
+            city=site.city,
+            submitted_by_name=submitted_by_name,
+            design_status=site.design_status or "pending",
+            current_stage=(review.current_stage if review else None),
+            gfc_status=(review.gfc_status if review else "pending"),
+            legal_dd_status=site.legal_dd_status,
+            finance_status=site.finance_status,
+            updated_at=(review.updated_at if review else site.updated_at),
+        ))
+    return DesignHistoryResponse(items=items, total=len(items))
 
 
 # ── Allocation (supervisor → design executive) ───────────────────────────────
@@ -643,10 +707,13 @@ async def svc_submit_deliverable(
                 tenant_id=tenant_id, site_id=site.id, kind=kind,
             )
             session.add(deliverable)
-        elif deliverable.status == "approved":
+        elif deliverable.status not in {"pending", "rejected"}:
             raise HTTPException(
                 status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"The {kind} deliverable is already approved.",
+                detail=(
+                    f"The {kind} deliverable is already {deliverable.status}. "
+                    "Re-upload is available only after supervisor/admin rejection."
+                ),
             )
 
         if body.file_url is not None:
@@ -667,6 +734,7 @@ async def svc_submit_deliverable(
             # and advance. The only remaining gate is the admin's GFC, so every
             # approval is between the supervisor and the admin.
             deliverable.status = "approved"
+            deliverable.admin_status = "pending"
             deliverable.reviewed_by = actor["sub"]
             deliverable.reviewed_at = now
             deliverable.supervisor_comments = None
@@ -682,6 +750,10 @@ async def svc_submit_deliverable(
             )
         else:
             deliverable.status = "submitted"
+            deliverable.admin_status = "pending"
+            deliverable.admin_comments = None
+            deliverable.admin_reviewed_by = None
+            deliverable.admin_reviewed_at = None
             deliverable.supervisor_comments = None  # clear any prior rejection note
             deliverable.reviewed_by = None
             deliverable.reviewed_at = None
