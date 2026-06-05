@@ -36,6 +36,13 @@ import AdminPortalPage          from '../modules/admin/AdminPortalPage.jsx';
 import BusinessAdminPortalPage  from '../modules/business-admin/BusinessAdminPortalPage.jsx';
 import ProjectStubPage          from '../modules/project/ProjectStubPage.jsx';
 
+// Dev-only: Approval Center UI preview with mock data (no backend / no login).
+// The DEV gate makes the dynamic import dead code in production, so Rollup
+// tree-shakes the preview + mock-data chunk out of the prod build entirely.
+const ApprovalCenterPreview = import.meta.env.DEV
+  ? lazy(() => import('../modules/business-admin/_preview/ApprovalCenterPreview.jsx'))
+  : null;
+
 // In HTTP (non-mock) mode the landing page is the unauthenticated entry. The
 // existing app chrome only renders after a Supabase session is established.
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true;
@@ -104,6 +111,11 @@ export default function AppRouter() {
           gates access via X-Platform-Admin-Key. */}
       <Route path="/admin" element={<AdminPortalPage/>}/>
       <Route path="/business-admin" element={<BusinessAdminPortalPage/>}/>
+      {import.meta.env.DEV && (
+        <Route path="/business-admin-preview" element={
+          <Suspense fallback={null}><ApprovalCenterPreview/></Suspense>
+        }/>
+      )}
 
       <Route element={<RequireAuth><App/></RequireAuth>}>
         <Route index                  element={<IndexRedirect/>}/>

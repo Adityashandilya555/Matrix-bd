@@ -34,3 +34,48 @@ class PendingSupervisorOut(BaseModel):
 
 class ApproveSupervisorIn(BaseModel):
     module: Module
+
+
+# ── Finance / payment admin queue ────────────────────────────────────────────
+
+class FinanceQueueItem(BaseModel):
+    site_id: str
+    site_code: str
+    site_name: str
+    city: str
+    ca_code: Optional[str] = None
+    finance_amount: Optional[float] = None
+    submitted_by_name: Optional[str] = None
+
+
+class FinanceQueueResponse(BaseModel):
+    items: list[FinanceQueueItem]
+    total: int
+
+
+# ── Department org tree (supervisors + the executives under them) ─────────────
+
+class OrgExecutiveOut(BaseModel):
+    id: str
+    email: EmailStr
+    name: str
+    joined_at: Optional[datetime] = None
+
+
+class OrgSupervisorOut(BaseModel):
+    id: str
+    email: EmailStr
+    name: str
+    joined_at: Optional[datetime] = None
+    executives: list[OrgExecutiveOut] = []
+
+
+class OrgModuleOut(BaseModel):
+    module: Module
+    code: Optional[str] = None
+    supervisors: list[OrgSupervisorOut] = []
+    unassigned_executives: list[OrgExecutiveOut] = []
+
+
+class OrgResponse(BaseModel):
+    modules: list[OrgModuleOut]

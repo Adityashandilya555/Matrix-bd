@@ -15,8 +15,10 @@ from app.core.deps import DbDep, TenantId
 from app.domain.schemas.business_admin import (
     ApproveSupervisorIn,
     DeptCodeRotateOut,
+    FinanceQueueResponse,
     Module,
     ModuleCodeOut,
+    OrgResponse,
     PendingSupervisorOut,
 )
 from app.rbac.guards import require_role
@@ -80,3 +82,23 @@ async def reject_supervisor(
     tenant_id: TenantId,
 ) -> None:
     await svc.reject_supervisor(db, tenant_id, user_id)
+
+
+@router.get("/finance-queue", response_model=FinanceQueueResponse)
+async def list_finance_queue(
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> dict:
+    """Sites awaiting the business_admin's final finance/payment approval."""
+    return await svc.list_finance_admin_queue(db, tenant_id)
+
+
+@router.get("/org", response_model=OrgResponse)
+async def get_org(
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> dict:
+    """Per-department code + active supervisors and the executives under them."""
+    return await svc.list_org(db, tenant_id)

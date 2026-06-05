@@ -140,6 +140,11 @@ def site_to_response(
         legal_dd_status=site.legal_dd_status,
         agreement_status=site.agreement_status,
         licensing_status=site.licensing_status,
+        # Parallel-track mirrors via getattr — defensive so this stays safe even
+        # if a deploy lands before the ORM/column for a given track exists.
+        design_status=getattr(site, "design_status", None),
+        project_status=getattr(site, "project_status", None),
+        finance_status=getattr(site, "finance_status", None),
     )
 
 

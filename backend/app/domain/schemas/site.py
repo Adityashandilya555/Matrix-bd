@@ -154,6 +154,11 @@ class SiteResponse(BaseModel):
     legal_dd_status: Optional[str] = None
     agreement_status: Optional[str] = None
     licensing_status: Optional[str] = None
+    # Parallel-track mirrors (also surfaced so admin dashboards can render the
+    # full cross-module pipeline without an extra round-trip).
+    design_status: Optional[str] = None
+    project_status: Optional[str] = None
+    finance_status: Optional[str] = None
 
 
 class SiteListResponse(BaseModel):

@@ -259,7 +259,7 @@ CREATE TABLE IF NOT EXISTS public.business_admins (
 CREATE TABLE IF NOT EXISTS public.module_codes (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   tenant_id uuid NOT NULL,
-  module text NOT NULL CHECK (module IN ('bd','legal','payment')),
+  module text NOT NULL CHECK (module IN ('bd','legal','payment','design','project')),
   code text NOT NULL UNIQUE,
   created_by uuid NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -288,7 +288,7 @@ CREATE TABLE IF NOT EXISTS public.user_module_memberships (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   tenant_id uuid NOT NULL,
   user_id uuid NOT NULL,
-  module text NOT NULL CHECK (module IN ('bd','legal','payment')),
+  module text NOT NULL CHECK (module IN ('bd','legal','payment','design','project')),
   role_in_module text NOT NULL CHECK (role_in_module IN ('supervisor','executive')),
   supervisor_id uuid,
   joined_at timestamp with time zone NOT NULL DEFAULT now(),

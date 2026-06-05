@@ -1,0 +1,121 @@
+/* Approval Center interaction layer.
+ *
+ * The business-admin portal is otherwise inline-styled (to match the rest of the
+ * app), but :hover / :focus-visible / keyframe animation cannot be expressed as
+ * inline styles. This file owns exactly those concerns — interaction states and
+ * motion — while layout/colour stay inline in kit.jsx. All classes are namespaced
+ * `ac-` to avoid colliding with the global stylesheet.
+ */
+
+.ac-root { --ac-accent: #3b6ef0; }
+
+/* ── Buttons ──────────────────────────────────────────────────────────────
+ * Colour comes from inline styles per variant. A single translucent inset
+ * overlay gives every variant (solid, success, danger, ghost…) a consistent
+ * hover/press affordance without per-variant CSS. */
+.ac-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  white-space: nowrap;
+  user-select: none;
+  transition: box-shadow .15s ease, transform .12s ease, opacity .15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.ac-btn:hover:not(:disabled)  { box-shadow: inset 0 0 0 999px rgba(255, 255, 255, .08); }
+.ac-btn:active:not(:disabled) { transform: scale(.985); box-shadow: inset 0 0 0 999px rgba(0, 0, 0, .12); }
+.ac-btn:focus-visible { outline: 2px solid var(--ac-accent); outline-offset: 2px; }
+.ac-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Icon-only round button (refresh, etc.) */
+.ac-iconbtn { transition: box-shadow .15s ease, transform .12s ease, color .15s ease; }
+.ac-iconbtn:hover:not(:disabled)  { box-shadow: inset 0 0 0 999px rgba(255, 255, 255, .07); }
+.ac-iconbtn:active:not(:disabled) { transform: scale(.92); }
+.ac-iconbtn:focus-visible { outline: 2px solid var(--ac-accent); outline-offset: 2px; }
+.ac-iconbtn.is-spinning svg { animation: ac-spin .9s linear infinite; }
+
+/* ── Cards / interactive surfaces ─────────────────────────────────────────── */
+.ac-card { transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.ac-interactive { cursor: pointer; }
+.ac-interactive:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, .22) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+}
+.ac-interactive:focus-visible { outline: 2px solid var(--ac-accent); outline-offset: 2px; }
+.ac-interactive:active { transform: translateY(0); }
+
+/* ── Tabs ──────────────────────────────────────────────────────────────── */
+.ac-tab { transition: background-color .16s ease, color .16s ease, box-shadow .16s ease; }
+.ac-tab:hover:not(.is-active) { box-shadow: inset 0 0 0 999px rgba(255, 255, 255, .05); }
+.ac-tab:focus-visible { outline: 2px solid var(--ac-accent); outline-offset: 2px; }
+
+/* ── Links ─────────────────────────────────────────────────────────────── */
+.ac-link { transition: color .14s ease, text-decoration-color .14s ease; text-decoration-color: transparent; }
+.ac-link:hover { text-decoration: underline; }
+
+/* ── Inputs ────────────────────────────────────────────────────────────── */
+.ac-input { transition: border-color .14s ease, box-shadow .14s ease, background-color .14s ease; }
+.ac-input:focus { outline: none; border-color: var(--ac-accent) !important; box-shadow: 0 0 0 3px rgba(59, 110, 240, .22); }
+.ac-input::placeholder { color: rgba(255, 255, 255, .38); }
+
+/* ── Skeleton shimmer ──────────────────────────────────────────────────── */
+.ac-skel {
+  background: linear-gradient(90deg, rgba(255, 255, 255, .04) 25%, rgba(255, 255, 255, .10) 37%, rgba(255, 255, 255, .04) 63%);
+  background-size: 200% 100%;
+  animation: ac-shimmer 1.4s ease-in-out infinite;
+}
+
+/* ── Motion ────────────────────────────────────────────────────────────── */
+.ac-fade-in { animation: ac-fade .28s cubic-bezier(.22, .61, .36, 1) both; }
+.ac-stagger > * { animation: ac-fade .34s cubic-bezier(.22, .61, .36, 1) both; }
+.ac-stagger > *:nth-child(1) { animation-delay: .02s; }
+.ac-stagger > *:nth-child(2) { animation-delay: .06s; }
+.ac-stagger > *:nth-child(3) { animation-delay: .10s; }
+.ac-stagger > *:nth-child(4) { animation-delay: .14s; }
+.ac-stagger > *:nth-child(5) { animation-delay: .18s; }
+.ac-stagger > *:nth-child(6) { animation-delay: .22s; }
+
+@keyframes ac-fade   { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+@keyframes ac-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@keyframes ac-spin    { to { transform: rotate(360deg); } }
+
+/* ── Drawer (right-slide panel) ─────────────────────────────────────────── */
+.ac-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(5, 6, 9, 0.62);
+  animation: ac-overlay-in .2s ease both;
+  display: flex; justify-content: flex-end;
+}
+.ac-drawer {
+  height: 100%; width: min(620px, 100%);
+  background: #0E0F15; border-left: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: -24px 0 70px rgba(0, 0, 0, .5);
+  display: flex; flex-direction: column;
+  animation: ac-drawer-in .26s cubic-bezier(.22, .61, .36, 1) both;
+}
+@keyframes ac-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ac-drawer-in  { from { transform: translateX(24px); opacity: .4; } to { transform: none; opacity: 1; } }
+
+/* ── Pipeline nodes (Sites tab) ────────────────────────────────────────── */
+.ac-node { transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease; }
+.ac-pipeline-row.ac-interactive:hover .ac-node-active { box-shadow: 0 0 0 4px rgba(224, 162, 60, .12); }
+
+/* ── Disclosure (org tree) ─────────────────────────────────────────────── */
+.ac-caret { transition: transform .18s ease; }
+.ac-caret.is-open { transform: rotate(90deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ac-overlay, .ac-drawer { animation: none; }
+  .ac-caret { transition: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ac-btn, .ac-iconbtn, .ac-card, .ac-tab, .ac-link, .ac-input { transition: none; }
+  .ac-fade-in, .ac-stagger > * { animation: none; }
+  .ac-skel { animation: none; }
+  .ac-iconbtn.is-spinning svg { animation-duration: 1.6s; }
+  .ac-interactive:hover { transform: none; }
+}

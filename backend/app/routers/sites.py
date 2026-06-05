@@ -58,7 +58,7 @@ router = APIRouter(prefix="/sites", tags=["Sites"])
 async def list_all_sites(
     db: DbDep,
     current_user: Annotated[
-        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))
+        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR, Role.BUSINESS_ADMIN))
     ],
     tenant_id: TenantId,
     status_filter: Optional[str] = Query(None, alias="status"),
@@ -86,7 +86,7 @@ async def get_site_activity(
     site_id: str,
     db: DbDep,
     current_user: Annotated[
-        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))
+        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR, Role.BUSINESS_ADMIN))
     ],
     tenant_id: TenantId,
 ) -> AuditListResponse:
