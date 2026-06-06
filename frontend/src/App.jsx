@@ -10,6 +10,7 @@ import { buildDrawerSite } from './lib/buildDrawerSite.js';
 import Icon from './modules/shared/primitives/Icon.jsx';
 import { filterByScope } from './rbac/scope.js';
 import { extractGoogleMapsCoords, looksLikeMapsUrl } from './lib/googleMaps.js';
+import { GRID_LAYERS, GRID_ATTACH, stageVignette, canvasBase } from './lib/surfaces.js';
 
 // App.jsx is now the chrome shell only.
 // Routing is handled by AppRouter / <Outlet/>.
@@ -135,9 +136,12 @@ export default function App() {
 
         <main ref={mainRef} className="zm-app-main" style={{
           flex: 1, overflowY: 'auto', padding: '24px 32px 64px',
-          background: 'var(--zm-bg)',
-          backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'><path d='M40 0 L0 0 0 40' fill='none' stroke='" + (dark ? '%23E2E8F0' : '%23111827') + "' stroke-width='0.5' opacity='0.04'/></svg>\")",
-          backgroundSize: '40px 40px',
+          backgroundColor: canvasBase(dark),
+          // Premium grid canvas: stage-light vignette (fixed) layered over a
+          // fine + coarse grid (scrolls with content) so the plane sits deeper
+          // and every card above it reads as raised. See lib/surfaces.js.
+          backgroundImage: stageVignette(dark) + ', ' + GRID_LAYERS,
+          backgroundAttachment: 'fixed, fixed, ' + GRID_ATTACH,
         }}>
           {/* Pages inject showToast and onOpenSite via context (see below) or props.
               AppRouter clones page elements with these props via a wrapper. */}

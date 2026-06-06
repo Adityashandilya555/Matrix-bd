@@ -24,7 +24,10 @@
   --zm-line:          #E7DECD;
   --zm-line-strong:   #CFC3AD;
   --zm-line-faint:    #F1EBDD;
-  --zm-grid:          rgba(28, 24, 18, 0.04);
+  /* Background grid — warm graphite. Fine lines + a stronger coarse rhythm so
+     the plane reads with depth and content surfaces float above it. */
+  --zm-grid:          rgba(38, 30, 18, 0.05);
+  --zm-grid-strong:   rgba(38, 30, 18, 0.075);
 
   /* Text — warm near-black */
   --zm-fg:            #1A1A1F;   /* warm ink */
@@ -130,7 +133,8 @@
   --zm-line:          #28283A;
   --zm-line-strong:   #3A3A50;
   --zm-line-faint:    #1E1E2C;
-  --zm-grid:          rgba(238, 232, 220, 0.04);
+  --zm-grid:          rgba(238, 232, 220, 0.05);
+  --zm-grid-strong:   rgba(238, 232, 220, 0.085);
 
   --zm-fg:            #EDE6D8;   /* warm platinum */
   --zm-fg-2:          #C8C0B0;   /* lifted: ~10:1 on bg */
