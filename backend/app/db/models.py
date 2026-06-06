@@ -736,3 +736,19 @@ class ProjectBudgetItem(Base):
         CheckConstraint("idx BETWEEN 1 AND 10", name="chk_project_budget_idx"),
         Index("idx_project_budget_items_site", "site_id"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Async-safety for every mapped class: fetch server-side defaults / onupdate
+# values (notably `updated_at = func.now()`) via RETURNING during flush.
+#
+# Without this, those columns are left *expired* after an INSERT/UPDATE; the
+# first read — e.g. building a response object right after a write — triggers a
+# lazy refresh, i.e. a synchronous DB call inside the async session, which
+# raises sqlalchemy.exc.MissingGreenlet and reaches the client as a CORS-masked
+# 500 ("Network Error"). This bit the Project budget save, and the identical
+# trap exists in Design / Legal / BD write-then-read paths. Applying it to the
+# whole registry immunises every module at once (ProjectReview also declares it
+# explicitly above as the documented discovery site).
+for _mapper in Base.registry.mappers:
+    _mapper.eager_defaults = True
