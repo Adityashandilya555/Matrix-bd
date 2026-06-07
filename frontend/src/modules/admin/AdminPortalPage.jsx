@@ -191,6 +191,7 @@ function PortalScreen({ keyValue, onLogout }) {
   const [approving, setApproving] = React.useState(null);
   const [approveBusy, setApproveBusy] = React.useState(false);
   const [credResult, setCredResult] = React.useState(null);
+  const [rejectingId, setRejectingId] = React.useState(null);
 
   const load = React.useCallback(async () => {
     setError(null);
@@ -225,6 +226,23 @@ function PortalScreen({ keyValue, onLogout }) {
     }
   }
 
+  async function onReject(r) {
+    if (typeof window !== 'undefined'
+      && !window.confirm(`Reject the workspace request from "${r.company}"? No tenant is provisioned and this can't be undone.`)) {
+      return;
+    }
+    setRejectingId(r.id);
+    setError(null);
+    try {
+      await apiFetch(`/tenancy/requests/${r.id}/reject`, { key: keyValue, method: 'POST' });
+      load();
+    } catch (err) {
+      setError(err.message || 'Reject failed');
+    } finally {
+      setRejectingId(null);
+    }
+  }
+
   return (
     <div style={{ minHeight: '100vh', maxHeight: '100vh', overflowY: 'auto', background: '#0B0C10', color: '#fff', padding: '32px 40px' }}>
       <header style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 28, flexWrap: 'wrap' }}>
@@ -254,11 +272,11 @@ function PortalScreen({ keyValue, onLogout }) {
 
       {items && items.length > 0 && (
         <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, overflow: 'hidden' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1.6fr 0.9fr 0.6fr 110px 1fr 130px', gap: 10, padding: '12px 18px', background: 'rgba(255,255,255,0.04)', fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1.6fr 0.9fr 0.6fr 110px 1fr 180px', gap: 10, padding: '12px 18px', background: 'rgba(255,255,255,0.04)', fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>
             <span>Company</span><span>Admin email</span><span>Team size</span><span>Seats</span><span>Status</span><span>Created</span><span style={{ textAlign: 'right' }}>Action</span>
           </div>
           {items.map((r, i) => (
-            <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1.6fr 0.9fr 0.6fr 110px 1fr 130px', gap: 10, padding: '14px 18px', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.06)', alignItems: 'center', fontSize: 13 }}>
+            <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1.6fr 0.9fr 0.6fr 110px 1fr 180px', gap: 10, padding: '14px 18px', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.06)', alignItems: 'center', fontSize: 13 }}>
               <span style={{ fontWeight: 600 }}>{r.company}</span>
               <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12, color: 'rgba(255,255,255,0.85)' }}>{r.admin_email}</span>
               <span style={{ opacity: 0.75, fontSize: 12 }}>{r.team_size || '—'}</span>
@@ -267,7 +285,14 @@ function PortalScreen({ keyValue, onLogout }) {
               <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11.5, color: 'rgba(255,255,255,0.6)' }}>{r.created_at ? new Date(r.created_at).toLocaleString() : '—'}</span>
               <span style={{ textAlign: 'right' }}>
                 {r.status === 'pending'
-                  ? <button onClick={() => setApproving(r)} style={{ height: 30, padding: '0 14px', borderRadius: 7, border: 'none', background: '#fff', color: '#0B0C10', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Approve</button>
+                  ? <span style={{ display: 'inline-flex', gap: 8, justifyContent: 'flex-end' }}>
+                      <button onClick={() => onReject(r)} disabled={rejectingId === r.id}
+                        style={{ height: 30, padding: '0 12px', borderRadius: 7, border: '1px solid rgba(252,165,165,0.4)', background: 'transparent', color: '#FCA5A5', fontSize: 12, fontWeight: 700, cursor: rejectingId === r.id ? 'wait' : 'pointer', opacity: rejectingId === r.id ? 0.6 : 1 }}>
+                        {rejectingId === r.id ? '…' : 'Reject'}
+                      </button>
+                      <button onClick={() => setApproving(r)}
+                        style={{ height: 30, padding: '0 14px', borderRadius: 7, border: 'none', background: '#fff', color: '#0B0C10', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Approve</button>
+                    </span>
                   : <span style={{ opacity: 0.45, fontSize: 11.5 }}>{r.decided_at ? new Date(r.decided_at).toLocaleDateString() : ''}</span>}
               </span>
             </div>

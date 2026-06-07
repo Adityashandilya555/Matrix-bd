@@ -352,6 +352,59 @@ async def list_workspace_requests(
     return WorkspaceRequestListOut(items=items, total=len(items))
 
 
+# ── Platform-admin reject ──────────────────────────────────────────────────
+
+
+class RejectOut(BaseModel):
+    request_id: str
+    status: str
+    message: str
+
+
+@router.post(
+    "/requests/{request_id}/reject",
+    response_model=RejectOut,
+    summary="Platform admin: reject a pending workspace request",
+)
+async def reject_workspace_request(
+    request_id: str,
+    db: DbDep,
+    x_platform_admin_key: Annotated[Optional[str], Header(alias="X-Platform-Admin-Key")] = None,
+) -> RejectOut:
+    """Decline a workspace request without provisioning a tenant. Mirrors the
+    approve guard + lock, but only flips status to 'rejected'."""
+    _require_platform_admin(x_platform_admin_key)
+
+    req_row = (await db.execute(
+        text("""
+            SELECT id, status
+              FROM workspace_requests
+             WHERE id = :rid
+             FOR UPDATE
+        """),
+        {"rid": request_id},
+    )).mappings().first()
+    if not req_row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace request not found.")
+    if req_row["status"] != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Request already {req_row['status']}.",
+        )
+
+    await db.execute(
+        text("""
+            UPDATE workspace_requests
+               SET status='rejected',
+                   decided_at=now()
+             WHERE id=:rid
+        """),
+        {"rid": request_id},
+    )
+    await db.commit()
+    return RejectOut(request_id=str(request_id), status="rejected", message="Workspace request rejected.")
+
+
 # ── Platform-admin approve ─────────────────────────────────────────────────
 
 
