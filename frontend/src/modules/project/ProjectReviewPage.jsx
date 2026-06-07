@@ -155,7 +155,7 @@ function ActionButton({ children, onClick, disabled, variant = 'primary' }) {
 export default function ProjectReviewPage() {
   const { siteId } = useParams();
   const navigate = useNavigate();
-  const { role } = useSession();
+  const { role, dark } = useSession();
   const isSupervisor = role === 'supervisor';
   const [state, setState] = React.useState({ status: 'loading', review: null, error: null });
   const [team, setTeam] = React.useState([]);
@@ -324,6 +324,9 @@ export default function ProjectReviewPage() {
                       borderRadius: 8,
                       padding: '0 10px',
                       background: 'var(--zm-surface)',
+                      color: 'var(--zm-fg)',
+                      fontFamily: 'var(--zm-font-body)',
+                      colorScheme: dark ? 'dark' : 'light',
                     }}
                   >
                     <option value="">Choose project executive...</option>
@@ -427,6 +430,7 @@ export default function ProjectReviewPage() {
                 value={milestones.initialization_date}
                 status={review.initializationStatus}
                 disabled={!executionUnlocked || busy}
+                dark={dark}
                 onChange={(value) => {
                   setMilestonesDirty(true);
                   setMilestones((v) => ({ ...v, initialization_date: value }));
@@ -441,6 +445,7 @@ export default function ProjectReviewPage() {
                 value={milestones.expected_completion_date}
                 status={review.expectedCompletionStatus}
                 disabled={!executionUnlocked || review.initializationStatus !== 'approved' || busy}
+                dark={dark}
                 onChange={(value) => {
                   setMilestonesDirty(true);
                   setMilestones((v) => ({ ...v, expected_completion_date: value }));
@@ -455,6 +460,7 @@ export default function ProjectReviewPage() {
                 value={milestones.inspection_date}
                 status={review.inspectionDate ? 'recorded' : 'pending'}
                 disabled={!executionUnlocked || review.expectedCompletionStatus !== 'approved' || busy}
+                dark={dark}
                 onChange={(value) => {
                   setMilestonesDirty(true);
                   setMilestones((v) => ({ ...v, inspection_date: value }));
@@ -484,6 +490,7 @@ export default function ProjectReviewPage() {
                 value={milestones.final_completion_date}
                 status={review.finalCompletionDate ? 'done' : 'pending'}
                 disabled={!executionUnlocked || review.qualityAuditStatus !== 'approved' || busy}
+                dark={dark}
                 onChange={(value) => {
                   setMilestonesDirty(true);
                   setMilestones((v) => ({ ...v, final_completion_date: value }));
@@ -504,6 +511,8 @@ export default function ProjectReviewPage() {
               borderRadius: 8,
               border: '1px solid var(--zm-line)',
               background: 'var(--zm-surface)',
+              color: 'var(--zm-fg)',
+              fontFamily: 'var(--zm-font-body)',
               fontWeight: 800,
               cursor: busy ? 'not-allowed' : 'pointer',
               opacity: busy ? 0.6 : 1,
@@ -517,7 +526,7 @@ export default function ProjectReviewPage() {
   );
 }
 
-function Milestone({ label, value, status, disabled, onChange, onSubmit, onApprove, onReject }) {
+function Milestone({ label, value, status, disabled, dark, onChange, onSubmit, onApprove, onReject }) {
   return (
     <div className="zm-glass" style={{ padding: 14, borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
@@ -535,6 +544,9 @@ function Milestone({ label, value, status, disabled, onChange, onSubmit, onAppro
           borderRadius: 8,
           padding: '0 10px',
           background: 'var(--zm-surface)',
+          color: 'var(--zm-fg)',
+          fontFamily: 'var(--zm-font-body)',
+          colorScheme: dark ? 'dark' : 'light',
         }}
       />
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
