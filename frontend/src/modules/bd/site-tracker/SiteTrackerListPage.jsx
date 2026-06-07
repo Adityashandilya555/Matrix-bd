@@ -3,9 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Icon from '../../shared/primitives/Icon.jsx';
 import { listSites } from '../../../services/api/siteService.js';
-import { getSiteTrackerView } from '../../../services/api/siteTrackerApi.js';
-import { siteTrackerDetailRoute } from '../../../router/routes.js';
-import { normalizeAgreementStatus } from '../../../lib/agreementStatus.js';
+import { siteTrackerDetailRoute, bdSiteStatusRoute } from '../../../router/routes.js';
 import { useSiteDataRefresh } from '../../../hooks/useSiteDataRefresh.js';
 
 // A site becomes a staging tracker item as soon as BD uploads the signed LOI.
@@ -432,334 +430,11 @@ function PipelineRow({ site, onOpenLegal, onOpenDetail }) {
   );
 }
 
-function DetailLine({ label, value }) {
-  return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: 'minmax(0, 1fr) auto',
-      gap: 12,
-      alignItems: 'center',
-      padding: '10px 0',
-      borderBottom: '1px solid var(--zm-line-faint)',
-    }}>
-      <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-2)' }}>
-        {label}
-      </span>
-      <StatusChip value={value} compact/>
-    </div>
-  );
-}
-
-function legalSummary(data) {
-  if (!data) {
-    return {
-      dd: 'pending',
-      agreement: 'pending',
-      licensing: 'pending',
-      overall: 'pending',
-    };
-  }
-  const dd = data.legalDdStatus || data.dd?.final_verdict || 'pending';
-  const agreement = normalizeAgreementStatus(data);
-  const licensing = data.licensingStatus || 'pending';
-  let overall = 'pending';
-  if (data.siteStatus === 'legal_rejected' || dd === 'negative') overall = 'rejected';
-  else if (data.siteStatus === 'legal_approved' || data.siteStatus === 'pushed_to_payments') overall = 'complete';
-  else if (dd !== 'pending' || agreement !== 'pending' || licensing !== 'pending') overall = 'in_review';
-  return { dd, agreement, licensing, overall };
-}
-
-function LegalDrawer({ site, state, onClose, onRefresh, onOpenDetail }) {
-  if (!site) return null;
-  const data = state.data;
-  const summary = legalSummary(data);
-
-  return (
-    <div style={{
-      position: 'fixed',
-      inset: 0,
-      zIndex: 50,
-      display: 'flex',
-      justifyContent: 'flex-end',
-      background: 'rgba(10, 12, 10, 0.34)',
-      backdropFilter: 'blur(2px)',
-    }}>
-      <button
-        type="button"
-        aria-label="Close Legal status"
-        onClick={onClose}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          border: 'none',
-          background: 'transparent',
-          cursor: 'default',
-        }}
-      />
-      <aside style={{
-        position: 'relative',
-        width: 'min(460px, calc(100vw - 24px))',
-        height: '100%',
-        background: 'var(--zm-surface)',
-        borderLeft: '1px solid var(--zm-line)',
-        boxShadow: '-24px 0 60px rgba(0,0,0,0.18)',
-        display: 'flex',
-        flexDirection: 'column',
-      }}>
-        <header style={{
-          padding: '18px 18px 14px',
-          borderBottom: '1px solid var(--zm-line)',
-          background: 'var(--zm-surface-2)',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-              <span style={{
-                width: 34,
-                height: 34,
-                borderRadius: 10,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--zm-accent)',
-                border: '1px solid var(--zm-accent)',
-                background: 'var(--zm-accent-soft, transparent)',
-                flex: '0 0 auto',
-              }}>
-                <Icon name="shield" size={17}/>
-              </span>
-              <div style={{ minWidth: 0 }}>
-                <div style={{
-                  fontFamily: 'var(--zm-font-body)',
-                  fontSize: 11,
-                  fontWeight: 800,
-                  color: 'var(--zm-fg-3)',
-                  letterSpacing: '0.14em',
-                  textTransform: 'uppercase',
-                }}>
-                  Legal & Compliance
-                </div>
-                <div style={{
-                  fontFamily: 'var(--zm-font-body)',
-                  fontSize: 16,
-                  fontWeight: 800,
-                  color: 'var(--zm-fg)',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}>
-                  {site.name}
-                </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close Legal status"
-              style={{
-                width: 32,
-                height: 32,
-                padding: 0,
-                border: '1px solid var(--zm-line)',
-                borderRadius: 8,
-                background: 'var(--zm-surface)',
-                color: 'var(--zm-fg-2)',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Icon name="x" size={13}/>
-            </button>
-          </div>
-        </header>
-
-        <div style={{ padding: 18, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {state.status === 'loading' && (
-            <div style={{ padding: 24, color: 'var(--zm-fg-3)', textAlign: 'center' }}>Loading legal status...</div>
-          )}
-
-          {state.status === 'error' && (
-            <div style={{
-              padding: 14,
-              border: '1px solid var(--zm-danger, #B91C1C)',
-              borderRadius: 10,
-              color: 'var(--zm-danger, #B91C1C)',
-              background: 'rgba(185,28,28,0.06)',
-              fontFamily: 'var(--zm-font-body)',
-              fontSize: 13,
-            }}>
-              {state.error}
-            </div>
-          )}
-
-          {state.status === 'ready' && (
-            <>
-              <section style={{
-                border: '1px solid var(--zm-line)',
-                borderRadius: 12,
-                padding: 14,
-                background: 'var(--zm-bg)',
-              }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 10,
-                  paddingBottom: 10,
-                  borderBottom: '1px solid var(--zm-line-faint)',
-                }}>
-                  <div>
-                    <div style={{
-                      fontFamily: 'var(--zm-font-body)',
-                      fontSize: 11,
-                      fontWeight: 800,
-                      color: 'var(--zm-fg-3)',
-                      letterSpacing: '0.12em',
-                      textTransform: 'uppercase',
-                    }}>
-                      Overall Legal Status
-                    </div>
-                    <div style={{ marginTop: 3, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-2)' }}>
-                      {STAGE_LABELS[data.siteStatus] || pretty(data.siteStatus)}
-                    </div>
-                  </div>
-                  <StatusChip value={summary.overall}/>
-                </div>
-
-                <DetailLine label="Due Diligence Status" value={summary.dd}/>
-                <DetailLine label="Agreement Generation / Execution" value={summary.agreement}/>
-                <DetailLine label="Licenses / Permits Tracking" value={summary.licensing}/>
-              </section>
-
-              <section style={{
-                border: '1px solid var(--zm-line)',
-                borderRadius: 12,
-                padding: 14,
-                background: 'var(--zm-surface)',
-              }}>
-                <div style={{
-                  fontFamily: 'var(--zm-font-body)',
-                  fontSize: 11,
-                  fontWeight: 800,
-                  color: 'var(--zm-fg-3)',
-                  letterSpacing: '0.12em',
-                  textTransform: 'uppercase',
-                  marginBottom: 10,
-                }}>
-                  Source records
-                </div>
-                <p style={{
-                  margin: 0,
-                  fontFamily: 'var(--zm-font-body)',
-                  fontSize: 13,
-                  lineHeight: 1.5,
-                  color: 'var(--zm-fg-2)',
-                }}>
-                  Status is read from the site mirror columns and published Legal rows. Legal users update these values in the Legal module.
-                </p>
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-                  gap: 8,
-                  marginTop: 12,
-                }}>
-                  <StatusSource label="DD row" present={Boolean(data.dd)}/>
-                  <StatusSource label="Agreement" present={Boolean(data.agreement)}/>
-                  <StatusSource label="Licensing" present={Boolean(data.licensing)}/>
-                </div>
-              </section>
-            </>
-          )}
-        </div>
-
-        <footer style={{
-          marginTop: 'auto',
-          padding: 14,
-          borderTop: '1px solid var(--zm-line)',
-          display: 'flex',
-          gap: 8,
-          justifyContent: 'flex-end',
-          background: 'var(--zm-surface)',
-        }}>
-          <button
-            type="button"
-            onClick={onRefresh}
-            style={{
-              height: 34,
-              padding: '0 12px',
-              border: '1px solid var(--zm-line)',
-              borderRadius: 8,
-              background: 'var(--zm-bg)',
-              color: 'var(--zm-fg)',
-              fontFamily: 'var(--zm-font-body)',
-              fontSize: 12,
-              fontWeight: 800,
-              cursor: 'pointer',
-            }}
-          >
-            Refresh status
-          </button>
-          <button
-            type="button"
-            onClick={() => onOpenDetail(site)}
-            style={{
-              height: 34,
-              padding: '0 12px',
-              border: 'none',
-              borderRadius: 8,
-              background: 'var(--zm-accent)',
-              color: '#fff',
-              fontFamily: 'var(--zm-font-body)',
-              fontSize: 12,
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            Full flow <Icon name="arrow" size={12}/>
-          </button>
-        </footer>
-      </aside>
-    </div>
-  );
-}
-
-function StatusSource({ label, present }) {
-  return (
-    <div style={{
-      padding: '10px 8px',
-      borderRadius: 9,
-      border: '1px solid var(--zm-line-faint)',
-      background: present ? 'rgba(45,122,72,0.06)' : 'var(--zm-surface-2)',
-      textAlign: 'center',
-    }}>
-      <div style={{
-        fontFamily: 'var(--zm-font-body)',
-        fontSize: 10,
-        fontWeight: 800,
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase',
-        color: present ? 'var(--zm-success, #2D7A48)' : 'var(--zm-fg-3)',
-      }}>
-        {present ? 'Present' : 'Pending'}
-      </div>
-      <div style={{ marginTop: 4, fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-2)' }}>
-        {label}
-      </div>
-    </div>
-  );
-}
-
 export default function SiteTrackerListPage() {
   const navigate = useNavigate();
   const [state, setState] = React.useState({ status: 'loading', items: [], error: null });
   const [filter, setFilter] = React.useState('all');
   const [query, setQuery] = React.useState('');
-  const [activeSite, setActiveSite] = React.useState(null);
-  const [drawerState, setDrawerState] = React.useState({ status: 'idle', data: null, error: null });
 
   const loadSites = React.useCallback(() => {
     let cancelled = false;
@@ -798,35 +473,9 @@ export default function SiteTrackerListPage() {
 
   React.useEffect(() => loadSites(), [loadSites]);
 
-  const loadLegalStatus = React.useCallback((site) => {
-    if (!site?.id) return undefined;
-    let cancelled = false;
-    setDrawerState({ status: 'loading', data: null, error: null });
-    getSiteTrackerView(site.id)
-      .then((data) => {
-        if (cancelled) return;
-        setDrawerState({ status: 'ready', data, error: null });
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setDrawerState({
-          status: 'error',
-          data: null,
-          error: err?.detail || err?.message || 'Failed to load legal status',
-        });
-      });
-    return () => { cancelled = true; };
-  }, []);
-
-  React.useEffect(() => {
-    if (!activeSite) return undefined;
-    return loadLegalStatus(activeSite);
-  }, [activeSite, loadLegalStatus]);
-
   useSiteDataRefresh(React.useCallback(() => {
     loadSites();
-    if (activeSite) loadLegalStatus(activeSite);
-  }, [activeSite, loadLegalStatus, loadSites]));
+  }, [loadSites]));
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -849,6 +498,12 @@ export default function SiteTrackerListPage() {
 
   const openDetail = React.useCallback((site) => {
     navigate(siteTrackerDetailRoute(site.id));
+  }, [navigate]);
+
+  // Legal node opens the single canonical Legal status page — the same page the
+  // staging "View" button and the DD-failed queue navigate to. One Legal surface.
+  const openLegal = React.useCallback((site) => {
+    navigate(bdSiteStatusRoute(site.id));
   }, [navigate]);
 
   return (
@@ -904,23 +559,12 @@ export default function SiteTrackerListPage() {
             <PipelineRow
               key={site.id}
               site={site}
-              onOpenLegal={setActiveSite}
+              onOpenLegal={openLegal}
               onOpenDetail={openDetail}
             />
           ))}
         </div>
       )}
-
-      <LegalDrawer
-        site={activeSite}
-        state={drawerState}
-        onClose={() => setActiveSite(null)}
-        onRefresh={() => {
-          if (activeSite) loadLegalStatus(activeSite);
-          loadSites();
-        }}
-        onOpenDetail={openDetail}
-      />
     </div>
   );
 }

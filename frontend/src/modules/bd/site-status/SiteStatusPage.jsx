@@ -37,6 +37,42 @@ function tone(value) {
   return { color: 'var(--zm-fg-3)', label: 'Pending' };
 }
 
+// Roll-up tone for the top overview strip (legal_dd / agreement / licensing).
+function summaryTone(value) {
+  const v = String(value ?? 'pending').toLowerCase();
+  if (['positive', 'complete', 'registered', 'executed', 'signed', 'yes', 'approved'].includes(v)) {
+    return 'var(--zm-success)';
+  }
+  if (['negative', 'rejected', 'no', 'failed'].includes(v)) return 'var(--zm-danger)';
+  if (v === 'pending' || v === '' || v === 'null' || v === 'undefined') return 'var(--zm-fg-3)';
+  return 'var(--zm-accent)';
+}
+
+function prettyStatus(value) {
+  if (value == null || value === '') return 'Pending';
+  return String(value).replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function OverviewTile({ label, value, display }) {
+  const color = summaryTone(value);
+  return (
+    <div style={{
+      padding: '12px 14px', borderRadius: 10,
+      border: '1px solid var(--zm-line)', background: 'var(--zm-surface)',
+      borderTop: `2px solid ${color}`,
+      display: 'flex', flexDirection: 'column', gap: 4,
+    }}>
+      <span style={{
+        fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9.5,
+        letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--zm-fg-3)',
+      }}>{label}</span>
+      <span style={{
+        fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 14, color,
+      }}>{display ?? prettyStatus(value)}</span>
+    </div>
+  );
+}
+
 function ChecklistRow({ row, value, onRequestFlip, pendingRequest }) {
   const t = tone(value);
   const canFlip = value === 'no' && !pendingRequest && onRequestFlip;
@@ -134,7 +170,25 @@ export default function SiteStatusPage() {
     return <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>Loading status…</div>;
   }
   if (state.status === 'error') {
-    return <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{state.error}</div>;
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{state.error}</div>
+        <div>
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            style={{
+              height: 32, padding: '0 14px', border: '1px solid var(--zm-line)',
+              borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg)',
+              fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            ← Back
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const d = state.data;
@@ -172,6 +226,15 @@ export default function SiteStatusPage() {
           )}
         </div>
       )}
+
+      <section className="zm-glass" style={{
+        borderRadius: 12, padding: 16,
+        display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12,
+      }}>
+        <OverviewTile label="Due diligence" value={d.legalDdStatus}/>
+        <OverviewTile label="Agreement" value={agreementStatus} display={agreementStatusLabel(agreementStatus)}/>
+        <OverviewTile label="Licensing" value={d.licensingStatus}/>
+      </section>
 
       <section className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
         <div style={{

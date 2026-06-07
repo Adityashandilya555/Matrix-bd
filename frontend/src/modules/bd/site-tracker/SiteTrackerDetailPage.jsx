@@ -8,7 +8,7 @@ import {
   requestFinanceApproval,
   approveFinance,
 } from '../../../services/api/siteTrackerApi.js';
-import { ROUTES } from '../../../router/routes.js';
+import { bdSiteStatusRoute } from '../../../router/routes.js';
 import { agreementStatusLabel, normalizeAgreementStatus } from '../../../lib/agreementStatus.js';
 import { useSession } from '../../../state/SessionContext.jsx';
 import { useSiteDataRefresh } from '../../../hooks/useSiteDataRefresh.js';
@@ -43,32 +43,7 @@ const NODE_TONES = {
   },
 };
 
-const DD_LABELS = [
-  ['title_doc',       'Title / ownership'],
-  ['sanctioned_plan', 'Sanctioned plan'],
-  ['oc_cc',           'OC / CC'],
-  ['commercial_use',  'Commercial usage'],
-  ['property_tax',    'Property tax'],
-  ['electricity',     'Electricity connection'],
-  ['fire_noc',        'Fire NOC'],
-];
-
-const LIC_LABELS = [
-  ['fssai',           'FSSAI license'],
-  ['health_trade',    'Health / trade license'],
-  ['shops_estab_reg', 'Shops & establishment'],
-  ['fire_noc',        'Fire NOC'],
-  ['storage_license', 'Storage license'],
-];
-
 const ACTIVE_PROJECT_STATUSES = new Set(['pending', 'allocated', 'budgeting', 'in_progress']);
-
-function valueTone(value) {
-  if (value === 'yes')  return { color: 'var(--zm-success, #2D7A48)', label: 'Yes' };
-  if (value === 'no')   return { color: 'var(--zm-danger,  #B91C1C)', label: 'No'  };
-  if (!value || value === 'pending') return { color: 'var(--zm-fg-3)', label: 'Pending' };
-  return { color: 'var(--zm-fg-2)', label: String(value) };
-}
 
 function verdictTone(verdict) {
   if (verdict === 'positive') return { color: 'var(--zm-success, #2D7A48)', label: 'POSITIVE' };
@@ -224,165 +199,6 @@ function NodeDiagram({ selected, onSelect, data }) {
         })}
       </div>
     </div>
-  );
-}
-
-function ChecklistList({ rows, source }) {
-  if (!source) {
-    return (
-      <div style={{ padding: 14, color: 'var(--zm-fg-3)', fontStyle: 'italic', fontSize: 13 }}>
-        Awaiting publish.
-      </div>
-    );
-  }
-  return (
-    <div>
-      {rows.map(([key, label]) => {
-        const t = valueTone(source[key]);
-        return (
-          <div key={key} style={{
-            display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 90px',
-            gap: 12, padding: '10px 14px', alignItems: 'center',
-            borderBottom: '1px solid var(--zm-line-faint)',
-          }}>
-            <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>
-              {label}
-            </span>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              height: 22, padding: '0 8px', borderRadius: 4,
-              border: `1px solid ${t.color}`, color: t.color,
-              fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 10.5,
-              letterSpacing: '0.12em', textTransform: 'uppercase',
-              justifySelf: 'end',
-            }}>{t.label}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function LegalPanel({ data, onClose }) {
-  const dd = data.dd;
-  const ag = data.agreement;
-  const lic = data.licensing;
-  const verdict = verdictTone(dd?.final_verdict);
-  const agreementStatus = normalizeAgreementStatus(data);
-
-  return (
-    <aside style={{
-      width: 380, flex: '0 0 380px',
-      background: 'var(--zm-surface)', border: '1px solid var(--zm-line)',
-      borderRadius: 12, boxShadow: 'var(--zm-shadow-1)',
-      display: 'flex', flexDirection: 'column', maxHeight: '78vh', overflow: 'hidden',
-    }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 16px', borderBottom: '1px solid var(--zm-line)',
-        background: 'var(--zm-surface-2)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Icon name="shield" size={14}/>
-          <span style={{
-            fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 11.5,
-            letterSpacing: '0.12em', textTransform: 'uppercase',
-          }}>
-            Legal · summary
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close legal panel"
-          style={{
-            width: 28, height: 28, padding: 0, border: '1px solid var(--zm-line)',
-            borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)',
-            cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          <Icon name="x" size={12}/>
-        </button>
-      </div>
-
-      <div style={{ overflowY: 'auto' }}>
-        <section>
-          <div style={{
-            padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            borderBottom: '1px solid var(--zm-line)',
-          }}>
-            <span style={{
-              fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 11,
-              letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-2)',
-            }}>1 · Due diligence</span>
-            <span style={{
-              fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 10.5,
-              letterSpacing: '0.12em', color: verdict.color,
-            }}>{verdict.label}</span>
-          </div>
-          <ChecklistList rows={DD_LABELS} source={dd}/>
-          {dd?.rejection_reason && (
-            <div style={{
-              padding: '10px 14px', color: 'var(--zm-danger, #B91C1C)', fontSize: 12.5,
-              borderBottom: '1px solid var(--zm-line-faint)',
-            }}>
-              Reason: {dd.rejection_reason}
-            </div>
-          )}
-        </section>
-
-        <section>
-          <div style={{
-            padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            borderBottom: '1px solid var(--zm-line)', background: 'var(--zm-surface-2)',
-          }}>
-            <span style={{
-              fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 11,
-              letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-2)',
-            }}>2 · Agreement</span>
-            <span style={{
-              fontFamily: 'var(--zm-font-body)', fontSize: 11,
-              color: 'var(--zm-fg-2)',
-            }}>{agreementStatusLabel(agreementStatus)}</span>
-          </div>
-          {!ag ? (
-            <div style={{ padding: 14, color: 'var(--zm-fg-3)', fontStyle: 'italic', fontSize: 13 }}>
-              Awaiting publish.
-            </div>
-          ) : (
-            <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12.5 }}>
-              <div>Executed: <strong>{ag.signed ? 'yes' : 'no'}</strong>
-                {ag.signed_at ? ` · ${new Date(ag.signed_at).toLocaleDateString()}` : ''}
-              </div>
-              <div>Registered: <strong>{ag.registered ? 'yes' : 'no'}</strong>
-                {ag.registered_at ? ` · ${new Date(ag.registered_at).toLocaleDateString()}` : ''}
-              </div>
-              {ag.document_url && (
-                <a href={ag.document_url} target="_blank" rel="noopener noreferrer"
-                  style={{ color: 'var(--zm-accent)', fontWeight: 700 }}>Open document ↗</a>
-              )}
-            </div>
-          )}
-        </section>
-
-        <section>
-          <div style={{
-            padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            borderBottom: '1px solid var(--zm-line)',
-          }}>
-            <span style={{
-              fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 11,
-              letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-2)',
-            }}>3 · Licensing</span>
-            <span style={{
-              fontFamily: 'var(--zm-font-body)', fontSize: 11,
-              color: 'var(--zm-fg-2)',
-            }}>{data.licensingStatus || 'pending'}</span>
-          </div>
-          <ChecklistList rows={LIC_LABELS} source={lic}/>
-        </section>
-      </div>
-    </aside>
   );
 }
 
@@ -783,7 +599,9 @@ export default function SiteTrackerDetailPage() {
   const [state, setState] = React.useState({ status: 'loading', data: null, error: null });
   const requestedNode = searchParams.get('node');
   const [selectedNode, setSelectedNode] = React.useState(
-    NODES.some((node) => node.id === requestedNode) ? requestedNode : 'legal',
+    NODES.some((node) => node.id === requestedNode) && requestedNode !== 'legal'
+      ? requestedNode
+      : null,
   );
 
   const load = React.useCallback((silent = false) => {
@@ -800,8 +618,14 @@ export default function SiteTrackerDetailPage() {
   React.useEffect(() => { load(); }, [load]);
   useSiteDataRefresh(React.useCallback(() => load(true), [load]), { siteId });
   React.useEffect(() => {
-    if (NODES.some((node) => node.id === requestedNode)) setSelectedNode(requestedNode);
-  }, [requestedNode]);
+    // Legal is its own full page now; if a stale ?node=legal link arrives,
+    // forward to the canonical Legal status page instead of selecting a node.
+    if (requestedNode === 'legal') {
+      navigate(bdSiteStatusRoute(siteId), { replace: true });
+    } else if (NODES.some((node) => node.id === requestedNode)) {
+      setSelectedNode(requestedNode);
+    }
+  }, [requestedNode, navigate, siteId]);
 
   if (state.status === 'loading') {
     return <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>Loading…</div>;
@@ -816,6 +640,13 @@ export default function SiteTrackerDetailPage() {
   // Use CA code as the display identifier once it's set
   const displayCode = data.caCode || data.siteCode || data.siteId;
 
+  // Legal opens the single canonical Legal status page (same page the staging
+  // "View" button opens); the other nodes still open their in-place panel.
+  const handleNodeSelect = (nodeId) => {
+    if (nodeId === 'legal') { navigate(bdSiteStatusRoute(siteId)); return; }
+    setSelectedNode(nodeId);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <PageHeader
@@ -828,7 +659,7 @@ export default function SiteTrackerDetailPage() {
 
       <NodeDiagram
         selected={selectedNode}
-        onSelect={setSelectedNode}
+        onSelect={handleNodeSelect}
         data={data}
       />
 
@@ -869,15 +700,13 @@ export default function SiteTrackerDetailPage() {
               </div>
             )}
             <p style={{ margin: 0, fontSize: 12, color: 'var(--zm-fg-3)' }}>
-              Click <strong>Legal</strong> for the DD / agreement / licensing summary.
-              Click <strong>CA / Commercial Code</strong> to manage the finance workflow.
+              Click <strong>Legal</strong> to open the full legal status page — DD,
+              agreement, licensing &amp; flip-to-Yes requests. Click{' '}
+              <strong>CA / Commercial Code</strong> to manage the finance workflow.
             </p>
           </div>
         </div>
 
-        {activeNode?.id === 'legal' && (
-          <LegalPanel data={data} onClose={() => setSelectedNode(null)}/>
-        )}
         {activeNode?.id === 'ca' && (
           <FinancePanel
             data={data}
