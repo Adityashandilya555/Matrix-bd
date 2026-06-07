@@ -61,6 +61,8 @@ const LIC_LABELS = [
   ['storage_license', 'Storage license'],
 ];
 
+const ACTIVE_PROJECT_STATUSES = new Set(['pending', 'allocated', 'budgeting', 'in_progress']);
+
 function valueTone(value) {
   if (value === 'yes')  return { color: 'var(--zm-success, #2D7A48)', label: 'Yes' };
   if (value === 'no')   return { color: 'var(--zm-danger,  #B91C1C)', label: 'No'  };
@@ -79,7 +81,7 @@ function NodeCard({ node, selected, onClick, state, statusOverride }) {
   const greyed = state === 'future';
   const defaultLabel =
     state === 'complete' ? (node.id === 'loi' ? 'DONE' : 'COMPLETE') :
-    state === 'active' ? (node.id === 'ca' ? 'PENDING' : 'OPEN') :
+    state === 'active' ? (node.id === 'ca' || node.id === 'project' ? 'PENDING' : 'OPEN') :
     'QUEUED';
   const statusLabel = statusOverride?.label ?? defaultLabel;
   const statusColor = statusOverride?.color ?? tone.color;
@@ -127,6 +129,15 @@ function financeStatusOverride(financeStatus) {
   return null; // default 'OPEN'
 }
 
+function projectStatusOverride(data) {
+  const projectStatus = data?.projectStatus;
+  if (projectStatus === 'done') return { label: 'DONE', color: 'var(--zm-success, #2D7A48)' };
+  if (data?.designStatus === 'approved' && (ACTIVE_PROJECT_STATUSES.has(projectStatus) || !projectStatus)) {
+    return { label: 'PENDING', color: 'var(--zm-warning, #B45309)' };
+  }
+  return null;
+}
+
 function legalNodeState(data) {
   if (data.siteStatus === 'legal_rejected' || data.legalDdStatus === 'negative') return 'rejected';
   if (
@@ -149,6 +160,12 @@ function detailNodeState(data, nodeId) {
   if (nodeId === 'design') {
     if (data.designStatus === 'approved') return 'complete';
     if (data.financeStatus === 'approved' && data.siteStatus === 'pushed_to_payments') return 'active';
+  }
+  if (nodeId === 'project') {
+    if (data.projectStatus === 'done') return 'complete';
+    if (data.designStatus === 'approved') {
+      if (!data.projectStatus || ACTIVE_PROJECT_STATUSES.has(data.projectStatus)) return 'active';
+    }
   }
   return 'future';
 }
@@ -194,7 +211,13 @@ function NodeDiagram({ selected, onSelect, data }) {
                 selected={selected === n.id}
                 onClick={() => onSelect(n.id)}
                 state={state}
-                statusOverride={n.id === 'ca' ? financeStatusOverride(data.financeStatus) : undefined}
+                statusOverride={
+                  n.id === 'ca'
+                    ? financeStatusOverride(data.financeStatus)
+                    : n.id === 'project'
+                      ? projectStatusOverride(data)
+                      : undefined
+                }
               />
             </React.Fragment>
           );
@@ -775,7 +798,7 @@ export default function SiteTrackerDetailPage() {
   }, [siteId]);
 
   React.useEffect(() => { load(); }, [load]);
-  useSiteDataRefresh(React.useCallback(() => load(true), [load]));
+  useSiteDataRefresh(React.useCallback(() => load(true), [load]), { siteId });
   React.useEffect(() => {
     if (NODES.some((node) => node.id === requestedNode)) setSelectedNode(requestedNode);
   }, [requestedNode]);

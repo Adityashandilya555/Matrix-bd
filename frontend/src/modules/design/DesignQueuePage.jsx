@@ -81,7 +81,7 @@ export default function DesignQueuePage() {
   }, []);
 
   React.useEffect(() => load(), [load]);
-  useSiteDataRefresh(load);
+  useSiteDataRefresh(load, { sources: ['design', 'businessAdmin', 'siteTrackerApi', 'legalApi'] });
 
   const open = (row) => navigate(designSiteRoute(row.siteId));
 

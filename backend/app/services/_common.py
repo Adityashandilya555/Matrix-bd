@@ -90,6 +90,7 @@ def site_to_response(
     created_by_name: str | None = None,
     assigned_to_name: str | None = None,
     details: models.SiteDetail | None = None,
+    project: models.ProjectReview | None = None,
 ) -> SiteResponse:
     """Map an ORM Site into the API SiteResponse Pydantic model."""
     rent = _float_or_none(site.expected_rent)
@@ -141,6 +142,9 @@ def site_to_response(
         agreement_status=site.agreement_status,
         licensing_status=site.licensing_status,
         design_status=site.design_status,
+        project_status=project.project_status if project else None,
+        project_current_stage=project.current_stage if project else None,
+        project_budget_status=project.budget_status if project else None,
     )
 
 

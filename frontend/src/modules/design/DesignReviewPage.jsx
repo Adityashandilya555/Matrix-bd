@@ -9,6 +9,7 @@ import {
   getDesignReview, allocateDesign, revokeDesignAllocation,
   listDesignDelegationsForSite, submitDeliverable, uploadDeliverable, reviewDeliverable,
 } from '../../services/api/designApi.js';
+import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 
 const KINDS = ['recce', '2d', '3d', 'boq'];
 const KIND_LABEL = { recce: 'Recce', '2d': '2D design', '3d': '3D design', boq: 'BOQ + estimate' };
@@ -206,6 +207,11 @@ export default function DesignReviewPage() {
   }, [siteId]);
 
   React.useEffect(() => { load(); }, [load]);
+  useSiteDataRefresh(load, {
+    siteId,
+    sources: ['design', 'businessAdmin'],
+    skipWhen: () => busy,
+  });
 
   // Supervisor: load their design team + the active allocation for this site.
   const designStatus = review?.designStatus;

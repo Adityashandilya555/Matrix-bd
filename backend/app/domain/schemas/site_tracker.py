@@ -29,6 +29,9 @@ class SiteTrackerResponse(BaseModel):
     agreement_status: Optional[str] = None
     licensing_status: Optional[str] = None
     design_status:    Optional[str] = None
+    project_status:   Optional[str] = None
+    project_current_stage: Optional[str] = None
+    project_budget_status: Optional[str] = None
 
     # Only published rows surface to BD. If U3 has not landed yet, the
     # backend treats absent `stage` columns as "published" (see service).

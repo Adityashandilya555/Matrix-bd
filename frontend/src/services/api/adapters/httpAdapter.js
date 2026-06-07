@@ -171,6 +171,9 @@ function siteFromServer(s) {
     agreementStatus: s.agreement_status,
     licensingStatus: s.licensing_status,
     designStatus: s.design_status,
+    projectStatus: s.project_status,
+    projectCurrentStage: s.project_current_stage,
+    projectBudgetStatus: s.project_budget_status,
   };
 }
 
