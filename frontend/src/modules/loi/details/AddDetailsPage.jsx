@@ -26,11 +26,19 @@ function PhotoPicker({ photos, onAdd, onRemove, uploadingIds = new Set() }) {
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
         {photos.map(p => (
-          <div key={p.id} className="zm-photo-tile" style={{ position: 'relative', aspectRatio: '4 / 3', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--zm-line)', background: p.url ? `url(${p.url}) center/cover` : 'var(--zm-surface-2)' }}>
+          <div key={p.id} className="zm-photo-tile" style={{ position: 'relative', aspectRatio: '4 / 3', borderRadius: 10, overflow: 'hidden', border: '1px solid ' + (p.uploadFailed ? 'var(--zm-danger)' : 'var(--zm-line)'), background: p.url ? `url(${p.url}) center/cover` : 'var(--zm-surface-2)' }}>
             {/* Upload-in-progress spinner overlay */}
             {uploadingIds.has(p.id) && (
               <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(11,12,16,0.45)', borderRadius: 10 }}>
                 <span style={{ width: 18, height: 18, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'zm-spin 0.7s linear infinite' }}/>
+              </div>
+            )}
+            {/* Upload-failed overlay — surfaces a silent persistence failure so the
+                user knows the photo did NOT save (it would otherwise vanish on reopen). */}
+            {p.uploadFailed && !uploadingIds.has(p.id) && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, background: 'rgba(155,42,42,0.80)', color: '#fff', textAlign: 'center', padding: 6 }}>
+                <Icon name="alert" size={16}/>
+                <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 9.5, fontWeight: 700, lineHeight: 1.2 }}>Upload failed — remove &amp; retry</span>
               </div>
             )}
             <button onClick={() => onRemove(p.id)} title="Remove" className="zm-photo-del" style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, padding: 0, border: 'none', borderRadius: 999, background: 'rgba(11,12,16,0.7)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Icon name="x" size={12}/></button>
@@ -151,8 +159,15 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
         ),
       }));
     } catch {
-      // Upload failed — photo stays in state with blob URL for preview,
-      // marked as not persisted. User can remove and re-add to retry.
+      // Upload failed — flag the tile (red "Upload failed" overlay) so the user
+      // knows it did NOT persist, instead of leaving a blob-only preview that
+      // silently disappears when the draft is reopened.
+      setF(prev => ({
+        ...prev,
+        photos: prev.photos.map(p =>
+          p.id === photoEntry.id ? { ...p, uploadFailed: true, persisted: false } : p
+        ),
+      }));
     } finally {
       setUploadingPhotoIds(prev => { const s = new Set(prev); s.delete(photoEntry.id); return s; });
     }
