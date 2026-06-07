@@ -137,12 +137,20 @@ export function SitesProvider({ children }) {
   const [error, setError] = useState(null);
   const { user, session, role } = useSession();
 
-  // Initial load from service
+  // Load on mount AND whenever the signed-in identity or active role changes
+  // (re-login or the role switcher). Without the identity key the store kept the
+  // first session's cached list, so a delegated executive never saw sites the
+  // backend now scopes to them. Keyed on primitives so it doesn't re-run every
+  // render.
+  const identityKey = session?.userId || session?.id || session?.email || '';
   useEffect(() => {
+    let alive = true;
+    setLoading(true);
     siteService.listSites()
-      .then(data => { setSites(data); setLoading(false); })
-      .catch(err => { setError(err.message); setLoading(false); });
-  }, []);
+      .then(data => { if (alive) { setSites(data); setLoading(false); } })
+      .catch(err => { if (alive) { setError(err.message); setLoading(false); } });
+    return () => { alive = false; };
+  }, [identityKey, role]);
 
   // Refresh helper — re-fetches entire list from service
   const refresh = useCallback(async () => {
@@ -165,10 +173,15 @@ export function SitesProvider({ children }) {
     };
     window.addEventListener('focus', run);
     document.addEventListener('visibilitychange', onVisible);
+    // Background poll: surfaces cross-session changes — e.g. a supervisor
+    // delegating a site to this executive — in the sidebar/queues without a
+    // manual refresh or tab re-focus.
+    const pollId = window.setInterval(run, 30000);
     return () => {
       unsubscribe();
       window.removeEventListener('focus', run);
       document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(pollId);
     };
   }, [refresh]);
 
