@@ -242,8 +242,15 @@ async def svc_project_history(
     *,
     tenant_id: str | UUID,
     status_filter: str = "all",
+    restrict_to_site_ids: Optional[list[str]] = None,
 ) -> ProjectHistoryResponse:
-    """Read-only Project history for sites that reached or entered Project."""
+    """Read-only Project history for sites that reached or entered Project.
+
+    Executives pass `restrict_to_site_ids` (their project-delegated sites); a
+    supervisor passes None and sees the whole tenant's project history.
+    """
+    if restrict_to_site_ids is not None and not restrict_to_site_ids:
+        return ProjectHistoryResponse(items=[], total=0)
     stmt = (
         select(models.Site, models.ProjectReview)
         .outerjoin(models.ProjectReview, models.ProjectReview.site_id == models.Site.id)
@@ -267,6 +274,9 @@ async def svc_project_history(
         stmt = stmt.where(models.ProjectReview.project_status == "done")
     elif status_filter == "rejected":
         stmt = stmt.where(models.ProjectReview.budget_status == "rejected")
+
+    if restrict_to_site_ids is not None:
+        stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
 
     rows = (await session.execute(
         stmt.order_by(

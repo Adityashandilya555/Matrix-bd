@@ -109,7 +109,15 @@ async def design_history(
     tenant_id: TenantId,
     status_filter: str = "all",
 ) -> DesignHistoryResponse:
-    return await svc_design_history(db, tenant_id=tenant_id, status_filter=status_filter)
+    # Executives only see design history for sites delegated to them. Supervisors see all.
+    restrict_to: Optional[list[str]] = None
+    if _is_executive(current_user):
+        restrict_to = await svc_assigned_sites(
+            db, tenant_id=tenant_id, user_id=current_user["sub"], module="design",
+        )
+    return await svc_design_history(
+        db, tenant_id=tenant_id, status_filter=status_filter, restrict_to_site_ids=restrict_to,
+    )
 
 
 # ── Business-admin GFC gate (require_role only — NO module guard) ─────────────

@@ -7,13 +7,14 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.core.deps import DbDep, TenantId
 from app.domain.schemas.common import OkResponse
 from app.domain.schemas.loi import LOIUploadResponse, LOIViewResponse, SetLOITimelineRequest
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
+from app.services._common import fetch_site_or_404
 from app.services.loi_service import svc_set_loi_timeline, svc_upload_loi, svc_view_loi
 
 router = APIRouter(prefix="/loi", tags=["LOI"])
@@ -54,6 +55,12 @@ async def view_loi(
     ],
     tenant_id: TenantId,
 ) -> LOIViewResponse:
+    # Executives can only view the LOI of a site they own (submitted or assigned).
+    if (current_user.get("role") or "").lower() == Role.EXECUTIVE.value:
+        site = await fetch_site_or_404(db, site_id=site_id, tenant_id=tenant_id)
+        uid = str(current_user["sub"])
+        if str(site.submitted_by) != uid and str(site.assigned_to or "") != uid:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
     return await svc_view_loi(db, tenant_id=tenant_id, site_id=site_id)
 
 

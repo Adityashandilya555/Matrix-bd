@@ -220,7 +220,7 @@ async def bd_dd_failed_queue(
     current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))],
     tenant_id: TenantId,
 ) -> DdFailedListResponse:
-    return await svc_bd_dd_failed_queue(db, tenant_id=tenant_id)
+    return await svc_bd_dd_failed_queue(db, tenant_id=tenant_id, user=current_user)
 
 
 # ── Change requests opened by BD against legal fields ───────────────────────

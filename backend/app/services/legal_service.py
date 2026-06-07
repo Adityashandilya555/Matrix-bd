@@ -345,8 +345,15 @@ async def svc_legal_rejected_sites(
     session: AsyncSession,
     *,
     tenant_id: str | UUID,
+    restrict_to_site_ids: Optional[list[str]] = None,
 ) -> LegalRejectedSitesResponse:
-    """Read-only Legal dashboard list for sites rejected during DD."""
+    """Read-only Legal dashboard list for sites rejected during DD.
+
+    Executives pass `restrict_to_site_ids` (their legal-delegated sites) so they
+    only see rejections they own; supervisors pass None and see the whole tenant.
+    """
+    if restrict_to_site_ids is not None and not restrict_to_site_ids:
+        return LegalRejectedSitesResponse(items=[], total=0)
     stmt = (
         select(models.Site)
         .where(
@@ -355,6 +362,8 @@ async def svc_legal_rejected_sites(
         )
         .order_by(desc(models.Site.legal_rejected_at).nulls_last(), desc(models.Site.updated_at))
     )
+    if restrict_to_site_ids is not None:
+        stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
     sites = (await session.execute(stmt)).scalars().all()
 
     items: list[LegalRejectedSiteItem] = []
@@ -379,8 +388,15 @@ async def svc_legal_history(
     *,
     tenant_id: str | UUID,
     status_filter: str = "all",
+    restrict_to_site_ids: Optional[list[str]] = None,
 ) -> LegalHistoryResponse:
-    """Read-only Legal history for sites that have touched the Legal module."""
+    """Read-only Legal history for sites that have touched the Legal module.
+
+    Executives pass `restrict_to_site_ids` (their legal-delegated sites); a
+    supervisor passes None and sees the whole tenant's legal history.
+    """
+    if restrict_to_site_ids is not None and not restrict_to_site_ids:
+        return LegalHistoryResponse(items=[], total=0)
     stmt = (
         select(models.Site)
         .where(
@@ -427,6 +443,9 @@ async def svc_legal_history(
                 models.Site.legal_dd_status == "negative",
             )
         )
+
+    if restrict_to_site_ids is not None:
+        stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
 
     stmt = stmt.order_by(
         desc(models.Site.legal_rejected_at).nulls_last(),

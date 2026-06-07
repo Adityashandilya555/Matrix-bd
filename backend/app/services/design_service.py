@@ -280,8 +280,15 @@ async def svc_design_history(
     *,
     tenant_id: str | UUID,
     status_filter: str = "all",
+    restrict_to_site_ids: Optional[list[str]] = None,
 ) -> DesignHistoryResponse:
-    """Read-only Design history for sites that entered or reached Design."""
+    """Read-only Design history for sites that entered or reached Design.
+
+    Executives pass `restrict_to_site_ids` (their design-delegated sites); a
+    supervisor passes None and sees the whole tenant's design history.
+    """
+    if restrict_to_site_ids is not None and not restrict_to_site_ids:
+        return DesignHistoryResponse(items=[], total=0)
     stmt = (
         select(models.Site, models.DesignReview)
         .outerjoin(models.DesignReview, models.DesignReview.site_id == models.Site.id)
@@ -309,6 +316,9 @@ async def svc_design_history(
                 models.DesignReview.gfc_status == "rejected",
             )
         )
+
+    if restrict_to_site_ids is not None:
+        stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
 
     rows = (await session.execute(
         stmt.order_by(

@@ -21,7 +21,7 @@ from app.domain.schemas.bd_status import (
 )
 from app.domain.schemas.legal_change_request import ChangeRequestResponse
 from app.domain.state_machine import SiteStatus
-from app.services._common import fetch_site_or_404, fetch_user_name
+from app.services._common import apply_role_scope, fetch_site_or_404, fetch_user_name
 from app.services.change_request_service import svc_list_for_site
 from app.services.legal_service import (
     _fetch_agreement_or_none,
@@ -69,12 +69,13 @@ async def svc_bd_site_status(
 
 
 async def svc_bd_dd_failed_queue(
-    session: AsyncSession, *, tenant_id: str | UUID,
+    session: AsyncSession, *, tenant_id: str | UUID, user: Optional[dict] = None,
 ) -> DdFailedListResponse:
     """Sites whose legal team finalized DD as 'negative' (LEGAL_REJECTED).
 
     Surfaced as a separate BD tab so failures stand out and aren't lost in
-    the noise of the main pipeline.
+    the noise of the main pipeline. Executives only see their own sites
+    (submitted_by / assigned_to); supervisors (or user=None) see all.
     """
     stmt = (
         select(models.Site)
@@ -84,6 +85,8 @@ async def svc_bd_dd_failed_queue(
         )
         .order_by(models.Site.legal_rejected_at.desc().nulls_last())
     )
+    if user is not None:
+        stmt = apply_role_scope(stmt, model=models.Site, user=user)
     sites = (await session.execute(stmt)).scalars().all()
 
     items: list[DdFailedSiteItem] = []

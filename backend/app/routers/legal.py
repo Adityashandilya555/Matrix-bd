@@ -111,7 +111,13 @@ async def legal_rejected_sites(
     _module: InLegalModule,
     tenant_id: TenantId,
 ) -> LegalRejectedSitesResponse:
-    return await svc_legal_rejected_sites(db, tenant_id=tenant_id)
+    # Executives only see rejections for sites delegated to them. Supervisors see all.
+    restrict_to: Optional[list[str]] = None
+    if _is_executive(current_user):
+        restrict_to = await svc_assigned_sites(
+            db, tenant_id=tenant_id, user_id=current_user["sub"], module="legal",
+        )
+    return await svc_legal_rejected_sites(db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to)
 
 
 @router.get(
@@ -126,7 +132,15 @@ async def legal_history(
     tenant_id: TenantId,
     status_filter: str = "all",
 ) -> LegalHistoryResponse:
-    return await svc_legal_history(db, tenant_id=tenant_id, status_filter=status_filter)
+    # Executives only see legal history for sites delegated to them. Supervisors see all.
+    restrict_to: Optional[list[str]] = None
+    if _is_executive(current_user):
+        restrict_to = await svc_assigned_sites(
+            db, tenant_id=tenant_id, user_id=current_user["sub"], module="legal",
+        )
+    return await svc_legal_history(
+        db, tenant_id=tenant_id, status_filter=status_filter, restrict_to_site_ids=restrict_to,
+    )
 
 
 # ── Delegations ───────────────────────────────────────────────────────────────

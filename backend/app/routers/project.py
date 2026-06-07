@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.deps import DbDep, TenantId
 from app.domain.schemas.common import OkResponse
@@ -20,7 +20,7 @@ from app.domain.schemas.project import (
 )
 from app.rbac.guards import require_module, require_role
 from app.rbac.roles import Role
-from app.services.delegation_service import svc_assigned_sites
+from app.services.delegation_service import svc_assigned_sites, svc_is_delegated
 from app.services.project_service import (
     svc_admin_review_budget,
     svc_allocate_project,
@@ -74,7 +74,15 @@ async def project_history(
     tenant_id: TenantId,
     status_filter: str = "all",
 ) -> ProjectHistoryResponse:
-    return await svc_project_history(db, tenant_id=tenant_id, status_filter=status_filter)
+    # Executives only see project history for sites delegated to them. Supervisors see all.
+    restrict_to: Optional[list[str]] = None
+    if _is_executive(current_user):
+        restrict_to = await svc_assigned_sites(
+            db, tenant_id=tenant_id, user_id=current_user["sub"], module="project",
+        )
+    return await svc_project_history(
+        db, tenant_id=tenant_id, status_filter=status_filter, restrict_to_site_ids=restrict_to,
+    )
 
 
 @router.get("/history/{site_id}", response_model=ProjectStateResponse)
@@ -245,4 +253,11 @@ async def get_project(
     _module: InProjectModule,
     tenant_id: TenantId,
 ) -> ProjectStateResponse:
+    # Executives can only read a site delegated to them. Supervisors are unrestricted.
+    if _is_executive(current_user):
+        ok = await svc_is_delegated(
+            db, tenant_id=tenant_id, site_id=site_id, user_id=current_user["sub"], module="project",
+        )
+        if not ok:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
     return await svc_get_project(db, tenant_id=tenant_id, site_id=site_id)
