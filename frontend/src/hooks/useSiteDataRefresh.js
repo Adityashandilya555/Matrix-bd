@@ -1,28 +1,55 @@
 import React from 'react';
 import { subscribeSiteDataChanged } from '../services/api/siteEvents.js';
 
-export function useSiteDataRefresh(refresh, { enabled = true } = {}) {
+export function useSiteDataRefresh(
+  refresh,
+  { enabled = true, siteId = null, sources = null, actions = null, skipWhen = null } = {},
+) {
   const refreshRef = React.useRef(refresh);
+  const skipRef = React.useRef(skipWhen);
+  const sourceKey = Array.isArray(sources) ? sources.join('|') : '';
+  const actionKey = Array.isArray(actions) ? actions.join('|') : '';
 
   React.useEffect(() => {
     refreshRef.current = refresh;
   }, [refresh]);
 
   React.useEffect(() => {
+    skipRef.current = skipWhen;
+  }, [skipWhen]);
+
+  React.useEffect(() => {
     if (!enabled) return undefined;
 
-    const run = () => refreshRef.current?.();
-    const unsubscribe = subscribeSiteDataChanged(run);
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') run();
+    const sourceSet = Array.isArray(sources) ? new Set(sources) : null;
+    const actionSet = Array.isArray(actions) ? new Set(actions) : null;
+    const targetSiteId = siteId ? String(siteId) : null;
+
+    const shouldRun = (detail = {}, reason = 'event') => {
+      if (skipRef.current?.(detail, reason)) return false;
+      if (targetSiteId && detail.siteId && String(detail.siteId) !== targetSiteId) return false;
+      if (sourceSet && detail.source && !sourceSet.has(detail.source)) return false;
+      if (actionSet && detail.action && !actionSet.has(detail.action)) return false;
+      return true;
     };
 
-    window.addEventListener('focus', run);
+    const run = (detail = {}, reason = 'event') => {
+      if (shouldRun(detail, reason)) refreshRef.current?.(detail);
+    };
+
+    const unsubscribe = subscribeSiteDataChanged((detail) => run(detail, 'event'));
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') run({}, 'visible');
+    };
+
+    const onFocus = () => run({}, 'focus');
+
+    window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       unsubscribe();
-      window.removeEventListener('focus', run);
+      window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [enabled]);
+  }, [enabled, siteId, sourceKey, actionKey]);
 }

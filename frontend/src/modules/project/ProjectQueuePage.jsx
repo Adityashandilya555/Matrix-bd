@@ -67,7 +67,7 @@ export default function ProjectQueuePage() {
   }, []);
 
   React.useEffect(() => load(), [load]);
-  useSiteDataRefresh(load);
+  useSiteDataRefresh(load, { sources: ['project', 'businessAdmin', 'design'] });
 
   const open = (row) => navigate(projectSiteRoute(row.siteId));
   const COLS = '120px minmax(220px, 1fr) 130px 160px 160px 120px';

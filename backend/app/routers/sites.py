@@ -158,6 +158,8 @@ async def get_site_tracker(
     in mid-migration doesn't 500.
     """
     from app.services._common import fetch_site_or_404, fetch_user_name
+    from sqlalchemy import select
+    from app.db import models
     from app.services.legal_service import (
         _agreement_to_response,
         _dd_to_response,
@@ -196,6 +198,9 @@ async def get_site_tracker(
     licensing_resp = _licensing_to_response(lic) if _visible(lic) else None
 
     submitted_by_name = await fetch_user_name(db, site.submitted_by)
+    project = (
+        await db.execute(select(models.ProjectReview).where(models.ProjectReview.site_id == site.id))
+    ).scalar_one_or_none()
 
     return SiteTrackerResponse(
         site_id=str(site.id),
@@ -207,6 +212,21 @@ async def get_site_tracker(
         agreement_status=site.agreement_status,
         licensing_status=site.licensing_status,
         design_status=getattr(site, "design_status", "pending") or "pending",
+        project_status=(
+            project.project_status
+            if project
+            else ("pending" if getattr(site, "design_status", None) == "approved" else None)
+        ),
+        project_current_stage=(
+            project.current_stage
+            if project
+            else ("budget" if getattr(site, "design_status", None) == "approved" else None)
+        ),
+        project_budget_status=(
+            project.budget_status
+            if project
+            else ("draft" if getattr(site, "design_status", None) == "approved" else None)
+        ),
         dd=dd_resp,
         agreement=agreement_resp,
         licensing=licensing_resp,

@@ -59,6 +59,8 @@ const STATUS_TONES = {
   future:   { color: 'var(--zm-fg-4)', border: 'var(--zm-line-faint)', bg: 'rgba(255,255,255,0.56)', label: 'Queued' },
 };
 
+const ACTIVE_PROJECT_STATUSES = new Set(['pending', 'allocated', 'budgeting', 'in_progress']);
+
 function pretty(value) {
   if (!value) return 'Pending';
   return String(value).replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
@@ -110,10 +112,18 @@ function nodeState(site, nodeId) {
     if (site.designStatus === 'approved') return 'complete';
     if (site.financeStatus === 'approved' && site.status === 'pushed_to_payments') return 'active';
   }
+  if (nodeId === 'project') {
+    if (site.projectStatus === 'done') return 'complete';
+    if (site.designStatus === 'approved') {
+      if (!site.projectStatus || ACTIVE_PROJECT_STATUSES.has(site.projectStatus)) return 'active';
+    }
+  }
   return 'future';
 }
 
 function stageCopy(site) {
+  if (site.projectStatus === 'done') return 'Project completed, ready for final closure';
+  if (site.designStatus === 'approved') return 'Design approved, Project Execution is active';
   const legalState = legalNodeState(site);
   if (legalState === 'rejected') return 'BD notified, legal correction required';
   if (legalState === 'complete') return 'Legal cleared, ready for downstream handoff';
@@ -222,7 +232,7 @@ function PipelineNode({ site, node, onOpenLegal }) {
   const interactive = node.interactive;
   const label =
     state === 'complete' ? (node.id === 'loi' ? 'Done' : 'Complete') :
-    state === 'active' ? (node.id === 'ca' ? 'Pending' : 'Open') :
+    state === 'active' ? (node.id === 'ca' || node.id === 'project' ? 'Pending' : 'Open') :
     state === 'rejected' ? 'Rejected' :
     'Queued';
 

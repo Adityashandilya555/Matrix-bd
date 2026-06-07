@@ -89,10 +89,14 @@ async def list_sites(
         u_stmt = select(models.User.id, models.User.name).where(models.User.id.in_(user_ids))
         names = dict((u_id, n) for u_id, n in (await session.execute(u_stmt)).all())
     detail_by_site = {}
+    project_by_site = {}
     if site_ids:
         d_stmt = select(models.SiteDetail).where(models.SiteDetail.site_id.in_(site_ids))
         details = (await session.execute(d_stmt)).scalars().all()
         detail_by_site = {d.site_id: d for d in details}
+        p_stmt = select(models.ProjectReview).where(models.ProjectReview.site_id.in_(site_ids))
+        projects = (await session.execute(p_stmt)).scalars().all()
+        project_by_site = {p.site_id: p for p in projects}
 
     items = [
         site_to_response(
@@ -100,6 +104,7 @@ async def list_sites(
             created_by_name=names.get(r.submitted_by, ""),
             assigned_to_name=names.get(r.assigned_to, "") if r.assigned_to else None,
             details=detail_by_site.get(r.id),
+            project=project_by_site.get(r.id),
         )
         for r in rows
     ]
@@ -126,7 +131,15 @@ async def get_site(
         assigned_to_name = (await session.execute(assigned_name_stmt)).scalar_one_or_none()
     detail_stmt = select(models.SiteDetail).where(models.SiteDetail.site_id == site.id)
     details = (await session.execute(detail_stmt)).scalar_one_or_none()
-    return site_to_response(site, created_by_name=name or "", assigned_to_name=assigned_to_name, details=details)
+    project_stmt = select(models.ProjectReview).where(models.ProjectReview.site_id == site.id)
+    project = (await session.execute(project_stmt)).scalar_one_or_none()
+    return site_to_response(
+        site,
+        created_by_name=name or "",
+        assigned_to_name=assigned_to_name,
+        details=details,
+        project=project,
+    )
 
 
 async def list_site_activity(

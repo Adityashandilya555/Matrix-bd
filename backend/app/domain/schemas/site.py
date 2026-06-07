@@ -155,6 +155,9 @@ class SiteResponse(BaseModel):
     agreement_status: Optional[str] = None
     licensing_status: Optional[str] = None
     design_status: Optional[str] = None
+    project_status: Optional[str] = None
+    project_current_stage: Optional[str] = None
+    project_budget_status: Optional[str] = None
 
 
 class SiteListResponse(BaseModel):

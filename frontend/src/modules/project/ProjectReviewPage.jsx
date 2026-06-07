@@ -30,6 +30,45 @@ const DEFAULT_BUDGET = [
   'Contingency',
 ].map((label, index) => ({ idx: index + 1, label, amount: '' }));
 
+function budgetFromReview(review) {
+  return DEFAULT_BUDGET.map((item) => {
+    const saved = review?.budgetItems?.find((row) => Number(row.idx) === item.idx);
+    return saved ? { ...item, label: saved.label || item.label, amount: saved.amount ?? '' } : item;
+  });
+}
+
+function milestonesFromReview(review) {
+  return {
+    initialization_date: review?.initializationDate || '',
+    expected_completion_date: review?.expectedCompletionDate || '',
+    inspection_date: review?.inspectionDate || '',
+    final_completion_date: review?.finalCompletionDate || '',
+  };
+}
+
+const MILESTONE_DRAFT_FIELDS = [
+  {
+    field: 'initialization_date',
+    prop: 'initializationDate',
+    canSave: (review, executionUnlocked) => executionUnlocked,
+  },
+  {
+    field: 'expected_completion_date',
+    prop: 'expectedCompletionDate',
+    canSave: (review, executionUnlocked) => executionUnlocked && review?.initializationStatus === 'approved',
+  },
+  {
+    field: 'inspection_date',
+    prop: 'inspectionDate',
+    canSave: (review, executionUnlocked) => executionUnlocked && review?.expectedCompletionStatus === 'approved',
+  },
+  {
+    field: 'final_completion_date',
+    prop: 'finalCompletionDate',
+    canSave: (review, executionUnlocked) => executionUnlocked && review?.qualityAuditStatus === 'approved',
+  },
+];
+
 function formatMoney(value) {
   if (value == null || value === '') return 'Not set';
   const amount = Number(value);
@@ -129,34 +168,41 @@ export default function ProjectReviewPage() {
     final_completion_date: '',
   });
   const [busy, setBusy] = React.useState(false);
+  const [budgetDirty, setBudgetDirty] = React.useState(false);
+  const [milestonesDirty, setMilestonesDirty] = React.useState(false);
 
-  const load = React.useCallback(() => {
+  const rehydrateReview = React.useCallback((review) => {
+    setBudget(budgetFromReview(review));
+    setMilestones(milestonesFromReview(review));
+    setBudgetDirty(false);
+    setMilestonesDirty(false);
+    setState({ status: 'ready', review, error: null });
+  }, []);
+
+  const load = React.useCallback((silent = false) => {
     let cancelled = false;
-    setState((prev) => ({ ...prev, status: 'loading', error: null }));
+    if (!silent) setState((prev) => ({ ...prev, status: 'loading', error: null }));
     getProject(siteId)
       .then((review) => {
         if (cancelled) return;
-        const mergedBudget = DEFAULT_BUDGET.map((item) => {
-          const saved = review.budgetItems?.find((row) => Number(row.idx) === item.idx);
-          return saved ? { ...item, label: saved.label || item.label, amount: saved.amount ?? '' } : item;
-        });
-        setBudget(mergedBudget);
-        setMilestones({
-          initialization_date: review.initializationDate || '',
-          expected_completion_date: review.expectedCompletionDate || '',
-          inspection_date: review.inspectionDate || '',
-          final_completion_date: review.finalCompletionDate || '',
-        });
-        setState({ status: 'ready', review, error: null });
+        rehydrateReview(review);
       })
       .catch((err) => {
-        if (!cancelled) setState({ status: 'error', review: null, error: err?.detail || err?.message || 'Failed to load project' });
+        if (!cancelled) {
+          const error = err?.detail || err?.message || 'Failed to load project';
+          if (silent) setState((prev) => ({ ...prev, error }));
+          else setState({ status: 'error', review: null, error });
+        }
       });
     return () => { cancelled = true; };
-  }, [siteId]);
+  }, [siteId, rehydrateReview]);
 
   React.useEffect(() => load(), [load]);
-  useSiteDataRefresh(load);
+  useSiteDataRefresh(React.useCallback(() => load(true), [load]), {
+    siteId,
+    sources: ['project', 'businessAdmin', 'design'],
+    skipWhen: () => budgetDirty || milestonesDirty || busy,
+  });
 
   React.useEffect(() => {
     if (!isSupervisor) return;
@@ -171,8 +217,7 @@ export default function ProjectReviewPage() {
     setBusy(true);
     try {
       const next = await fn();
-      setState({ status: 'ready', review: next, error: null });
-      load();
+      rehydrateReview(next);
     } catch (err) {
       setState((prev) => ({ ...prev, error: err?.detail || err?.message || 'Action failed' }));
     } finally {
@@ -191,6 +236,38 @@ export default function ProjectReviewPage() {
       : review?.budgetStatus === 'approved'
         ? 'Budget is approved and locked.'
         : null;
+
+  const handleBackToQueue = async () => {
+    if ((!budgetDirty || !budgetEditable) && !milestonesDirty) {
+      navigate(ROUTES.PROJECT);
+      return;
+    }
+    setBusy(true);
+    try {
+      let next = review;
+      if (budgetDirty && budgetEditable) {
+        next = await saveProjectBudget(siteId, { items: budget, action: 'save' });
+      }
+      if (milestonesDirty && executionUnlocked) {
+        for (const item of MILESTONE_DRAFT_FIELDS) {
+          const value = milestones[item.field];
+          const previous = review?.[item.prop] || '';
+          if (value && value !== previous && item.canSave(review, executionUnlocked)) {
+            next = await submitProjectMilestone(siteId, item.field, value);
+          }
+        }
+      }
+      rehydrateReview(next);
+      navigate(ROUTES.PROJECT);
+    } catch (err) {
+      setState((prev) => ({
+        ...prev,
+        error: err?.detail || err?.message || 'Could not save the project draft before returning to queue.',
+      }));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -286,7 +363,10 @@ export default function ProjectReviewPage() {
                   <input
                     value={item.amount}
                     inputMode="decimal"
-                    onChange={(e) => setBudget((rows) => rows.map((row) => row.idx === item.idx ? { ...row, amount: e.target.value } : row))}
+                    onChange={(e) => {
+                      setBudgetDirty(true);
+                      setBudget((rows) => rows.map((row) => row.idx === item.idx ? { ...row, amount: e.target.value } : row));
+                    }}
                     disabled={busy || !budgetEditable}
                     placeholder="0"
                     style={{
@@ -347,7 +427,10 @@ export default function ProjectReviewPage() {
                 value={milestones.initialization_date}
                 status={review.initializationStatus}
                 disabled={!executionUnlocked || busy}
-                onChange={(value) => setMilestones((v) => ({ ...v, initialization_date: value }))}
+                onChange={(value) => {
+                  setMilestonesDirty(true);
+                  setMilestones((v) => ({ ...v, initialization_date: value }));
+                }}
                 onSubmit={() => mutate(() => submitProjectMilestone(siteId, 'initialization_date', milestones.initialization_date))}
                 onApprove={isSupervisor && review.initializationStatus === 'submitted' ? () => mutate(() => reviewProjectMilestone(siteId, 'initialization_date', { decision: 'approve' })) : null}
                 onReject={isSupervisor && review.initializationStatus === 'submitted' ? () => mutate(() => reviewProjectMilestone(siteId, 'initialization_date', { decision: 'reject', comments: 'Initialization date needs revision.' })) : null}
@@ -358,7 +441,10 @@ export default function ProjectReviewPage() {
                 value={milestones.expected_completion_date}
                 status={review.expectedCompletionStatus}
                 disabled={!executionUnlocked || review.initializationStatus !== 'approved' || busy}
-                onChange={(value) => setMilestones((v) => ({ ...v, expected_completion_date: value }))}
+                onChange={(value) => {
+                  setMilestonesDirty(true);
+                  setMilestones((v) => ({ ...v, expected_completion_date: value }));
+                }}
                 onSubmit={() => mutate(() => submitProjectMilestone(siteId, 'expected_completion_date', milestones.expected_completion_date))}
                 onApprove={isSupervisor && review.expectedCompletionStatus === 'submitted' ? () => mutate(() => reviewProjectMilestone(siteId, 'expected_completion_date', { decision: 'approve' })) : null}
                 onReject={isSupervisor && review.expectedCompletionStatus === 'submitted' ? () => mutate(() => reviewProjectMilestone(siteId, 'expected_completion_date', { decision: 'reject', comments: 'Expected completion needs revision.' })) : null}
@@ -369,7 +455,10 @@ export default function ProjectReviewPage() {
                 value={milestones.inspection_date}
                 status={review.inspectionDate ? 'recorded' : 'pending'}
                 disabled={!executionUnlocked || review.expectedCompletionStatus !== 'approved' || busy}
-                onChange={(value) => setMilestones((v) => ({ ...v, inspection_date: value }))}
+                onChange={(value) => {
+                  setMilestonesDirty(true);
+                  setMilestones((v) => ({ ...v, inspection_date: value }));
+                }}
                 onSubmit={() => mutate(() => submitProjectMilestone(siteId, 'inspection_date', milestones.inspection_date))}
               />
               <div className="zm-glass" style={{ padding: 14, borderRadius: 10 }}>
@@ -395,7 +484,10 @@ export default function ProjectReviewPage() {
                 value={milestones.final_completion_date}
                 status={review.finalCompletionDate ? 'done' : 'pending'}
                 disabled={!executionUnlocked || review.qualityAuditStatus !== 'approved' || busy}
-                onChange={(value) => setMilestones((v) => ({ ...v, final_completion_date: value }))}
+                onChange={(value) => {
+                  setMilestonesDirty(true);
+                  setMilestones((v) => ({ ...v, final_completion_date: value }));
+                }}
                 onSubmit={() => mutate(() => submitProjectMilestone(siteId, 'final_completion_date', milestones.final_completion_date))}
               />
             </div>
@@ -403,7 +495,8 @@ export default function ProjectReviewPage() {
 
           <button
             type="button"
-            onClick={() => navigate(ROUTES.PROJECT)}
+            onClick={handleBackToQueue}
+            disabled={busy}
             style={{
               alignSelf: 'flex-start',
               height: 38,
@@ -412,10 +505,11 @@ export default function ProjectReviewPage() {
               border: '1px solid var(--zm-line)',
               background: 'var(--zm-surface)',
               fontWeight: 800,
-              cursor: 'pointer',
+              cursor: busy ? 'not-allowed' : 'pointer',
+              opacity: busy ? 0.6 : 1,
             }}
           >
-            Back to project queue
+            {busy && (budgetDirty || milestonesDirty) ? 'Saving draft...' : 'Back to project queue'}
           </button>
         </>
       )}
