@@ -78,38 +78,51 @@ function DdrVerdictOverrideModal({ issueCount, onPositive, onNegative, onCancel,
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)', zIndex: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: 560, maxWidth: '94%', padding: 26, borderRadius: 14, background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', boxShadow: 'var(--zm-shadow-pop)', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-warning)' }}>
-            DDR contains {issueCount} No item{issueCount === 1 ? '' : 's'}
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,18,0.52)', backdropFilter: 'blur(10px)', zIndex: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+      <div style={{ width: 620, maxWidth: '100%', borderRadius: 18, background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', boxShadow: 'var(--zm-shadow-pop)', overflow: 'hidden' }}>
+        <div style={{ padding: '22px 24px', borderBottom: '1px solid var(--zm-line)', background: 'linear-gradient(135deg, rgba(217,119,6,0.11), rgba(4,120,87,0.05))', display: 'grid', gridTemplateColumns: '1fr auto', gap: 14, alignItems: 'start' }}>
+          <div>
+            <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, fontWeight: 850, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--zm-warning)' }}>
+              Feedback required · DDR
+            </span>
+            <h2 style={{ margin: '8px 0 8px', fontFamily: 'var(--zm-font-display)', fontSize: 25, fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--zm-fg)' }}>
+              Review the No-marked items
+            </h2>
+            <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 13.5, color: 'var(--zm-fg-2)', lineHeight: 1.55 }}>
+              Continue as positive only when Legal accepts these observations. Otherwise add the reason and close this site as a negative DDR.
+            </p>
+          </div>
+          <span style={{ display: 'inline-flex', alignItems: 'center', height: 30, padding: '0 10px', borderRadius: 999, border: '1px solid rgba(217,119,6,0.3)', background: 'rgba(217,119,6,0.12)', color: 'var(--zm-warning)', fontFamily: 'var(--zm-font-body)', fontSize: 11, fontWeight: 850, letterSpacing: '0.08em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+            {issueCount} No flag{issueCount === 1 ? '' : 's'}
           </span>
-          <h2 style={{ margin: '6px 0 8px', fontFamily: 'var(--zm-font-display)', fontSize: 22, fontWeight: 750, letterSpacing: '-0.02em', color: 'var(--zm-fg)' }}>
-            Do you want to finalise DDR as positive?
-          </h2>
-          <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 13.5, color: 'var(--zm-fg-3)', lineHeight: 1.55 }}>
-            Choose positive only if Legal has accepted the open observations and the Agreement/Licensing process should continue. The override will be recorded in the activity trail.
-          </p>
         </div>
 
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
-            Rejection reason if finalising negative
-          </span>
-          <textarea
-            value={reason}
-            onChange={(e) => { setReason(e.target.value); setError(''); }}
-            disabled={busy}
-            placeholder="Example: Fire NOC not available from landlord."
-            style={{ minHeight: 86, resize: 'vertical', padding: 12, borderRadius: 9, border: '1px solid var(--zm-line)', background: 'var(--zm-bg)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13.5, outline: 'none' }}
-          />
-          {error && <span style={{ color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12 }}>{error}</span>}
-        </label>
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ padding: 14, borderRadius: 12, border: '1px solid rgba(217,119,6,0.22)', background: 'rgba(217,119,6,0.07)', fontFamily: 'var(--zm-font-body)', fontSize: 13, lineHeight: 1.5, color: 'var(--zm-fg-2)' }}>
+            Positive override is audit-visible and lets Agreement and Licensing continue. Negative verdict notifies BD and stops the legal path.
+          </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={onCancel} disabled={busy} className="zm-btn" style={{ height: 36, padding: '0 15px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 650, cursor: busy ? 'wait' : 'pointer' }}>Cancel</button>
-          <button onClick={submitNegative} disabled={busy} className="zm-btn" style={{ height: 36, padding: '0 15px', borderRadius: 8, border: '1px solid rgba(185,28,28,0.28)', background: 'rgba(185,28,28,0.08)', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 750, cursor: busy ? 'wait' : 'pointer' }}>No, finalise negative</button>
-          <button onClick={onPositive} disabled={busy} className="zm-btn-primary" style={{ height: 36, padding: '0 15px', borderRadius: 8, border: 'none', background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 750, cursor: busy ? 'wait' : 'pointer', boxShadow: 'var(--zm-shadow-1)' }}>Yes, finalise positive</button>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 11, letterSpacing: '0.13em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
+              Reason for negative verdict
+            </span>
+            <textarea
+              value={reason}
+              onChange={(e) => { setReason(e.target.value); setError(''); }}
+              disabled={busy}
+              placeholder="Example: Fire NOC not available from landlord."
+              style={{ minHeight: 96, resize: 'vertical', padding: 12, borderRadius: 12, border: `1px solid ${error ? 'var(--zm-danger)' : 'var(--zm-line)'}`, background: 'var(--zm-bg)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13.5, outline: 'none', boxShadow: error ? '0 0 0 3px rgba(185,28,28,0.08)' : 'none' }}
+            />
+            {error && <span style={{ color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 650 }}>{error}</span>}
+          </label>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <button onClick={onCancel} disabled={busy} className="zm-btn" style={{ height: 40, padding: '0 16px', borderRadius: 10, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>Cancel</button>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <button onClick={submitNegative} disabled={busy} className="zm-btn" style={{ height: 40, padding: '0 16px', borderRadius: 10, border: '1px solid rgba(185,28,28,0.28)', background: 'rgba(185,28,28,0.08)', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 800, cursor: busy ? 'wait' : 'pointer' }}>Finalise negative</button>
+              <button onClick={onPositive} disabled={busy} className="zm-btn-primary" style={{ height: 40, padding: '0 18px', borderRadius: 10, border: 'none', background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 800, cursor: busy ? 'wait' : 'pointer', boxShadow: 'var(--zm-shadow-1)' }}>Continue as positive</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -344,9 +357,21 @@ export default function DdrPage() {
     }
   };
 
-  const handleSubmitForReview = async () => {
+  const handleSubmitForReview = async (snapshot) => {
+    if (!canEdit) {
+      showToast?.(
+        executiveBlockedByDelegation
+          ? 'You do not have an active legal delegation on this site. Ask the legal supervisor to delegate it before submitting DDR.'
+          : `DDR is ${stage.replace('_', ' ')} and cannot be submitted by this role.`,
+        'danger',
+      );
+      return;
+    }
     try {
       setSubmittingForReview(true);
+      if (snapshot) {
+        await saveDdItems(siteId, buildPayload(snapshot));
+      }
       const next = await submitDdForReview(siteId);
       setReview(next);
       showToast?.('DDR submitted for supervisor review.', 'success');

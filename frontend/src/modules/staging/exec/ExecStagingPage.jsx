@@ -2,6 +2,7 @@ import React from 'react';
 import { useSession } from '../../../state/SessionContext.jsx';
 import { useSites } from '../../../state/SitesContext.jsx';
 import { usePageContext } from '../../../App.jsx';
+import { filterByScope } from '../../../rbac/scope.js';
 import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Icon from '../../shared/primitives/Icon.jsx';
 import StatusPill from '../../shared/primitives/StatusPill.jsx';
@@ -97,12 +98,11 @@ export default function ExecStagingPage({ onOpenSite: onOpenSiteProp, showToast:
   const ctx = usePageContext();
   const onOpenSite = onOpenSiteProp || ctx.onOpenSite;
   const showToast = showToastProp || ctx.showToast;
-  const { user } = useSession();
+  const { user, role } = useSession();
   const { staging, uploadLOI } = useSites();
   const [filters, setFilters] = React.useState({ q: '', city: 'All', month: 'All', status: 'all' });
 
-  const ME = user.name;
-  const visibleStaging = staging.filter(s => s.createdBy === ME);
+  const visibleStaging = filterByScope(staging, role, user);
   const filtered = applyStagingFilters(visibleStaging, filters);
   const overdueCount = visibleStaging.filter(s => s.daysSinceApproval > s.expectedLoiDays && !s.loiUploaded).length;
 
@@ -118,7 +118,7 @@ export default function ExecStagingPage({ onOpenSite: onOpenSiteProp, showToast:
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <PageHeader file="№ 04" eyebrow="Workflow · Sites in process" title={<>Sites <em>awaiting</em> LOI</>}
-        lede={`${visibleStaging.length} of your own approved site${visibleStaging.length === 1 ? '' : 's'} — ${overdueCount} overdue against expected timeline.`}
+        lede={`${visibleStaging.length} approved site${visibleStaging.length === 1 ? '' : 's'} assigned to you — ${overdueCount} overdue against expected timeline.`}
         right={overdueCount > 0 ? <HeaderTag icon="alert" label={`${overdueCount} OVERDUE`} tone="accent"/> : <HeaderTag icon="check" label="ON TRACK"/>}
       />
       <StagingKpiStrip sites={visibleStaging}/>

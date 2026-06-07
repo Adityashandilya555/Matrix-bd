@@ -109,6 +109,8 @@ export function SessionProvider({ children }) {
   // user object — preserves the exact { name, email, city, tenantId } shape
   // that existing components destructure from useSession().user
   const user = {
+    id: session.userId || session.id || null,
+    userId: session.userId || session.id || null,
     name: session.name,
     email: session.email,
     city: session.cityScope || 'Mumbai',

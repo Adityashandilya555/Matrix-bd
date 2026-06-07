@@ -4,6 +4,7 @@ import { useSession } from '../../../state/SessionContext.jsx';
 import { useSites } from '../../../state/SitesContext.jsx';
 import { usePageContext } from '../../../App.jsx';
 import { can } from '../../../rbac/permissions.js';
+import { filterByScope } from '../../../rbac/scope.js';
 import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Avatar from '../../shared/primitives/Avatar.jsx';
 import StatusPill from '../../shared/primitives/StatusPill.jsx';
@@ -249,9 +250,9 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
   const ME = user.name;
   // RBAC: isExec = cannot shortlist (exec cannot approve); used for scope/display logic in render body
   const isExec = !can(role, 'shortlist');
-  const visibleDrafts    = isExec ? drafts.filter(d => d.createdBy === ME) : drafts;
-  const visibleShortlist = isExec ? shortlist.filter(s => s.createdBy === ME) : shortlist;
-  const visibleStaging   = isExec ? staging.filter(s => s.createdBy === ME) : staging.filter(s => s.loiUploaded === true);
+  const visibleDrafts    = isExec ? filterByScope(drafts, role, user) : drafts;
+  const visibleShortlist = isExec ? filterByScope(shortlist, role, user) : shortlist;
+  const visibleStaging   = isExec ? filterByScope(staging, role, user) : staging;
 
   const loiDue     = visibleStaging.filter(s => !s.loiUploaded && s.daysSinceApproval <= s.expectedLoiDays).length;
   const loiOverdue = visibleStaging.filter(s => !s.loiUploaded && s.daysSinceApproval > s.expectedLoiDays).length;

@@ -22,7 +22,8 @@ function KpiTile({ label, value, sub, tone = 'neutral' }) {
 }
 
 function StagingKpiStripSupervisor({ sites }) {
-  const uploaded = sites;
+  const uploaded = sites.filter(s => s.loiUploaded);
+  const awaitingUpload = sites.filter(s => !s.loiUploaded);
   const draftToLoiDays = uploaded.map(s => daysBetweenISO(s.draftDate, s.loiUploadedAt)).filter(n => Number.isFinite(n));
   const medDraftToLoi = median(draftToLoiDays);
   const onTime = uploaded.filter(s => (s.daysToLOI ?? 0) <= s.expectedLoiDays).length;
@@ -34,6 +35,7 @@ function StagingKpiStripSupervisor({ sites }) {
       <KpiTile label="Median · draft → LOI" value={medDraftToLoi == null ? '—' : `${medDraftToLoi}d`} sub={uploaded.length ? `${uploaded.length} LOI${uploaded.length === 1 ? '' : 's'} uploaded` : 'no LOIs yet'}/>
       <KpiTile label="LOI on-time rate" value={hitRate == null ? '—' : `${hitRate}%`} sub={uploaded.length ? `${onTime} on time · ${late} late` : 'pending uploads'} tone={hitRate == null ? 'neutral' : hitRate >= 80 ? 'good' : hitRate >= 50 ? 'warn' : 'bad'}/>
       <KpiTile label="LOIs awaiting legal" value={String(uploaded.filter(s => !s.pushed).length).padStart(2,'0')} sub="ready for Legal review"/>
+      <KpiTile label="Awaiting LOI" value={String(awaitingUpload.length).padStart(2,'0')} sub="assigned executive action" tone={awaitingUpload.length > 0 ? 'warn' : 'neutral'}/>
     </div>
   );
 }
@@ -44,7 +46,7 @@ function StagingFilterBar({ filters, onFilters, sites }) {
     <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr', gap: 10, padding: 14, background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, boxShadow: 'var(--zm-shadow-1)' }}>
       <div style={{ position: 'relative', minWidth: 0 }}><Icon name="search" size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--zm-fg-3)', pointerEvents: 'none' }}/><input placeholder="Search site…" value={filters.q} onChange={(e) => onFilters({ ...filters, q: e.target.value })} style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', height: 36, padding: '0 10px 0 32px', background: 'var(--zm-bg)', border: '1px solid var(--zm-line)', borderRadius: 6, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', outline: 'none' }}/></div>
       <select value={filters.city} onChange={(e) => onFilters({ ...filters, city: e.target.value })} style={{ height: 36, padding: '0 10px', background: 'var(--zm-bg)', border: '1px solid var(--zm-line)', borderRadius: 6, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', outline: 'none' }}>{cities.map(c => <option key={c} value={c}>City · {c}</option>)}</select>
-      <select value={filters.status} onChange={(e) => onFilters({ ...filters, status: e.target.value })} style={{ height: 36, padding: '0 10px', background: 'var(--zm-bg)', border: '1px solid var(--zm-line)', borderRadius: 6, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', outline: 'none' }}><option value="all">Status · all uploaded</option><option value="overdue">Status · uploaded late</option><option value="ontime">Status · uploaded on time</option></select>
+      <select value={filters.status} onChange={(e) => onFilters({ ...filters, status: e.target.value })} style={{ height: 36, padding: '0 10px', background: 'var(--zm-bg)', border: '1px solid var(--zm-line)', borderRadius: 6, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', outline: 'none' }}><option value="all">Status · all</option><option value="overdue">Status · overdue or late</option><option value="ontime">Status · on time</option></select>
       <select value={filters.month} onChange={(e) => onFilters({ ...filters, month: e.target.value })} style={{ height: 36, padding: '0 10px', background: 'var(--zm-bg)', border: '1px solid var(--zm-line)', borderRadius: 6, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', outline: 'none' }}>{['All','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map(m => <option key={m} value={m}>Approved · {m}</option>)}</select>
     </div>
   );
@@ -53,30 +55,38 @@ function StagingFilterBar({ filters, onFilters, sites }) {
 function TimelineTracker({ site }) {
   const target = site.expectedLoiDays; const actual = site.daysToLOI ?? site.daysSinceApproval;
   const late = actual > target; const pct = Math.max(0, Math.min(100, (actual / Math.max(target, actual)) * 100));
+  const uploaded = site.loiUploaded;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, fontFamily: 'var(--zm-font-mono)', fontSize: 10.5, whiteSpace: 'nowrap' }}><span style={{ color: 'var(--zm-fg-3)' }}>{site.draftDate || site.approvedDate}</span><span style={{ color: late ? 'var(--zm-danger)' : '#005F60', fontWeight: 600 }}>{actual}d / {target}d</span><span style={{ color: 'var(--zm-fg-3)' }}>{site.loiUploadedAt || '—'}</span></div>
       <div style={{ height: 6, borderRadius: 999, background: 'var(--zm-surface-sunken)', position: 'relative', overflow: 'hidden' }}><div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: late ? 'var(--zm-danger)' : '#005F60', borderRadius: 999, transition: 'width 360ms var(--zm-ease-emp)' }}/><span style={{ position: 'absolute', left: `${Math.min(100, (target/Math.max(target,actual))*100)}%`, top: -3, bottom: -3, width: 2, background: 'var(--zm-fg-3)', opacity: 0.4 }}/></div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--zm-font-body)', fontSize: 10.5, fontWeight: 600, color: late ? 'var(--zm-danger)' : 'var(--zm-success)', whiteSpace: 'nowrap' }}>{late ? <><Icon name="alert" size={10}/> Uploaded {actual - target}d late</> : <><Icon name="check" size={10}/> Uploaded {target - actual}d early</>}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--zm-font-body)', fontSize: 10.5, fontWeight: 600, color: uploaded ? (late ? 'var(--zm-danger)' : 'var(--zm-success)') : (late ? 'var(--zm-warning)' : 'var(--zm-fg-3)'), whiteSpace: 'nowrap' }}>
+        {uploaded
+          ? (late ? <><Icon name="alert" size={10}/> Uploaded {actual - target}d late</> : <><Icon name="check" size={10}/> Uploaded {target - actual}d early</>)
+          : (late ? <><Icon name="alert" size={10}/> LOI overdue by {actual - target}d</> : <><Icon name="clock" size={10}/> Awaiting LOI upload</>)}
+      </div>
     </div>
   );
 }
 
 function SupervisorRow({ site, onPush, onViewLOI, onOpen, onViewStatus }) {
   const pushed = site.pushed;
+  const uploaded = site.loiUploaded;
   return (
     <div className="zm-row" style={{ display: 'grid', gridTemplateColumns: '70px minmax(130px, 0.9fr) 70px 124px minmax(170px, 1.3fr) 170px', alignItems: 'center', gap: 10, padding: '14px 12px', borderBottom: '1px solid var(--zm-line-faint)', background: pushed ? 'rgba(4,120,87,0.04)' : 'transparent', opacity: pushed ? 0.85 : 1 }}>
       <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{site.code}</span>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 600, color: 'var(--zm-fg)' }}>{site.name}</span><span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 10.5, color: 'var(--zm-fg-3)' }}>by {site.createdBy}</span></div>
       <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{site.city}</span>
-      <div><StatusPill stage={pushed ? site.stage : 'uploaded'}/></div>
+      <div><StatusPill stage={pushed ? site.stage : uploaded ? 'uploaded' : 'staging'}/></div>
       <div style={{ minWidth: 0, overflow: 'hidden' }}><TimelineTracker site={site}/></div>
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', minWidth: 0 }}>
         <button onClick={() => onOpen(site)} title="View site" className="zm-icon-btn" style={{ width: 32, height: 32, padding: 0, border: '1px solid var(--zm-line)', borderRadius: 7, background: 'transparent', color: 'var(--zm-fg)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 32px' }}><EyeIcon size={14}/></button>
-        <button onClick={() => onViewLOI(site)} title="View LOI" className="zm-icon-btn" style={{ width: 32, height: 32, padding: 0, border: '1px solid var(--zm-line)', borderRadius: 7, background: 'transparent', color: 'var(--zm-fg)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 32px' }}><Icon name="file" size={14}/></button>
+        <button onClick={() => uploaded && onViewLOI(site)} disabled={!uploaded} title={uploaded ? 'View LOI' : 'LOI not uploaded yet'} className="zm-icon-btn" style={{ width: 32, height: 32, padding: 0, border: '1px solid var(--zm-line)', borderRadius: 7, background: 'transparent', color: uploaded ? 'var(--zm-fg)' : 'var(--zm-fg-3)', cursor: uploaded ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 32px', opacity: uploaded ? 1 : 0.55 }}><Icon name="file" size={14}/></button>
         {pushed
           ? (<button onClick={() => onViewStatus(site)} className="zm-btn-primary" style={{ flex: '1 1 auto', minWidth: 100, height: 32, padding: '0 12px', border: 'none', borderRadius: 7, background: 'var(--zm-fg)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}>View <Icon name="arrow" size={12}/></button>)
-          : (<button onClick={() => onPush(site)} className="zm-btn-primary" style={{ flex: '1 1 auto', minWidth: 100, height: 32, padding: '0 12px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1, boxShadow: 'var(--zm-shadow-1)' }}>Push <Icon name="arrow" size={12}/></button>)
+          : uploaded
+            ? (<button onClick={() => onPush(site)} className="zm-btn-primary" style={{ flex: '1 1 auto', minWidth: 100, height: 32, padding: '0 12px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1, boxShadow: 'var(--zm-shadow-1)' }}>Push <Icon name="arrow" size={12}/></button>)
+            : (<button disabled className="zm-btn" style={{ flex: '1 1 auto', minWidth: 100, height: 32, padding: '0 12px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface-2)', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}>Awaiting LOI</button>)
         }
       </div>
     </div>
@@ -103,8 +113,9 @@ export default function SupervisorStagingPage({ onOpenSite: onOpenSiteProp, show
   const { staging, pushSite } = useSites();
   const [filters, setFilters] = React.useState({ q: '', city: 'All', month: 'All', status: 'all' });
 
-  // Supervisor sees only LOI-uploaded sites
-  const visibleStaging = staging.filter(s => s.loiUploaded === true);
+  // Supervisors need to see newly approved rows before LOI upload so the
+  // handoff does not appear to disappear between approval and Legal push.
+  const visibleStaging = staging;
   const filtered = applyStagingFilters(visibleStaging, filters);
 
   const onPush = async (site) => {
@@ -120,8 +131,8 @@ export default function SupervisorStagingPage({ onOpenSite: onOpenSiteProp, show
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader file="№ 04" eyebrow="Workflow · Sites in process" title={<>LOIs <em>awaiting</em> legal</>}
-        lede={`${visibleStaging.length} site${visibleStaging.length === 1 ? '' : 's'} with uploaded LOI — review the draft → LOI timeline and send clear sites into Legal review.`}
+      <PageHeader file="№ 04" eyebrow="Workflow · Sites in process" title={<>Sites <em>awaiting</em> handoff</>}
+        lede={`${visibleStaging.length} approved site${visibleStaging.length === 1 ? '' : 's'} — track LOI upload, then send clear sites into Legal review.`}
         right={<HeaderTag icon="check" label="ON TRACK"/>}
       />
       <StagingKpiStripSupervisor sites={visibleStaging}/>
@@ -135,7 +146,7 @@ export default function SupervisorStagingPage({ onOpenSite: onOpenSiteProp, show
             </div>
             {filtered.map(s => <SupervisorRow key={s.id} site={s} onPush={onPush} onViewLOI={onViewLOI} onOpen={onOpenSite || (() => {})} onViewStatus={onViewStatus}/>)}
           </div>
-          {filtered.length === 0 && (<div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>No LOIs uploaded yet.</div>)}
+          {filtered.length === 0 && (<div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>No sites are in process yet.</div>)}
         </div>
       </div>
     </div>

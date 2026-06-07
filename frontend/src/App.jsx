@@ -87,7 +87,7 @@ export default function App() {
   const isExec = role === 'exec' || role === 'executive';
   const visibleStaging   = isExec
     ? filterByScope(staging, role, user)
-    : staging.filter(s => s.loiUploaded === true);
+    : staging;
 
   // Pending-user count for the "Team" sidebar badge. Only fetched for
   // supervisors — the endpoint is supervisor-gated and would 403 for anyone
