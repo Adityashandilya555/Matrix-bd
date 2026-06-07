@@ -10,6 +10,7 @@
 
 /* ── DARK (default) ──────────────────────────────────────────────────────── */
 .ac-root {
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
   --ac-bg: #08090C;                        /* outermost page (behind the floating panels) */
   --ac-panel: #0E0F14;                      /* the big rounded sidebar / main panels */
   --ac-surface: rgba(255, 255, 255, 0.03);  /* subtle card fill on a panel */

@@ -168,7 +168,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
         expanded={navExpanded} onToggleExpanded={toggleNav}
         theme={theme} onToggleTheme={toggleTheme} onLogout={onLogout} />
 
-      <main style={{ flex: 1, minWidth: 0, height: '100%', overflowY: 'auto', borderRadius: 22,
+      <main style={{ flex: 1, minWidth: 0, overflowY: 'auto', borderRadius: 22,
         background: T.panel, border: `1px solid ${T.line}`, boxShadow: T.cardShadow }}>
         <div style={{ maxWidth: 1080, margin: '0 auto', padding: '30px 34px 60px' }}>
 

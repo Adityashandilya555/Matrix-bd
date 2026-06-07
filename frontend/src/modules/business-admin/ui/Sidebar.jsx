@@ -21,7 +21,7 @@ export default function Sidebar({
 }) {
   return (
     <aside className="ac-sidebar" style={{
-      width: expanded ? W_EXPANDED : W_COLLAPSED, flexShrink: 0, height: '100%', boxSizing: 'border-box',
+      width: expanded ? W_EXPANDED : W_COLLAPSED, flexShrink: 0, boxSizing: 'border-box',
       background: T.panel, border: `1px solid ${T.line}`, borderRadius: 22, boxShadow: T.cardShadow,
       display: 'flex', flexDirection: 'column', padding: '18px 14px', overflow: 'hidden',
     }}>

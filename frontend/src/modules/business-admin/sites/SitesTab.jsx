@@ -15,10 +15,10 @@ const NODES = [
 ];
 
 const TONE = {
-  done:     { dot: T.success, ring: 'transparent', line: T.success },
-  active:   { dot: T.warn, ring: 'rgba(224,162,60,0.22)', line: 'rgba(255,255,255,0.12)' },
-  rejected: { dot: T.danger, ring: 'transparent', line: 'rgba(255,255,255,0.12)' },
-  pending:  { dot: 'rgba(255,255,255,0.20)', ring: 'transparent', line: 'rgba(255,255,255,0.10)' },
+  done:     { dot: T.success, ring: 'transparent',  line: T.success },
+  active:   { dot: T.warn,    ring: T.warnSoft,      line: T.line },
+  rejected: { dot: T.danger,  ring: 'transparent',   line: T.line },
+  pending:  { dot: T.lineStrong, ring: 'transparent', line: T.line },
 };
 
 const LOI_DONE = new Set(['loi_uploaded', 'legal_review', 'legal_approved', 'pushed_to_payments']);
