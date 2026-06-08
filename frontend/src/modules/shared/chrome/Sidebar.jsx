@@ -153,7 +153,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
           {!collapsed && <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Legal</div>}
           <SidebarItem
             icon="legalShield"
-            label="Legal queue"
+            label="Sites"
             active={activeView === 'legal-ddr'}
             onClick={() => go(ROUTES.LEGAL)}
             collapsed={collapsed}
@@ -200,7 +200,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
           {!collapsed && <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Project</div>}
           <SidebarItem
             icon="box"
-            label="Project execution"
+            label="Sites"
             active={activeView === 'project-home'}
             onClick={() => go(ROUTES.PROJECT)}
             collapsed={collapsed}

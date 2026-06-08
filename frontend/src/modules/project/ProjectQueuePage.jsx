@@ -77,7 +77,7 @@ export default function ProjectQueuePage() {
       <PageHeader
         file="No. 09"
         eyebrow="Project module"
-        title="Project execution"
+        title="Sites"
         lede={isSupervisor
           ? 'Design-approved sites. Allocate project ownership, review budgets, and track execution gates.'
           : 'Sites allocated to you. Submit budget and execution milestones for supervisor review.'}
