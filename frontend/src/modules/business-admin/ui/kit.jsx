@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Approval Center UI kit
@@ -413,18 +414,37 @@ export function ErrorState({ message, onRetry, retrying }) {
 
 // ── Drawer (right-slide panel) ───────────────────────────────────────────────
 
+function getPortalTheme() {
+  if (typeof document === 'undefined') return 'dark';
+  return document.querySelector('.ac-root[data-theme]')?.getAttribute('data-theme') || 'dark';
+}
+
 export function Drawer({ open, onClose, title, subtitle, headerRight, children, footer }) {
+  const [portalTheme, setPortalTheme] = React.useState(getPortalTheme);
+
   React.useEffect(() => {
     if (!open) return undefined;
     const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
+
+  React.useEffect(() => {
+    if (!open || typeof document === 'undefined') return undefined;
+    const root = document.querySelector('.ac-root[data-theme]');
+    setPortalTheme(getPortalTheme());
+    if (!root) return undefined;
+    const observer = new MutationObserver(() => setPortalTheme(getPortalTheme()));
+    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  }, [open]);
+
   if (!open) return null;
-  return (
-    <div className="ac-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
+  const drawer = (
+    <div className="ac-root ac-portal-root" data-theme={portalTheme}>
+      <div className="ac-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
       <div className="ac-drawer" role="dialog" aria-modal="true">
-        <div style={{ padding: '18px 22px', borderBottom: `1px solid ${T.line}`, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <div className="ac-drawer-header" style={{ padding: '18px 22px', borderBottom: `1px solid ${T.line}`, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             {subtitle && <div style={{ fontSize: 11.5, letterSpacing: '0.04em', color: T.textMuted, marginBottom: 3 }}>{subtitle}</div>}
             <h2 style={{ margin: 0, fontSize: 18, fontWeight: 720, letterSpacing: '-0.015em', color: T.text }}>{title}</h2>
@@ -432,11 +452,13 @@ export function Drawer({ open, onClose, title, subtitle, headerRight, children, 
           {headerRight}
           <IconButton label="Close" onClick={onClose}><Icon.x size={16} /></IconButton>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: 22 }}>{children}</div>
-        {footer && <div style={{ padding: '14px 22px', borderTop: `1px solid ${T.line}`, background: T.chip }}>{footer}</div>}
+        <div className="ac-drawer-body" style={{ flex: 1, overflowY: 'auto', padding: 22 }}>{children}</div>
+        {footer && <div className="ac-drawer-footer" style={{ padding: '14px 22px', borderTop: `1px solid ${T.line}`, background: T.chip }}>{footer}</div>}
+      </div>
       </div>
     </div>
   );
+  return createPortal(drawer, document.body);
 }
 
 // ── Disclosure (expand/collapse row) ─────────────────────────────────────────
