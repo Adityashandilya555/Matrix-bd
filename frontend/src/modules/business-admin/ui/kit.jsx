@@ -288,7 +288,7 @@ export function StatTile({ icon: TileIcon, label, count, caption, tone = 'accent
           justifyContent: 'center', background: c.chip, color: c.fg }}>
           <TileIcon size={21} />
         </span>
-        <Icon.chevron size={17} style={{ color: T.textFaint }} />
+        <Icon.caret size={16} style={{ color: T.textFaint }} />
       </div>
       <div>
         {loading
