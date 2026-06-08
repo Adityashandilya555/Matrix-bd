@@ -222,7 +222,6 @@ export default function AgreementPage() {
         file="No. 06"
         eyebrow="Legal module · Agreement"
         title={<>Agreement <em>status</em></>}
-        lede="Confirm execution before the licensing checklist opens for downstream clearance."
         right={<HeaderTag icon="file" label={agreementStatusLabel(currentStatus).toUpperCase()}/>}
       />
 

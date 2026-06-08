@@ -174,11 +174,7 @@ export default function DraftsPage({ onOpenSite: onOpenSiteProp, showToast: show
       <PageHeader
         file="№ 02" eyebrow="Workflow · Pipeline"
         title={<>Drafts</>}
-        lede={
-          role === 'supervisor'
-            ? `${visibleDrafts.length} draft${visibleDrafts.length === 1 ? '' : 's'} from all your BD execs. Supervisor SLA: 7 days. Tap Yes, No, or Archive.`
-            : `${visibleDrafts.length} of your own draft${visibleDrafts.length === 1 ? '' : 's'} awaiting supervisor decision — You only see what you created.`
-        }
+        lede={`${visibleDrafts.length} draft${visibleDrafts.length === 1 ? '' : 's'}`}
         right={overdueCount > 0 ? <HeaderTag icon="alert" label={`${overdueCount} PAST SLA`} tone="accent"/> : <HeaderTag icon="check" label="SLA CLEAR"/>}
       />
       <DraftsFilterBar filters={filters} onFilters={setFilters} drafts={visibleDrafts}/>

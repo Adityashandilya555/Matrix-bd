@@ -34,7 +34,6 @@ export default function DdFailedPage() {
         file="No. 07"
         eyebrow="BD module"
         title={<>Due diligence <em>failed</em></>}
-        lede="Sites the legal team rejected on due diligence. Open one to see the reason and request a change."
         right={<HeaderTag icon="alert" label="LEGAL_REJECTED"/>}
       />
 

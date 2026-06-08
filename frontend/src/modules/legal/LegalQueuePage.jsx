@@ -123,7 +123,6 @@ export default function LegalQueuePage() {
         file="No. 05"
         eyebrow="Legal module"
         title="Sites"
-        lede="Sites pushed to legal review. Open a row to start the due-diligence checklist."
         right={<HeaderTag icon="shield" label="LEGAL_REVIEW"/>}
       />
 

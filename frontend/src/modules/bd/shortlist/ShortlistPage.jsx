@@ -408,9 +408,7 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
       <PageHeader
         file="№ 03" eyebrow="Workflow · Shortlist"
         title={<>Shortlist</>}
-        lede={role === 'supervisor'
-          ? `${visibleShortlist.length} site${visibleShortlist.length === 1 ? '' : 's'} cleared from pipeline — Approve once the exec marks them as in review.`
-          : `${visibleShortlist.length} of your own shortlisted site${visibleShortlist.length === 1 ? '' : 's'} — Add the 17 essential fields, then send for review.`}
+        lede={`${visibleShortlist.length} site${visibleShortlist.length === 1 ? '' : 's'}`}
         right={<HeaderTag icon="clock" label="OLDEST FIRST"/>}
       />
       {visibleShortlist.map(item => (

@@ -74,7 +74,6 @@ export default function ChangeRequestsPage() {
         file="No. 08"
         eyebrow="Legal module"
         title={<>Change <em>requests</em></>}
-        lede="BD-opened requests to flip a legal field on a site. Approving overwrites the underlying status immediately."
         right={<HeaderTag icon="alert" label={`${state.total} PENDING`}/>}
       />
 

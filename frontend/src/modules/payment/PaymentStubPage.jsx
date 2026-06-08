@@ -373,7 +373,6 @@ export default function PaymentStubPage() {
         file="No. 09"
         eyebrow="BD module"
         title="Payment"
-        lede="Track CA / Commercial Code readiness, approval status, and finance handoff from the process flow."
         right={<HeaderTag icon="paymentCard" label={`${counts.ready + counts.awaiting} ACTIVE`}/>}
       />
 

@@ -93,9 +93,6 @@ export default function DesignQueuePage() {
         file="No. 06"
         eyebrow="Design module"
         title="Sites"
-        lede={isSupervisor
-          ? 'Finance-approved sites. Open a row to allocate it to an executive and review deliverables.'
-          : 'Sites allocated to you. Open a row to upload Recce → 2D → 3D → BOQ.'}
         right={<HeaderTag icon="box" label="FINANCE APPROVED"/>}
       />
 

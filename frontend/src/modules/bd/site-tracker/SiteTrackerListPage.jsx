@@ -512,7 +512,6 @@ export default function SiteTrackerListPage() {
         file="No. 08"
         eyebrow="BD module"
         title="Process flow"
-        lede="Signed LOIs flow through Legal, CA, Design, Project, and Final Approval. Legal status is live from the module records."
         right={<HeaderTag icon="activity" label={`${filtered.length} IN FLOW`}/>}
       />
 

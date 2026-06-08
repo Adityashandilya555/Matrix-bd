@@ -132,7 +132,7 @@ export default function SupervisorStagingPage({ onOpenSite: onOpenSiteProp, show
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <PageHeader file="№ 04" eyebrow="Workflow · Sites in process" title={<>Sites <em>awaiting</em> handoff</>}
-        lede={`${visibleStaging.length} approved site${visibleStaging.length === 1 ? '' : 's'} — track LOI upload, then send clear sites into Legal review.`}
+        lede={`${visibleStaging.length} approved site${visibleStaging.length === 1 ? '' : 's'}`}
         right={<HeaderTag icon="check" label="ON TRACK"/>}
       />
       <StagingKpiStripSupervisor sites={visibleStaging}/>

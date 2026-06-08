@@ -294,9 +294,7 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
     <>
       <PageHeader
         file="№ 01" eyebrow="Overview" title="Sites"
-        lede={role === 'supervisor'
-          ? `Synced 2 min ago — All sites in your tenant. ${totalMotion} files across draft, shortlist and sites in process.`
-          : `Synced 2 min ago — Your sites, ${ME}. ${totalMotion} files across draft, shortlist and sites in process.`}
+        lede={`${totalMotion} file${totalMotion === 1 ? '' : 's'} in motion`}
         right={<>
           <HeaderTag icon="clock" label="LIVE · 2M LAG"/>
           <HeaderTag icon="shield" label={role === 'supervisor' ? 'TENANT SCOPE' : 'PERSONAL SCOPE'} tone="accent"/>

@@ -74,7 +74,7 @@ export default function ArchivePage({ onOpenSite: onOpenSiteProp, showToast: sho
       <PageHeader
         file="№ 05" eyebrow="Reference · Archive"
         title={<>Archived <em>sites</em></>}
-        lede={`${archive.length} site${archive.length === 1 ? '' : 's'} archived for future reference — rejected drafts and paused inquiries, with their reasons preserved.`}
+        lede={`${archive.length} archived site${archive.length === 1 ? '' : 's'}`}
         right={<HeaderTag icon="folder" label={canRevive ? 'REVIVABLE' : 'READ ONLY'}/>}
       />
       <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
