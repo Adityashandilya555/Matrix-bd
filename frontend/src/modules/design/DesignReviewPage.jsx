@@ -285,18 +285,28 @@ export default function DesignReviewPage() {
   const [allocation, setAllocation] = React.useState(null);
   const [chosenExec, setChosenExec] = React.useState('');
 
-  const load = React.useCallback(async () => {
-    setStatus('loading'); setError(null);
+  const load = React.useCallback(async ({ silent = false } = {}) => {
+    // Background refreshes (window 'focus' / visibility / data events) MUST be
+    // silent: flipping to status='loading' unmounts the whole page — including
+    // the deliverable cards — which wipes a file the executive just picked.
+    // The native file dialog closing fires window 'focus', so a non-silent
+    // refresh there made every file selection vanish and the upload impossible.
+    // Only the initial mount shows the full-screen loader; refreshes update
+    // data in place (cards are keyed by kind, so they re-render, not remount).
+    if (!silent) { setStatus('loading'); setError(null); }
     try {
       const r = await getDesignReview(siteId);
       setReview(r); setStatus('ready');
     } catch (err) {
-      setError(err?.detail || err?.message || 'Failed to load design review'); setStatus('error');
+      if (!silent) {
+        setError(err?.detail || err?.message || 'Failed to load design review');
+        setStatus('error');
+      }
     }
   }, [siteId]);
 
   React.useEffect(() => { load(); }, [load]);
-  useSiteDataRefresh(load, {
+  useSiteDataRefresh(() => load({ silent: true }), {
     siteId,
     sources: ['design', 'businessAdmin'],
     skipWhen: () => busy,
