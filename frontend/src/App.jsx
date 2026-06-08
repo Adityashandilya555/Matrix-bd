@@ -17,7 +17,7 @@ import { GRID_LAYERS, GRID_ATTACH, stageVignette, canvasBase } from './lib/surfa
 // All view-specific logic lives in the page components.
 
 export default function App() {
-  const { user, role, setRole, dark, toggleDark } = useSession();
+  const { user, role, setRole, dark, toggleDark, authReady } = useSession();
   const { drafts, shortlist, staging, archive, createDraft } = useSites();
   const navigate = useNavigate();
   const location = useLocation();
@@ -91,10 +91,13 @@ export default function App() {
 
   // Pending-user count for the "Team" sidebar badge. Only fetched for
   // supervisors — the endpoint is supervisor-gated and would 403 for anyone
-  // else, polluting the console.
+  // else, polluting the console. Gated on `authReady` so we don't fire it
+  // during the pre-hydration window when `role` still holds the default
+  // 'supervisor' value (before /auth/whoami resolves the real role) — that
+  // race fired a spurious 403 on every executive's first page load.
   const [pendingUserCount, setPendingUserCount] = useState(0);
   useEffect(() => {
-    if (role !== 'supervisor') { setPendingUserCount(0); return; }
+    if (!authReady || role !== 'supervisor') { setPendingUserCount(0); return; }
     let alive = true;
     const refresh = () => listPendingUsers()
       .then(arr => alive && setPendingUserCount(arr.length))
@@ -103,7 +106,7 @@ export default function App() {
     // Cheap poll so a supervisor reviewing the queue sees joiners show up.
     const t = window.setInterval(refresh, 30_000);
     return () => { alive = false; clearInterval(t); };
-  }, [role]);
+  }, [authReady, role]);
 
   const counts = {
     pipeline:     visibleDrafts.length,

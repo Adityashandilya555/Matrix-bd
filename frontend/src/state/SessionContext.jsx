@@ -23,6 +23,12 @@ const SessionContext = createContext(null);
 
 export function SessionProvider({ children }) {
   const [session, setSession] = useState(INITIAL_SESSION);
+  // authReady: false until the first /auth/whoami resolves (HTTP mode). The
+  // shell must not fire role-gated calls (e.g. the supervisor-only pending-users
+  // badge) while the session still holds the pre-hydration default role
+  // ('supervisor'), or a non-supervisor token triggers a transient 403/401.
+  // Mock mode is ready immediately — the session is the static default.
+  const [authReady, setAuthReady] = useState(USE_MOCK);
   // Hydrate dark from localStorage so the choice survives refresh and any
   // provider re-mount (e.g. StrictMode double-invoke, route-driven unmount).
   const [dark, setDark] = useState(() => {
@@ -56,7 +62,7 @@ export function SessionProvider({ children }) {
     let alive = true;
     const hydrate = async (token) => {
       if (!token) {
-        if (alive) setSession(INITIAL_SESSION);
+        if (alive) { setSession(INITIAL_SESSION); setAuthReady(true); }
         return;
       }
       try {
@@ -81,6 +87,10 @@ export function SessionProvider({ children }) {
         // eslint-disable-next-line no-console
         console.warn('[session] /auth/whoami failed — clearing token', err);
         clearAuthToken();
+      } finally {
+        // Session resolved (success or failure) — role is now authoritative,
+        // so role-gated shell calls are safe to fire.
+        if (alive) setAuthReady(true);
       }
     };
     hydrate(getAuthToken());
@@ -122,6 +132,7 @@ export function SessionProvider({ children }) {
     role,
     setRole: USE_MOCK ? setRole : undefined, // hide switcher in HTTP mode
     session,
+    authReady,
     cityScope: session.cityScope || user.city,
     permissions,
     dark,
