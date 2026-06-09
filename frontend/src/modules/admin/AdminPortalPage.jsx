@@ -50,6 +50,26 @@ async function apiFetch(path, { key, method = 'GET', body } = {}) {
   return parsed;
 }
 
+// Multipart variant for the branding logo upload. No Content-Type header —
+// the browser sets the multipart boundary itself.
+async function apiUpload(path, { key, formData }) {
+  const r = await fetch(`${apiBase}${path}`, {
+    method: 'POST',
+    headers: { 'X-Platform-Admin-Key': key || '' },
+    body: formData,
+  });
+  const text = await r.text();
+  let parsed;
+  try { parsed = text ? JSON.parse(text) : null; } catch { parsed = { detail: text }; }
+  if (!r.ok) {
+    const detail = parsed?.detail || `Upload failed (${r.status})`;
+    const err = new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    err.status = r.status;
+    throw err;
+  }
+  return parsed;
+}
+
 function GateScreen({ onUnlock }) {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -140,35 +160,146 @@ function ApproveDialog({ request, busy, onCancel, onConfirm }) {
   );
 }
 
-function CredentialsDialog({ result, onClose }) {
+function CredentialsDialog({ result, keyValue, onClose }) {
+  const [name, setName] = React.useState(result?.company || '');
+  const [logoFile, setLogoFile] = React.useState(null);
+  const [busy, setBusy] = React.useState(false);
+  const [saved, setSaved] = React.useState(false);
+  const [bErr, setBErr] = React.useState(null);
   if (!result) return null;
   const copy = (s) => { try { navigator.clipboard?.writeText(s); } catch {/* noop */} };
+  const loginUrl = `${window.location.origin}/login/${result.workspace_code}`;
+  const fld = { height: 38, padding: '0 11px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.18)', background: 'rgba(255,255,255,0.05)', color: '#fff', fontSize: 13, outline: 'none', width: '100%', boxSizing: 'border-box' };
+
+  async function saveBranding(e) {
+    e.preventDefault();
+    setBusy(true); setBErr(null);
+    try {
+      const fd = new FormData();
+      if (name.trim()) fd.append('name', name.trim());
+      if (logoFile) fd.append('logo', logoFile);
+      await apiUpload(`/tenancy/tenants/${result.tenant_id}/branding`, { key: keyValue, formData: fd });
+      setSaved(true);
+    } catch (e2) { setBErr(e2.message || 'Could not save branding.'); }
+    finally { setBusy(false); }
+  }
+
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: 520, background: '#13141B', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: 24, color: '#fff', display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ width: 540, maxHeight: '92vh', overflowY: 'auto', background: '#13141B', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: 24, color: '#fff', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div>
           <div style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: '#86EFAC' }}>Provisioned ✓</div>
-          <h2 style={{ margin: '4px 0 2px', fontSize: 19, fontWeight: 700 }}>Share these with the supervisor</h2>
-          <p style={{ margin: 0, fontSize: 12.5, opacity: 0.7, lineHeight: 1.5 }}>An email has also been queued in the outbox. This is the only time the workspace code is shown here.</p>
+          <h2 style={{ margin: '4px 0 2px', fontSize: 19, fontWeight: 700 }}>Workspace created</h2>
+          <p style={{ margin: 0, fontSize: 12.5, opacity: 0.7, lineHeight: 1.5 }}>Share the workspace code with the supervisor, then brand the company&#39;s login page below.</p>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 70px', gap: 10, alignItems: 'center', fontSize: 13 }}>
-          <span style={{ opacity: 0.6, fontSize: 12 }}>Tenant ID</span>
-          <code style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', padding: '6px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.06)', fontSize: 12, overflowWrap: 'anywhere' }}>{result.tenant_id}</code>
-          <button onClick={() => copy(result.tenant_id)} style={{ height: 28, borderRadius: 6, border: '1px solid rgba(255,255,255,0.18)', background: 'transparent', color: '#fff', fontSize: 11.5, cursor: 'pointer' }}>Copy</button>
 
+        <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 70px', gap: 10, alignItems: 'center', fontSize: 13 }}>
           <span style={{ opacity: 0.6, fontSize: 12 }}>Workspace code</span>
           <code style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', padding: '6px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.08)', fontSize: 13, fontWeight: 700, letterSpacing: '0.05em' }}>{result.workspace_code}</code>
           <button onClick={() => copy(result.workspace_code)} style={{ height: 28, borderRadius: 6, border: '1px solid rgba(255,255,255,0.18)', background: 'transparent', color: '#fff', fontSize: 11.5, cursor: 'pointer' }}>Copy</button>
-
           <span style={{ opacity: 0.6, fontSize: 12 }}>Seat limit</span>
           <span style={{ fontSize: 13 }}>{result.seat_limit}</span>
           <span/>
         </div>
+
+        <div style={{ height: 1, background: 'rgba(255,255,255,0.1)' }}/>
+
+        <form onSubmit={saveBranding} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 11, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)' }}>Brand the login page</div>
+            <p style={{ margin: '4px 0 0', fontSize: 12, opacity: 0.6, lineHeight: 1.5 }}>The company name and logo appear on their customized sign-in page.</p>
+          </div>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
+            Company name
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Blue Tokai Coffee" style={fld}/>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
+            Logo image
+            <input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}/>
+          </label>
+          {bErr && <div style={{ fontSize: 12, color: '#FCA5A5' }}>{bErr}</div>}
+          {saved ? (
+            <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(34,197,94,0.12)', color: '#86EFAC', fontSize: 12.5, lineHeight: 1.5 }}>
+              Login page is ready. Open it:{' '}
+              <a href={loginUrl} target="_blank" rel="noreferrer" style={{ color: '#86EFAC', textDecoration: 'underline', overflowWrap: 'anywhere' }}>{loginUrl}</a>
+            </div>
+          ) : (
+            <button type="submit" disabled={busy} style={{ height: 40, borderRadius: 8, border: 'none', background: '#34D399', color: '#06251a', fontSize: 13, fontWeight: 800, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.7 : 1 }}>
+              {busy ? 'Saving…' : 'Save branding & create login page'}
+            </button>
+          )}
+        </form>
+
         <p style={{ margin: 0, padding: '10px 12px', borderRadius: 8, background: 'rgba(34,197,94,0.10)', color: '#86EFAC', fontSize: 12, lineHeight: 1.5 }}>{result.message}</p>
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ height: 34, padding: '0 16px', borderRadius: 8, border: 'none', background: '#fff', color: '#0B0C10', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Done</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ResetQueue({ keyValue, onAuthError }) {
+  const [items, setItems] = React.useState(null);
+  const [error, setError] = React.useState(null);
+  const [confirmingId, setConfirmingId] = React.useState(null);
+
+  const load = React.useCallback(async () => {
+    setError(null);
+    try {
+      const data = await apiFetch('/tenancy/password-reset-requests', { key: keyValue });
+      setItems(data?.items || []);
+    } catch (err) {
+      setError(err.message || 'Failed to load');
+      if (err.status === 401) onAuthError();
+    }
+  }, [keyValue, onAuthError]);
+
+  React.useEffect(() => { setItems(null); load(); }, [load]);
+
+  async function confirm(id) {
+    setConfirmingId(id); setError(null);
+    try {
+      await apiFetch(`/tenancy/password-reset-requests/${id}/confirm`, { key: keyValue, method: 'POST' });
+      await load();
+    } catch (err) {
+      setError(err.message || 'Confirm failed');
+    } finally {
+      setConfirmingId(null);
+    }
+  }
+
+  return (
+    <div>
+      <p style={{ margin: '0 0 16px', fontSize: 13, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
+        Users who failed sign-in and asked for a reset appear here. Confirm a request to let that user set a new password on their login page.
+      </p>
+      {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(220,38,38,0.18)', color: '#FCA5A5', marginBottom: 20, fontSize: 13 }}>{error}</div>}
+      {items === null && !error && <div style={{ opacity: 0.6, fontSize: 13 }}>Loading…</div>}
+      {items && items.length === 0 && (
+        <div style={{ padding: 48, textAlign: 'center', border: '1px dashed rgba(255,255,255,0.15)', borderRadius: 14, color: 'rgba(255,255,255,0.55)' }}>No pending reset requests.</div>
+      )}
+      {items && items.length > 0 && (
+        <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, overflow: 'hidden' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1.2fr 1fr 1fr 130px', gap: 10, padding: '12px 18px', background: 'rgba(255,255,255,0.04)', fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>
+            <span>Email</span><span>Company</span><span>Workspace</span><span>Requested</span><span style={{ textAlign: 'right' }}>Action</span>
+          </div>
+          {items.map((r, i) => (
+            <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '1.6fr 1.2fr 1fr 1fr 130px', gap: 10, padding: '14px 18px', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.06)', alignItems: 'center', fontSize: 13 }}>
+              <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, color: 'rgba(255,255,255,0.9)', overflowWrap: 'anywhere' }}>{r.email}</span>
+              <span style={{ fontSize: 12.5 }}>{r.tenant_name}</span>
+              <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>{r.workspace_code}</span>
+              <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11.5, color: 'rgba(255,255,255,0.6)' }}>{r.created_at ? new Date(r.created_at).toLocaleString() : '—'}</span>
+              <span style={{ textAlign: 'right' }}>
+                <button onClick={() => confirm(r.id)} disabled={confirmingId === r.id}
+                  style={{ height: 30, padding: '0 14px', borderRadius: 7, border: 'none', background: '#34D399', color: '#06251a', fontSize: 12, fontWeight: 800, cursor: confirmingId === r.id ? 'wait' : 'pointer', opacity: confirmingId === r.id ? 0.6 : 1 }}>
+                  {confirmingId === r.id ? '…' : 'Confirm'}
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -185,6 +316,7 @@ function statusPill(s) {
 }
 
 function PortalScreen({ keyValue, onLogout }) {
+  const [view, setView] = React.useState('requests'); // requests | resets
   const [statusFilter, setStatusFilter] = React.useState('pending');
   const [items, setItems] = React.useState(null); // null = loading
   const [error, setError] = React.useState(null);
@@ -217,7 +349,7 @@ function PortalScreen({ keyValue, onLogout }) {
         key: keyValue, method: 'POST', body: { city, admin_name },
       });
       setApproving(null);
-      setCredResult(result);
+      setCredResult({ ...result, company: approving.company });
       load();
     } catch (err) {
       setError(err.message || 'Approve failed');
@@ -248,18 +380,30 @@ function PortalScreen({ keyValue, onLogout }) {
       <header style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 28, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)' }}>Scale · Platform admin</div>
-          <h1 style={{ margin: '4px 0 0', fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', color: '#fff' }}>Workspace approval queue</h1>
+          <h1 style={{ margin: '4px 0 0', fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', color: '#fff' }}>{view === 'resets' ? 'Password reset queue' : 'Workspace approval queue'}</h1>
         </div>
         <span style={{ flex: 1 }}/>
         <div style={{ display: 'inline-flex', gap: 4, padding: 4, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 999 }}>
-          {['pending', 'approved', 'all'].map(s => (
-            <button key={s} onClick={() => setStatusFilter(s)} style={{ height: 30, padding: '0 14px', borderRadius: 999, border: 'none', background: statusFilter === s ? '#fff' : 'transparent', color: statusFilter === s ? '#0B0C10' : 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 700, textTransform: 'capitalize', cursor: 'pointer' }}>{s}</button>
+          {[['requests', 'Workspaces'], ['resets', 'Password resets']].map(([v, label]) => (
+            <button key={v} onClick={() => setView(v)} style={{ height: 30, padding: '0 14px', borderRadius: 999, border: 'none', background: view === v ? '#fff' : 'transparent', color: view === v ? '#0B0C10' : 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{label}</button>
           ))}
         </div>
+        {view === 'requests' && (
+          <div style={{ display: 'inline-flex', gap: 4, padding: 4, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 999 }}>
+            {['pending', 'approved', 'all'].map(s => (
+              <button key={s} onClick={() => setStatusFilter(s)} style={{ height: 30, padding: '0 14px', borderRadius: 999, border: 'none', background: statusFilter === s ? '#fff' : 'transparent', color: statusFilter === s ? '#0B0C10' : 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 700, textTransform: 'capitalize', cursor: 'pointer' }}>{s}</button>
+            ))}
+          </div>
+        )}
         <button onClick={load} style={{ height: 32, padding: '0 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.18)', background: 'transparent', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Refresh</button>
         <button onClick={() => { writeKey(''); onLogout(); }} style={{ height: 32, padding: '0 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.18)', background: 'transparent', color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Sign out</button>
       </header>
 
+      {view === 'resets' && (
+        <ResetQueue keyValue={keyValue} onAuthError={() => { writeKey(''); onLogout(); }}/>
+      )}
+
+      {view === 'requests' && (<>
       {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(220,38,38,0.18)', color: '#FCA5A5', marginBottom: 20, fontSize: 13 }}>{error}</div>}
 
       {items === null && !error && <div style={{ opacity: 0.6, fontSize: 13 }}>Loading…</div>}
@@ -299,9 +443,10 @@ function PortalScreen({ keyValue, onLogout }) {
           ))}
         </div>
       )}
+      </>)}
 
       {approving && <ApproveDialog request={approving} busy={approveBusy} onCancel={() => setApproving(null)} onConfirm={onApprove}/>}
-      {credResult && <CredentialsDialog result={credResult} onClose={() => setCredResult(null)}/>}
+      {credResult && <CredentialsDialog result={credResult} keyValue={keyValue} onClose={() => setCredResult(null)}/>}
     </div>
   );
 }
