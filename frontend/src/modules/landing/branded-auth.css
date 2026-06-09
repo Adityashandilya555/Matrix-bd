@@ -1,0 +1,179 @@
+/* ── Branded auth: workspace-code dialog + customized login page ───────────────
+   Self-contained styles. The decorative Rive panel degrades to a static
+   gradient (.wsc-rive-fallback / the .wsc-left background) so the form is never
+   visually broken if the animation fails to load. */
+
+:root {
+  --ba-bg:        #0e1014;
+  --ba-card:      #15181f;
+  --ba-panel:     #11141a;
+  --ba-line:      rgba(255, 255, 255, 0.10);
+  --ba-line-2:    rgba(255, 255, 255, 0.16);
+  --ba-fg:        #f4f6fa;
+  --ba-fg-2:      #aeb4c0;
+  --ba-fg-3:      #767d8c;
+  --ba-accent:    #34d399;
+  --ba-accent-2:  #10b981;
+  --ba-danger:    #f87171;
+  --ba-radius:    18px;
+}
+
+/* ── Overlay + card ────────────────────────────────────────────────────────── */
+.wsc-overlay {
+  position: fixed; inset: 0; z-index: 120;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: rgba(7, 9, 13, 0.62);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  animation: wsc-fade 180ms ease;
+}
+.wsc-card {
+  position: relative;
+  display: flex; width: min(920px, 96vw); height: min(560px, 92vh);
+  background: var(--ba-card);
+  border: 1px solid var(--ba-line);
+  border-radius: var(--ba-radius); overflow: hidden;
+  box-shadow: 0 40px 120px -30px rgba(0, 0, 0, 0.8);
+  animation: wsc-rise 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* ── Left (decorative Rive) ────────────────────────────────────────────────── */
+.wsc-left {
+  position: relative; flex: 0 0 44%; min-width: 0;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  overflow: hidden;
+  /* Static fallback look — always visible behind/instead of the canvas. */
+  background:
+    radial-gradient(120% 90% at 20% 10%, rgba(52, 211, 153, 0.22), transparent 60%),
+    radial-gradient(120% 120% at 90% 100%, rgba(56, 89, 233, 0.30), transparent 55%),
+    linear-gradient(160deg, #161a2b 0%, #0d0f17 100%);
+}
+.wsc-rive, .wsc-rive-fallback { position: absolute; inset: 0; }
+.wsc-rive-canvas { width: 100%; height: 100%; display: block; }
+.wsc-left-copy {
+  position: relative; z-index: 2; padding: 26px 26px 28px;
+  background: linear-gradient(to top, rgba(8, 10, 16, 0.78) 18%, transparent);
+}
+.wsc-left-brand {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ba-accent);
+}
+.wsc-left-copy h3 {
+  margin: 8px 0 6px; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; color: #fff;
+}
+.wsc-left-copy p { margin: 0; font-size: 13px; line-height: 1.5; color: rgba(255, 255, 255, 0.7); max-width: 30ch; }
+
+/* ── Right (form) ──────────────────────────────────────────────────────────── */
+.wsc-right {
+  position: relative; flex: 1; min-width: 0;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 40px 44px; background: var(--ba-card); color: var(--ba-fg);
+}
+.wsc-close {
+  position: absolute; top: 16px; right: 18px; width: 30px; height: 30px;
+  border: 1px solid var(--ba-line); border-radius: 8px; background: transparent;
+  color: var(--ba-fg-3); font-size: 18px; line-height: 1; cursor: pointer;
+  transition: color 140ms, border-color 140ms;
+}
+.wsc-close:hover { color: var(--ba-fg); border-color: var(--ba-line-2); }
+.wsc-eyebrow {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ba-accent);
+}
+.wsc-title { margin: 10px 0 8px; font-size: 25px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+.wsc-sub { margin: 0 0 26px; font-size: 13.5px; line-height: 1.5; color: var(--ba-fg-2); }
+.wsc-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ba-fg-3); margin-bottom: 8px; }
+.wsc-input {
+  width: 100%; box-sizing: border-box; height: 48px; padding: 0 14px;
+  border: 1px solid var(--ba-line-2); border-radius: 11px;
+  background: var(--ba-panel); color: var(--ba-fg);
+  font-size: 15px; letter-spacing: 0.04em; outline: none;
+  transition: border-color 140ms, box-shadow 140ms;
+}
+.wsc-input::placeholder { color: var(--ba-fg-3); letter-spacing: 0; }
+.wsc-input:focus { border-color: var(--ba-accent); box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18); }
+.wsc-error { margin-top: 10px; font-size: 12.5px; color: var(--ba-danger); }
+.wsc-submit {
+  margin-top: 22px; height: 48px; border: none; border-radius: 11px;
+  background: var(--ba-accent); color: #06251a; font-size: 14.5px; font-weight: 800; cursor: pointer;
+  transition: transform 140ms, box-shadow 140ms, background 140ms;
+}
+.wsc-submit:hover:not(:disabled) { background: var(--ba-accent-2); transform: translateY(-1px); box-shadow: 0 12px 28px -12px rgba(16, 185, 129, 0.7); }
+.wsc-submit:disabled { opacity: 0.6; cursor: wait; }
+.wsc-foot { margin: 20px 0 0; font-size: 12px; line-height: 1.5; color: var(--ba-fg-3); }
+
+@keyframes wsc-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes wsc-rise { from { opacity: 0; transform: translateY(14px) scale(0.985); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 720px) {
+  .wsc-card { flex-direction: column; height: auto; max-height: 92vh; overflow-y: auto; }
+  .wsc-left { flex: 0 0 168px; min-height: 168px; }
+  .wsc-right { padding: 30px 26px 34px; }
+}
+
+/* ── Branded login page (/login/:code) ──────────────────────────────────────── */
+.bl-shell {
+  min-height: 100vh; box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px; padding: 40px 20px;
+  background: radial-gradient(80% 60% at 50% 0%, rgba(52, 211, 153, 0.10), transparent 60%), var(--ba-bg);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+.bl-card {
+  width: min(420px, 100%); box-sizing: border-box;
+  background: var(--ba-card); border: 1px solid var(--ba-line);
+  border-radius: var(--ba-radius); padding: 34px 32px 30px;
+  box-shadow: 0 40px 110px -40px rgba(0, 0, 0, 0.7);
+  animation: wsc-rise 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.bl-card--narrow { text-align: center; }
+.bl-card--narrow .bl-btn { width: 100%; }
+.bl-head { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+.bl-logo { width: 48px; height: 48px; border-radius: 12px; object-fit: contain; background: #fff; padding: 4px; box-sizing: border-box; flex: 0 0 48px; }
+.bl-logo--ph {
+  display: inline-flex; align-items: center; justify-content: center; padding: 0;
+  background: linear-gradient(140deg, var(--ba-accent), var(--ba-accent-2));
+  color: #06251a; font-size: 22px; font-weight: 800;
+}
+.bl-head-text { min-width: 0; }
+.bl-eyebrow { font-size: 10.5px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ba-accent); }
+.bl-brand { margin: 2px 0 0; font-size: 21px; font-weight: 700; letter-spacing: -0.01em; color: var(--ba-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.bl-tabs { display: flex; gap: 4px; padding: 4px; margin-bottom: 22px; background: var(--ba-panel); border: 1px solid var(--ba-line); border-radius: 11px; }
+.bl-tabs button { flex: 1; height: 38px; border: none; border-radius: 8px; background: transparent; color: var(--ba-fg-2); font-size: 13.5px; font-weight: 700; cursor: pointer; transition: background 140ms, color 140ms; }
+.bl-tabs button[data-active="true"] { background: var(--ba-card); color: var(--ba-fg); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); }
+
+.bl-form { display: flex; flex-direction: column; }
+.bl-label { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ba-fg-3); margin: 14px 0 7px; }
+.bl-form > .bl-label:first-child { margin-top: 0; }
+.bl-input {
+  width: 100%; box-sizing: border-box; height: 46px; padding: 0 13px;
+  border: 1px solid var(--ba-line-2); border-radius: 10px;
+  background: var(--ba-panel); color: var(--ba-fg); font-size: 14.5px; outline: none;
+  transition: border-color 140ms, box-shadow 140ms;
+}
+.bl-input::placeholder { color: var(--ba-fg-3); }
+.bl-input:focus { border-color: var(--ba-accent); box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18); }
+.bl-btn {
+  margin-top: 20px; height: 46px; border: none; border-radius: 10px;
+  background: var(--ba-accent); color: #06251a; font-size: 14px; font-weight: 800; cursor: pointer;
+  transition: transform 140ms, box-shadow 140ms, background 140ms;
+}
+.bl-btn:hover:not(:disabled) { background: var(--ba-accent-2); transform: translateY(-1px); box-shadow: 0 12px 28px -12px rgba(16, 185, 129, 0.7); }
+.bl-btn:disabled { opacity: 0.6; cursor: wait; }
+.bl-link { background: none; border: none; color: var(--ba-accent); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 0; }
+.bl-link:hover { text-decoration: underline; }
+.bl-link--center { margin-top: 16px; align-self: center; }
+.bl-id { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 13px; margin-bottom: 4px; border: 1px solid var(--ba-line); border-radius: 10px; background: var(--ba-panel); font-size: 13px; color: var(--ba-fg-2); }
+.bl-id span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bl-hint { margin: 12px 0 0; font-size: 12px; line-height: 1.5; color: var(--ba-fg-3); }
+.bl-seg { display: flex; gap: 4px; padding: 4px; margin-bottom: 4px; background: var(--ba-panel); border: 1px solid var(--ba-line); border-radius: 10px; }
+.bl-seg button { flex: 1; height: 34px; border: none; border-radius: 7px; background: transparent; color: var(--ba-fg-3); font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.bl-seg button[data-active="true"] { background: var(--ba-card); color: var(--ba-fg); }
+.bl-banner { margin-top: 14px; padding: 10px 12px; border-radius: 9px; font-size: 12.5px; line-height: 1.45; }
+.bl-banner--error { background: rgba(248, 113, 113, 0.12); border: 1px solid rgba(248, 113, 113, 0.4); color: #fca5a5; }
+.bl-banner--info { background: rgba(56, 89, 233, 0.14); border: 1px solid rgba(99, 130, 255, 0.4); color: #b9c6ff; }
+.bl-banner--success { background: rgba(52, 211, 153, 0.14); border: 1px solid rgba(52, 211, 153, 0.4); color: #86efc5; }
+.bl-title { margin: 0 0 10px; font-size: 22px; font-weight: 700; color: var(--ba-fg); }
+.bl-sub { margin: 0 0 22px; font-size: 13.5px; line-height: 1.55; color: var(--ba-fg-2); }
+.bl-foot { margin: 0; font-size: 11.5px; color: var(--ba-fg-3); letter-spacing: 0.02em; }

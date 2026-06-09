@@ -10,6 +10,8 @@ import App from '../App.jsx';
 // redirect away before the chunk loads; unauthenticated visitors see the
 // fallback for the few hundred ms it takes to fetch on first paint.
 const ScaleLandingPage = lazy(() => import('../modules/landing/ScaleLandingPage.jsx'));
+// Per-company customized login page reached via the workspace-code dialog.
+const BrandedLoginPage = lazy(() => import('../modules/landing/BrandedLoginPage.jsx'));
 import OverviewPage          from '../modules/bd/overview/OverviewPage.jsx';
 import DraftsPage            from '../modules/bd/drafts/DraftsPage.jsx';
 import ShortlistPage         from '../modules/bd/shortlist/ShortlistPage.jsx';
@@ -101,6 +103,13 @@ export default function AppRouter() {
       <Route path={LANDING_PATH} element={
         <Suspense fallback={<LandingFallback/>}>
           <LandingRedirectIfAuthed/>
+        </Suspense>
+      }/>
+
+      {/* Per-company customized login page (workspace-code dialog → here). */}
+      <Route path="/login/:code" element={
+        <Suspense fallback={<LandingFallback/>}>
+          <BrandedLoginPage/>
         </Suspense>
       }/>
 

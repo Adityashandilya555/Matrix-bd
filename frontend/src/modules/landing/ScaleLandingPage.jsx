@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import WorkspaceCodeDialog from './WorkspaceCodeDialog.jsx';
 import { useNavigate } from 'react-router-dom';
 import {
   signInWithWorkspaceCode,
@@ -652,7 +653,7 @@ function decodeJwtPayload(token) {
   }
 }
 
-function AuthModal({ mode, onMode, onClose, prefillEmail }) {
+function AuthModal({ mode, onMode, onClose, prefillEmail, lockRegister = false }) {
   const navigate = useNavigate();
   const [joinMode, setJoinMode] = useState('supervisor');
   const [status, setStatus] = useState(null);
@@ -776,11 +777,13 @@ function AuthModal({ mode, onMode, onClose, prefillEmail }) {
     <div className="scale-auth-overlay" role="presentation" onMouseDown={onClose}>
       <form className="scale-auth-card" onSubmit={submitHandler} onMouseDown={(e) => e.stopPropagation()}>
         <button type="button" className="scale-auth-close" onClick={onClose} aria-label="Close auth">×</button>
-        <div className="scale-auth-tabs">
-          <button type="button" data-active={mode === 'login'}    onClick={() => onMode('login')}>Sign in</button>
-          <button type="button" data-active={mode === 'join'}     onClick={() => onMode('join')}>Join</button>
-          <button type="button" data-active={mode === 'register'} onClick={() => onMode('register')}>Create</button>
-        </div>
+        {!lockRegister && (
+          <div className="scale-auth-tabs">
+            <button type="button" data-active={mode === 'login'}    onClick={() => onMode('login')}>Sign in</button>
+            <button type="button" data-active={mode === 'join'}     onClick={() => onMode('join')}>Join</button>
+            <button type="button" data-active={mode === 'register'} onClick={() => onMode('register')}>Create</button>
+          </div>
+        )}
         <span>{isRegister ? 'Company setup' : isJoin ? 'Membership' : 'Enter workspace'}</span>
         <h2>{title}</h2>
         <p>{intro}</p>
@@ -806,7 +809,7 @@ function AuthModal({ mode, onMode, onClose, prefillEmail }) {
             type="email"
             placeholder="you@company.com"
             autoComplete="email"
-            defaultValue={!isRegister ? (prefillEmail || '') : ''}
+            defaultValue={prefillEmail || ''}
             required
             autoFocus={!isRegister && !prefillEmail}
           />
@@ -874,6 +877,7 @@ export default function ScaleLandingPage() {
   const [membershipEmail, setMembershipEmail] = useState('');
   const [heroEmail, setHeroEmail] = useState('');
   const [prefillEmail, setPrefillEmail] = useState('');
+  const [showCodeDialog, setShowCodeDialog] = useState(false);
 
   // Body data attributes drive accent + theme via CSS. Landing is always dark,
   // but we must NOT delete the theme on unmount — that would strip
@@ -903,9 +907,9 @@ export default function ScaleLandingPage() {
 
   // Lock scroll while the auth modal is open.
   useEffect(() => {
-    document.body.style.overflow = authMode ? 'hidden' : '';
+    document.body.style.overflow = (authMode || showCodeDialog) ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
-  }, [authMode]);
+  }, [authMode, showCodeDialog]);
 
   // Scroll → scrolledVh (0..900) tied to the sticky track height.
   useEffect(() => {
@@ -969,7 +973,7 @@ export default function ScaleLandingPage() {
 
   const openMembershipFlow = (email) => {
     setPrefillEmail(email || '');
-    setAuthMode('join');
+    setAuthMode('register');
   };
 
   const handleHeroSubmit = (event) => {
@@ -987,7 +991,7 @@ export default function ScaleLandingPage() {
         onRequestMembership={requestMembership}
         membershipEmail={membershipEmail}
         setMembershipEmail={setMembershipEmail}
-        onSignIn={() => { setPrefillEmail(''); setAuthMode('login'); }}
+        onSignIn={() => setShowCodeDialog(true)}
       />
 
       <div className="track" ref={trackRef} style={{ height: `${TOTAL_VH}vh` }}>
@@ -1033,7 +1037,10 @@ export default function ScaleLandingPage() {
         onMode={(m) => { setAuthMode(m); if (m !== 'join') setPrefillEmail(''); }}
         onClose={() => { setAuthMode(null); setPrefillEmail(''); }}
         prefillEmail={prefillEmail}
+        lockRegister
       />
+
+      <WorkspaceCodeDialog open={showCodeDialog} onClose={() => setShowCodeDialog(false)} />
     </main>
   );
 }

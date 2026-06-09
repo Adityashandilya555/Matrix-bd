@@ -26,22 +26,40 @@ export class PendingApprovalError extends Error {
   }
 }
 
-export async function signInWithWorkspaceCode(email, workspaceCode) {
+// Wrong password on an account that has one set. The branded login page uses
+// this to reveal the "Request password reset" affordance after a failed try.
+export class InvalidCredentialsError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'InvalidCredentialsError';
+    this.isInvalidCredentials = true;
+  }
+}
+
+function _detailMessage(err, fallback) {
+  const detail = err.response?.data?.detail;
+  return Array.isArray(detail)
+    ? detail.map((d) => d.msg || JSON.stringify(d)).join('; ')
+    : detail || err.message || fallback;
+}
+
+export async function signInWithWorkspaceCode(email, workspaceCode, password) {
   let res;
   try {
     res = await axios.post(`${API_BASE}/auth/login`, {
       email,
       workspace_code: workspaceCode,
+      // Only send a password when the branded page collected one; legacy
+      // passwordless callers omit it and stay backward-compatible.
+      ...(password != null && password !== '' ? { password } : {}),
     }, {
       // 202 is a success-shaped response (the user is in the queue) — don't
       // let axios throw on it.
       validateStatus: (s) => s === 200 || s === 202,
     });
   } catch (err) {
-    const detail = err.response?.data?.detail;
-    const message = Array.isArray(detail)
-      ? detail.map((d) => d.msg || JSON.stringify(d)).join('; ')
-      : detail || err.message || 'Sign-in failed';
+    const message = _detailMessage(err, 'Sign-in failed');
+    if (err.response?.status === 401) throw new InvalidCredentialsError(message);
     throw new Error(message);
   }
 
@@ -91,6 +109,47 @@ export function signupAsSupervisor(email, deptCode) {
 
 export function signupAsExecutive(email, supervisorCode) {
   return postSignup('/auth/signup/executive', { email, supervisor_code: supervisorCode });
+}
+
+// ── Branded login helpers ───────────────────────────────────────────────────
+
+// Does (email, workspace_code) already have a password? Drives the choice
+// between "set a password" (with confirm) and "enter your password".
+export async function checkPasswordSet(email, workspaceCode) {
+  const res = await axios.post(`${API_BASE}/auth/login/check`, {
+    email, workspace_code: workspaceCode,
+  });
+  return Boolean(res.data?.password_set);
+}
+
+// First wrong attempt → route a reset request to the platform admin.
+export async function requestPasswordReset(email, workspaceCode) {
+  const res = await axios.post(`${API_BASE}/auth/password-reset/request`, {
+    email, workspace_code: workspaceCode,
+  });
+  return res.data;
+}
+
+// After the platform admin approves, the user sets a new password here.
+export async function completePasswordReset(email, workspaceCode, newPassword) {
+  let res;
+  try {
+    res = await axios.post(`${API_BASE}/auth/password-reset/complete`, {
+      email, workspace_code: workspaceCode, new_password: newPassword,
+    });
+  } catch (err) {
+    throw new Error(_detailMessage(err, 'Password reset failed'));
+  }
+  return res.data;
+}
+
+// Public branding for a workspace code → { name, logo_url }. Used by the
+// workspace-code dialog (to validate the code) and the branded login page.
+export async function getWorkspaceBranding(workspaceCode) {
+  const res = await axios.get(`${API_BASE}/tenancy/branding`, {
+    params: { code: workspaceCode },
+  });
+  return res.data;
 }
 
 export async function signOut() {
