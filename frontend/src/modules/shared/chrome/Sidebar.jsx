@@ -91,10 +91,11 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
     path.startsWith('/legal')   ? 'legal'   :
     path.startsWith('/design')  ? 'design'  :
     path.startsWith('/project') ? 'project' :
+    path.startsWith('/nso')     ? 'nso'     :
     'bd';
   const userModule = session?.module || routeModule;
   const isModuleSurface = userModule === 'legal'
-    || userModule === 'design' || userModule === 'project';
+    || userModule === 'design' || userModule === 'project' || userModule === 'nso';
 
   // Active view derived from current URL path
   const activeView =
@@ -115,6 +116,8 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
     path.startsWith('/project/history')                  ? 'project-history' :
     path.startsWith('/project/sites')                    ? 'project-sites' :
     path.startsWith('/project')                          ? 'project-home' :
+    path.startsWith('/nso/history')                      ? 'nso-history' :
+    path.startsWith('/nso')                              ? 'nso-home' :
     'overview';
 
   const go = (route) => navigate(route);
@@ -218,6 +221,26 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
             label="History"
             active={activeView === 'project-history'}
             onClick={() => go(ROUTES.PROJECT_HISTORY)}
+            collapsed={collapsed}
+          />
+        </>
+      )}
+
+      {userModule === 'nso' && (
+        <>
+          {!collapsed && <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>NSO</div>}
+          <SidebarItem
+            icon="home"
+            label="Sites"
+            active={activeView === 'nso-home'}
+            onClick={() => go(ROUTES.NSO)}
+            collapsed={collapsed}
+          />
+          <SidebarItem
+            icon="archiveBox"
+            label="History"
+            active={activeView === 'nso-history'}
+            onClick={() => go(ROUTES.NSO_HISTORY)}
             collapsed={collapsed}
           />
         </>

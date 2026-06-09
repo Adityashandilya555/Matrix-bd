@@ -30,7 +30,7 @@ from app.services.finance_service import svc_finance_approve
 
 
 _PENDING_MODULE_PREFIX = "pending_module:"
-_VALID_MODULES: frozenset[str] = frozenset(("bd", "legal", "payment", "design", "project"))
+_VALID_MODULES: frozenset[str] = frozenset(("bd", "legal", "payment", "design", "project", "nso"))
 
 
 def _new_dept_code() -> str:
@@ -366,7 +366,7 @@ async def approve_finance(
 
 # Departments shown in the org view. Payment is an approval sub-workflow, not a
 # dept onboarded via a code, so it is intentionally omitted here.
-_ORG_MODULES: tuple[str, ...] = ("bd", "legal", "design", "project")
+_ORG_MODULES: tuple[str, ...] = ("bd", "legal", "design", "project", "nso")
 
 
 async def list_org(session: AsyncSession, tenant_id: str | UUID) -> dict:

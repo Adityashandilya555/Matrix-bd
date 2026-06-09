@@ -29,6 +29,8 @@ function homeForSession(role, module) {
   if (role === 'business_admin') return '/business-admin';
   if (module === 'legal')        return ROUTES.LEGAL;
   if (module === 'design')       return ROUTES.DESIGN;
+  if (module === 'project')      return ROUTES.PROJECT;
+  if (module === 'nso')          return ROUTES.NSO;
   return ROUTES.OVERVIEW;
 }
 

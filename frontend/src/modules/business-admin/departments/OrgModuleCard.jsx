@@ -10,6 +10,7 @@ export const MODULE_META = {
   legal:   { label: 'Legal',   icon: Icon.scale },
   design:  { label: 'Design',  icon: Icon.layers },
   project: { label: 'Project', icon: Icon.wrench },
+  nso:     { label: 'NSO',     icon: Icon.flag },
 };
 
 const fmtDate = (d) => { try { return new Date(d).toLocaleDateString(); } catch { return ''; } };

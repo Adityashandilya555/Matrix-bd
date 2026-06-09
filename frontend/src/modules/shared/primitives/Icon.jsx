@@ -46,6 +46,7 @@ export default function Icon({ name, size = 16, stroke = 1.5, style }) {
     activity: <><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></>,
     folder: <><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></>,
     home: <><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2h-4v-7H9v7H5a2 2 0 01-2-2z"/></>,
+    flag: <><path d="M5 22V4"/><path d="M5 4h12l-1.5 4L17 12H5"/></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" style={style}>

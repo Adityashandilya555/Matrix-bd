@@ -44,6 +44,8 @@ const ApprovalCenterPreview = import.meta.env.DEV
   ? lazy(() => import('../modules/business-admin/_preview/ApprovalCenterPreview.jsx'))
   : null;
 import ProjectReviewPage        from '../modules/project/ProjectReviewPage.jsx';
+import NsoQueuePage             from '../modules/nso/NsoQueuePage.jsx';
+import NsoReviewPage            from '../modules/nso/NsoReviewPage.jsx';
 
 // In HTTP (non-mock) mode the landing page is the unauthenticated entry. The
 // existing app chrome only renders after a Supabase session is established.
@@ -55,6 +57,7 @@ function homeForRoleModule(role, module) {
   if (module === 'legal')        return ROUTES.LEGAL;
   if (module === 'design')       return ROUTES.DESIGN;
   if (module === 'project')      return ROUTES.PROJECT;
+  if (module === 'nso')          return ROUTES.NSO;
   return ROUTES.OVERVIEW; // BD / unknown → default to BD overview
 }
 
@@ -94,6 +97,7 @@ function IndexRedirect() {
   if (module === 'legal')   return <Navigate to={ROUTES.LEGAL}   replace/>;
   if (module === 'design')  return <Navigate to={ROUTES.DESIGN}  replace/>;
   if (module === 'project') return <Navigate to={ROUTES.PROJECT} replace/>;
+  if (module === 'nso')     return <Navigate to={ROUTES.NSO}     replace/>;
   return <OverviewPage/>;
 }
 
@@ -283,6 +287,36 @@ export default function AppRouter() {
           </RequireRole>
         }/>
         <Route path="/project/*" element={<Navigate to={ROUTES.PROJECT} replace/>}/>
+
+        <Route path={ROUTES.NSO} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['nso']}>
+              <NsoQueuePage/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.NSO_SITE} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['nso']}>
+              <NsoReviewPage/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.NSO_HISTORY} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['nso']}>
+              <ModuleHistoryPage moduleKey="nso"/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.NSO_HISTORY_SITE} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['nso']}>
+              <ModuleHistoryPage moduleKey="nso"/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path="/nso/*" element={<Navigate to={ROUTES.NSO} replace/>}/>
 
         <Route path={ROUTES.DD_FAILED} element={
           <RequireRole roles={['supervisor', 'executive', 'exec']}>

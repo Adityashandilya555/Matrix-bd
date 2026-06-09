@@ -6,10 +6,12 @@ import { getSiteActivity, labelForEntry } from '../../services/api/audit.js';
 import { getLegalReview, listLegalHistory } from '../../services/api/legalApi.js';
 import { getDesignReview, listDesignHistory } from '../../services/api/designApi.js';
 import { getProjectHistoryDetail, listProjectHistory } from '../../services/api/projectApi.js';
+import { getNsoHistoryDetail, listNsoHistory } from '../../services/api/nsoApi.js';
 import {
   legalHistorySiteRoute,
   designHistorySiteRoute,
   projectHistorySiteRoute,
+  nsoHistorySiteRoute,
   ROUTES,
 } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
@@ -55,6 +57,17 @@ const CONFIG = {
     listRoute: ROUTES.PROJECT_HISTORY,
     detailRoute: projectHistorySiteRoute,
     backLabel: 'Back to Project history',
+  },
+  nso: {
+    icon: 'home',
+    eyebrow: 'NSO module',
+    title: 'History',
+    lede: 'New Store Opening readiness from CA handoff through launch approval.',
+    list: listNsoHistory,
+    detail: getNsoHistoryDetail,
+    listRoute: ROUTES.NSO_HISTORY,
+    detailRoute: nsoHistorySiteRoute,
+    backLabel: 'Back to NSO history',
   },
 };
 
@@ -202,15 +215,53 @@ function projectStages(detail) {
   ];
 }
 
+function nsoStages(detail) {
+  const triggerByKey = Object.fromEntries((detail?.triggers || []).map((item) => [item.key, item]));
+  return [
+    {
+      label: 'CA / Payment trigger',
+      status: triggerByKey.finance_ca?.unlocked ? 'done' : 'pending',
+      detail: detail?.caCode ? `CA code active: ${detail.caCode}` : 'Waiting for approved Finance / CA code.',
+    },
+    {
+      label: 'Property + communication',
+      status: detail?.stageOneCompletedAt ? 'done' : 'pending',
+      detail: detail?.communicationFloated == null ? 'Communication not marked yet.' : `Communication floated: ${detail.communicationFloated ? 'Yes' : 'No'}`,
+    },
+    {
+      label: 'License status',
+      status: detail?.stageTwoCompletedAt ? 'done' : 'pending',
+      detail: ['FSSAI', 'Health Trade', 'Shops & Establishment', 'Fire NOC', 'Storage License']
+        .map((label, index) => {
+          const keys = ['fssaiStatus', 'healthTradeStatus', 'shopsEstabStatus', 'fireNocStatus', 'storageLicenseStatus'];
+          return `${label}: ${pretty(detail?.[keys[index]])}`;
+        })
+        .join(' · '),
+    },
+    {
+      label: 'Launch readiness',
+      status: detail?.stageThreeCompletedAt ? 'done' : 'pending',
+      detail: detail?.launchDate ? `Launch date: ${detail.launchDate}` : 'Awaiting Project completion and launch checklist.',
+    },
+    {
+      label: 'Final approval',
+      status: detail?.finalApprovedAt ? 'done' : 'pending',
+      detail: detail?.finalApprovedAt ? 'NSO completed.' : 'Two sign-offs required before final approval.',
+    },
+  ];
+}
+
 function stagesFor(moduleKey, detail) {
   if (moduleKey === 'legal') return legalStages(detail);
   if (moduleKey === 'design') return designStages(detail);
+  if (moduleKey === 'nso') return nsoStages(detail);
   return projectStages(detail);
 }
 
 function summaryFor(moduleKey, item) {
   if (moduleKey === 'legal') return [item.legalDdStatus, item.agreementStatus, item.licensingStatus];
   if (moduleKey === 'design') return [item.designStatus, item.currentStage, item.gfcStatus];
+  if (moduleKey === 'nso') return [item.nsoStatus, item.currentStage, item.projectStatus];
   return [item.projectStatus, item.currentStage, item.budgetStatus];
 }
 

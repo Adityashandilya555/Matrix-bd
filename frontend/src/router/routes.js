@@ -28,6 +28,10 @@ export const ROUTES = {
   PROJECT_SITE:           '/project/:siteId',
   PROJECT_HISTORY:        '/project/history',
   PROJECT_HISTORY_SITE:   '/project/history/:siteId',
+  NSO:                    '/nso',
+  NSO_SITE:               '/nso/:siteId',
+  NSO_HISTORY:            '/nso/history',
+  NSO_HISTORY_SITE:       '/nso/history/:siteId',
   SITE:                   '/sites/:id',
   ADD_DETAILS:            '/shortlist/:code/details',
   LOI_TIMELINE:           '/shortlist/:code/timeline',
@@ -78,6 +82,14 @@ export function projectSiteRoute(siteId) {
 
 export function projectHistorySiteRoute(siteId) {
   return ROUTES.PROJECT_HISTORY_SITE.replace(':siteId', siteId);
+}
+
+export function nsoSiteRoute(siteId) {
+  return ROUTES.NSO_SITE.replace(':siteId', siteId);
+}
+
+export function nsoHistorySiteRoute(siteId) {
+  return ROUTES.NSO_HISTORY_SITE.replace(':siteId', siteId);
 }
 
 export function bdSiteStatusRoute(siteId) {

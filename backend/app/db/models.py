@@ -352,7 +352,7 @@ class SiteDelegation(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     __table_args__ = (
-        CheckConstraint("module IN ('bd','legal','payment','design','project')", name="chk_site_delegations_module"),
+        CheckConstraint("module IN ('bd','legal','payment','design','project','nso')", name="chk_site_delegations_module"),
     )
 
 
@@ -749,6 +749,91 @@ class ProjectBudgetItem(Base):
         UniqueConstraint("site_id", "idx", name="uq_project_budget_site_idx"),
         CheckConstraint("idx BETWEEN 1 AND 11", name="chk_project_budget_idx"),
         Index("idx_project_budget_items_site", "site_id"),
+    )
+
+
+# ── NSO workflow ─────────────────────────────────────────────────────────────
+# New Store Opening checks run after Finance / CA has produced an approved CA
+# code, then continue as Project milestones unlock.
+
+class NsoReview(Base):
+    """One row per site for New Store Opening readiness."""
+    __tablename__ = "nso_reviews"
+
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True,
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False,
+    )
+    current_stage: Mapped[str] = mapped_column(Text, nullable=False, server_default="stage_one")
+    nso_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+
+    property_details: Mapped[Optional[str]] = mapped_column(Text)
+    communication_floated: Mapped[Optional[bool]] = mapped_column(Boolean)
+
+    fssai_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    health_trade_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    shops_estab_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    fire_noc_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    storage_license_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+
+    dry_stock_order_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    online_delivery_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    handover_checklist_signed: Mapped[Optional[bool]] = mapped_column(Boolean)
+    launch_date: Mapped[Optional[date]] = mapped_column(Date)
+    launch_ready: Mapped[Optional[bool]] = mapped_column(Boolean)
+    final_approval_signoff_1: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    final_approval_signoff_2: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+
+    stage_one_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    stage_two_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    stage_three_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    final_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "current_stage IN ('stage_one','stage_two','stage_three','final','done')",
+            name="chk_nso_current_stage",
+        ),
+        CheckConstraint(
+            "nso_status IN ('pending','in_progress','complete')",
+            name="chk_nso_status",
+        ),
+        CheckConstraint(
+            "fssai_status IN ('pending','done')",
+            name="chk_nso_fssai_status",
+        ),
+        CheckConstraint(
+            "health_trade_status IN ('pending','done')",
+            name="chk_nso_health_trade_status",
+        ),
+        CheckConstraint(
+            "shops_estab_status IN ('pending','done')",
+            name="chk_nso_shops_estab_status",
+        ),
+        CheckConstraint(
+            "fire_noc_status IN ('pending','done')",
+            name="chk_nso_fire_noc_status",
+        ),
+        CheckConstraint(
+            "storage_license_status IN ('pending','done')",
+            name="chk_nso_storage_license_status",
+        ),
+        CheckConstraint(
+            "dry_stock_order_status IN ('pending','ordered','received')",
+            name="chk_nso_dry_stock_status",
+        ),
+        CheckConstraint(
+            "online_delivery_status IN ('pending','ready','active')",
+            name="chk_nso_online_delivery_status",
+        ),
+        Index("idx_nso_reviews_tenant_status", "tenant_id", "nso_status"),
     )
 
 
