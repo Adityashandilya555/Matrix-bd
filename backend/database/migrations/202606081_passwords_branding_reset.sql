@@ -38,4 +38,10 @@ CREATE INDEX IF NOT EXISTS idx_pwd_reset_status
 CREATE INDEX IF NOT EXISTS idx_pwd_reset_tenant_email
     ON password_reset_requests (tenant_id, lower(email));
 
+-- RLS on, no policies — matches the other backend-only tables (business_admins,
+-- module_codes, site_delegations, workspace_requests, …). The table is then
+-- reachable only via the backend's privileged role (which bypasses RLS), never
+-- the anon / PostgREST API. It holds emails + reset state, so this matters.
+ALTER TABLE password_reset_requests ENABLE ROW LEVEL SECURITY;
+
 COMMIT;
