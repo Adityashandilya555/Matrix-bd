@@ -631,8 +631,25 @@ function ExecutionSection({ review, siteId, isSupervisor, dark, busy, mutate }) 
     );
   }
 
+  // Guard: if no executive is allocated yet, surface a clear prompt rather
+  // than letting every stage silently say "awaiting executive".
+  const hasExecutive = !!review.allocatedTo;
+
   return (
     <FieldCard title="Execution" right={statusPill(done ? 'Pushed to NSO' : 'In progress', done ? 'var(--zm-success)' : 'var(--zm-accent)')}>
+      {!hasExecutive && (
+        <div style={{
+          padding: '10px 14px',
+          borderRadius: 8,
+          background: 'rgba(224, 162, 60, 0.12)',
+          border: '1px solid rgba(224, 162, 60, 0.35)',
+          color: 'var(--zm-copper)',
+          fontSize: 12.5,
+          fontWeight: 700,
+        }}>
+          ⚠ No project executive allocated — use the Ownership panel above to assign one before execution can proceed.
+        </div>
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
         <StageCard title="1 · Initialization date" status={initStatus} tone={tone(initApproved)}>
@@ -646,7 +663,11 @@ function ExecutionSection({ review, siteId, isSupervisor, dark, busy, mutate }) 
               </div>
             </>
           )}
-          {initStatus === 'proposed' && isSupervisor && <span style={muted}>Awaiting the executive's response.</span>}
+          {initStatus === 'proposed' && isSupervisor && (
+            hasExecutive
+              ? <span style={muted}>Awaiting the executive's response.</span>
+              : <span style={{ color: 'var(--zm-copper)', fontSize: 12.5 }}>Allocate an executive above — they must accept this date before execution can continue.</span>
+          )}
           {initStatus === 'rejected' && (
             <>
               <span style={{ color: 'var(--zm-danger)', fontSize: 12.5 }}>Returned by executive: {review.initializationComments || '—'}</span>
@@ -690,7 +711,9 @@ function ExecutionSection({ review, siteId, isSupervisor, dark, busy, mutate }) 
               {expDate && <span style={muted}>Expected completion: {fmtDate(expDate)}</span>}
               <ActionButton disabled={busy || !expDate} onClick={() => mutate(() => submitProjectMilestone(siteId, 'expected_completion_date', expDate))}>Push to supervisor</ActionButton>
             </>
-          ) : <span style={muted}>Awaiting the executive to set the expected completion.</span>}
+          ) : hasExecutive
+              ? <span style={muted}>Awaiting the executive to set the expected completion.</span>
+              : <span style={{ color: 'var(--zm-copper)', fontSize: 12.5 }}>Allocate an executive above to proceed.</span>}
         </StageCard>
 
         <StageCard title="3 · Mid-project visit" status={expApproved ? (visitSet ? 'scheduled' : 'pending') : null} tone={tone(visitSet)} locked={!expApproved}>
@@ -745,7 +768,9 @@ function ExecutionSection({ review, siteId, isSupervisor, dark, busy, mutate }) 
               </label>
               <ActionButton disabled={busy || !auditFile || !inspectionDate} onClick={() => mutate(() => uploadQualityAuditReport(siteId, auditFile, inspectionDate))}>Submit for approval</ActionButton>
             </div>
-          ) : <span style={muted}>Awaiting the executive to upload the audit report.</span>}
+          ) : hasExecutive
+              ? <span style={muted}>Awaiting the executive to upload the audit report.</span>
+              : <span style={{ color: 'var(--zm-copper)', fontSize: 12.5 }}>Allocate an executive above to proceed.</span>}
         </StageCard>
       </div>
 
