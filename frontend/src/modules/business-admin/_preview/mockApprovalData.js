@@ -150,6 +150,18 @@ export const mockFetchers = {
 
   listBudget: async () => { await wait(520); return { items: structuredClone(store.budget), total: store.budget.length }; },
   reviewBudget: async (siteId) => { await wait(500); store.budget = store.budget.filter((s) => s.siteId !== siteId); return { ok: true }; },
+  fetchBudgetDetail: async (siteId) => {
+    await wait(420);
+    const row = store.budget.find((s) => s.siteId === siteId) || {};
+    const total = row.budgetTotal || 0;
+    const per = Math.round(total / 11);
+    const items = [
+      'Professional Fees', 'HVAC', 'Furniture, Light & Planters', 'Civil & Interiors',
+      'Kitchen Equipment', 'Branding', 'Crockery & Small Equipments', 'Utilities',
+      'Licencing', 'BD Cost', 'Misc',
+    ].map((label, i) => ({ idx: i + 1, label, amount: per }));
+    return { items, budgetTotal: per * 11, totalIndoorAreaSqft: 316, totalAreaSqft: 804, covers: 30 };
+  },
 
   listSupervisors: async () => { await wait(500); return structuredClone(store.supervisors); },
   approveSupervisor: async (id) => { await wait(450); store.supervisors = store.supervisors.filter((u) => u.id !== id); return { ok: true }; },

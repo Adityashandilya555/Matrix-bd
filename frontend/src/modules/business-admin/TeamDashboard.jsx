@@ -7,7 +7,7 @@ import {
   getDesignGfcQueue, getDesignGfcReview, decideGfc,
 } from '../../services/api/designApi.js';
 import {
-  getFinanceQueue, approveFinance, getBudgetQueue, reviewBudget,
+  getFinanceQueue, approveFinance, getBudgetQueue, reviewBudget, fetchBudgetDetail,
   getOrg, getAllSites, getSiteHistory,
 } from '../../services/api/businessAdminApi.js';
 import {
@@ -32,6 +32,7 @@ export const REAL_FETCHERS = {
   approveFinance,
   listBudget:        getBudgetQueue,
   reviewBudget,
+  fetchBudgetDetail,
   listSupervisors:   listPendingSupervisors,
   approveSupervisor,
   rejectSupervisor,
@@ -140,6 +141,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     fetchGfcReview: fetchers.reviewGfcPackage,
     onGfcDecide: async (siteId, payload) => { await fetchers.decideGfc(siteId, payload); await loadGfc(true); },
     onApproveFinance: async (siteId) => { await fetchers.approveFinance(siteId); await loadFinance(true); },
+    fetchBudgetDetail: fetchers.fetchBudgetDetail,
     onBudgetDecide: async (siteId, payload) => { await fetchers.reviewBudget(siteId, payload); await loadBudget(true); },
     // departments
     onApproveSupervisor: async (u) => { await fetchers.approveSupervisor(u.id, u.module); await loadSupervisors(true); await loadOrg(true); },

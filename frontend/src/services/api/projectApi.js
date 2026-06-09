@@ -89,6 +89,9 @@ function stateFromServer(row) {
     allocatedToName: row.allocated_to_name,
     budgetStatus: row.budget_status,
     budgetTotal: row.budget_total,
+    totalIndoorAreaSqft: row.total_indoor_area_sqft,
+    totalAreaSqft: row.total_area_sqft,
+    covers: row.covers,
     budgetItems: (row.budget_items || []).map(budgetItemFromServer),
     budgetSupervisorComments: row.budget_supervisor_comments,
     budgetAdminComments: row.budget_admin_comments,
@@ -154,14 +157,23 @@ export async function allocateProject(siteId, executiveId, notes) {
   return stateFromServer(data);
 }
 
-export async function saveProjectBudget(siteId, { items, action = 'save' }) {
+const toNumberOrNull = (value) =>
+  value === '' || value == null ? null : Number(value);
+
+export async function saveProjectBudget(
+  siteId,
+  { items, action = 'save', totalIndoorAreaSqft, totalAreaSqft, covers },
+) {
   const data = await client.post(`/project/${siteId}/budget`, {
     action,
     items: (items || []).map((item) => ({
       idx: Number(item.idx),
       label: item.label || null,
-      amount: item.amount === '' || item.amount == null ? null : Number(item.amount),
+      amount: toNumberOrNull(item.amount),
     })),
+    total_indoor_area_sqft: toNumberOrNull(totalIndoorAreaSqft),
+    total_area_sqft: toNumberOrNull(totalAreaSqft),
+    covers: toNumberOrNull(covers),
   }).then((r) => r.data);
   notifySiteDataChanged({ source: 'project', action: `budget_${action}`, siteId });
   return stateFromServer(data);

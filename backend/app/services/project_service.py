@@ -36,16 +36,17 @@ from app.services.delegation_service import svc_assigned_sites, svc_is_delegated
 
 
 _BUDGET_LABELS = (
-    "Civil work",
-    "Electrical",
-    "Plumbing",
+    "Professional Fees",
     "HVAC",
-    "Furniture",
-    "Signage",
-    "Kitchen equipment",
-    "IT / POS",
-    "Permits",
-    "Contingency",
+    "Furniture, Light & Planters",
+    "Civil & Interiors",
+    "Kitchen Equipment",
+    "Branding",
+    "Crockery & Small Equipments",
+    "Utilities",
+    "Licencing",
+    "BD Cost",
+    "Misc",
 )
 
 
@@ -165,6 +166,9 @@ async def _build_response(
         allocated_to_name=(delegate[1] if delegate else None),
         budget_status=review.budget_status,
         budget_total=float(review.budget_total) if review.budget_total is not None else None,
+        total_indoor_area_sqft=float(review.total_indoor_area_sqft) if review.total_indoor_area_sqft is not None else None,
+        total_area_sqft=float(review.total_area_sqft) if review.total_area_sqft is not None else None,
+        covers=int(review.covers) if review.covers is not None else None,
         budget_items=[_budget_item_out(item) for item in items],
         budget_supervisor_comments=review.budget_supervisor_comments,
         budget_admin_comments=review.budget_admin_comments,
@@ -497,7 +501,7 @@ async def svc_save_budget(
         amounts = {item.idx: item.amount for item in body.items}
         await session.execute(delete(models.ProjectBudgetItem).where(models.ProjectBudgetItem.site_id == site.id))
         total = 0.0
-        for idx in range(1, 11):
+        for idx in range(1, len(_BUDGET_LABELS) + 1):
             amount = amounts.get(idx)
             if amount is not None:
                 total += float(amount)
@@ -509,6 +513,9 @@ async def svc_save_budget(
                 amount=amount,
             ))
         review.budget_total = total
+        review.total_indoor_area_sqft = body.total_indoor_area_sqft
+        review.total_area_sqft = body.total_area_sqft
+        review.covers = body.covers
         review.project_status = "budgeting"
         review.current_stage = "budget"
         if body.action == "submit":

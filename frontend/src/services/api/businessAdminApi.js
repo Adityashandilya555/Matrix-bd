@@ -82,6 +82,20 @@ export async function reviewBudget(siteId, { decision, comments } = {}) {
   return client.post(`/project/${siteId}/budget/admin-review`, body).then((r) => r.data);
 }
 
+// Full budget breakdown for the approval drawer — 11 investment heads, total,
+// and the (distinct-but-related) area / cover inputs that drive the metrics.
+// GET /project/{site_id} is tenant-scoped, not role-gated, so the admin reads it.
+export async function fetchBudgetDetail(siteId) {
+  const d = await client.get(`/project/${siteId}`).then((r) => r.data);
+  return {
+    items: (d.budget_items || []).map((r) => ({ idx: r.idx, label: r.label, amount: num(r.amount) })),
+    budgetTotal: num(d.budget_total),
+    totalIndoorAreaSqft: num(d.total_indoor_area_sqft),
+    totalAreaSqft: num(d.total_area_sqft),
+    covers: num(d.covers),
+  };
+}
+
 // ── Department org tree ──────────────────────────────────────────────────────
 
 export async function getOrg() {

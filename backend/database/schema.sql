@@ -337,6 +337,9 @@ CREATE TABLE IF NOT EXISTS public.project_reviews (
   allocated_to uuid,
   budget_status text NOT NULL DEFAULT 'draft',
   budget_total numeric(14,2),
+  total_indoor_area_sqft numeric(12,2),
+  total_area_sqft numeric(12,2),
+  covers integer,
   budget_supervisor_comments text,
   budget_admin_comments text,
   initialization_date date,
@@ -378,6 +381,6 @@ CREATE TABLE IF NOT EXISTS public.project_budget_items (
   CONSTRAINT project_budget_items_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
   CONSTRAINT project_budget_items_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id) ON DELETE CASCADE,
   CONSTRAINT uq_project_budget_site_idx UNIQUE (site_id, idx),
-  CONSTRAINT chk_project_budget_idx CHECK (idx BETWEEN 1 AND 10)
+  CONSTRAINT chk_project_budget_idx CHECK (idx BETWEEN 1 AND 11)
 );
 CREATE INDEX IF NOT EXISTS idx_project_budget_items_site ON public.project_budget_items(site_id);

@@ -18,7 +18,7 @@ MilestoneField = Literal[
 
 
 class ProjectBudgetItemIn(BaseModel):
-    idx: int = Field(ge=1, le=10)
+    idx: int = Field(ge=1, le=11)
     label: Optional[str] = None
     amount: Optional[float] = Field(default=None, ge=0)
 
@@ -60,6 +60,9 @@ class ProjectStateResponse(BaseModel):
     allocated_to_name: Optional[str] = None
     budget_status: str
     budget_total: Optional[float] = None
+    total_indoor_area_sqft: Optional[float] = None
+    total_area_sqft: Optional[float] = None
+    covers: Optional[int] = None
     budget_items: list[ProjectBudgetItemOut] = Field(default_factory=list)
     budget_supervisor_comments: Optional[str] = None
     budget_admin_comments: Optional[str] = None
@@ -102,6 +105,11 @@ class AllocateProjectRequest(BaseModel):
 class SaveBudgetRequest(BaseModel):
     items: list[ProjectBudgetItemIn] = Field(default_factory=list)
     action: BudgetAction = "save"
+    # Area / cover inputs travel with the budget so they are captured at the
+    # same save/submit step and carried into the approval flow.
+    total_indoor_area_sqft: Optional[float] = Field(default=None, ge=0)
+    total_area_sqft: Optional[float] = Field(default=None, ge=0)
+    covers: Optional[int] = Field(default=None, ge=0)
 
 
 class ReviewRequest(BaseModel):

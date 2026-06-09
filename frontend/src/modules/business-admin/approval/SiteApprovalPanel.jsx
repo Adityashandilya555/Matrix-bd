@@ -152,9 +152,30 @@ function PaymentBlock({ site, onApprove }) {
 }
 
 // ── Project budget (tier-2 admin) ────────────────────────────────────────────
-function BudgetBlock({ site, onDecide }) {
+// Indices (1-based) whose sum feeds the "Civil, Interior & MEP" metric — must
+// match the same constant on the executive form (ProjectReviewPage).
+const CIVIL_MEP_IDX = [2, 3, 4, 5, 8];
+
+function metricRow(label, value) {
+  return (
+    <div style={{ display: 'flex', gap: 10, fontSize: 12.5 }}>
+      <span style={{ flex: 1, color: T.textMuted }}>{label}</span>
+      <span style={{ fontFamily: T.mono, color: T.text, ...TABULAR }}>{value}</span>
+    </div>
+  );
+}
+
+function BudgetBlock({ site, fetchDetail, onDecide }) {
+  const [detail, setDetail] = React.useState(null);
   const [comments, setComments] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => {
+    let live = true;
+    const fallback = { items: [], budgetTotal: site.budgetTotal };
+    if (!fetchDetail) { setDetail(fallback); return; }
+    fetchDetail(site.siteId).then((d) => { if (live) setDetail(d); }).catch(() => { if (live) setDetail(fallback); });
+    return () => { live = false; };
+  }, [site.siteId, site.budgetTotal, fetchDetail]);
   const decide = async (decision) => {
     if (decision === 'reject' && !comments.trim()) { window.alert('Comments are required to send back.'); return; }
     setBusy(true);
@@ -162,8 +183,56 @@ function BudgetBlock({ site, onDecide }) {
     catch (e) { window.alert(e?.detail || e?.message || 'Decision failed'); }
     finally { setBusy(false); }
   };
+  if (!detail) return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <Skeleton h={14} w="70%" /><Skeleton h={14} w="85%" /><Skeleton h={14} w="55%" />
+    </div>
+  );
+  const items = detail.items || [];
+  const total = detail.budgetTotal != null
+    ? detail.budgetTotal
+    : items.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+  const amountAt = (idx) => Number(items.find((it) => it.idx === idx)?.amount) || 0;
+  const civilMepSum = CIVIL_MEP_IDX.reduce((s, idx) => s + amountAt(idx), 0);
+  // ratio in whole rupees, or "—" when the divisor is missing / zero.
+  const metric = (numer, div) => (div > 0 ? inr(Math.round(numer / div)) : '—');
+  const dim = (v, suffix = '') => (v != null ? `${v}${suffix}` : '—');
   return (
     <>
+      {items.length > 0 && (
+        <div style={{ display: 'grid', gap: 6, marginBottom: 12 }}>
+          {items.map((it) => (
+            <div key={it.idx} style={{ display: 'flex', alignItems: 'baseline', gap: 10, fontSize: 12.5 }}>
+              <span style={{ flex: 1, color: T.textMuted }}>{it.idx}. {it.label}</span>
+              <span style={{ fontFamily: T.mono, color: T.text, ...TABULAR }}>{inr(it.amount)}</span>
+            </div>
+          ))}
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, fontSize: 12.5,
+            borderTop: `1px solid ${T.line}`, marginTop: 4, paddingTop: 8 }}>
+            <span style={{ flex: 1, color: T.text, fontWeight: 700 }}>Total investment</span>
+            <span style={{ fontFamily: T.mono, color: T.successText, fontWeight: 700, ...TABULAR }}>{inr(total)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Area & covers — part of the budget submission, distinct from the heads. */}
+      <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 12, padding: '10px 12px',
+        borderRadius: T.radiusSm, background: T.chip }}>
+        <div><div style={{ color: T.textFaint, fontSize: 11 }}>Total Indoor Area</div>
+          <div style={{ fontFamily: T.mono, color: T.text, fontSize: 12.5 }}>{dim(detail.totalIndoorAreaSqft, ' sqft')}</div></div>
+        <div><div style={{ color: T.textFaint, fontSize: 11 }}>Total Area</div>
+          <div style={{ fontFamily: T.mono, color: T.text, fontSize: 12.5 }}>{dim(detail.totalAreaSqft, ' sqft')}</div></div>
+        <div><div style={{ color: T.textFaint, fontSize: 11 }}>Covers</div>
+          <div style={{ fontFamily: T.mono, color: T.text, fontSize: 12.5 }}>{dim(detail.covers)}</div></div>
+      </div>
+
+      {/* Derived, read-only metrics. */}
+      <div style={{ display: 'grid', gap: 6, marginBottom: 12 }}>
+        {metricRow('Civil, Interior & MEP / sqft', metric(civilMepSum, detail.totalIndoorAreaSqft))}
+        {metricRow('CAPEX / sqft', metric(total, detail.totalAreaSqft))}
+        {metricRow('CAPEX / cover', metric(total, detail.covers))}
+      </div>
+
       <textarea className="ac-input" style={taStyle} placeholder="Add comments (required when sending back)"
         value={comments} onChange={(e) => setComments(e.target.value)} />
       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
@@ -198,7 +267,7 @@ export default function SiteApprovalPanel({ site, handlers }) {
       )}
       {project && (
         <BlockShell icon={Icon.wrench} tone="project" title="Project budget approval" amount={project.budgetTotal}>
-          <BudgetBlock site={site} onDecide={handlers.onBudgetDecide} />
+          <BudgetBlock site={site} fetchDetail={handlers.fetchBudgetDetail} onDecide={handlers.onBudgetDecide} />
         </BlockShell>
       )}
     </div>

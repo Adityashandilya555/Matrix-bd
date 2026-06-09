@@ -666,6 +666,10 @@ class ProjectReview(Base):
 
     budget_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="draft")
     budget_total: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    # Captured alongside the budget; feed the per-sqft / per-cover metrics.
+    total_indoor_area_sqft: Mapped[Optional[float]] = mapped_column(Numeric(12, 2))
+    total_area_sqft: Mapped[Optional[float]] = mapped_column(Numeric(12, 2))
+    covers: Mapped[Optional[int]] = mapped_column(Integer)
     budget_supervisor_comments: Mapped[Optional[str]] = mapped_column(Text)
     budget_admin_comments: Mapped[Optional[str]] = mapped_column(Text)
 
@@ -733,7 +737,7 @@ class ProjectBudgetItem(Base):
 
     __table_args__ = (
         UniqueConstraint("site_id", "idx", name="uq_project_budget_site_idx"),
-        CheckConstraint("idx BETWEEN 1 AND 10", name="chk_project_budget_idx"),
+        CheckConstraint("idx BETWEEN 1 AND 11", name="chk_project_budget_idx"),
         Index("idx_project_budget_items_site", "site_id"),
     )
 
