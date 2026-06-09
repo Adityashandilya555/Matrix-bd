@@ -32,6 +32,7 @@ from sqlalchemy import text
 
 from app.core.deps import CurrentUser, DbDep
 from app.core.security import TOKEN_TTL_SECONDS, issue_token
+from app.core.passwords import hash_password, verify_password
 from app.domain.schemas.common import OkResponse
 
 logger = logging.getLogger("matrix.auth")
@@ -42,7 +43,8 @@ _EMAIL_RE   = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 _WS_CODE_RE = re.compile(r"^[A-Za-z0-9\-]{4,32}$")
 
 
-class LoginIn(BaseModel):
+class _WorkspaceCred(BaseModel):
+    """Email + workspace_code with shared validation."""
     email:          str = Field(min_length=3, max_length=254)
     workspace_code: str = Field(min_length=4, max_length=32)
 
@@ -61,6 +63,24 @@ class LoginIn(BaseModel):
         if not _WS_CODE_RE.match(v):
             raise ValueError("workspace_code looks invalid")
         return v
+
+
+class LoginIn(_WorkspaceCred):
+    # Optional for back-compat: a legacy user with no password set may still
+    # sign in passwordlessly, and the first password they submit is stored.
+    password: Optional[str] = Field(default=None, max_length=256)
+
+
+class LoginCheckIn(_WorkspaceCred):
+    pass
+
+
+class ResetRequestIn(_WorkspaceCred):
+    pass
+
+
+class ResetCompleteIn(_WorkspaceCred):
+    new_password: str = Field(min_length=6, max_length=256)
 
 
 class LoginOut(BaseModel):
@@ -120,7 +140,7 @@ async def login(payload: LoginIn, db: DbDep):
     # 2. Find the user by (tenant, email).
     user = (await db.execute(
         text("""
-            SELECT id, email, name, role, is_active, assigned_city
+            SELECT id, email, name, role, is_active, assigned_city, password_hash
               FROM users
              WHERE tenant_id = :tid AND lower(email) = lower(:email)
         """),
@@ -145,14 +165,15 @@ async def login(payload: LoginIn, db: DbDep):
         new_id = uuid.uuid4()
         await db.execute(
             text("""
-                INSERT INTO users (id, tenant_id, role, email, name, is_active)
-                VALUES (:id, :tid, 'executive', :email, :name, false)
+                INSERT INTO users (id, tenant_id, role, email, name, is_active, password_hash)
+                VALUES (:id, :tid, 'executive', :email, :name, false, :pwd)
             """),
             {
                 "id":    new_id,
                 "tid":   tenant["id"],
                 "email": payload.email,
                 "name":  payload.email.split("@")[0],
+                "pwd":   hash_password(payload.password) if payload.password else None,
             },
         )
         await db.commit()
@@ -165,6 +186,24 @@ async def login(payload: LoginIn, db: DbDep):
     # 3. Known user. If still inactive (no role assigned), keep them pending.
     if not user["is_active"]:
         return _pending_response(payload.email)
+
+    # 3b. Password gate. Legacy users (password_hash IS NULL) may still sign in
+    #     without a password (back-compat). Once a password is set it is
+    #     required; the first password a user submits is stored.
+    stored_hash = user["password_hash"]
+    provided = (payload.password or "").strip()
+    if stored_hash:
+        if not verify_password(provided, stored_hash):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password.",
+            )
+    elif provided:
+        await db.execute(
+            text("UPDATE users SET password_hash = :h WHERE id = :uid"),
+            {"h": hash_password(provided), "uid": user["id"]},
+        )
+        await db.commit()
 
     # 4. Active user → mint a JWT. Optionally enrich with module membership.
     membership = (await db.execute(
@@ -200,6 +239,108 @@ async def login(payload: LoginIn, db: DbDep):
             "city":       user["assigned_city"],
         },
     )
+
+
+@router.post(
+    "/login/check",
+    summary="Public: report whether this (email, workspace_code) already has a password set",
+)
+async def login_check(payload: LoginCheckIn, db: DbDep) -> dict:
+    """Lets the branded login page choose between 'set a password' (with a
+    confirm field) and 'enter your password'. Returns False for unknown
+    accounts too, so it does not enumerate users."""
+    tenant = (await db.execute(
+        text("SELECT id FROM tenants WHERE upper(workspace_code) = upper(:code)"),
+        {"code": payload.workspace_code},
+    )).mappings().first()
+    if not tenant:
+        return {"password_set": False}
+    user = (await db.execute(
+        text("""SELECT password_hash FROM users
+                 WHERE tenant_id = :tid AND lower(email) = lower(:email)"""),
+        {"tid": tenant["id"], "email": payload.email},
+    )).mappings().first()
+    return {"password_set": bool(user and user["password_hash"])}
+
+
+@router.post(
+    "/password-reset/request",
+    summary="Public: request a password reset (routed to the platform admin)",
+)
+async def password_reset_request(payload: ResetRequestIn, db: DbDep) -> dict:
+    # Soft ack regardless of existence, so this does not leak which emails are
+    # registered. A pending request is created only when the account is real.
+    soft = {
+        "status": "requested",
+        "message": "If that account exists, a reset request was sent to the platform admin for approval.",
+    }
+    tenant = (await db.execute(
+        text("SELECT id FROM tenants WHERE upper(workspace_code) = upper(:code)"),
+        {"code": payload.workspace_code},
+    )).mappings().first()
+    if not tenant:
+        return soft
+    user = (await db.execute(
+        text("SELECT id FROM users WHERE tenant_id = :tid AND lower(email) = lower(:email)"),
+        {"tid": tenant["id"], "email": payload.email},
+    )).mappings().first()
+    if not user:
+        return soft
+    dup = (await db.execute(
+        text("""SELECT id FROM password_reset_requests
+                 WHERE tenant_id = :tid AND lower(email) = lower(:email) AND status = 'pending'"""),
+        {"tid": tenant["id"], "email": payload.email},
+    )).mappings().first()
+    if not dup:
+        await db.execute(
+            text("""INSERT INTO password_reset_requests (tenant_id, user_id, email)
+                    VALUES (:tid, :uid, :email)"""),
+            {"tid": tenant["id"], "uid": user["id"], "email": payload.email},
+        )
+        await db.commit()
+        logger.info("password reset requested tenant_id=%s email=%s", tenant["id"], payload.email)
+    return soft
+
+
+@router.post(
+    "/password-reset/complete",
+    summary="Public: set a new password once the platform admin has approved the request",
+)
+async def password_reset_complete(payload: ResetCompleteIn, db: DbDep) -> dict:
+    tenant = (await db.execute(
+        text("SELECT id FROM tenants WHERE upper(workspace_code) = upper(:code)"),
+        {"code": payload.workspace_code},
+    )).mappings().first()
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset request.")
+    user = (await db.execute(
+        text("SELECT id FROM users WHERE tenant_id = :tid AND lower(email) = lower(:email)"),
+        {"tid": tenant["id"], "email": payload.email},
+    )).mappings().first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset request.")
+    req = (await db.execute(
+        text("""SELECT id FROM password_reset_requests
+                 WHERE tenant_id = :tid AND user_id = :uid AND status = 'approved'
+                 ORDER BY created_at DESC LIMIT 1"""),
+        {"tid": tenant["id"], "uid": user["id"]},
+    )).mappings().first()
+    if not req:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No approved reset request found. Ask the platform admin to approve your reset first.",
+        )
+    await db.execute(
+        text("UPDATE users SET password_hash = :h WHERE id = :uid"),
+        {"h": hash_password(payload.new_password), "uid": user["id"]},
+    )
+    await db.execute(
+        text("UPDATE password_reset_requests SET status = 'completed', completed_at = now() WHERE id = :id"),
+        {"id": req["id"]},
+    )
+    await db.commit()
+    logger.info("password reset completed tenant_id=%s user_id=%s", tenant["id"], user["id"])
+    return {"status": "reset", "message": "Password updated. You can now sign in with your new password."}
 
 
 @router.post(

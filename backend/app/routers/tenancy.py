@@ -17,15 +17,18 @@ import secrets
 import uuid
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select, text
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, DbDep, TenantId
+from app.core.passwords import hash_password
 from app.db import models
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
+from app.services.storage_service import safe_object_name, signed_url
+from app.services.storage_service import upload_bytes as storage_upload
 
 logger = logging.getLogger("matrix.tenancy")
 
@@ -624,6 +627,7 @@ async def approve_workspace_request(
 class JoinIn(BaseModel):
     email:          str = Field(min_length=3, max_length=254)
     workspace_code: str = Field(min_length=4, max_length=32)
+    password:       Optional[str] = Field(default=None, max_length=256)
 
     @field_validator("email")
     @classmethod
@@ -711,14 +715,15 @@ async def join_workspace(payload: JoinIn, db: DbDep) -> JoinOut:
     #    "pending" message on login until the supervisor assigns a role.
     await db.execute(
         text("""
-            INSERT INTO users (id, tenant_id, role, email, name, is_active)
-            VALUES (:id, :tenant_id, 'executive', :email, :name, false)
+            INSERT INTO users (id, tenant_id, role, email, name, is_active, password_hash)
+            VALUES (:id, :tenant_id, 'executive', :email, :name, false, :pwd)
         """),
         {
             "id":        uuid.uuid4(),
             "tenant_id": tenant["id"],
             "email":     payload.email,
             "name":      payload.email.split("@")[0],
+            "pwd":       hash_password(payload.password) if payload.password else None,
         },
     )
 
@@ -728,3 +733,137 @@ async def join_workspace(payload: JoinIn, db: DbDep) -> JoinOut:
         tenant["id"], payload.email, payload.workspace_code,
     )
     return soft_ack
+
+
+# ── Branding (customized login page) ────────────────────────────────────────
+
+@router.get(
+    "/branding",
+    summary="Public: company name + logo for a workspace code (drives the branded login page)",
+)
+async def public_branding(code: str, db: DbDep) -> dict:
+    row = (await db.execute(
+        text("SELECT name, logo_url FROM tenants WHERE upper(workspace_code) = upper(:code)"),
+        {"code": code},
+    )).mappings().first()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No workspace matches that code.")
+    logo = row["logo_url"]
+    # logo_url stores the storage object path; hand back a fresh signed URL so
+    # the link never goes stale in the database.
+    if logo and not logo.startswith("http"):
+        try:
+            logo = await signed_url(logo, expires_in=3600)
+        except Exception:
+            logo = None
+    return {"name": row["name"], "logo_url": logo}
+
+
+@router.post(
+    "/tenants/{tenant_id}/branding",
+    summary="Platform admin: set a tenant's display name + upload its login-page logo",
+)
+async def set_tenant_branding(
+    tenant_id: str,
+    db: DbDep,
+    name: Optional[str] = Form(default=None),
+    logo: Optional[UploadFile] = File(default=None),
+    x_platform_admin_key: Optional[str] = Header(default=None, alias="X-Platform-Admin-Key"),
+) -> dict:
+    _require_platform_admin(x_platform_admin_key)
+
+    tenant = (await db.execute(
+        text("SELECT id, name, logo_url FROM tenants WHERE id = :id"),
+        {"id": tenant_id},
+    )).mappings().first()
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found.")
+
+    logo_path = tenant["logo_url"]
+    if logo is not None:
+        body = await logo.read()
+        if body:
+            safe = safe_object_name(logo.filename or "logo.png")
+            logo_path = f"branding/{tenant_id}/{safe}"
+            await storage_upload(
+                path=logo_path,
+                body=body,
+                content_type=logo.content_type or "image/png",
+            )
+
+    new_name = (name or "").strip() or tenant["name"]
+    await db.execute(
+        text("UPDATE tenants SET name = :name, logo_url = :logo WHERE id = :id"),
+        {"name": new_name, "logo": logo_path, "id": tenant_id},
+    )
+    await db.commit()
+    logger.info("branding set tenant_id=%s name=%r has_logo=%s", tenant_id, new_name, bool(logo_path))
+    return {"id": str(tenant_id), "name": new_name, "has_logo": bool(logo_path)}
+
+
+# ── Password-reset queue (platform admin) ────────────────────────────────────
+
+@router.get(
+    "/password-reset-requests",
+    summary="Platform admin: list pending password-reset requests",
+)
+async def list_password_reset_requests(
+    db: DbDep,
+    x_platform_admin_key: Optional[str] = Header(default=None, alias="X-Platform-Admin-Key"),
+) -> dict:
+    _require_platform_admin(x_platform_admin_key)
+    rows = (await db.execute(
+        text("""
+            SELECT r.id, r.email, r.status, r.created_at,
+                   t.name AS tenant_name, t.workspace_code
+              FROM password_reset_requests r
+              JOIN tenants t ON t.id = r.tenant_id
+             WHERE r.status = 'pending'
+             ORDER BY r.created_at ASC
+        """),
+    )).mappings().all()
+    return {
+        "items": [
+            {
+                "id":             str(x["id"]),
+                "email":          x["email"],
+                "tenant_name":    x["tenant_name"],
+                "workspace_code": x["workspace_code"],
+                "created_at":     x["created_at"].isoformat() if x["created_at"] else None,
+            }
+            for x in rows
+        ],
+        "total": len(rows),
+    }
+
+
+@router.post(
+    "/password-reset-requests/{request_id}/confirm",
+    summary="Platform admin: approve a reset request (the user then sets the new password)",
+)
+async def confirm_password_reset_request(
+    request_id: str,
+    db: DbDep,
+    x_platform_admin_key: Optional[str] = Header(default=None, alias="X-Platform-Admin-Key"),
+) -> dict:
+    _require_platform_admin(x_platform_admin_key)
+    req = (await db.execute(
+        text("SELECT id, status, user_id FROM password_reset_requests WHERE id = :id"),
+        {"id": request_id},
+    )).mappings().first()
+    if not req:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reset request not found.")
+    if req["status"] != "pending":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Request already {req['status']}.")
+    if not req["user_id"]:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Request has no matching user in the workspace.",
+        )
+    await db.execute(
+        text("UPDATE password_reset_requests SET status = 'approved', approved_at = now() WHERE id = :id"),
+        {"id": request_id},
+    )
+    await db.commit()
+    logger.info("password reset approved request_id=%s", request_id)
+    return {"id": str(request_id), "status": "approved"}
