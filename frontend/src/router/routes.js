@@ -24,6 +24,7 @@ export const ROUTES = {
   DESIGN_HISTORY:         '/design/history',
   DESIGN_HISTORY_SITE:    '/design/history/:siteId',
   PROJECT:                '/project',
+  PROJECT_SITES:          '/project/sites',
   PROJECT_SITE:           '/project/:siteId',
   PROJECT_HISTORY:        '/project/history',
   PROJECT_HISTORY_SITE:   '/project/history/:siteId',

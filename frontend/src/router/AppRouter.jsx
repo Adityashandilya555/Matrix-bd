@@ -250,7 +250,14 @@ export default function AppRouter() {
         <Route path={ROUTES.PROJECT} element={
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <RequireModule modules={['project']}>
-              <ProjectQueuePage/>
+              <ProjectQueuePage mode="pipeline"/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.PROJECT_SITES} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['project']}>
+              <ProjectQueuePage mode="sites"/>
             </RequireModule>
           </RequireRole>
         }/>

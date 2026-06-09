@@ -113,6 +113,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
     path.startsWith('/design/history')                   ? 'design-history' :
     path.startsWith('/design')                           ? 'design' :
     path.startsWith('/project/history')                  ? 'project-history' :
+    path.startsWith('/project/sites')                    ? 'project-sites' :
     path.startsWith('/project')                          ? 'project-home' :
     'overview';
 
@@ -199,10 +200,17 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
         <>
           {!collapsed && <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Project</div>}
           <SidebarItem
-            icon="box"
-            label="Sites"
+            icon="route"
+            label="Pipeline"
             active={activeView === 'project-home'}
             onClick={() => go(ROUTES.PROJECT)}
+            collapsed={collapsed}
+          />
+          <SidebarItem
+            icon="box"
+            label="Sites"
+            active={activeView === 'project-sites'}
+            onClick={() => go(ROUTES.PROJECT_SITES)}
             collapsed={collapsed}
           />
           <SidebarItem

@@ -45,12 +45,11 @@ function StatusPill({ value, tone = 'var(--zm-accent)' }) {
   );
 }
 
-export default function ProjectQueuePage() {
+export default function ProjectQueuePage({ mode = 'pipeline' }) {
   const navigate = useNavigate();
   const { role } = useSession();
   const isSupervisor = role === 'supervisor';
   const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
-  const [tab, setTab] = React.useState('pipeline');
 
   const load = React.useCallback(() => {
     let cancelled = false;
@@ -76,41 +75,16 @@ export default function ProjectQueuePage() {
   // A site moves from Pipeline to Sites once the executive has uploaded the
   // quality-audit doc + inspection date (quality_audit_status leaves 'pending').
   const inSites = (row) => !!row.qualityAuditStatus && row.qualityAuditStatus !== 'pending';
-  const pipelineItems = state.items.filter((row) => !inSites(row));
-  const sitesItems = state.items.filter(inSites);
-  const visibleItems = tab === 'sites' ? sitesItems : pipelineItems;
+  const visibleItems = state.items.filter((row) => (mode === 'sites' ? inSites(row) : !inSites(row)));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <PageHeader
         file="No. 09"
         eyebrow="Project module"
-        title={tab === 'sites' ? 'Sites' : 'Pipeline'}
-        right={<HeaderTag icon="box" label={tab === 'sites' ? 'QUALITY AUDIT' : 'DESIGN APPROVED'}/>}
+        title={mode === 'sites' ? 'Sites' : 'Pipeline'}
+        right={<HeaderTag icon="box" label={mode === 'sites' ? 'QUALITY AUDIT' : 'DESIGN APPROVED'}/>}
       />
-
-      <div style={{
-        display: 'inline-flex', gap: 4, padding: 4, alignSelf: 'flex-start',
-        background: 'var(--zm-surface-2)', borderRadius: 10, border: '1px solid var(--zm-line)',
-      }}>
-        {[['pipeline', 'Pipeline', pipelineItems.length], ['sites', 'Sites', sitesItems.length]].map(([key, label, count]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            style={{
-              height: 32, padding: '0 14px', borderRadius: 7, border: 'none',
-              cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7,
-              background: tab === key ? 'var(--zm-accent)' : 'transparent',
-              color: tab === key ? '#fff' : 'var(--zm-fg-2)',
-              fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 12.5,
-            }}
-          >
-            {label}
-            <span style={{ fontSize: 11, opacity: 0.85, fontFamily: 'var(--zm-font-mono)' }}>{count}</span>
-          </button>
-        ))}
-      </div>
 
       {state.status === 'loading' && (
         <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
@@ -128,7 +102,7 @@ export default function ProjectQueuePage() {
         <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
           <Icon name="box" size={20}/>
           <p style={{ margin: '12px 0 0' }}>
-            {tab === 'sites'
+            {mode === 'sites'
               ? 'No sites have reached the quality-audit stage yet.'
               : 'No design-approved sites are waiting for Project right now.'}
           </p>
