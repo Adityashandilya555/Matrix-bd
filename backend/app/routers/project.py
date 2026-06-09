@@ -1,14 +1,19 @@
 """Project Execution router."""
 from __future__ import annotations
 
+from datetime import date
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from app.core.deps import DbDep, TenantId
 from app.domain.schemas.common import OkResponse
 from app.domain.schemas.project import (
+    AdminBudgetReviewRequest,
     AllocateProjectRequest,
+    InitializationFinalizeRequest,
+    InitializationRespondRequest,
+    MidVisitRequest,
     MilestoneRequest,
     ProjectBudgetAdminQueueResponse,
     ProjectDelegationsResponse,
@@ -25,18 +30,22 @@ from app.services.project_service import (
     svc_admin_review_budget,
     svc_allocate_project,
     svc_budget_admin_queue,
+    svc_finalize_initialization,
     svc_get_project,
     svc_get_project_history_detail,
     svc_list_project_delegations_for_site,
+    svc_nso_queue,
     svc_project_queue,
     svc_project_history,
-    svc_push_quality_audit,
+    svc_respond_initialization,
     svc_review_budget,
     svc_review_milestone,
     svc_review_quality_audit,
     svc_revoke_project_delegation,
     svc_save_budget,
+    svc_set_mid_visit,
     svc_submit_milestone,
+    svc_submit_quality_audit_report,
 )
 
 router = APIRouter(prefix="/project", tags=["Project"])
@@ -108,7 +117,7 @@ async def project_budget_admin_queue(
 @router.post("/{site_id}/budget/admin-review", response_model=ProjectStateResponse)
 async def project_budget_admin_review(
     site_id: str,
-    body: ReviewRequest,
+    body: AdminBudgetReviewRequest,
     db: DbDep,
     current_user: BusinessAdmin,
     tenant_id: TenantId,
@@ -116,6 +125,17 @@ async def project_budget_admin_review(
     return await svc_admin_review_budget(
         db, tenant_id=tenant_id, actor=current_user, site_id=site_id, body=body,
     )
+
+
+@router.get("/nso-queue", response_model=ProjectQueueResponse)
+async def project_nso_queue(
+    db: DbDep,
+    current_user: ProjectMember,
+    _module: InProjectModule,
+    tenant_id: TenantId,
+) -> ProjectQueueResponse:
+    """Sites completed in Project and pushed to NSO (handoff queue)."""
+    return await svc_nso_queue(db, tenant_id=tenant_id)
 
 
 @router.get("/{site_id}/delegations", response_model=ProjectDelegationsResponse)
@@ -220,15 +240,80 @@ async def review_project_milestone(
     )
 
 
-@router.post("/{site_id}/quality-audit/push", response_model=ProjectStateResponse)
-async def push_project_quality_audit(
+@router.post("/{site_id}/initialization/respond", response_model=ProjectStateResponse)
+async def respond_project_initialization(
     site_id: str,
+    body: InitializationRespondRequest,
     db: DbDep,
     current_user: ProjectMember,
     _module: InProjectModule,
     tenant_id: TenantId,
 ) -> ProjectStateResponse:
-    return await svc_push_quality_audit(db, tenant_id=tenant_id, actor=current_user, site_id=site_id)
+    """Executive accepts/rejects the admin-proposed initialization date."""
+    return await svc_respond_initialization(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id, body=body,
+    )
+
+
+@router.post("/{site_id}/initialization/finalize", response_model=ProjectStateResponse)
+async def finalize_project_initialization(
+    site_id: str,
+    body: InitializationFinalizeRequest,
+    db: DbDep,
+    current_user: ProjectSupervisor,
+    _module: InProjectModule,
+    tenant_id: TenantId,
+) -> ProjectStateResponse:
+    """Supervisor sets the final initialization date after an executive rejection."""
+    return await svc_finalize_initialization(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id, body=body,
+    )
+
+
+@router.post("/{site_id}/mid-project-visit", response_model=ProjectStateResponse)
+async def set_project_mid_visit(
+    site_id: str,
+    body: MidVisitRequest,
+    db: DbDep,
+    current_user: ProjectSupervisor,
+    _module: InProjectModule,
+    tenant_id: TenantId,
+) -> ProjectStateResponse:
+    """Supervisor sets the mid-project visit date."""
+    return await svc_set_mid_visit(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id, body=body,
+    )
+
+
+@router.post("/{site_id}/quality-audit/upload", response_model=ProjectStateResponse)
+async def upload_project_quality_audit(
+    site_id: str,
+    db: DbDep,
+    current_user: ProjectMember,
+    _module: InProjectModule,
+    tenant_id: TenantId,
+    file: UploadFile = File(...),
+    inspection_date: Optional[str] = Form(None),
+) -> ProjectStateResponse:
+    """Executive uploads the quality-audit report + inspection date, then submits."""
+    body_bytes = await file.read()
+    safe_name = (file.filename or "quality_audit").replace("/", "_").replace("\\", "_")
+    parsed_date: Optional[date] = None
+    if inspection_date:
+        try:
+            parsed_date = date.fromisoformat(inspection_date)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid inspection date.")
+    return await svc_submit_quality_audit_report(
+        db,
+        tenant_id=tenant_id,
+        actor=current_user,
+        site_id=site_id,
+        filename=safe_name,
+        content_type=file.content_type,
+        file_bytes=body_bytes,
+        inspection_date=parsed_date,
+    )
 
 
 @router.post("/{site_id}/quality-audit/review", response_model=ProjectStateResponse)

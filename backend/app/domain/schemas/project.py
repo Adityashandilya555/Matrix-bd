@@ -72,11 +72,15 @@ class ProjectStateResponse(BaseModel):
     expected_completion_date: Optional[date] = None
     expected_completion_status: str
     expected_completion_comments: Optional[str] = None
+    mid_project_visit_date: Optional[date] = None
     inspection_date: Optional[date] = None
     quality_audit_status: str
     quality_audit_comments: Optional[str] = None
+    quality_audit_download_url: Optional[str] = None
     final_completion_date: Optional[date] = None
     project_completed_at: Optional[datetime] = None
+    nso_status: str = "pending"
+    pushed_to_nso_at: Optional[datetime] = None
     updated_at: datetime
 
 
@@ -117,7 +121,30 @@ class ReviewRequest(BaseModel):
     comments: Optional[str] = None
 
 
+class AdminBudgetReviewRequest(ReviewRequest):
+    # On approve, the business-admin also sets the project initialization date
+    # (the UI defaults this to approval date + 2 days). Optional so a reject
+    # need not carry one; the service defaults it when omitted on approve.
+    initialization_date: Optional[date] = None
+
+
 class MilestoneRequest(BaseModel):
+    value: date
+
+
+class InitializationRespondRequest(BaseModel):
+    # Executive's response to the admin-proposed initialization date.
+    decision: Decision
+    comments: Optional[str] = None
+
+
+class InitializationFinalizeRequest(BaseModel):
+    # Supervisor's final initialization date after the executive rejected.
+    value: date
+
+
+class MidVisitRequest(BaseModel):
+    # Supervisor's mid-project visit date.
     value: date
 
 

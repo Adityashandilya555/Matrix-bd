@@ -6,9 +6,9 @@ The module owns granular project state in `project_reviews` and
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status as http_status
 from sqlalchemy import delete, desc, or_, select
@@ -19,6 +19,10 @@ from app.db import models
 from app.db.session import transaction
 from app.domain.schemas.common import OkResponse
 from app.domain.schemas.project import (
+    AdminBudgetReviewRequest,
+    InitializationFinalizeRequest,
+    InitializationRespondRequest,
+    MidVisitRequest,
     MilestoneRequest,
     ProjectBudgetAdminQueueResponse,
     ProjectHistoryItem,
@@ -33,6 +37,7 @@ from app.domain.schemas.project import (
 from app.services._common import fetch_site_or_404, fetch_user_name
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_assigned_sites, svc_is_delegated
+from app.services.storage_service import safe_object_name, signed_url, upload_bytes
 
 
 _BUDGET_LABELS = (
@@ -146,6 +151,24 @@ async def _queue_item(
     )
 
 
+async def _quality_audit_download_url(
+    session: AsyncSession, *, site_id: str | UUID,
+) -> Optional[str]:
+    """Short-lived signed URL for the most recent quality-audit report file."""
+    row = (await session.execute(
+        select(models.SiteFile)
+        .where(
+            models.SiteFile.site_id == site_id,
+            models.SiteFile.file_type == "quality_audit",
+        )
+        .order_by(models.SiteFile.uploaded_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+    if row is None:
+        return None
+    return await signed_url(row.storage_path)
+
+
 async def _build_response(
     session: AsyncSession, site: models.Site, review: models.ProjectReview,
 ) -> ProjectStateResponse:
@@ -178,11 +201,15 @@ async def _build_response(
         expected_completion_date=review.expected_completion_date,
         expected_completion_status=review.expected_completion_status,
         expected_completion_comments=review.expected_completion_comments,
+        mid_project_visit_date=review.mid_project_visit_date,
         inspection_date=review.inspection_date,
         quality_audit_status=review.quality_audit_status,
         quality_audit_comments=review.quality_audit_comments,
+        quality_audit_download_url=await _quality_audit_download_url(session, site_id=site.id),
         final_completion_date=review.final_completion_date,
         project_completed_at=review.project_completed_at,
+        nso_status=review.nso_status,
+        pushed_to_nso_at=review.pushed_to_nso_at,
         updated_at=review.updated_at,
     )
 
@@ -593,7 +620,7 @@ async def svc_admin_review_budget(
     tenant_id: str | UUID,
     actor: dict,
     site_id: str | UUID,
-    body: ReviewRequest,
+    body: AdminBudgetReviewRequest,
 ) -> ProjectStateResponse:
     if not _is_business_admin(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a business admin can review project budgets.")
@@ -606,6 +633,11 @@ async def svc_admin_review_budget(
             review.budget_status = "approved"
             review.project_status = "in_progress"
             review.current_stage = "execution"
+            # The admin sets the project initialization date here (UI defaults
+            # it to today + 2 days). It then goes to the executive to accept/
+            # reject, so the status becomes 'proposed'.
+            review.initialization_date = body.initialization_date or (date.today() + timedelta(days=2))
+            review.initialization_status = "proposed"
         else:
             review.budget_status = "rejected"
             review.budget_admin_comments = (body.comments or "").strip() or "Rejected by business admin."
@@ -636,14 +668,12 @@ async def svc_submit_milestone(
         review = await _fetch_review_or_create(session, site=site)
         if review.budget_status != "approved":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Execution is locked until budget approval.")
-        if field in {"initialization_date", "expected_completion_date"}:
-            setattr(review, field, body.value)
-            status_field = "initialization_status" if field == "initialization_date" else "expected_completion_status"
-            setattr(review, status_field, "approved" if _is_supervisor(actor) else "submitted")
-        elif field == "inspection_date":
-            if review.expected_completion_status != "approved":
-                raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Expected completion must be approved first.")
-            review.inspection_date = body.value
+        if field == "expected_completion_date":
+            # Only available once the initialization date is finalized.
+            if review.initialization_status != "approved":
+                raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Initialization date must be confirmed first.")
+            review.expected_completion_date = body.value
+            review.expected_completion_status = "approved" if _is_supervisor(actor) else "submitted"
         elif field == "final_completion_date":
             if review.quality_audit_status != "approved":
                 raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Quality audit must be approved first.")
@@ -676,13 +706,13 @@ async def svc_review_milestone(
 ) -> ProjectStateResponse:
     if not _is_supervisor(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can review milestones.")
-    if field not in {"initialization_date", "expected_completion_date"}:
+    if field != "expected_completion_date":
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="This milestone does not need supervisor review.")
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_create(session, site=site)
-        status_field = "initialization_status" if field == "initialization_date" else "expected_completion_status"
-        comments_field = "initialization_comments" if field == "initialization_date" else "expected_completion_comments"
+        status_field = "expected_completion_status"
+        comments_field = "expected_completion_comments"
         if getattr(review, status_field) != "submitted":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Milestone is not awaiting review.")
         setattr(review, status_field, "approved" if body.decision == "approve" else "rejected")
@@ -700,19 +730,139 @@ async def svc_review_milestone(
         return await _build_response(session, site, review)
 
 
-async def svc_push_quality_audit(
+async def svc_respond_initialization(
     session: AsyncSession,
     *,
     tenant_id: str | UUID,
     actor: dict,
     site_id: str | UUID,
+    body: InitializationRespondRequest,
 ) -> ProjectStateResponse:
+    """Executive accepts or rejects the admin-proposed initialization date."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         await _assert_can_work_project(session, tenant_id=tenant_id, actor=actor, site_id=site.id)
         review = await _fetch_review_or_create(session, site=site)
-        if review.inspection_date is None:
-            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Inspection date must be recorded first.")
+        if review.initialization_status != "proposed":
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Initialization date is not awaiting a response.")
+        if body.decision == "approve":
+            review.initialization_status = "approved"
+        else:
+            review.initialization_status = "rejected"
+            review.initialization_comments = (body.comments or "").strip() or "Rejected by executive."
+        await write_audit_event(
+            session,
+            tenant_id=tenant_id,
+            site_id=site.id,
+            actor_id=actor["sub"],
+            actor_name=actor.get("name"),
+            action="project_initialization_responded",
+            detail=f"decision={body.decision}",
+        )
+        return await _build_response(session, site, review)
+
+
+async def svc_finalize_initialization(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    actor: dict,
+    site_id: str | UUID,
+    body: InitializationFinalizeRequest,
+) -> ProjectStateResponse:
+    """Supervisor sets the final initialization date after an executive rejection."""
+    if not _is_supervisor(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can finalize the initialization date.")
+    async with transaction(session):
+        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        review = await _fetch_review_or_create(session, site=site)
+        if review.initialization_status != "rejected":
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Initialization date is not awaiting a supervisor revision.")
+        review.initialization_date = body.value
+        review.initialization_status = "approved"
+        await write_audit_event(
+            session,
+            tenant_id=tenant_id,
+            site_id=site.id,
+            actor_id=actor["sub"],
+            actor_name=actor.get("name"),
+            action="project_initialization_finalized",
+            detail=f"date={body.value}",
+        )
+        return await _build_response(session, site, review)
+
+
+async def svc_set_mid_visit(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    actor: dict,
+    site_id: str | UUID,
+    body: MidVisitRequest,
+) -> ProjectStateResponse:
+    """Supervisor sets the mid-project visit date (after expected completion is approved)."""
+    if not _is_supervisor(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can set the mid-project visit date.")
+    async with transaction(session):
+        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        review = await _fetch_review_or_create(session, site=site)
+        if review.expected_completion_status != "approved":
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Expected completion must be approved first.")
+        review.mid_project_visit_date = body.value
+        await write_audit_event(
+            session,
+            tenant_id=tenant_id,
+            site_id=site.id,
+            actor_id=actor["sub"],
+            actor_name=actor.get("name"),
+            action="project_mid_visit_set",
+            detail=f"date={body.value}",
+        )
+        return await _build_response(session, site, review)
+
+
+async def svc_submit_quality_audit_report(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    actor: dict,
+    site_id: str | UUID,
+    filename: str,
+    content_type: Optional[str],
+    file_bytes: bytes,
+    inspection_date: Optional[date],
+) -> ProjectStateResponse:
+    """Executive uploads the quality-audit report + inspection date, then submits for review."""
+    async with transaction(session):
+        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        await _assert_can_work_project(session, tenant_id=tenant_id, actor=actor, site_id=site.id)
+        review = await _fetch_review_or_create(session, site=site)
+        if review.mid_project_visit_date is None:
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Mid-project visit date must be set before the quality audit.")
+        if inspection_date is None:
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Inspection date is required.")
+        file_id = uuid4()
+        safe_name = f"{file_id.hex[:8]}_{safe_object_name(filename, fallback='quality_audit')}"
+        storage_path = f"quality_audit/{site.id}/{safe_name}"
+        await upload_bytes(
+            path=storage_path,
+            body=file_bytes,
+            content_type=content_type or "application/pdf",
+        )
+        session.add(models.SiteFile(
+            id=file_id,
+            tenant_id=tenant_id,
+            site_id=site.id,
+            uploaded_by=actor["sub"],
+            file_type="quality_audit",
+            file_name=filename,
+            storage_path=storage_path,
+            file_size_kb=max(1, len(file_bytes) // 1024),
+            mime_type=content_type,
+            is_primary=True,
+            source="manual_upload",
+        ))
+        review.inspection_date = inspection_date
         review.quality_audit_status = "submitted"
         await write_audit_event(
             session,
@@ -720,7 +870,8 @@ async def svc_push_quality_audit(
             site_id=site.id,
             actor_id=actor["sub"],
             actor_name=actor.get("name"),
-            action="project_quality_audit_pushed",
+            action="project_quality_audit_uploaded",
+            detail=f"file={filename} inspection_date={inspection_date}",
         )
         return await _build_response(session, site, review)
 
@@ -740,8 +891,17 @@ async def svc_review_quality_audit(
         review = await _fetch_review_or_create(session, site=site)
         if review.quality_audit_status != "submitted":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Quality audit is not awaiting review.")
-        review.quality_audit_status = "approved" if body.decision == "approve" else "rejected"
-        if body.decision == "reject":
+        if body.decision == "approve":
+            # Audit approved → complete the project and push the site to NSO.
+            now = datetime.now(timezone.utc)
+            review.quality_audit_status = "approved"
+            review.project_status = "done"
+            review.current_stage = "done"
+            review.project_completed_at = now
+            review.nso_status = "pushed"
+            review.pushed_to_nso_at = now
+        else:
+            review.quality_audit_status = "rejected"
             review.quality_audit_comments = (body.comments or "").strip() or "Rejected by supervisor."
         await write_audit_event(
             session,
@@ -752,4 +912,35 @@ async def svc_review_quality_audit(
             action="project_quality_audit_reviewed",
             detail=f"decision={body.decision}",
         )
+        if body.decision == "approve":
+            await write_audit_event(
+                session,
+                tenant_id=tenant_id,
+                site_id=site.id,
+                actor_id=actor["sub"],
+                actor_name=actor.get("name"),
+                action="project_pushed_to_nso",
+            )
         return await _build_response(session, site, review)
+
+
+async def svc_nso_queue(
+    session: AsyncSession, *, tenant_id: str | UUID,
+) -> ProjectQueueResponse:
+    """Sites completed in Project and pushed to NSO — the handoff queue the
+    (parallel) NSO module consumes."""
+    try:
+        rows = (await session.execute(
+            select(models.Site, models.ProjectReview)
+            .join(models.ProjectReview, models.ProjectReview.site_id == models.Site.id)
+            .where(
+                models.Site.tenant_id == tenant_id,
+                models.ProjectReview.nso_status == "pushed",
+            )
+            .order_by(models.ProjectReview.pushed_to_nso_at.desc())
+        )).all()
+    except SQLAlchemyError:
+        await session.rollback()
+        return ProjectQueueResponse(items=[], total=0)
+    items = [await _queue_item(session, site, review) for (site, review) in rows]
+    return ProjectQueueResponse(items=items, total=len(items))

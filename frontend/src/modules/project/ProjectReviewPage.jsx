@@ -6,13 +6,16 @@ import { useSession } from '../../state/SessionContext.jsx';
 import { listMyTeam } from '../../services/api/adapters/httpAdapter.js';
 import {
   allocateProject,
+  finalizeInitialization,
   getProject,
-  pushQualityAudit,
+  respondInitialization,
   reviewProjectBudget,
   reviewProjectMilestone,
   reviewQualityAudit,
   saveProjectBudget,
+  setMidProjectVisit,
   submitProjectMilestone,
+  uploadQualityAuditReport,
 } from '../../services/api/projectApi.js';
 import { ROUTES } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
@@ -52,37 +55,20 @@ function areaFromReview(review) {
   };
 }
 
-function milestonesFromReview(review) {
-  return {
-    initialization_date: review?.initializationDate || '',
-    expected_completion_date: review?.expectedCompletionDate || '',
-    inspection_date: review?.inspectionDate || '',
-    final_completion_date: review?.finalCompletionDate || '',
-  };
+// Local (timezone-safe) yyyy-mm-dd helpers for date inputs / presets.
+function toISODate(d) {
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
 }
 
-const MILESTONE_DRAFT_FIELDS = [
-  {
-    field: 'initialization_date',
-    prop: 'initializationDate',
-    canSave: (review, executionUnlocked) => executionUnlocked,
-  },
-  {
-    field: 'expected_completion_date',
-    prop: 'expectedCompletionDate',
-    canSave: (review, executionUnlocked) => executionUnlocked && review?.initializationStatus === 'approved',
-  },
-  {
-    field: 'inspection_date',
-    prop: 'inspectionDate',
-    canSave: (review, executionUnlocked) => executionUnlocked && review?.expectedCompletionStatus === 'approved',
-  },
-  {
-    field: 'final_completion_date',
-    prop: 'finalCompletionDate',
-    canSave: (review, executionUnlocked) => executionUnlocked && review?.qualityAuditStatus === 'approved',
-  },
-];
+function addDaysISO(isoDate, days) {
+  if (!isoDate) return '';
+  const d = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return '';
+  d.setDate(d.getDate() + days);
+  return toISODate(d);
+}
 
 function formatMoney(value) {
   if (value == null || value === '') return 'Not set';
@@ -197,22 +183,13 @@ export default function ProjectReviewPage() {
     total_area_sqft: '',
     covers: '',
   });
-  const [milestones, setMilestones] = React.useState({
-    initialization_date: '',
-    expected_completion_date: '',
-    inspection_date: '',
-    final_completion_date: '',
-  });
   const [busy, setBusy] = React.useState(false);
   const [budgetDirty, setBudgetDirty] = React.useState(false);
-  const [milestonesDirty, setMilestonesDirty] = React.useState(false);
 
   const rehydrateReview = React.useCallback((review) => {
     setBudget(budgetFromReview(review));
     setAreaInputs(areaFromReview(review));
-    setMilestones(milestonesFromReview(review));
     setBudgetDirty(false);
-    setMilestonesDirty(false);
     setState({ status: 'ready', review, error: null });
   }, []);
 
@@ -238,7 +215,7 @@ export default function ProjectReviewPage() {
   useSiteDataRefresh(React.useCallback(() => load(true), [load]), {
     siteId,
     sources: ['project', 'businessAdmin', 'design'],
-    skipWhen: () => budgetDirty || milestonesDirty || busy,
+    skipWhen: () => budgetDirty || busy,
   });
 
   React.useEffect(() => {
@@ -274,7 +251,6 @@ export default function ProjectReviewPage() {
     totalAreaSqft: areaInputs.total_area_sqft,
     covers: areaInputs.covers,
   };
-  const executionUnlocked = review?.budgetStatus === 'approved';
   const budgetEditable = review ? ['draft', 'rejected'].includes(review.budgetStatus) : false;
   const budgetLockedReason = review?.budgetStatus === 'pending_supervisor'
     ? 'Budget is awaiting supervisor review and is read-only until it is sent back.'
@@ -285,31 +261,20 @@ export default function ProjectReviewPage() {
         : null;
 
   const handleBackToQueue = async () => {
-    if ((!budgetDirty || !budgetEditable) && !milestonesDirty) {
+    // Only the budget has a draft; execution steps are explicit actions.
+    if (!budgetDirty || !budgetEditable) {
       navigate(ROUTES.PROJECT);
       return;
     }
     setBusy(true);
     try {
-      let next = review;
-      if (budgetDirty && budgetEditable) {
-        next = await saveProjectBudget(siteId, { ...budgetPayload, action: 'save' });
-      }
-      if (milestonesDirty && executionUnlocked) {
-        for (const item of MILESTONE_DRAFT_FIELDS) {
-          const value = milestones[item.field];
-          const previous = review?.[item.prop] || '';
-          if (value && value !== previous && item.canSave(review, executionUnlocked)) {
-            next = await submitProjectMilestone(siteId, item.field, value);
-          }
-        }
-      }
+      const next = await saveProjectBudget(siteId, { ...budgetPayload, action: 'save' });
       rehydrateReview(next);
       navigate(ROUTES.PROJECT);
     } catch (err) {
       setState((prev) => ({
         ...prev,
-        error: err?.detail || err?.message || 'Could not save the project draft before returning to queue.',
+        error: err?.detail || err?.message || 'Could not save the budget draft before returning to queue.',
       }));
     } finally {
       setBusy(false);
@@ -516,83 +481,14 @@ export default function ProjectReviewPage() {
             </div>
           </FieldCard>
 
-          <FieldCard title="Execution milestones" right={statusPill(executionUnlocked ? 'Execution open' : 'Budget locked', executionUnlocked ? 'var(--zm-success)' : 'var(--zm-copper)')}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(260px, 1fr))', gap: 12 }}>
-              <Milestone
-                label="Initialization date"
-                field="initialization_date"
-                value={milestones.initialization_date}
-                status={review.initializationStatus}
-                disabled={!executionUnlocked || busy}
-                dark={dark}
-                onChange={(value) => {
-                  setMilestonesDirty(true);
-                  setMilestones((v) => ({ ...v, initialization_date: value }));
-                }}
-                onSubmit={() => mutate(() => submitProjectMilestone(siteId, 'initialization_date', milestones.initialization_date))}
-                onApprove={isSupervisor && review.initializationStatus === 'submitted' ? () => mutate(() => reviewProjectMilestone(siteId, 'initialization_date', { decision: 'approve' })) : null}
-                onReject={isSupervisor && review.initializationStatus === 'submitted' ? () => mutate(() => reviewProjectMilestone(siteId, 'initialization_date', { decision: 'reject', comments: 'Initialization date needs revision.' })) : null}
-              />
-              <Milestone
-                label="Expected completion"
-                field="expected_completion_date"
-                value={milestones.expected_completion_date}
-                status={review.expectedCompletionStatus}
-                disabled={!executionUnlocked || review.initializationStatus !== 'approved' || busy}
-                dark={dark}
-                onChange={(value) => {
-                  setMilestonesDirty(true);
-                  setMilestones((v) => ({ ...v, expected_completion_date: value }));
-                }}
-                onSubmit={() => mutate(() => submitProjectMilestone(siteId, 'expected_completion_date', milestones.expected_completion_date))}
-                onApprove={isSupervisor && review.expectedCompletionStatus === 'submitted' ? () => mutate(() => reviewProjectMilestone(siteId, 'expected_completion_date', { decision: 'approve' })) : null}
-                onReject={isSupervisor && review.expectedCompletionStatus === 'submitted' ? () => mutate(() => reviewProjectMilestone(siteId, 'expected_completion_date', { decision: 'reject', comments: 'Expected completion needs revision.' })) : null}
-              />
-              <Milestone
-                label="Inspection date"
-                field="inspection_date"
-                value={milestones.inspection_date}
-                status={review.inspectionDate ? 'recorded' : 'pending'}
-                disabled={!executionUnlocked || review.expectedCompletionStatus !== 'approved' || busy}
-                dark={dark}
-                onChange={(value) => {
-                  setMilestonesDirty(true);
-                  setMilestones((v) => ({ ...v, inspection_date: value }));
-                }}
-                onSubmit={() => mutate(() => submitProjectMilestone(siteId, 'inspection_date', milestones.inspection_date))}
-              />
-              <div className="zm-glass" style={{ padding: 14, borderRadius: 10 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-                  <strong>Quality audit</strong>
-                  {statusPill(review.qualityAuditStatus, review.qualityAuditStatus === 'approved' ? 'var(--zm-success)' : 'var(--zm-copper)')}
-                </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-                  <ActionButton disabled={!executionUnlocked || !review.inspectionDate || busy} variant="ghost" onClick={() => mutate(() => pushQualityAudit(siteId))}>
-                    Push audit
-                  </ActionButton>
-                  {isSupervisor && review.qualityAuditStatus === 'submitted' && (
-                    <>
-                      <ActionButton disabled={busy} onClick={() => mutate(() => reviewQualityAudit(siteId, { decision: 'approve' }))}>Approve</ActionButton>
-                      <ActionButton disabled={busy} variant="ghost" onClick={() => mutate(() => reviewQualityAudit(siteId, { decision: 'reject', comments: 'Quality audit needs correction.' }))}>Reject</ActionButton>
-                    </>
-                  )}
-                </div>
-              </div>
-              <Milestone
-                label="Final completion"
-                field="final_completion_date"
-                value={milestones.final_completion_date}
-                status={review.finalCompletionDate ? 'done' : 'pending'}
-                disabled={!executionUnlocked || review.qualityAuditStatus !== 'approved' || busy}
-                dark={dark}
-                onChange={(value) => {
-                  setMilestonesDirty(true);
-                  setMilestones((v) => ({ ...v, final_completion_date: value }));
-                }}
-                onSubmit={() => mutate(() => submitProjectMilestone(siteId, 'final_completion_date', milestones.final_completion_date))}
-              />
-            </div>
-          </FieldCard>
+          <ExecutionSection
+            review={review}
+            siteId={siteId}
+            isSupervisor={isSupervisor}
+            dark={dark}
+            busy={busy}
+            mutate={mutate}
+          />
 
           <button
             type="button"
@@ -612,7 +508,7 @@ export default function ProjectReviewPage() {
               opacity: busy ? 0.6 : 1,
             }}
           >
-            {busy && (budgetDirty || milestonesDirty) ? 'Saving draft...' : 'Back to project queue'}
+            {busy && budgetDirty ? 'Saving draft...' : 'Back to project queue'}
           </button>
         </>
       )}
@@ -620,35 +516,255 @@ export default function ProjectReviewPage() {
   );
 }
 
-function Milestone({ label, value, status, disabled, dark, onChange, onSubmit, onApprove, onReject }) {
+const zmDateStyle = (dark) => ({
+  height: 36,
+  border: '1px solid var(--zm-line)',
+  borderRadius: 8,
+  padding: '0 10px',
+  background: 'var(--zm-surface)',
+  color: 'var(--zm-fg)',
+  fontFamily: 'var(--zm-font-body)',
+  colorScheme: dark ? 'dark' : 'light',
+});
+
+const muted = { color: 'var(--zm-fg-3)', fontSize: 12.5 };
+
+function presetPill(active) {
+  return {
+    height: 34,
+    padding: '0 12px',
+    borderRadius: 8,
+    border: `1px solid ${active ? 'var(--zm-accent)' : 'var(--zm-line)'}`,
+    background: active ? 'var(--zm-accent)' : 'var(--zm-surface)',
+    color: active ? '#fff' : 'var(--zm-fg)',
+    fontFamily: 'var(--zm-font-body)',
+    fontWeight: 800,
+    fontSize: 12,
+    cursor: 'pointer',
+  };
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  const parsed = new Date(`${d}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return '—';
+  return parsed.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function StageCard({ title, status, tone, locked, children }) {
   return (
-    <div className="zm-glass" style={{ padding: 14, borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div className="zm-glass" style={{
+      padding: 14, borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 10,
+      opacity: locked ? 0.55 : 1,
+    }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-        <strong>{label}</strong>
-        {statusPill(status, status === 'approved' || status === 'done' || status === 'recorded' ? 'var(--zm-success)' : 'var(--zm-copper)')}
+        <strong>{title}</strong>
+        {status != null && statusPill(status, tone)}
       </div>
-      <input
-        type="date"
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        style={{
-          height: 36,
-          border: '1px solid var(--zm-line)',
-          borderRadius: 8,
-          padding: '0 10px',
-          background: 'var(--zm-surface)',
-          color: 'var(--zm-fg)',
-          fontFamily: 'var(--zm-font-body)',
-          colorScheme: dark ? 'dark' : 'light',
-        }}
-      />
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <ActionButton disabled={disabled || !value} variant="ghost" onClick={onSubmit}>Save</ActionButton>
-        {onApprove && <ActionButton onClick={onApprove}>Approve</ActionButton>}
-        {onReject && <ActionButton variant="ghost" onClick={onReject}>Reject</ActionButton>}
+      {children}
+    </div>
+  );
+}
+
+// Lightweight inline modal for capturing a rejection reason.
+function ReasonModal({ title, label, confirmLabel, dark, busy, onConfirm, onClose }) {
+  const [text, setText] = React.useState('');
+  return (
+    <div role="dialog" aria-modal="true" onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)',
+      zIndex: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 14,
+        width: 'min(460px, 96vw)', padding: 24, display: 'flex', flexDirection: 'column', gap: 14,
+        boxShadow: 'var(--zm-shadow-pop)',
+      }}>
+        <strong style={{ fontSize: 15 }}>{title}</strong>
+        <span style={muted}>{label}</span>
+        <textarea
+          value={text} onChange={(e) => setText(e.target.value)} rows={3} autoFocus
+          placeholder="Reason (required)"
+          style={{
+            width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 8,
+            border: '1px solid var(--zm-line)', background: 'var(--zm-surface-2)', color: 'var(--zm-fg)',
+            fontFamily: 'var(--zm-font-body)', fontSize: 13, resize: 'vertical',
+            colorScheme: dark ? 'dark' : 'light',
+          }}
+        />
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <ActionButton variant="ghost" disabled={busy} onClick={onClose}>Cancel</ActionButton>
+          <ActionButton disabled={busy || !text.trim()} onClick={() => onConfirm(text.trim())}>{confirmLabel}</ActionButton>
+        </div>
       </div>
     </div>
+  );
+}
+
+// Post budget-approval execution flow: init date (admin-proposed → exec accept/
+// reject → supervisor finalize) → expected completion → mid-project visit →
+// quality audit → push to NSO. Local input state is independent of `review` so
+// silent background refreshes don't clobber in-progress typing.
+function ExecutionSection({ review, siteId, isSupervisor, dark, busy, mutate }) {
+  const unlocked = review.budgetStatus === 'approved';
+  const initStatus = review.initializationStatus;
+  const initApproved = initStatus === 'approved';
+  const expStatus = review.expectedCompletionStatus;
+  const expApproved = expStatus === 'approved';
+  const visitSet = !!review.midProjectVisitDate;
+  const qaStatus = review.qualityAuditStatus;
+  const done = review.projectStatus === 'done' || review.nsoStatus === 'pushed';
+
+  const [expDate, setExpDate] = React.useState('');
+  const [visitDate, setVisitDate] = React.useState('');
+  const [finalInitDate, setFinalInitDate] = React.useState('');
+  const [auditFile, setAuditFile] = React.useState(null);
+  const [inspectionDate, setInspectionDate] = React.useState('');
+  const [modal, setModal] = React.useState(null);
+
+  const tone = (ok) => (ok ? 'var(--zm-success)' : 'var(--zm-copper)');
+
+  if (!unlocked) {
+    return (
+      <FieldCard title="Execution" right={statusPill('Budget locked', 'var(--zm-copper)')}>
+        <div style={muted}>Execution opens once the budget is approved.</div>
+      </FieldCard>
+    );
+  }
+
+  return (
+    <FieldCard title="Execution" right={statusPill(done ? 'Pushed to NSO' : 'In progress', done ? 'var(--zm-success)' : 'var(--zm-accent)')}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+        <StageCard title="1 · Initialization date" status={initStatus} tone={tone(initApproved)}>
+          <div style={{ fontFamily: 'var(--zm-font-mono)', fontWeight: 800 }}>{fmtDate(review.initializationDate)}</div>
+          {initStatus === 'proposed' && !isSupervisor && (
+            <>
+              <span style={muted}>Proposed by business-admin. Accept to confirm, or reject with a reason.</span>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <ActionButton disabled={busy} onClick={() => mutate(() => respondInitialization(siteId, { decision: 'approve' }))}>Accept</ActionButton>
+                <ActionButton variant="ghost" disabled={busy} onClick={() => setModal('init-reject')}>Reject</ActionButton>
+              </div>
+            </>
+          )}
+          {initStatus === 'proposed' && isSupervisor && <span style={muted}>Awaiting the executive's response.</span>}
+          {initStatus === 'rejected' && (
+            <>
+              <span style={{ color: 'var(--zm-danger)', fontSize: 12.5 }}>Returned by executive: {review.initializationComments || '—'}</span>
+              {isSupervisor ? (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input type="date" value={finalInitDate} onChange={(e) => setFinalInitDate(e.target.value)} style={zmDateStyle(dark)} />
+                  <ActionButton disabled={busy || !finalInitDate} onClick={() => mutate(() => finalizeInitialization(siteId, finalInitDate))}>Set final date</ActionButton>
+                </div>
+              ) : <span style={muted}>Awaiting the supervisor's revised date.</span>}
+            </>
+          )}
+        </StageCard>
+
+        <StageCard title="2 · Expected completion" status={initApproved ? expStatus : null} tone={tone(expApproved)} locked={!initApproved}>
+          {!initApproved ? (
+            <span style={muted}>Unlocks after the initialization date is confirmed.</span>
+          ) : expApproved ? (
+            <div style={{ fontFamily: 'var(--zm-font-mono)', fontWeight: 800 }}>{fmtDate(review.expectedCompletionDate)}</div>
+          ) : expStatus === 'submitted' ? (
+            <>
+              <div style={{ fontFamily: 'var(--zm-font-mono)', fontWeight: 800 }}>{fmtDate(review.expectedCompletionDate)}</div>
+              {isSupervisor ? (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <ActionButton disabled={busy} onClick={() => mutate(() => reviewProjectMilestone(siteId, 'expected_completion_date', { decision: 'approve' }))}>Approve</ActionButton>
+                  <ActionButton variant="ghost" disabled={busy} onClick={() => setModal('exp-reject')}>Reject</ActionButton>
+                </div>
+              ) : <span style={muted}>Awaiting supervisor approval.</span>}
+            </>
+          ) : !isSupervisor ? (
+            <>
+              {expStatus === 'rejected' && review.expectedCompletionComments && (
+                <span style={{ color: 'var(--zm-danger)', fontSize: 12.5 }}>Returned: {review.expectedCompletionComments}</span>
+              )}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                {[30, 45, 60].map((n) => {
+                  const d = addDaysISO(review.initializationDate, n);
+                  return <button key={n} type="button" onClick={() => setExpDate(d)} style={presetPill(!!d && expDate === d)}>+{n} days</button>;
+                })}
+                <input type="date" value={expDate} onChange={(e) => setExpDate(e.target.value)} style={zmDateStyle(dark)} />
+              </div>
+              {expDate && <span style={muted}>Expected completion: {fmtDate(expDate)}</span>}
+              <ActionButton disabled={busy || !expDate} onClick={() => mutate(() => submitProjectMilestone(siteId, 'expected_completion_date', expDate))}>Push to supervisor</ActionButton>
+            </>
+          ) : <span style={muted}>Awaiting the executive to set the expected completion.</span>}
+        </StageCard>
+
+        <StageCard title="3 · Mid-project visit" status={expApproved ? (visitSet ? 'scheduled' : 'pending') : null} tone={tone(visitSet)} locked={!expApproved}>
+          {!expApproved ? (
+            <span style={muted}>Unlocks after expected completion is approved.</span>
+          ) : isSupervisor ? (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input type="date" value={visitDate || review.midProjectVisitDate || ''} onChange={(e) => setVisitDate(e.target.value)} style={zmDateStyle(dark)} />
+              <ActionButton disabled={busy || !(visitDate || review.midProjectVisitDate)} onClick={() => mutate(() => setMidProjectVisit(siteId, visitDate || review.midProjectVisitDate))}>
+                {visitSet ? 'Update visit date' : 'Set visit date'}
+              </ActionButton>
+            </div>
+          ) : (
+            <div style={{ fontFamily: 'var(--zm-font-mono)', fontWeight: 800, color: visitSet ? 'var(--zm-accent)' : 'var(--zm-fg-3)' }}>
+              {visitSet ? `Visit scheduled: ${fmtDate(review.midProjectVisitDate)}` : 'Awaiting the supervisor to schedule the visit.'}
+            </div>
+          )}
+        </StageCard>
+
+        <StageCard title="4 · Quality audit" status={visitSet ? qaStatus : null} tone={tone(qaStatus === 'approved')} locked={!visitSet}>
+          {!visitSet ? (
+            <span style={muted}>Unlocks after the mid-project visit date is set.</span>
+          ) : qaStatus === 'approved' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ color: 'var(--zm-success)', fontWeight: 700 }}>Audit approved · project complete · pushed to NSO.</span>
+              <span style={muted}>Inspection: {fmtDate(review.inspectionDate)}</span>
+              {review.qualityAuditDownloadUrl && <a href={review.qualityAuditDownloadUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--zm-accent)', fontSize: 12.5 }}>Download report</a>}
+            </div>
+          ) : qaStatus === 'submitted' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <span style={muted}>Inspection date: {fmtDate(review.inspectionDate)}</span>
+              {review.qualityAuditDownloadUrl && <a href={review.qualityAuditDownloadUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--zm-accent)', fontSize: 12.5 }}>Download report</a>}
+              {isSupervisor ? (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <ActionButton disabled={busy} onClick={() => mutate(() => reviewQualityAudit(siteId, { decision: 'approve' }))}>Approve &amp; push to NSO</ActionButton>
+                  <ActionButton variant="ghost" disabled={busy} onClick={() => setModal('qa-reject')}>Reject</ActionButton>
+                </div>
+              ) : <span style={muted}>Awaiting supervisor confirmation.</span>}
+            </div>
+          ) : !isSupervisor ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {qaStatus === 'rejected' && review.qualityAuditComments && (
+                <span style={{ color: 'var(--zm-danger)', fontSize: 12.5 }}>Returned: {review.qualityAuditComments}</span>
+              )}
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ color: 'var(--zm-fg-3)', fontSize: 12 }}>Quality audit report</span>
+                <input type="file" onChange={(e) => setAuditFile(e.target.files?.[0] || null)} style={{ fontSize: 12.5, color: 'var(--zm-fg)' }} />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ color: 'var(--zm-fg-3)', fontSize: 12 }}>Inspection date</span>
+                <input type="date" value={inspectionDate} onChange={(e) => setInspectionDate(e.target.value)} style={zmDateStyle(dark)} />
+              </label>
+              <ActionButton disabled={busy || !auditFile || !inspectionDate} onClick={() => mutate(() => uploadQualityAuditReport(siteId, auditFile, inspectionDate))}>Submit for approval</ActionButton>
+            </div>
+          ) : <span style={muted}>Awaiting the executive to upload the audit report.</span>}
+        </StageCard>
+      </div>
+
+      {modal === 'init-reject' && (
+        <ReasonModal title="Reject initialization date" label="This returns the date to the supervisor to set a new one." confirmLabel="Reject date" dark={dark} busy={busy}
+          onClose={() => setModal(null)}
+          onConfirm={(reason) => { setModal(null); mutate(() => respondInitialization(siteId, { decision: 'reject', comments: reason })); }} />
+      )}
+      {modal === 'exp-reject' && (
+        <ReasonModal title="Reject expected completion" label="This returns it to the executive to revise." confirmLabel="Reject" dark={dark} busy={busy}
+          onClose={() => setModal(null)}
+          onConfirm={(reason) => { setModal(null); mutate(() => reviewProjectMilestone(siteId, 'expected_completion_date', { decision: 'reject', comments: reason })); }} />
+      )}
+      {modal === 'qa-reject' && (
+        <ReasonModal title="Reject quality audit" label="This returns it to the executive to re-upload." confirmLabel="Reject" dark={dark} busy={busy}
+          onClose={() => setModal(null)}
+          onConfirm={(reason) => { setModal(null); mutate(() => reviewQualityAudit(siteId, { decision: 'reject', comments: reason })); }} />
+      )}
+    </FieldCard>
   );
 }
 

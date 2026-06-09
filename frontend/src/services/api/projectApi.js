@@ -101,11 +101,15 @@ function stateFromServer(row) {
     expectedCompletionDate: row.expected_completion_date,
     expectedCompletionStatus: row.expected_completion_status,
     expectedCompletionComments: row.expected_completion_comments,
+    midProjectVisitDate: row.mid_project_visit_date,
     inspectionDate: row.inspection_date,
     qualityAuditStatus: row.quality_audit_status,
     qualityAuditComments: row.quality_audit_comments,
+    qualityAuditDownloadUrl: row.quality_audit_download_url,
     finalCompletionDate: row.final_completion_date,
     projectCompletedAt: row.project_completed_at,
+    nsoStatus: row.nso_status,
+    pushedToNsoAt: row.pushed_to_nso_at,
     updatedAt: row.updated_at,
   };
 }
@@ -208,9 +212,34 @@ export async function reviewProjectMilestone(siteId, field, { decision, comments
   return stateFromServer(data);
 }
 
-export async function pushQualityAudit(siteId) {
-  const data = await client.post(`/project/${siteId}/quality-audit/push`, {}).then((r) => r.data);
-  notifySiteDataChanged({ source: 'project', action: 'quality_push', siteId });
+// Executive accepts / rejects the admin-proposed initialization date.
+export async function respondInitialization(siteId, { decision, comments }) {
+  const data = await client.post(`/project/${siteId}/initialization/respond`, { decision, comments: comments || null }).then((r) => r.data);
+  notifySiteDataChanged({ source: 'project', action: 'init_respond', siteId });
+  return stateFromServer(data);
+}
+
+// Supervisor sets the final initialization date after an executive rejection.
+export async function finalizeInitialization(siteId, value) {
+  const data = await client.post(`/project/${siteId}/initialization/finalize`, { value }).then((r) => r.data);
+  notifySiteDataChanged({ source: 'project', action: 'init_finalize', siteId });
+  return stateFromServer(data);
+}
+
+// Supervisor sets the mid-project visit date.
+export async function setMidProjectVisit(siteId, value) {
+  const data = await client.post(`/project/${siteId}/mid-project-visit`, { value }).then((r) => r.data);
+  notifySiteDataChanged({ source: 'project', action: 'mid_visit', siteId });
+  return stateFromServer(data);
+}
+
+// Executive uploads the quality-audit report + inspection date (multipart).
+export async function uploadQualityAuditReport(siteId, file, inspectionDate) {
+  const form = new FormData();
+  form.append('file', file);
+  if (inspectionDate) form.append('inspection_date', inspectionDate);
+  const data = await client.post(`/project/${siteId}/quality-audit/upload`, form).then((r) => r.data);
+  notifySiteDataChanged({ source: 'project', action: 'quality_upload', siteId });
   return stateFromServer(data);
 }
 
@@ -218,4 +247,9 @@ export async function reviewQualityAudit(siteId, { decision, comments }) {
   const data = await client.post(`/project/${siteId}/quality-audit/review`, { decision, comments: comments || null }).then((r) => r.data);
   notifySiteDataChanged({ source: 'project', action: 'quality_review', siteId });
   return stateFromServer(data);
+}
+
+export async function getNsoQueue() {
+  const data = await client.get('/project/nso-queue').then((r) => r.data);
+  return { items: (data.items || []).map(queueItemFromServer), total: data.total ?? 0 };
 }

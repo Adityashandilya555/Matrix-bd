@@ -348,11 +348,14 @@ CREATE TABLE IF NOT EXISTS public.project_reviews (
   expected_completion_date date,
   expected_completion_status text NOT NULL DEFAULT 'pending',
   expected_completion_comments text,
+  mid_project_visit_date date,
   inspection_date date,
   quality_audit_status text NOT NULL DEFAULT 'pending',
   quality_audit_comments text,
   final_completion_date date,
   project_completed_at timestamp with time zone,
+  nso_status text NOT NULL DEFAULT 'pending',
+  pushed_to_nso_at timestamp with time zone,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT project_reviews_pkey PRIMARY KEY (site_id),
@@ -362,9 +365,10 @@ CREATE TABLE IF NOT EXISTS public.project_reviews (
   CONSTRAINT chk_project_status CHECK (project_status IN ('pending','allocated','budgeting','in_progress','done')),
   CONSTRAINT chk_project_current_stage CHECK (current_stage IN ('budget','execution','done')),
   CONSTRAINT chk_project_budget_status CHECK (budget_status IN ('draft','pending_supervisor','pending_admin','approved','rejected')),
-  CONSTRAINT chk_project_initialization_status CHECK (initialization_status IN ('pending','submitted','approved','rejected')),
+  CONSTRAINT chk_project_initialization_status CHECK (initialization_status IN ('pending','proposed','submitted','approved','rejected')),
   CONSTRAINT chk_project_expected_completion_status CHECK (expected_completion_status IN ('pending','submitted','approved','rejected')),
-  CONSTRAINT chk_project_quality_status CHECK (quality_audit_status IN ('pending','submitted','approved','rejected'))
+  CONSTRAINT chk_project_quality_status CHECK (quality_audit_status IN ('pending','submitted','approved','rejected')),
+  CONSTRAINT chk_project_nso_status CHECK (nso_status IN ('pending','pushed'))
 );
 CREATE INDEX IF NOT EXISTS idx_project_reviews_tenant_status ON public.project_reviews(tenant_id, project_status);
 CREATE INDEX IF NOT EXISTS idx_project_reviews_budget_status ON public.project_reviews(tenant_id, budget_status);

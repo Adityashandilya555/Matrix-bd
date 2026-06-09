@@ -165,10 +165,24 @@ function metricRow(label, value) {
   );
 }
 
+// Local (timezone-safe) yyyy-mm-dd for `today + n days`.
+function plusDaysISO(n) {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
 function BudgetBlock({ site, fetchDetail, onDecide }) {
   const [detail, setDetail] = React.useState(null);
   const [comments, setComments] = React.useState('');
+  // The admin sets the project initialization date as part of approving the
+  // budget; defaults to 2 days out, overridable via the calendar.
+  const [initDate, setInitDate] = React.useState(() => plusDaysISO(2));
   const [busy, setBusy] = React.useState(false);
+  const acTheme = (typeof document !== 'undefined'
+    && document.querySelector('.ac-root[data-theme]')?.getAttribute('data-theme')) || 'dark';
   React.useEffect(() => {
     let live = true;
     const fallback = { items: [], budgetTotal: site.budgetTotal };
@@ -178,8 +192,9 @@ function BudgetBlock({ site, fetchDetail, onDecide }) {
   }, [site.siteId, site.budgetTotal, fetchDetail]);
   const decide = async (decision) => {
     if (decision === 'reject' && !comments.trim()) { window.alert('Comments are required to send back.'); return; }
+    if (decision === 'approve' && !initDate) { window.alert('Set the project initialization date to approve.'); return; }
     setBusy(true);
-    try { await onDecide(site.siteId, { decision, comments }); }
+    try { await onDecide(site.siteId, { decision, comments, initializationDate: initDate }); }
     catch (e) { window.alert(e?.detail || e?.message || 'Decision failed'); }
     finally { setBusy(false); }
   };
@@ -233,6 +248,30 @@ function BudgetBlock({ site, fetchDetail, onDecide }) {
         {metricRow('CAPEX / cover', metric(total, detail.covers))}
       </div>
 
+      {/* Admin sets the project initialization date as part of approval. */}
+      <label style={{ display: 'block', marginBottom: 10 }}>
+        <span style={{ display: 'block', color: T.textFaint, fontSize: 11, marginBottom: 4 }}>
+          Project initialization date (sent to the executive on approval)
+        </span>
+        <input
+          type="date"
+          value={initDate}
+          onChange={(e) => setInitDate(e.target.value)}
+          style={{
+            height: 36,
+            width: '100%',
+            boxSizing: 'border-box',
+            padding: '0 10px',
+            borderRadius: T.radiusSm,
+            border: `1px solid ${T.lineStrong}`,
+            background: T.chip,
+            color: T.text,
+            fontSize: 12.5,
+            fontFamily: 'inherit',
+            colorScheme: acTheme,
+          }}
+        />
+      </label>
       <textarea className="ac-input" style={taStyle} placeholder="Add comments (required when sending back)"
         value={comments} onChange={(e) => setComments(e.target.value)} />
       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>

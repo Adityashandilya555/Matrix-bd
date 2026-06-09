@@ -679,11 +679,17 @@ class ProjectReview(Base):
     expected_completion_date: Mapped[Optional[date]] = mapped_column(Date)
     expected_completion_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     expected_completion_comments: Mapped[Optional[str]] = mapped_column(Text)
+    # Supervisor-set after expected completion is approved; surfaced to the executive.
+    mid_project_visit_date: Mapped[Optional[date]] = mapped_column(Date)
     inspection_date: Mapped[Optional[date]] = mapped_column(Date)
     quality_audit_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     quality_audit_comments: Mapped[Optional[str]] = mapped_column(Text)
     final_completion_date: Mapped[Optional[date]] = mapped_column(Date)
     project_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # NSO handoff: set on quality-audit approval; the (parallel) NSO module
+    # consumes sites where nso_status='pushed'.
+    nso_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    pushed_to_nso_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -704,8 +710,12 @@ class ProjectReview(Base):
             name="chk_project_budget_status",
         ),
         CheckConstraint(
-            "initialization_status IN ('pending','submitted','approved','rejected')",
+            "initialization_status IN ('pending','proposed','submitted','approved','rejected')",
             name="chk_project_initialization_status",
+        ),
+        CheckConstraint(
+            "nso_status IN ('pending','pushed')",
+            name="chk_project_nso_status",
         ),
         CheckConstraint(
             "expected_completion_status IN ('pending','submitted','approved','rejected')",

@@ -76,9 +76,11 @@ export async function getBudgetQueue() {
   };
 }
 
-export async function reviewBudget(siteId, { decision, comments } = {}) {
+export async function reviewBudget(siteId, { decision, comments, initializationDate } = {}) {
   const body = { decision };
   if (comments) body.comments = comments;
+  // On approve, the admin also sets the project initialization date.
+  if (decision === 'approve' && initializationDate) body.initialization_date = initializationDate;
   return client.post(`/project/${siteId}/budget/admin-review`, body).then((r) => r.data);
 }
 
