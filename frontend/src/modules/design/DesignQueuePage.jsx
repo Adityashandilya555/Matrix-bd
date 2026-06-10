@@ -1,11 +1,12 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import { useSession } from '../../state/SessionContext.jsx';
 import { getDesignQueue } from '../../services/api/designApi.js';
 import { designSiteRoute } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
+import { useFocusSite } from '../../hooks/useFocusSite.js';
 
 const STATUS_LABELS = {
   pending:     { label: 'Awaiting allocation', tone: 'var(--zm-fg-3)' },
@@ -58,12 +59,33 @@ function StatusPill({ value }) {
   );
 }
 
+const VALID_STAGE_PARAMS = ['recce', '2d', '3d', 'boq', 'gfc'];
+
 export default function DesignQueuePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { role } = useSession();
   const isSupervisor = role === 'supervisor';
   const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
-  const [stageFilter, setStageFilter] = React.useState('all');
+  // Deep links from the overview page: ?stage= preselects a stage chip,
+  // ?filter= narrows by designStatus, ?focus= scrolls to a specific row.
+  const params = new URLSearchParams(location.search);
+  const stageParam = params.get('stage');
+  const statusParam = params.get('filter');
+  const [stageFilter, setStageFilter] = React.useState(
+    () => (VALID_STAGE_PARAMS.includes(stageParam) ? stageParam : 'all'),
+  );
+  // Re-apply when the ?stage= param changes while the page is already mounted
+  // (e.g. an in-place navigate from another tab's deep link).
+  React.useEffect(() => {
+    if (VALID_STAGE_PARAMS.includes(stageParam)) setStageFilter(stageParam);
+  }, [stageParam]);
+  const statusFilter = React.useMemo(() => {
+    if (!statusParam) return null;
+    const wanted = statusParam.split(',').filter((s) => STATUS_LABELS[s]);
+    return wanted.length ? wanted : null;
+  }, [statusParam]);
+  useFocusSite();
 
   const load = React.useCallback(() => {
     let cancelled = false;
@@ -84,6 +106,10 @@ export default function DesignQueuePage() {
   useSiteDataRefresh(load, { sources: ['design', 'businessAdmin', 'siteTrackerApi', 'legalApi'] });
 
   const open = (row) => navigate(designSiteRoute(row.siteId));
+
+  const visibleItems = statusFilter
+    ? state.items.filter((r) => statusFilter.includes(r.designStatus))
+    : state.items;
 
   const COLS = '120px minmax(200px, 1fr) 120px 170px 110px 120px';
 
@@ -126,8 +152,8 @@ export default function DesignQueuePage() {
             {STAGE_FILTERS.map((f) => {
               const active = stageFilter === f.id;
               const count = f.id === 'all'
-                ? state.items.length
-                : state.items.filter((r) => matchesStageFilter(r, f.id)).length;
+                ? visibleItems.length
+                : visibleItems.filter((r) => matchesStageFilter(r, f.id)).length;
               return (
                 <button
                   key={f.id}
@@ -168,9 +194,10 @@ export default function DesignQueuePage() {
             <span style={{ textAlign: 'right' }}>Action</span>
           </div>
 
-          {state.items.filter((r) => matchesStageFilter(r, stageFilter)).map((row) => (
+          {visibleItems.filter((r) => matchesStageFilter(r, stageFilter)).map((row) => (
             <div
               key={row.siteId}
+              data-site-id={row.siteId}
               onClick={() => open(row)}
               style={{
                 display: 'grid', gridTemplateColumns: COLS,
