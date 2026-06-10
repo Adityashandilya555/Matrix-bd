@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import { listSites } from '../../services/api/siteService.js';
-import { siteTrackerDetailRoute } from '../../router/routes.js';
+import { ROUTES, siteTrackerDetailRoute } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 
 // Payments membership = sites pushed from "Sites in process". The push moves
@@ -405,6 +405,16 @@ export default function PaymentStubPage() {
         title="Payment"
         right={<HeaderTag icon="paymentCard" label={`${counts.pending + counts.awaiting} ACTIVE`}/>}
       />
+
+      <div>
+        <button
+          type="button"
+          onClick={() => navigate(ROUTES.OVERVIEW)}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px', borderRadius: 999, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+        >
+          <Icon name="arrow" size={12} style={{ transform: 'rotate(180deg)' }}/> All metrics
+        </button>
+      </div>
 
       <div style={{
         display: 'grid',

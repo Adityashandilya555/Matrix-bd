@@ -492,7 +492,7 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
       {!view && (
         <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
           <MetricCard no="Ⅰ" eyebrow="Total sites" value={metrics.total.value}    rule="var(--zm-accent)" delta={metrics.total.delta}    sub={metrics.total.sub}    onClick={() => selectKpi('sites')}/>
-          <MetricCard no="Ⅱ" eyebrow="Archived"    value={metrics.archived.value} rule="var(--zm-fg-3)"   delta={metrics.archived.delta} deltaTone="neutral" sub={metrics.archived.sub} onClick={() => selectKpi('archived')}/>
+          <MetricCard no="Ⅱ" eyebrow="Archive / Rejected" value={metrics.archived.value} rule="var(--zm-fg-3)" delta={metrics.archived.delta} deltaTone="neutral" sub={metrics.archived.sub} onClick={() => selectKpi('archived')}/>
           <MetricCard no="Ⅲ" eyebrow="Payments"    value={metrics.payments.value} rule="var(--zm-info)"   delta={metrics.payments.delta} deltaTone="neutral" sub={metrics.payments.sub} onClick={() => selectKpi('payments')}/>
           <MetricCard no="Ⅳ" eyebrow="Launch"      value={metrics.launch.value}   rule="var(--zm-copper)" delta={metrics.launch.delta}   deltaTone={metrics.launch.deltaTone} sub={metrics.launch.sub} onClick={() => selectKpi('launch')}/>
         </div>
@@ -518,7 +518,7 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
       {view === 'archived' && (
         <>
           <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
-            <MetricCard no="Ⅱ" eyebrow="Archived" value={metrics.archived.value} rule="var(--zm-fg-3)" delta={metrics.archived.delta} deltaTone="neutral" sub={metrics.archived.sub} selected onClick={() => selectKpi('archived')}/>
+            <MetricCard no="Ⅱ" eyebrow="Archive / Rejected" value={metrics.archived.value} rule="var(--zm-fg-3)" delta={metrics.archived.delta} deltaTone="neutral" sub={metrics.archived.sub} selected onClick={() => selectKpi('archived')}/>
             <BigFilterBox label="Archived" value={archivedOnly} color={STAGES.archived.color} active={archStatus === 'archived'} onClick={() => setArchStatus(s => s === 'archived' ? 'all' : 'archived')}/>
             <BigFilterBox label="Rejected" value={rejectedOnly} color={STAGES.rejected.color} active={archStatus === 'rejected'} onClick={() => setArchStatus(s => s === 'rejected' ? 'all' : 'rejected')}/>
           </div>
