@@ -26,7 +26,7 @@ from app.db import models
 from app.db.session import transaction
 from app.domain.schemas.business_admin import Module
 from app.services._common import fetch_user_name
-from app.services.finance_service import svc_finance_approve
+from app.services.finance_service import svc_finance_approve, svc_finance_reject
 
 
 _PENDING_MODULE_PREFIX = "pending_module:"
@@ -359,6 +359,22 @@ async def approve_finance(
         tenant_id=tenant_id,
         actor=actor,
         site_id=site_id,
+    )
+
+
+async def reject_finance(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+    site_id: str | UUID,
+    actor: dict,
+    reason: str | None = None,
+) -> dict:
+    return await svc_finance_reject(
+        session,
+        tenant_id=tenant_id,
+        actor=actor,
+        site_id=site_id,
+        reason=reason,
     )
 
 

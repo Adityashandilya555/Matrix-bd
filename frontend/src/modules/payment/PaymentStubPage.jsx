@@ -239,7 +239,7 @@ function PaymentRow({ site, onOpen }) {
         }}>
           <MiniField label="KYC" value={site.kycVerified ? 'Verified' : 'Open'}/>
           <MiniField label="CA code" value={site.caCode || 'Unset'}/>
-          <MiniField label="Amount" value={formatAmount(site.financeAmount)}/>
+          <MiniField label="Token amount" value={formatAmount(site.financeAmount)}/>
         </div>
         <div style={{
           fontFamily: 'var(--zm-font-body)',

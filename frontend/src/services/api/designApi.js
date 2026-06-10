@@ -240,11 +240,20 @@ export async function decideGfc(siteId, { decision, comments }) {
 
 // ── Document upload (recce / 2d / 3d) ────────────────────────────────────────
 
+// Uploads carry the file body to the backend, which then relays it to Supabase
+// Storage (its own 30s budget) before responding. The default 20s client
+// timeout fires first on big files / slow links, so axios reports a bare
+// "Network Error" while the upload actually completes server-side — the user
+// re-uploads needlessly. Give uploads their own, much larger budget.
+const UPLOAD_TIMEOUT_MS = Number(import.meta.env.VITE_UPLOAD_TIMEOUT_MS ?? 120000);
+
 export async function uploadDeliverable(siteId, kind, file) {
   const form = new FormData();
   form.append('file', file);
   // axios sets the multipart Content-Type (with boundary) automatically for FormData.
-  const data = await client.post(`/design/${siteId}/deliverables/${kind}/upload`, form).then((r) => r.data);
+  const data = await client
+    .post(`/design/${siteId}/deliverables/${kind}/upload`, form, { timeout: UPLOAD_TIMEOUT_MS })
+    .then((r) => r.data);
   notifySiteDataChanged({ source: 'design', action: 'upload_deliverable', siteId });
   return reviewFromServer(data);
 }

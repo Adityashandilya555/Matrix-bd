@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, status
+from pydantic import BaseModel
 
 from app.core.deps import DbDep, TenantId
 from app.domain.schemas.business_admin import (
@@ -115,6 +116,29 @@ async def approve_finance(
     tenant_id: TenantId,
 ) -> dict:
     return await svc.approve_finance(db, tenant_id, site_id, current_user)
+
+
+class _FinanceRejectBody(BaseModel):
+    reason: Optional[str] = None
+
+
+@router.post(
+    "/finance-approvals/{site_id}/reject",
+    response_model=dict,
+    summary="Admin sends a finance request back for correction",
+    description="awaiting_admin → pending. Unlocks KYC / CA code / amount so the executive can fix and re-request approval.",
+)
+async def reject_finance(
+    site_id: str,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+    body: _FinanceRejectBody | None = None,
+) -> dict:
+    return await svc.reject_finance(
+        db, tenant_id, site_id, current_user,
+        reason=(body.reason if body else None),
+    )
 
 
 @router.get("/org", response_model=OrgResponse)

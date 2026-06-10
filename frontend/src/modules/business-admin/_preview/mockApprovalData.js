@@ -147,6 +147,7 @@ export const mockFetchers = {
 
   listFinance: async () => { await wait(560); return { items: structuredClone(store.finance), total: store.finance.length }; },
   approveFinance: async (siteId) => { await wait(480); store.finance = store.finance.filter((s) => s.siteId !== siteId); return { ok: true }; },
+  rejectFinance: async (siteId) => { await wait(480); store.finance = store.finance.filter((s) => s.siteId !== siteId); return { ok: true }; },
 
   listBudget: async () => { await wait(520); return { items: structuredClone(store.budget), total: store.budget.length }; },
   reviewBudget: async (siteId) => { await wait(500); store.budget = store.budget.filter((s) => s.siteId !== siteId); return { ok: true }; },

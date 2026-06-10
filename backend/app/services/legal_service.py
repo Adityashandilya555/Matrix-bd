@@ -568,27 +568,30 @@ async def svc_save_verification(
             # the checklist or exposes a final BD-visible verdict.
             dd.stage = "draft"
             session.add(dd)
+        elif _row_stage(dd) == "published" and dd.approved_by is None:
+            # Repair rows created by the previous Save Draft path, where
+            # item saves could accidentally leave an unfinalized checklist
+            # in the published/read-only stage. Applies to BOTH roles: the
+            # frontend shows such rows as editable drafts, so an executive
+            # with an active delegation must be able to save into them too
+            # (previously only supervisors hit this branch and executives
+            # got a blanket 422 on every save).
+            dd.stage = "draft"
+            if dd.final_verdict != "pending":
+                dd.final_verdict = "pending"
+                dd.rejection_reason = None
+                site.legal_dd_status = "in_review"
         elif is_executive:
             _assert_executive_can_edit_stage(_row_stage(dd))
         else:
-            if _row_stage(dd) == "published" and dd.approved_by is None:
-                # Repair rows created by the previous Save Draft path, where
-                # supervisor item saves could accidentally leave an
-                # unfinalized checklist in the published/read-only stage.
-                dd.stage = "draft"
-                if dd.final_verdict != "pending":
-                    dd.final_verdict = "pending"
-                    dd.rejection_reason = None
-                    site.legal_dd_status = "in_review"
-            else:
-                # Supervisor path: blocked from editing items once the row is
-                # published — BD reads published rows as the source of truth, so
-                # any post-publish change must flow through the change-request
-                # path (where the request + approval are explicitly logged).
-                # Draft and pending_review rows remain freely editable so the
-                # supervisor can adjust items either before the executive submits
-                # or after reviewing what they sent.
-                _assert_supervisor_can_edit_stage(_row_stage(dd))
+            # Supervisor path: blocked from editing items once the row is
+            # published — BD reads published rows as the source of truth, so
+            # any post-publish change must flow through the change-request
+            # path (where the request + approval are explicitly logged).
+            # Draft and pending_review rows remain freely editable so the
+            # supervisor can adjust items either before the executive submits
+            # or after reviewing what they sent.
+            _assert_supervisor_can_edit_stage(_row_stage(dd))
 
         # Only overwrite fields that were explicitly supplied
         for field in (

@@ -163,6 +163,71 @@ async def svc_finance_request_approval(
     return _finance_snapshot(site)
 
 
+async def svc_finance_reject(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    actor: dict,
+    site_id: str | UUID,
+    reason: Optional[str] = None,
+) -> dict:
+    """Business admin sends a finance request back for correction.
+
+    awaiting_admin → pending. Resetting to 'pending' (rather than a terminal
+    'rejected') unlocks the KYC / CA code / amount fields so the executive can
+    fix the details and re-request approval through the normal chain.
+    """
+    actor_role = (actor.get("role") or "").lower()
+    if actor_role != "business_admin":
+        raise HTTPException(
+            http_status.HTTP_403_FORBIDDEN,
+            detail="Only business admins can reject finance.",
+        )
+
+    async with transaction(session):
+        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+
+        if site.finance_status != "awaiting_admin":
+            raise HTTPException(
+                http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Expected awaiting_admin, got '{site.finance_status}'.",
+            )
+
+        site.finance_status = "pending"
+
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=site.id,
+            actor_id=actor["sub"], actor_name=actor["name"],
+            action="finance_admin_rejected",
+            detail=(
+                f"Admin sent finance back for correction. ca_code={site.ca_code}"
+                + (f" reason={reason}" if reason else "")
+            ),
+        )
+
+        owners = await recipients_for_site_owner(session, site=site)
+        supervisors = await recipients_for_supervisors(session, tenant_id=tenant_id)
+        all_recipients = list({*owners, *supervisors})
+        await notify_enqueue(
+            session, tenant_id=tenant_id, event="finance_rejected",
+            recipient_ids=all_recipients, site_id=site.id,
+            channels=("in_app",),
+            payload={
+                "site_id": str(site.id), "site_name": site.name,
+                "ca_code": site.ca_code, "reason": reason,
+            },
+            subject=f"Finance sent back: {site.ca_code or site.name}",
+            body=(
+                f"The admin has sent the finance request for '{site.name}' "
+                f"({site.ca_code or site.code}) back for correction."
+                + (f"\nReason: {reason}" if reason else "")
+                + "\nUpdate the details and re-request approval."
+            ),
+        )
+
+    return _finance_snapshot(site)
+
+
 async def svc_finance_approve(
     session: AsyncSession,
     *,

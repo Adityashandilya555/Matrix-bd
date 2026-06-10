@@ -63,6 +63,13 @@ export async function approveFinance(siteId) {
   return client.post(`/business-admin/finance-approvals/${siteId}/approve`).then((r) => r.data);
 }
 
+// Sends the request back for correction: awaiting_admin → pending (fields unlock
+// so the executive can fix KYC / CA code / token amount and re-request).
+export async function rejectFinance(siteId, reason) {
+  const body = reason ? { reason } : {};
+  return client.post(`/business-admin/finance-approvals/${siteId}/reject`, body).then((r) => r.data);
+}
+
 // ── Project budget approvals ─────────────────────────────────────────────────
 
 export async function getBudgetQueue() {

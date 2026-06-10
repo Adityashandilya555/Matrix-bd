@@ -127,13 +127,18 @@ function GfcBlock({ siteId, fetchReview, onDecide }) {
   );
 }
 
-// ── Payment / finance (admin final approval — approve-only per backend) ───────
-function PaymentBlock({ site, onApprove }) {
+// ── Payment / finance (admin final sign-off: approve or send back) ────────────
+function PaymentBlock({ site, onApprove, onReject }) {
+  const [comments, setComments] = React.useState('');
   const [busy, setBusy] = React.useState(false);
-  const approve = async () => {
+  const decide = async (decision) => {
+    if (decision === 'reject' && !comments.trim()) { window.alert('Comments are required to send back.'); return; }
     setBusy(true);
-    try { await onApprove(site.siteId); }
-    catch (e) { window.alert(e?.detail || e?.message || 'Approval failed'); }
+    try {
+      if (decision === 'approve') await onApprove(site.siteId);
+      else await onReject(site.siteId, comments.trim());
+    }
+    catch (e) { window.alert(e?.detail || e?.message || 'Decision failed'); }
     finally { setBusy(false); }
   };
   return (
@@ -141,12 +146,18 @@ function PaymentBlock({ site, onApprove }) {
       <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 12, fontSize: 12.5 }}>
         <div><div style={{ color: T.textFaint, fontSize: 11 }}>CA code</div>
           <div style={{ fontFamily: T.mono, color: T.text }}>{site.payment.caCode || '—'}</div></div>
-        <div><div style={{ color: T.textFaint, fontSize: 11 }}>Amount</div>
+        <div><div style={{ color: T.textFaint, fontSize: 11 }}>Token amount</div>
           <div style={{ fontFamily: T.mono, color: T.successText, ...TABULAR }}>{inr(site.payment.financeAmount)}</div></div>
       </div>
       <div style={{ fontSize: 11.5, color: T.textFaint, marginBottom: 10 }}>Supervisor-approved — awaiting your final sign-off.</div>
-      <Button variant="success" size="md" loading={busy} icon={!busy && <Icon.check size={15} />}
-        onClick={approve}>Approve payment</Button>
+      <textarea className="ac-input" style={taStyle} placeholder="Add comments (required when sending back)"
+        value={comments} onChange={(e) => setComments(e.target.value)} />
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+        <Button variant="success" size="md" loading={busy} icon={!busy && <Icon.check size={15} />}
+          onClick={() => decide('approve')}>Approve payment</Button>
+        <Button variant="danger" size="md" disabled={busy} icon={<Icon.x size={15} />}
+          onClick={() => decide('reject')}>Send back</Button>
+      </div>
     </>
   );
 }
@@ -301,7 +312,7 @@ export default function SiteApprovalPanel({ site, handlers }) {
       )}
       {payment && (
         <BlockShell icon={Icon.wallet} tone="payment" title="Payment approval" amount={payment.financeAmount}>
-          <PaymentBlock site={site} onApprove={handlers.onApproveFinance} />
+          <PaymentBlock site={site} onApprove={handlers.onApproveFinance} onReject={handlers.onRejectFinance} />
         </BlockShell>
       )}
       {project && (

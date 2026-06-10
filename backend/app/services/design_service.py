@@ -22,6 +22,7 @@ Mirror column sites.design_status:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -178,9 +179,15 @@ async def _build_design_response(
     review = await _fetch_review_or_none(session, site_id=site.id)
     deliverables = await _fetch_deliverables(session, site_id=site.id)
     submitted_by_name = await fetch_user_name(session, site.submitted_by)
+    # Each signed URL is an HTTP round-trip to Supabase Storage; doing them
+    # sequentially stacked 4+ round-trips onto every design read/upload and
+    # pushed responses past the frontend's timeout. Fan out instead.
+    download_urls = await asyncio.gather(
+        *(_deliverable_download_url(d) for d in deliverables)
+    )
     deliverable_responses = [
-        _deliverable_to_response(d, download_url=await _deliverable_download_url(d))
-        for d in deliverables
+        _deliverable_to_response(d, download_url=url)
+        for d, url in zip(deliverables, download_urls)
     ]
     return DesignReviewResponse(
         site_id=str(site.id),

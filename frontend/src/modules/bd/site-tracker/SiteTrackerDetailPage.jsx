@@ -464,20 +464,20 @@ function FinancePanel({ data, role, onClose, onUpdate }) {
                   fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 11.5,
                   textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--zm-fg-2)',
                 }}>
-                  Step 3 · Finance Amount (₹)
+                  Step 3 · Token Amount (₹)
                 </label>
                 <input
                   type="number"
                   value={amount}
                   disabled={isLocked}
-                  placeholder="Enter amount in ₹"
+                  placeholder="Enter token amount in ₹"
                   min={0}
                   onChange={(e) => setAmount(e.target.value)}
                   style={inputStyle(isLocked)}
                 />
                 {isLocked && data.financeAmount != null && (
                   <span style={{ fontSize: 11.5, color: 'var(--zm-fg-2)' }}>
-                    Amount: <strong>₹{Number(data.financeAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                    Token amount: <strong>₹{Number(data.financeAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
                   </span>
                 )}
               </div>
