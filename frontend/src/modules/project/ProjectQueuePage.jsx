@@ -1,11 +1,13 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
+import SubFilterPill from '../shared/primitives/SubFilterPill.jsx';
 import { useSession } from '../../state/SessionContext.jsx';
 import { getProjectQueue } from '../../services/api/projectApi.js';
 import { projectSiteRoute } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
+import { useFocusSite } from '../../hooks/useFocusSite.js';
 
 const STATUS_LABELS = {
   pending: 'Awaiting allocation',
@@ -14,6 +16,16 @@ const STATUS_LABELS = {
   in_progress: 'In execution',
   done: 'Done',
 };
+
+// Sub-filter chips honored via ?filter=<projectStatus> (deep links from the
+// module overview) — keyed by projectStatus, mirrors the overview colors.
+const STATUS_FILTERS = [
+  { key: 'pending', label: 'Pending', color: 'var(--zm-warning)' },
+  { key: 'allocated', label: 'Allocated', color: 'var(--zm-accent)' },
+  { key: 'budgeting', label: 'Budgeting', color: 'var(--zm-copper)' },
+  { key: 'in_progress', label: 'In execution', color: 'var(--zm-info)' },
+  { key: 'done', label: 'Done', color: 'var(--zm-success)' },
+];
 
 const BUDGET_LABELS = {
   draft: 'Draft',
@@ -47,9 +59,24 @@ function StatusPill({ value, tone = 'var(--zm-accent)' }) {
 
 export default function ProjectQueuePage({ mode = 'pipeline' }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { role } = useSession();
   const isSupervisor = role === 'supervisor';
   const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
+
+  // ?filter=<projectStatus> deep link (HashRouter — read location.search via
+  // react-router, never window.location.search).
+  const filterParam = new URLSearchParams(location.search).get('filter');
+  const [statusFilter, setStatusFilter] = React.useState(
+    STATUS_FILTERS.some((f) => f.key === filterParam) ? filterParam : 'all',
+  );
+  // Re-sync when the param changes; reset when it goes away or when the same
+  // mounted component flips between Pipeline and Sites (router reuses it).
+  React.useEffect(() => {
+    setStatusFilter(STATUS_FILTERS.some((f) => f.key === filterParam) ? filterParam : 'all');
+  }, [filterParam, mode]);
+
+  useFocusSite(); // scroll/flash a row reached via ?focus=<siteId>
 
   const load = React.useCallback(() => {
     let cancelled = false;
@@ -75,7 +102,14 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
   // A site moves from Pipeline to Sites once the executive has uploaded the
   // quality-audit doc + inspection date (quality_audit_status leaves 'pending').
   const inSites = (row) => !!row.qualityAuditStatus && row.qualityAuditStatus !== 'pending';
-  const visibleItems = state.items.filter((row) => (mode === 'sites' ? inSites(row) : !inSites(row)));
+  const modeItems = state.items.filter((row) => (mode === 'sites' ? inSites(row) : !inSites(row)));
+  const statusCounts = STATUS_FILTERS.reduce((acc, f) => {
+    acc[f.key] = modeItems.filter((row) => row.projectStatus === f.key).length;
+    return acc;
+  }, {});
+  const visibleItems = statusFilter === 'all'
+    ? modeItems
+    : modeItems.filter((row) => row.projectStatus === statusFilter);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -98,13 +132,30 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
         </div>
       )}
 
+      {state.status === 'ready' && modeItems.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {STATUS_FILTERS.filter((f) => statusCounts[f.key] > 0 || f.key === statusFilter).map((f) => (
+            <SubFilterPill
+              key={f.key}
+              label={f.label}
+              count={statusCounts[f.key]}
+              color={f.color}
+              active={statusFilter === f.key}
+              onClick={() => setStatusFilter((s) => (s === f.key ? 'all' : f.key))}
+            />
+          ))}
+        </div>
+      )}
+
       {state.status === 'ready' && visibleItems.length === 0 && (
         <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
           <Icon name="box" size={20}/>
           <p style={{ margin: '12px 0 0' }}>
-            {mode === 'sites'
-              ? 'No sites have reached the quality-audit stage yet.'
-              : 'No design-approved sites are waiting for Project right now.'}
+            {statusFilter !== 'all' && modeItems.length > 0
+              ? 'No sites match the current status filter.'
+              : mode === 'sites'
+                ? 'No sites have reached the quality-audit stage yet.'
+                : 'No design-approved sites are waiting for Project right now.'}
           </p>
         </div>
       )}
@@ -136,6 +187,8 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
           {visibleItems.map((row) => (
             <div
               key={row.siteId}
+              data-site-id={row.siteId}
+              className="zm-row"
               onClick={() => open(row)}
               style={{
                 display: 'grid',
