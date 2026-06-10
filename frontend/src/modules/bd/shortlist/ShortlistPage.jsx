@@ -9,6 +9,7 @@ import StatusPill from '../../shared/primitives/StatusPill.jsx';
 import AddDetailsPage from '../../loi/details/AddDetailsPage.jsx';
 import * as siteService from '../../../services/api/siteService.js';
 import { listMyTeam } from '../../../services/api/adapters/httpAdapter.js';
+import { useFocusSite } from '../../../hooks/useFocusSite.js';
 
 // All render bodies preserved exactly from Shortlist.jsx.
 
@@ -287,7 +288,7 @@ function ShortlistCard({ item, role, currentUserId, onView, onAddDetails, onAppr
   const reviewable = item.inReview === true;
   const hasDraft = !!item.details && !reviewable;
   return (
-    <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, boxShadow: 'var(--zm-shadow-1)' }}>
+    <div data-site-id={item.code} style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, boxShadow: 'var(--zm-shadow-1)' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
         <div style={{ width: 64, height: 64, borderRadius: 10, flex: '0 0 64px', background: `linear-gradient(135deg, hsl(${item.hue} 30% 80%), hsl(${item.hue+30} 30% 60%))` }}/>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -343,6 +344,7 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
   const showToast = showToastProp || ctx.showToast;
   const { role, user, session } = useSession();
   const { shortlist, saveDraftDetails, submitDetailsForReview, approveShortlistToStaging, refresh } = useSites();
+  useFocusSite(); // scroll/flash a card reached via /shortlist?focus=<code>
   const [approving, setApproving] = React.useState(null);
   const [detailing, setDetailing] = React.useState(null);
   const [detailSaving, setDetailSaving] = React.useState(false);

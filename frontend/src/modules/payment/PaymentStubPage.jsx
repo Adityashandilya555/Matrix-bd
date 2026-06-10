@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import { listSites } from '../../services/api/siteService.js';
@@ -7,8 +7,11 @@ import { getSiteTrackerView } from '../../services/api/siteTrackerApi.js';
 import { siteTrackerDetailRoute } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 
+// Payments membership = sites pushed from "Sites in process". The push moves
+// site.status to legal_review, and Legal + Finance then run in parallel — so a
+// freshly pushed site MUST show here immediately (under "Pending") even though
+// Legal has not cleared it yet.
 const PAYMENT_STATUSES = [
-  'loi_uploaded',
   'legal_review',
   'legal_approved',
   'pushed_to_payments',
@@ -21,16 +24,15 @@ const FINANCE_LABELS = {
   approved: 'Approved',
 };
 
-function isPaymentReady(site) {
-  return PAYMENT_STATUSES.includes(site.siteStatus) || Boolean(site.loiUploadedAt);
-}
-
+// Three states the BD team thinks in:
+//   pending  — pushed from Sites in process, Finance/CA not concluded yet
+//   awaiting — details pushed, approval pending (supervisor → business admin)
+//   approved — Finance approved
 function paymentState(site) {
   const financeStatus = site.financeStatus || 'pending';
   if (financeStatus === 'approved') return 'approved';
   if (financeStatus === 'awaiting_supervisor' || financeStatus === 'awaiting_admin') return 'awaiting';
-  if (isPaymentReady(site)) return 'ready';
-  return 'locked';
+  return 'pending';
 }
 
 function stateTone(state) {
@@ -45,28 +47,19 @@ function stateTone(state) {
   }
   if (state === 'awaiting') {
     return {
-      label: 'Approval pending',
+      label: 'Awaiting approval',
       bg: 'var(--zm-warning-soft, #F8EEDC)',
       border: 'var(--zm-warning, #B0712E)',
       fg: 'var(--zm-warning, #B0712E)',
       icon: 'clock',
     };
   }
-  if (state === 'ready') {
-    return {
-      label: 'Ready',
-      bg: 'var(--zm-accent-soft, #E7F0EA)',
-      border: 'var(--zm-accent, #0E5B45)',
-      fg: 'var(--zm-accent, #0E5B45)',
-      icon: 'paymentCard',
-    };
-  }
   return {
-    label: 'Locked',
-    bg: 'rgba(255,255,255,0.62)',
-    border: 'var(--zm-line)',
-    fg: 'var(--zm-fg-3)',
-    icon: 'lock',
+    label: 'Pending',
+    bg: 'var(--zm-accent-soft, #E7F0EA)',
+    border: 'var(--zm-accent, #0E5B45)',
+    fg: 'var(--zm-accent, #0E5B45)',
+    icon: 'paymentCard',
   };
 }
 
@@ -76,33 +69,38 @@ function formatAmount(value) {
 }
 
 function unlockCopy(site) {
-  if (isPaymentReady(site)) {
-    if (site.financeStatus === 'approved') return 'Finance approved and ready for final handoff.';
-    if (site.financeStatus === 'awaiting_admin') return 'Supervisor approved. Admin approval is pending.';
-    if (site.financeStatus === 'awaiting_supervisor') return 'Draft is complete. Supervisor approval is pending.';
-    return 'LOI is uploaded. Finance can prepare the CA code and amount in parallel with Legal.';
-  }
-  return 'Waiting for LOI upload before Finance / CA can start.';
+  if (site.financeStatus === 'approved') return 'Finance approved and ready for final handoff.';
+  if (site.financeStatus === 'awaiting_admin') return 'Supervisor approved. Business-admin approval is pending.';
+  if (site.financeStatus === 'awaiting_supervisor') return 'Details pushed. Supervisor approval is pending.';
+  return 'Pushed from Sites in process. Finance / CA runs in parallel with Legal — prepare the CA code and amount.';
 }
 
-function Metric({ icon, label, value, tone = 'accent' }) {
+function Metric({ icon, label, value, tone = 'accent', active = false, onClick }) {
   const color =
     tone === 'success' ? 'var(--zm-success, #2F7A4A)' :
     tone === 'warning' ? 'var(--zm-warning, #B0712E)' :
     tone === 'muted' ? 'var(--zm-fg-3)' :
     'var(--zm-accent, #0E5B45)';
   return (
-    <div style={{
-      background: 'var(--zm-surface)',
-      border: '1px solid var(--zm-line)',
-      borderRadius: 12,
-      padding: '14px 16px',
-      boxShadow: 'var(--zm-shadow-1)',
-      display: 'flex',
-      alignItems: 'center',
-      gap: 12,
-      minWidth: 0,
-    }}>
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        background: active ? 'color-mix(in srgb, currentColor 0%, var(--zm-surface))' : 'var(--zm-surface)',
+        border: active ? `2px solid ${color}` : '1px solid var(--zm-line)',
+        borderRadius: 12,
+        padding: active ? '13px 15px' : '14px 16px',
+        boxShadow: active ? 'var(--zm-shadow-2)' : 'var(--zm-shadow-1)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        minWidth: 0,
+        cursor: 'pointer',
+        textAlign: 'left',
+        fontFamily: 'inherit',
+        transition: 'border 120ms var(--zm-ease), box-shadow 120ms var(--zm-ease)',
+      }}
+    >
       <span style={{
         width: 34,
         height: 34,
@@ -135,7 +133,7 @@ function Metric({ icon, label, value, tone = 'accent' }) {
           fontWeight: 800,
           letterSpacing: '0.1em',
           textTransform: 'uppercase',
-          color: 'var(--zm-fg-3)',
+          color: active ? color : 'var(--zm-fg-3)',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
@@ -143,7 +141,7 @@ function Metric({ icon, label, value, tone = 'accent' }) {
           {label}
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -177,14 +175,14 @@ function PaymentRow({ site, onOpen }) {
   const state = paymentState(site);
   const tone = stateTone(state);
   return (
-    <article style={{
+    <article data-site-id={site.siteId} style={{
       display: 'grid',
       gridTemplateColumns: 'minmax(220px, 1.2fr) minmax(160px, 0.8fr) minmax(220px, 1fr) 132px',
       gap: 14,
       alignItems: 'center',
       padding: '16px 18px',
       borderBottom: '1px solid var(--zm-line-faint)',
-      background: state === 'ready' ? 'var(--zm-accent-soft, #E7F0EA)' : 'transparent',
+      background: state === 'pending' ? 'var(--zm-accent-soft, #E7F0EA)' : 'transparent',
     }}>
       <div style={{ minWidth: 0 }}>
         <div style={{
@@ -259,9 +257,9 @@ function PaymentRow({ site, onOpen }) {
           height: 34,
           padding: '0 12px',
           borderRadius: 8,
-          border: state === 'locked' ? '1px solid var(--zm-line)' : 'none',
-          background: state === 'locked' ? 'var(--zm-surface)' : 'var(--zm-accent)',
-          color: state === 'locked' ? 'var(--zm-fg)' : 'var(--zm-accent-on, #fff)',
+          border: 'none',
+          background: 'var(--zm-accent)',
+          color: 'var(--zm-accent-on, #fff)',
           fontFamily: 'var(--zm-font-body)',
           fontSize: 12,
           fontWeight: 800,
@@ -272,7 +270,7 @@ function PaymentRow({ site, onOpen }) {
           gap: 6,
         }}
       >
-        {state === 'locked' ? 'View flow' : 'Open CA panel'}
+        Open CA panel
         <Icon name="arrow" size={12}/>
       </button>
     </article>
@@ -314,13 +312,39 @@ function MiniField({ label, value }) {
   );
 }
 
+// Build a row straight from the canonical site when the tracker projection
+// fails to load. A pushed site must never silently vanish from this list —
+// that was the bug where "push from Sites in process" looked like a no-op.
+function rowFromSite(site) {
+  return {
+    siteId: site.id,
+    siteCode: site.code || '',
+    siteName: site.name,
+    city: site.city,
+    siteStatus: site.status,
+    financeStatus: site.financeStatus || 'pending',
+    kycVerified: false,
+    caCode: null,
+    financeAmount: null,
+  };
+}
+
+const FILTERS = ['all', 'pending', 'awaiting', 'approved'];
+
 export default function PaymentStubPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const initialFilter = (() => {
+    const f = new URLSearchParams(location.search).get('filter');
+    return FILTERS.includes(f) ? f : 'all';
+  })();
+  const [filter, setFilter] = React.useState(initialFilter);
+  const [q, setQ] = React.useState('');
   const [state, setState] = React.useState({ status: 'loading', rows: [], error: null });
 
   const load = React.useCallback(() => {
     let cancelled = false;
-    setState({ status: 'loading', rows: [], error: null });
+    setState((s) => ({ ...s, status: s.rows.length ? 'ready' : 'loading', error: null }));
     Promise.all(PAYMENT_STATUSES.map((status) => listSites({ status }).catch(() => [])))
       .then((groups) => {
         const seen = new Set();
@@ -332,12 +356,18 @@ export default function PaymentStubPage() {
             sites.push(site);
           }
         }
-        return Promise.all(sites.map((site) => getSiteTrackerView(site.id).catch(() => null)));
+        return Promise.all(
+          sites.map((site) =>
+            getSiteTrackerView(site.id)
+              .then((row) => row || rowFromSite(site))
+              .catch(() => rowFromSite(site)),
+          ),
+        );
       })
       .then((rows) => {
         if (cancelled) return;
         const cleanRows = rows.filter(Boolean).sort((a, b) => {
-          const rank = { awaiting: 0, ready: 1, locked: 2, approved: 3 };
+          const rank = { pending: 0, awaiting: 1, approved: 2 };
           return (rank[paymentState(a)] ?? 9) - (rank[paymentState(b)] ?? 9);
         });
         setState({ status: 'ready', rows: cleanRows, error: null });
@@ -361,7 +391,15 @@ export default function PaymentStubPage() {
     const key = paymentState(site);
     acc[key] = (acc[key] || 0) + 1;
     return acc;
-  }, { locked: 0, ready: 0, awaiting: 0, approved: 0 });
+  }, { pending: 0, awaiting: 0, approved: 0 });
+
+  const needle = q.trim().toLowerCase();
+  const visible = rows.filter((site) => {
+    if (filter !== 'all' && paymentState(site) !== filter) return false;
+    if (!needle) return true;
+    const hay = `${site.siteCode || ''} ${site.siteName || ''} ${site.city || ''}`.toLowerCase();
+    return hay.includes(needle);
+  });
 
   const openPayment = (site) => {
     navigate(`${siteTrackerDetailRoute(site.siteId)}?node=ca`);
@@ -373,7 +411,7 @@ export default function PaymentStubPage() {
         file="No. 09"
         eyebrow="BD module"
         title="Payment"
-        right={<HeaderTag icon="paymentCard" label={`${counts.ready + counts.awaiting} ACTIVE`}/>}
+        right={<HeaderTag icon="paymentCard" label={`${counts.pending + counts.awaiting} ACTIVE`}/>}
       />
 
       <div style={{
@@ -381,10 +419,10 @@ export default function PaymentStubPage() {
         gridTemplateColumns: 'repeat(4, minmax(130px, 1fr))',
         gap: 12,
       }}>
-        <Metric icon="lock" label="Locked" value={counts.locked} tone="muted"/>
-        <Metric icon="paymentCard" label="Ready for payment" value={counts.ready} tone="accent"/>
-        <Metric icon="clock" label="Awaiting approval" value={counts.awaiting} tone="warning"/>
-        <Metric icon="check" label="Approved" value={counts.approved} tone="success"/>
+        <Metric icon="layers"       label="All"               value={rows.length}     tone="muted"   active={filter === 'all'}      onClick={() => setFilter('all')}/>
+        <Metric icon="paymentCard"  label="Pending"           value={counts.pending}  tone="accent"  active={filter === 'pending'}  onClick={() => setFilter('pending')}/>
+        <Metric icon="clock"        label="Awaiting approval" value={counts.awaiting} tone="warning" active={filter === 'awaiting'} onClick={() => setFilter('awaiting')}/>
+        <Metric icon="check"        label="Approved"          value={counts.approved} tone="success" active={filter === 'approved'} onClick={() => setFilter('approved')}/>
       </div>
 
       <section style={{
@@ -402,6 +440,7 @@ export default function PaymentStubPage() {
           padding: '15px 18px',
           borderBottom: '1px solid var(--zm-line)',
           background: 'var(--zm-surface-2)',
+          flexWrap: 'wrap',
         }}>
           <div>
             <h2 style={{
@@ -413,7 +452,7 @@ export default function PaymentStubPage() {
               letterSpacing: '-0.02em',
               color: 'var(--zm-fg)',
             }}>
-              Sites waiting for Finance / CA
+              Sites in Payments
             </h2>
             <p style={{
               margin: '5px 0 0',
@@ -421,31 +460,41 @@ export default function PaymentStubPage() {
               fontSize: 12.5,
               color: 'var(--zm-fg-2)',
             }}>
-              Finance / CA starts after LOI upload and runs in parallel with Legal. Design waits for both Finance approval and positive DDR.
+              A push from Sites in process lands here immediately — Finance / CA and Legal run in parallel from that point.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={load}
-            style={{
-              height: 32,
-              padding: '0 12px',
-              border: '1px solid var(--zm-line)',
-              borderRadius: 8,
-              background: 'var(--zm-surface)',
-              color: 'var(--zm-fg)',
-              fontFamily: 'var(--zm-font-body)',
-              fontSize: 12,
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            <Icon name="refresh" size={13}/>
-            Refresh
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 34, padding: '0 12px', width: 240, border: '1px solid var(--zm-line)', borderRadius: 8, background: 'var(--zm-surface)' }}>
+              <Icon name="search" size={14} style={{ color: 'var(--zm-fg-3)' }}/>
+              <input
+                value={q} onChange={(e) => setQ(e.target.value)}
+                placeholder="Search code, site, city…"
+                style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg)' }}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={load}
+              style={{
+                height: 32,
+                padding: '0 12px',
+                border: '1px solid var(--zm-line)',
+                borderRadius: 8,
+                background: 'var(--zm-surface)',
+                color: 'var(--zm-fg)',
+                fontFamily: 'var(--zm-font-body)',
+                fontSize: 12,
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <Icon name="refresh" size={13}/>
+              Refresh
+            </button>
+          </div>
         </div>
 
         {state.status === 'loading' && (
@@ -469,16 +518,18 @@ export default function PaymentStubPage() {
           </div>
         )}
 
-        {state.status === 'ready' && rows.length === 0 && (
+        {state.status === 'ready' && visible.length === 0 && (
           <div style={{ padding: 42, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
             <Icon name="paymentCard" size={24}/>
             <p style={{ margin: '10px 0 0', fontFamily: 'var(--zm-font-body)' }}>
-              No LOI-stage sites are ready for Finance / CA tracking yet.
+              {rows.length === 0
+                ? 'No sites in Payments yet. Push a site from Sites in process to start Finance / CA.'
+                : 'No sites match the current filter / search.'}
             </p>
           </div>
         )}
 
-        {state.status === 'ready' && rows.map((site) => (
+        {state.status === 'ready' && visible.map((site) => (
           <PaymentRow key={site.siteId} site={site} onOpen={openPayment}/>
         ))}
       </section>

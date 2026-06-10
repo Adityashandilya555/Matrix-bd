@@ -111,6 +111,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
     path === ROUTES.LEGAL_REJECTED || path.startsWith('/legal/history') ? 'legal-history' :
     path.startsWith('/legal')                            ? 'legal-ddr' :
     path.startsWith('/payment')                          ? 'payment-licensing' :
+    path.startsWith('/launch')                           ? 'launch' :
     path.startsWith('/design/history')                   ? 'design-history' :
     path.startsWith('/design')                           ? 'design' :
     path.startsWith('/project/history')                  ? 'project-history' :
@@ -122,7 +123,9 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
 
   const go = (route) => navigate(route);
   const canSeeTeam = role === 'supervisor' || role === 'executive' || role === 'exec';
-  const canSeePayment = role === 'supervisor';
+  // Payment is a finance view inside BD — both roles reach it (the Overview
+  // "Payments" KPI deep-links here), so both get the sidebar entry.
+  const canSeePayment = role === 'supervisor' || role === 'executive' || role === 'exec';
   const executiveLabel = isModuleSurface ? 'Executive' : 'BD exec';
 
   return (
@@ -149,6 +152,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
           {canSeePayment && (
             <SidebarItem icon="paymentCard" label="Payment" active={activeView === 'payment-licensing'} onClick={() => go(ROUTES.PAYMENT)} collapsed={collapsed}/>
           )}
+          <SidebarItem icon="flag" label="Launch" active={activeView === 'launch'} onClick={() => go(ROUTES.LAUNCH)} collapsed={collapsed}/>
         </>
       )}
 

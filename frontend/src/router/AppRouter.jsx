@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom';
 import { ROUTES } from './routes.js';
 import { RequireModule, RequireRole } from './guards.jsx';
 import { useSession } from '../state/SessionContext.jsx';
@@ -34,6 +34,7 @@ import SiteTrackerDetailPage from '../modules/bd/site-tracker/SiteTrackerDetailP
 import DashboardMinimalPreview from '../modules/bd/dashboard-preview/DashboardMinimalPreview.jsx';
 import LicensingPage         from '../modules/payment/licensing/LicensingPage.jsx';
 import PaymentStubPage       from '../modules/payment/PaymentStubPage.jsx';
+import LaunchPage            from '../modules/launch/LaunchPage.jsx';
 import AdminPortalPage          from '../modules/admin/AdminPortalPage.jsx';
 import BusinessAdminPortalPage  from '../modules/business-admin/BusinessAdminPortalPage.jsx';
 import ProjectQueuePage         from '../modules/project/ProjectQueuePage.jsx';
@@ -221,6 +222,12 @@ export default function AppRouter() {
         }/>
         <Route path="/payment/*" element={<Navigate to={ROUTES.PAYMENT} replace/>}/>
 
+        <Route path={ROUTES.LAUNCH} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <LaunchPage/>
+          </RequireRole>
+        }/>
+
         <Route path={ROUTES.DESIGN} element={
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <RequireModule modules={['design']}>
@@ -363,16 +370,20 @@ export default function AppRouter() {
 
 function StagingRedirect() {
   const { role } = useSession();
+  const location = useLocation();
   // Backend ships role='executive'; mock-mode role switcher still uses 'exec'.
   const isExec = role === 'exec' || role === 'executive';
-  return <Navigate to={isExec ? ROUTES.STAGING_EXEC : ROUTES.STAGING_SUPERVISOR} replace/>;
+  // Preserve the query string so deep links like /staging?focus=<id> survive
+  // the role-based redirect.
+  return <Navigate to={{ pathname: isExec ? ROUTES.STAGING_EXEC : ROUTES.STAGING_SUPERVISOR, search: location.search }} replace/>;
 }
 
 function PaymentRoute() {
-  // Payment is the BD finance / CA-readiness view — a supervisor surface within
-  // BD, not its own module. Gate it on role, not a module claim.
+  // Payment is the BD finance / CA-readiness view — a BD surface, not its own
+  // module. Gate it on role, not a module claim. Executives reach it from the
+  // Overview "Payments" KPI, so they get the same (read-oriented) view.
   const { role } = useSession();
-  if (role !== 'supervisor') {
+  if (role !== 'supervisor' && role !== 'executive' && role !== 'exec') {
     return <Navigate to={ROUTES.OVERVIEW} replace/>;
   }
   return <PaymentStubPage/>;

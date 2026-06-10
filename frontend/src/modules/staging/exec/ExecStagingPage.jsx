@@ -6,6 +6,7 @@ import { filterByScope } from '../../../rbac/scope.js';
 import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Icon from '../../shared/primitives/Icon.jsx';
 import StatusPill from '../../shared/primitives/StatusPill.jsx';
+import { useFocusSite } from '../../../hooks/useFocusSite.js';
 
 // Render bodies preserved exactly from Staging.jsx — exec-only view.
 
@@ -78,7 +79,7 @@ function ExecRow({ site, onUpload, onOpen }) {
     if (f) onUpload(site, f);
   };
   return (
-    <div className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1fr 1fr 1.4fr 170px', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: overdue && !uploaded ? 'rgba(217,119,6,0.06)' : 'transparent', position: 'relative' }}>
+    <div className="zm-row" data-site-id={site.id} style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1fr 1fr 1.4fr 170px', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: overdue && !uploaded ? 'rgba(217,119,6,0.06)' : 'transparent', position: 'relative' }}>
       {overdue && !uploaded && (<span style={{ position: 'absolute', left: 0, top: 12, bottom: 12, width: 2, background: 'var(--zm-warning)', borderRadius: 2 }}/>)}
       <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{site.code}</span>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 600, color: 'var(--zm-fg)' }}>{site.name}</span><span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 10.5, color: 'var(--zm-fg-3)' }}>by {site.createdBy}</span></div>
@@ -100,6 +101,7 @@ export default function ExecStagingPage({ onOpenSite: onOpenSiteProp, showToast:
   const showToast = showToastProp || ctx.showToast;
   const { user, role } = useSession();
   const { staging, uploadLOI } = useSites();
+  useFocusSite(); // scroll/flash a row reached via /staging?focus=<id>
   const [filters, setFilters] = React.useState({ q: '', city: 'All', month: 'All', status: 'all' });
 
   const visibleStaging = filterByScope(staging, role, user);

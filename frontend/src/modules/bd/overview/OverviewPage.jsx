@@ -5,6 +5,8 @@ import { useSites } from '../../../state/SitesContext.jsx';
 import { usePageContext } from '../../../App.jsx';
 import { can } from '../../../rbac/permissions.js';
 import { filterByScope } from '../../../rbac/scope.js';
+import { SiteStatus } from '../../../lib/stateMachine.js';
+import { useLaunchSites } from '../../../hooks/useLaunchSites.js';
 import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Avatar from '../../shared/primitives/Avatar.jsx';
 import StatusPill from '../../shared/primitives/StatusPill.jsx';
@@ -12,7 +14,15 @@ import Icon from '../../shared/primitives/Icon.jsx';
 import { STAGES } from '../../shared/primitives/constants.js';
 import { ROUTES } from '../../../router/routes.js';
 
-// MetricCard, MetricStrip, PipelineFilter — render bodies preserved from Pipeline.jsx
+// Overview = four drill-down KPIs:
+//   Ⅰ Total sites — pipeline drafts + shortlist + sites in process (pre-push;
+//     archived/rejected excluded). Click → expands in place with stage boxes,
+//     search and a date filter.
+//   Ⅱ Archived — archived + rejected sites. Click → expands in place with a
+//     calendar filter + search over the archive list.
+//   Ⅲ Payments — sites pushed from Sites in process (Legal ∥ Finance). Click →
+//     /payment tab (pending / awaiting approval / approved filters live there).
+//   Ⅳ Launch — Project-complete sites handed to NSO. Click → /launch tab.
 
 function CornerTicks() {
   return (
@@ -35,16 +45,24 @@ function CornerTicks() {
   );
 }
 
-function MetricCard({ eyebrow, value, rule = 'var(--zm-copper)', delta, deltaTone = 'pos', sub, no }) {
+function MetricCard({ eyebrow, value, rule = 'var(--zm-copper)', delta, deltaTone = 'pos', sub, no, onClick, selected = false }) {
   return (
-    <div className="zm-glass" style={{
-      borderRadius: 16, padding: '24px 26px 26px',
-      display: 'flex', flexDirection: 'column', gap: 12,
-      position: 'relative', overflow: 'hidden',
-      transition: 'transform 200ms cubic-bezier(0.22,1,0.36,1), box-shadow 200ms cubic-bezier(0.22,1,0.36,1)',
-    }}
-    onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--zm-shadow-3)'; }}
-    onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'var(--zm-glass)'; }}
+    <div className="zm-glass"
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+      style={{
+        borderRadius: 16, padding: '24px 26px 26px',
+        display: 'flex', flexDirection: 'column', gap: 12,
+        position: 'relative', overflow: 'hidden',
+        cursor: onClick ? 'pointer' : 'default',
+        outline: selected ? '2px solid ' + rule : 'none',
+        outlineOffset: -2,
+        transition: 'transform 200ms cubic-bezier(0.22,1,0.36,1), box-shadow 200ms cubic-bezier(0.22,1,0.36,1)',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--zm-shadow-3)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'var(--zm-glass)'; }}
     >
       <span aria-hidden="true" style={{
         position: 'absolute', inset: '0 0 auto 0', height: 1,
@@ -60,6 +78,11 @@ function MetricCard({ eyebrow, value, rule = 'var(--zm-copper)', delta, deltaTon
           letterSpacing: '0.22em', textTransform: 'uppercase', color: 'var(--zm-fg-3)',
           lineHeight: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1,
         }}>{eyebrow}</span>
+        {onClick && (
+          <span style={{ color: 'var(--zm-fg-4)', display: 'inline-flex', flex: '0 0 auto' }}>
+            <Icon name={selected ? 'x' : 'chevron'} size={12}/>
+          </span>
+        )}
       </div>
       <span style={{
         fontFamily: 'var(--zm-font-display)', fontWeight: 800, fontStyle: 'normal',
@@ -79,19 +102,45 @@ function MetricCard({ eyebrow, value, rule = 'var(--zm-copper)', delta, deltaTon
   );
 }
 
-function MetricStrip({ metrics }) {
-  const m = metrics || { inMotion: { value: 0, sub: 'no data' }, drafts: { value: 0, sub: 'no data' }, shortlist: { value: 0, sub: 'no data' }, loi: { value: 0, sub: 'no data' } };
+// BigFilterBox — the large numbered boxes that appear under an expanded KPI.
+// Clicking toggles the sub-filter; the active box is highlighted.
+function BigFilterBox({ label, value, color = 'var(--zm-accent)', active, onClick }) {
   return (
-    <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-      <MetricCard no="Ⅰ" eyebrow="Sites"              value={m.inMotion.value}  rule="var(--zm-accent)"  delta={m.inMotion.delta}  sub={m.inMotion.sub}/>
-      <MetricCard no="Ⅱ" eyebrow="New drafts"         value={m.drafts.value}    rule="var(--zm-fg-3)"    delta={m.drafts.delta}    sub={m.drafts.sub}/>
-      <MetricCard no="Ⅲ" eyebrow="Shortlist"          value={m.shortlist.value} rule="var(--zm-info)"    delta={m.shortlist.delta} sub={m.shortlist.sub}/>
-      <MetricCard no="Ⅳ" eyebrow="LOI due / overdue"  value={m.loi.value}       rule="var(--zm-copper)"  delta={m.loi.delta} deltaTone={m.loi.deltaTone || 'neutral'} sub={m.loi.sub}/>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className="zm-glass"
+      style={{
+        borderRadius: 16, padding: '20px 22px',
+        display: 'flex', flexDirection: 'column', gap: 10,
+        position: 'relative', overflow: 'hidden',
+        border: 'none', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+        outline: active ? '2px solid ' + color : '1px solid var(--zm-line)',
+        outlineOffset: -2,
+        transition: 'transform 200ms cubic-bezier(0.22,1,0.36,1), box-shadow 200ms cubic-bezier(0.22,1,0.36,1)',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--zm-shadow-3)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'var(--zm-glass)'; }}
+    >
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ width: 7, height: 7, borderRadius: 999, background: color }}/>
+        <span style={{
+          fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9.5,
+          letterSpacing: '0.18em', textTransform: 'uppercase',
+          color: active ? color : 'var(--zm-fg-3)', lineHeight: 1,
+        }}>{label}</span>
+      </span>
+      <span style={{
+        fontFamily: 'var(--zm-font-display)', fontWeight: 800,
+        fontSize: 42, letterSpacing: '-0.03em', color: 'var(--zm-fg)', lineHeight: 0.95,
+        fontVariantNumeric: 'tabular-nums', fontFeatureSettings: "'tnum' 1",
+      }}>{String(value).padStart(2, '0')}</span>
+      <span style={{ width: 28, height: 1, background: active ? color : 'var(--zm-line-strong)', opacity: 0.8 }}/>
+    </button>
   );
 }
 
-// PipelineFilter — render body preserved from Pipeline.jsx
+// PipelineFilter date helpers — also reused by the expanded KPI views.
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const PRESETS = [
   { id: 'today', label: 'Today', days: 0 },
@@ -144,7 +193,7 @@ function RangeCalendar({ from, to, onChange }) {
   );
 }
 
-function MoreFilters({ value, onChange, onClose }) {
+function MoreFilters({ value, onChange, onClose, dateLabel = 'visit date' }) {
   const months = [];
   const now = new Date();
   for (let i = 0; i < 12; i++) { const d = new Date(now.getFullYear(), now.getMonth()-i, 1); months.push({ key: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, label: `${MONTH_NAMES[d.getMonth()]} ${String(d.getFullYear()).slice(-2)}` }); }
@@ -155,10 +204,10 @@ function MoreFilters({ value, onChange, onClose }) {
   return (
     <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 30, background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, boxShadow: 'var(--zm-shadow-pop)', width: 560, padding: 16, display: 'flex', flexDirection: 'column', gap: 16, animation: 'zm-rise 200ms var(--zm-ease-emp)' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-        <div><h4 style={{ margin: 0, fontFamily: 'var(--zm-font-display)', fontWeight: 600, fontSize: 14, color: 'var(--zm-fg)' }}>More filters</h4><p style={{ margin: '2px 0 0', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>Narrow by visit-date month, preset window, or custom range.</p></div>
+        <div><h4 style={{ margin: 0, fontFamily: 'var(--zm-font-display)', fontWeight: 600, fontSize: 14, color: 'var(--zm-fg)' }}>Date filter</h4><p style={{ margin: '2px 0 0', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>Narrow by {dateLabel} month, preset window, or custom range.</p></div>
         <button onClick={clear} className="zm-link-btn" style={{ background: 'transparent', border: 'none', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 2 }}>Clear all</button>
       </div>
-      <section><span style={{ display: 'block', fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-fg-3)', marginBottom: 8 }}>By month · visit date</span><div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6 }}>{months.map(m => { const on = value.month === m.key; return (<button key={m.key} onClick={() => setMonth(m.key)} className="zm-pill" style={{ height: 30, padding: '0 8px', borderRadius: 7, border: '1px solid ' + (on ? 'var(--zm-accent)' : 'var(--zm-line)'), background: on ? 'var(--zm-accent-soft)' : 'var(--zm-surface)', color: on ? 'var(--zm-accent)' : 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-mono)', fontSize: 11, fontWeight: on ? 700 : 600, cursor: 'pointer' }}>{m.label}</button>); })}</div></section>
+      <section><span style={{ display: 'block', fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-fg-3)', marginBottom: 8 }}>By month · {dateLabel}</span><div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6 }}>{months.map(m => { const on = value.month === m.key; return (<button key={m.key} onClick={() => setMonth(m.key)} className="zm-pill" style={{ height: 30, padding: '0 8px', borderRadius: 7, border: '1px solid ' + (on ? 'var(--zm-accent)' : 'var(--zm-line)'), background: on ? 'var(--zm-accent-soft)' : 'var(--zm-surface)', color: on ? 'var(--zm-accent)' : 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-mono)', fontSize: 11, fontWeight: on ? 700 : 600, cursor: 'pointer' }}>{m.label}</button>); })}</div></section>
       <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 16 }}>
         <section><span style={{ display: 'block', fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-fg-3)', marginBottom: 8 }}>Preset window</span><div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>{PRESETS.map(p => { const on = value.preset === p.id; return (<button key={p.id} onClick={() => setPreset(p)} style={{ textAlign: 'left', height: 30, padding: '0 10px', borderRadius: 7, border: '1px solid ' + (on ? 'var(--zm-accent)' : 'transparent'), background: on ? 'var(--zm-accent-soft)' : 'transparent', color: on ? 'var(--zm-accent)' : 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: on ? 600 : 500, cursor: 'pointer' }}>{p.label}</button>); })}</div></section>
         <section><span style={{ display: 'block', fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-fg-3)', marginBottom: 8 }}>Custom range</span><RangeCalendar from={value.from} to={value.to} onChange={setRange}/></section>
@@ -169,6 +218,42 @@ function MoreFilters({ value, onChange, onClose }) {
         <span style={{ flex: 1 }}/>
         <button onClick={onClose} style={{ height: 30, padding: '0 14px', borderRadius: 7, border: 'none', background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>Apply</button>
       </div>
+    </div>
+  );
+}
+
+// DateFilterButton — calendar trigger + active-summary chip + the MoreFilters
+// popover. Shared by the default chip row and the expanded KPI views.
+function DateFilterButton({ value, onChange, label = 'Date filter', dateLabel = 'visit date' }) {
+  const [open, setOpen] = React.useState(false);
+  const adv = value || { month: '', preset: '', from: '', to: '' };
+  const active = !!(adv.month || adv.preset || adv.from || adv.to);
+  const popRef = React.useRef(null);
+  React.useEffect(() => { if (!open) return; const onDoc = (e) => { if (popRef.current && !popRef.current.contains(e.target)) setOpen(false); }; const onKey = (e) => { if (e.key === 'Escape') setOpen(false); }; const t = setTimeout(() => { document.addEventListener('mousedown', onDoc, true); document.addEventListener('keydown', onKey); }, 0); return () => { clearTimeout(t); document.removeEventListener('mousedown', onDoc, true); document.removeEventListener('keydown', onKey); }; }, [open]);
+  const summary = adv.month ? `Month · ${adv.month.slice(5)}/${adv.month.slice(2,4)}` : adv.preset ? PRESETS.find(p => p.id === adv.preset)?.label : (adv.from && adv.to) ? `${adv.from} → ${adv.to}` : adv.from ? `from ${adv.from}` : '';
+  return (
+    <>
+      {active && (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 10px', borderRadius: 999, background: 'var(--zm-accent-soft)', color: 'var(--zm-accent)', fontFamily: 'var(--zm-font-mono)', fontSize: 11, fontWeight: 600 }}><Icon name="calendar" size={11}/> {summary}<button onClick={() => onChange({ month: '', preset: '', from: '', to: '' })} style={{ background: 'transparent', border: 'none', color: 'inherit', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', marginLeft: 4, opacity: 0.7 }}><Icon name="x" size={11}/></button></span>)}
+      <div ref={popRef} style={{ position: 'relative' }}>
+        <button onClick={() => setOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px', borderRadius: 999, border: '1px solid ' + (active || open ? 'var(--zm-accent)' : 'var(--zm-line)'), background: active || open ? 'var(--zm-accent-soft)' : 'var(--zm-surface)', color: active || open ? 'var(--zm-accent)' : 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="calendar" size={13}/> {label}{active && <span style={{ background: 'var(--zm-accent)', color: '#fff', width: 16, height: 16, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--zm-font-mono)', fontSize: 9.5, fontWeight: 700, marginLeft: 2 }}>•</span>}</button>
+        {open && <MoreFilters value={adv} onChange={(v) => onChange(v)} onClose={() => setOpen(false)} dateLabel={dateLabel}/>}
+      </div>
+    </>
+  );
+}
+
+function SearchBox({ value, onChange, placeholder = 'Search code, site, city…' }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 34, padding: '0 12px', flex: '1 1 240px', maxWidth: 360, border: '1px solid var(--zm-line)', borderRadius: 999, background: 'var(--zm-surface)' }}>
+      <Icon name="search" size={14} style={{ color: 'var(--zm-fg-3)' }}/>
+      <input
+        value={value} onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}
+      />
+      {value && (
+        <button onClick={() => onChange('')} style={{ background: 'transparent', border: 'none', color: 'var(--zm-fg-3)', padding: 0, cursor: 'pointer', display: 'inline-flex' }}><Icon name="x" size={12}/></button>
+      )}
     </div>
   );
 }
@@ -184,12 +269,6 @@ function FilterChip({ active, label, count, color, onClick }) {
 }
 
 function PipelineFilter({ stage, onStage, counts, advanced, onAdvanced }) {
-  const [open, setOpen] = React.useState(false);
-  const adv = advanced || { month: '', preset: '', from: '', to: '' };
-  const active = !!(adv.month || adv.preset || adv.from || adv.to);
-  const popRef = React.useRef(null);
-  React.useEffect(() => { if (!open) return; const onDoc = (e) => { if (popRef.current && !popRef.current.contains(e.target)) setOpen(false); }; const onKey = (e) => { if (e.key === 'Escape') setOpen(false); }; const t = setTimeout(() => { document.addEventListener('mousedown', onDoc, true); document.addEventListener('keydown', onKey); }, 0); return () => { clearTimeout(t); document.removeEventListener('mousedown', onDoc, true); document.removeEventListener('keydown', onKey); }; }, [open]);
-  const summary = adv.month ? `Month · ${adv.month.slice(5)}/${adv.month.slice(2,4)}` : adv.preset ? PRESETS.find(p => p.id === adv.preset)?.label : (adv.from && adv.to) ? `${adv.from} → ${adv.to}` : adv.from ? `from ${adv.from}` : '';
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', position: 'relative' }}>
       <FilterChip label="All"       count={counts.all}       active={stage === 'all'}       onClick={() => onStage('all')}/>
@@ -197,23 +276,19 @@ function PipelineFilter({ stage, onStage, counts, advanced, onAdvanced }) {
       <FilterChip label="Shortlist" count={counts.shortlist} active={stage === 'shortlist'} onClick={() => onStage('shortlist')} color={STAGES.shortlist.color}/>
       <FilterChip label="Sites in process" count={counts.staging} active={stage === 'staging'} onClick={() => onStage('staging')} color={STAGES.staging.color}/>
       <span style={{ flex: 1 }}/>
-      {active && (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 10px', borderRadius: 999, background: 'var(--zm-accent-soft)', color: 'var(--zm-accent)', fontFamily: 'var(--zm-font-mono)', fontSize: 11, fontWeight: 600 }}><Icon name="calendar" size={11}/> {summary}<button onClick={() => onAdvanced({ month: '', preset: '', from: '', to: '' })} style={{ background: 'transparent', border: 'none', color: 'inherit', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', marginLeft: 4, opacity: 0.7 }}><Icon name="x" size={11}/></button></span>)}
-      <div ref={popRef} style={{ position: 'relative' }}>
-        <button onClick={() => setOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px', borderRadius: 999, border: '1px solid ' + (active || open ? 'var(--zm-accent)' : 'var(--zm-line)'), background: active || open ? 'var(--zm-accent-soft)' : 'var(--zm-surface)', color: active || open ? 'var(--zm-accent)' : 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="filter" size={13}/> More filters{active && <span style={{ background: 'var(--zm-accent)', color: '#fff', width: 16, height: 16, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--zm-font-mono)', fontSize: 9.5, fontWeight: 700, marginLeft: 2 }}>•</span>}</button>
-        {open && <MoreFilters value={adv} onChange={(v) => onAdvanced(v)} onClose={() => setOpen(false)}/>}
-      </div>
+      <DateFilterButton value={advanced} onChange={onAdvanced} label="More filters"/>
     </div>
   );
 }
 
 // MotionTable — render body preserved from App.jsx
-function MotionTable({ rows, onOpen }) {
+function MotionTable({ rows, onOpen, limit = 12 }) {
   return (
     <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.7fr 1fr 1fr 0.7fr 1.1fr 1.2fr', gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
         <span>Code</span><span>Site</span><span>City</span><span>Owner</span><span>Days</span><span>Stage</span><span>Detail</span>
       </div>
-      {rows.slice(0, 12).map(r => (
+      {rows.slice(0, limit).map(r => (
         <div key={r.id} onClick={() => onOpen(r)} className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.7fr 1fr 1fr 0.7fr 1.1fr 1.2fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: r.stage === 'overdue' ? 'rgba(217,119,6,0.06)' : 'transparent', cursor: 'pointer', position: 'relative' }}>
           {r.stage === 'overdue' && <span style={{ position: 'absolute', left: 0, top: 12, bottom: 12, width: 2, background: 'var(--zm-warning)', borderRadius: 2 }}/>}
           <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{r.code}</span>
@@ -230,22 +305,73 @@ function MotionTable({ rows, onOpen }) {
   );
 }
 
+// ArchiveTable — compact archive listing for the expanded Archived KPI.
+function ArchiveTable({ rows, onOpen }) {
+  return (
+    <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1.1fr 0.9fr 1.5fr', gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
+        <span>Code</span><span>Site</span><span>City</span><span>Created by</span><span>Archived on</span><span>Reason / note</span>
+      </div>
+      {rows.map(a => {
+        const hasReasons = (a.reasons || []).length > 0;
+        return (
+          <div key={a.id} onClick={() => onOpen?.(a)} className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1.1fr 0.9fr 1.5fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', cursor: 'pointer', position: 'relative', alignItems: 'flex-start' }}>
+            <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)', paddingTop: 2 }}>{a.code}</span>
+            <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{a.name}</span>
+            <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{a.city}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Avatar name={a.createdBy} size={20}/><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{a.createdBy}</span></span>
+            <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12, color: 'var(--zm-fg)', paddingTop: 2 }}>{a.archivedAt || '—'}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {hasReasons && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {a.reasons.map(r => (<span key={r} style={{ padding: '2px 8px', borderRadius: 999, background: '#F1F3F6', color: '#374151', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, whiteSpace: 'nowrap' }}>{r}</span>))}
+                </div>
+              )}
+              {a.note && (<span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-2)', lineHeight: 1.45 }}>{a.note}</span>)}
+              {!hasReasons && !a.note && (<span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)' }}>—</span>)}
+            </div>
+          </div>
+        );
+      })}
+      {rows.length === 0 && (<div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>No archived sites match the current filter.</div>)}
+    </div>
+  );
+}
+
+const REJECTED_STATUSES = [SiteStatus.REJECTED, SiteStatus.LEGAL_REJECTED];
+const PUSHED_STATUSES = [SiteStatus.LEGAL_REVIEW, SiteStatus.LEGAL_APPROVED, SiteStatus.PUSHED_TO_PAYMENTS];
+
+function matchesSearch(needle, ...fields) {
+  if (!needle) return true;
+  return fields.join(' ').toLowerCase().includes(needle);
+}
+
+function matchesAdvanced(when, adv) {
+  if (!when) return true;
+  if (adv.month) return when.slice(0, 7) === adv.month;
+  if (adv.from && when < adv.from) return false;
+  if (adv.to && when > adv.to) return false;
+  return true;
+}
+
 // OverviewPage: wires session + sites context into the overview render.
 export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
   const navigate = useNavigate();
   const ctx = usePageContext();
   const onOpenSite = onOpenSiteProp || ctx.onOpenSite;
-  // onNavigate: maps legacy string view names to URL routes
-  const onNavigate = (view) => {
-    if (view === 'pipeline') navigate(ROUTES.PIPELINE);
-    else if (view === 'shortlist') navigate(ROUTES.SHORTLIST);
-    else if (view === 'staging') navigate(ROUTES.STAGING);
-    else if (view === 'overview') navigate(ROUTES.OVERVIEW);
-  };
   const { role, user } = useSession();
-  const { drafts, shortlist, staging } = useSites();
+  const { drafts, shortlist, staging, archive, sites } = useSites();
+  const launch = useLaunchSites();
+
+  // view: which KPI is expanded in place (payments / launch navigate away).
+  const [view, setView] = React.useState(null); // null | 'sites' | 'archived'
   const [stage, setStage] = React.useState('all');
   const [advanced, setAdvanced] = React.useState({ month: '', preset: '', from: '', to: '' });
+  const [search, setSearch] = React.useState('');
+  // Archived view has its own filters (calendar on archived-on date + search).
+  const [archStatus, setArchStatus] = React.useState('all'); // all | archived | rejected
+  const [archAdvanced, setArchAdvanced] = React.useState({ month: '', preset: '', from: '', to: '' });
+  const [archSearch, setArchSearch] = React.useState('');
 
   const ME = user.name;
   // RBAC: isExec = cannot shortlist (exec cannot approve); used for scope/display logic in render body
@@ -253,68 +379,170 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
   const visibleDrafts    = isExec ? filterByScope(drafts, role, user) : drafts;
   const visibleShortlist = isExec ? filterByScope(shortlist, role, user) : shortlist;
   const visibleStaging   = isExec ? filterByScope(staging, role, user) : staging;
+  // "Sites in process" for KPI math = pre-push only. Pushed sites belong to
+  // the Payments KPI (Legal ∥ Finance run in parallel after the push).
+  const activeStaging = visibleStaging.filter(s => !s.pushed);
 
-  const loiDue     = visibleStaging.filter(s => !s.loiUploaded && s.daysSinceApproval <= s.expectedLoiDays).length;
-  const loiOverdue = visibleStaging.filter(s => !s.loiUploaded && s.daysSinceApproval > s.expectedLoiDays).length;
-  const inReview   = visibleShortlist.filter(s => s.inReview).length;
-  const oldestDraft = visibleDrafts.reduce((m, d) => Math.max(m, d.days || 0), 0);
-  const staleDrafts = role === 'supervisor' ? visibleDrafts.filter(d => d.days > 7).length : 0;
-  const totalMotion = visibleDrafts.length + visibleShortlist.length + visibleStaging.length;
-  const cityCount = new Set([...visibleDrafts.map(d => d.city), ...visibleShortlist.map(s => s.city), ...visibleStaging.map(s => s.city)]).size;
+  const launchIds = new Set((launch.rows || []).map(r => r.site.id));
+  const paymentSites = sites.filter(s => PUSHED_STATUSES.includes(s.status) && !launchIds.has(s.id));
+
+  const totalSites = visibleDrafts.length + visibleShortlist.length + activeStaging.length;
+  const cityCount = new Set([...visibleDrafts.map(d => d.city), ...visibleShortlist.map(s => s.city), ...activeStaging.map(s => s.city)]).size;
+  const archivedOnly = archive.filter(a => a.status === SiteStatus.ARCHIVED).length;
+  const rejectedOnly = archive.length - archivedOnly;
 
   const metrics = {
-    inMotion: { value: String(totalMotion).padStart(2,'0'), delta: isExec ? `Your sites · ${ME.split(' ')[0]}` : 'Tenant-wide', sub: `Across ${cityCount} cit${cityCount === 1 ? 'y' : 'ies'}` },
-    drafts: { value: String(visibleDrafts.length).padStart(2,'0'), delta: oldestDraft > 0 ? `Oldest · ${oldestDraft}d` : 'None open', deltaTone: staleDrafts > 0 ? 'neg' : 'pos', sub: role === 'supervisor' ? (staleDrafts > 0 ? `${staleDrafts} past 7-day SLA` : 'Awaiting your decision') : 'Awaiting supervisor' },
-    shortlist: { value: String(visibleShortlist.length).padStart(2,'0'), delta: inReview > 0 ? `${inReview} In review` : 'All need details', sub: role === 'supervisor' ? 'Ready to approve' : 'Fill 17 fields' },
-    loi: { value: String(loiOverdue + loiDue).padStart(2,'0'), delta: loiOverdue > 0 ? `▲ ${loiOverdue} overdue` : 'On track', deltaTone: loiOverdue > 0 ? 'neg' : 'pos', sub: `${loiDue} due · ${loiOverdue} past timeline` },
+    total: {
+      value: String(totalSites).padStart(2, '0'),
+      delta: isExec ? `Your sites · ${ME.split(' ')[0]}` : 'Tenant-wide',
+      sub: `Across ${cityCount} cit${cityCount === 1 ? 'y' : 'ies'}`,
+    },
+    archived: {
+      value: String(archive.length).padStart(2, '0'),
+      delta: 'Out of pipeline',
+      deltaTone: 'neutral',
+      sub: `${archivedOnly} archived · ${rejectedOnly} rejected`,
+    },
+    payments: {
+      value: String(paymentSites.length).padStart(2, '0'),
+      delta: 'Legal ∥ Finance',
+      deltaTone: 'neutral',
+      sub: 'Pushed from Sites in process',
+    },
+    launch: {
+      value: launch.loading ? '··' : String(launch.rows.length).padStart(2, '0'),
+      delta: launch.loading ? 'Loading…' : 'Project complete',
+      deltaTone: launch.loading ? 'neutral' : 'pos',
+      sub: 'Handed to NSO',
+    },
   };
 
+  // Rows for the "all files in motion" table (default view) — includes pushed
+  // sites so nothing disappears from the default listing.
   const allMotion = [
     ...visibleDrafts.map(d => ({ id: d.id, code: d.code, name: d.name, city: d.city, stage: 'draft', days: d.days, owner: d.createdBy, when: d.visitDate, meta: 'Visit ' + d.visitDate })),
     ...visibleShortlist.map(s => ({ id: s.code, code: s.code, name: s.name, city: s.city, stage: s.inReview ? 'inReview' : 'shortlist', days: 3, owner: s.createdBy, when: s.visitDate, meta: s.inReview ? 'In review' : 'Awaiting details' })),
     ...visibleStaging.map(s => { const overdue = s.daysSinceApproval > s.expectedLoiDays && !s.loiUploaded; return { id: s.id, code: s.code, name: s.name, city: s.city, stage: s.pushed ? 'completed' : s.loiUploaded ? 'uploaded' : (overdue ? 'overdue' : 'staging'), days: s.daysSinceApproval, owner: s.createdBy, when: s.draftDate || s.approvedDate, meta: `LOI ${s.daysSinceApproval}/${s.expectedLoiDays}d` }; }),
   ];
+  // The expanded "Total sites" view counts only pre-push files.
+  const totalMotion = allMotion.filter(r => r.stage !== 'completed');
 
-  const stageFiltered = stage === 'all' ? allMotion : allMotion.filter(r => {
+  const needle = search.trim().toLowerCase();
+  const baseRows = view === 'sites' ? totalMotion : allMotion;
+  const stageFiltered = stage === 'all' ? baseRows : baseRows.filter(r => {
     if (stage === 'staging') return ['staging','overdue','uploaded','completed'].includes(r.stage);
     if (stage === 'shortlist') return ['shortlist','inReview'].includes(r.stage);
     return r.stage === stage;
   });
+  const filteredMotion = stageFiltered
+    .filter(r => matchesAdvanced(r.when, advanced))
+    .filter(r => matchesSearch(needle, r.code || '', r.name || '', r.city || '', r.owner || ''));
 
-  const filteredMotion = stageFiltered.filter(r => {
-    if (!r.when) return true;
-    if (advanced.month) return r.when.slice(0,7) === advanced.month;
-    if (advanced.from || advanced.to) { if (advanced.from && r.when < advanced.from) return false; if (advanced.to && r.when > advanced.to) return false; }
-    return true;
-  });
+  // Archived rows + filters.
+  const archNeedle = archSearch.trim().toLowerCase();
+  const filteredArchive = archive
+    .filter(a => archStatus === 'all' ? true : archStatus === 'archived' ? a.status === SiteStatus.ARCHIVED : REJECTED_STATUSES.includes(a.status))
+    .filter(a => matchesAdvanced(a.archivedAt, archAdvanced))
+    .filter(a => matchesSearch(archNeedle, a.code || '', a.name || '', a.city || '', a.createdBy || ''));
 
-  const counts = { pipeline: visibleDrafts.length, shortlist: visibleShortlist.length, staging: visibleStaging.length, archive: 0 };
+  // Row click → owning tab, focused on that exact site (?focus= handled by
+  // useFocusSite in the target page).
+  const openRowInTab = (r) => {
+    const focus = encodeURIComponent(r.id || r.code);
+    if (r.stage === 'draft') navigate(`${ROUTES.PIPELINE}?focus=${focus}`);
+    else if (['shortlist', 'inReview'].includes(r.stage)) navigate(`${ROUTES.SHORTLIST}?focus=${focus}`);
+    else navigate(`${ROUTES.STAGING}?focus=${focus}`);
+  };
+
+  const selectKpi = (key) => {
+    if (key === 'payments') { navigate(ROUTES.PAYMENT); return; }
+    if (key === 'launch') { navigate(ROUTES.LAUNCH); return; }
+    setView(v => (v === key ? null : key));
+    setStage('all');
+    setSearch('');
+  };
+
+  const ledeFor = () => {
+    if (view === 'sites') return `${totalSites} active site${totalSites === 1 ? '' : 's'} · pipeline → process`;
+    if (view === 'archived') return `${archive.length} site${archive.length === 1 ? '' : 's'} out of pipeline`;
+    return `${allMotion.length} file${allMotion.length === 1 ? '' : 's'} in motion`;
+  };
 
   return (
     <>
       <PageHeader
         file="№ 01" eyebrow="Overview" title="Sites"
-        lede={`${totalMotion} file${totalMotion === 1 ? '' : 's'} in motion`}
+        lede={ledeFor()}
         right={<>
           <HeaderTag icon="clock" label="LIVE · 2M LAG"/>
           <HeaderTag icon="shield" label={role === 'supervisor' ? 'TENANT SCOPE' : 'PERSONAL SCOPE'} tone="accent"/>
         </>}
       />
-      <div style={{ marginBottom: 18 }}><MetricStrip metrics={metrics}/></div>
-      <div style={{ marginBottom: 14 }}>
-        <PipelineFilter
-          stage={stage} onStage={setStage}
-          counts={{ all: allMotion.length, draft: counts.pipeline, shortlist: counts.shortlist, staging: counts.staging }}
-          advanced={advanced} onAdvanced={setAdvanced}
-        />
-      </div>
-      <MotionTable rows={filteredMotion} onOpen={(r) => {
-        if (onNavigate) {
-          if (r.stage === 'draft') onNavigate('pipeline');
-          else if (['shortlist','inReview'].includes(r.stage)) onNavigate('shortlist');
-          else onNavigate('staging');
-        }
-      }}/>
+
+      {view && (
+        <div style={{ marginBottom: 12 }}>
+          <button onClick={() => setView(null)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px', borderRadius: 999, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            <Icon name="arrow" size={12} style={{ transform: 'rotate(180deg)' }}/> All metrics
+          </button>
+        </div>
+      )}
+
+      {/* KPI strip — all four when collapsed; selected KPI + its big filter
+          boxes when expanded (the other KPIs disappear). */}
+      {!view && (
+        <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
+          <MetricCard no="Ⅰ" eyebrow="Total sites" value={metrics.total.value}    rule="var(--zm-accent)" delta={metrics.total.delta}    sub={metrics.total.sub}    onClick={() => selectKpi('sites')}/>
+          <MetricCard no="Ⅱ" eyebrow="Archived"    value={metrics.archived.value} rule="var(--zm-fg-3)"   delta={metrics.archived.delta} deltaTone="neutral" sub={metrics.archived.sub} onClick={() => selectKpi('archived')}/>
+          <MetricCard no="Ⅲ" eyebrow="Payments"    value={metrics.payments.value} rule="var(--zm-info)"   delta={metrics.payments.delta} deltaTone="neutral" sub={metrics.payments.sub} onClick={() => selectKpi('payments')}/>
+          <MetricCard no="Ⅳ" eyebrow="Launch"      value={metrics.launch.value}   rule="var(--zm-copper)" delta={metrics.launch.delta}   deltaTone={metrics.launch.deltaTone} sub={metrics.launch.sub} onClick={() => selectKpi('launch')}/>
+        </div>
+      )}
+
+      {view === 'sites' && (
+        <>
+          <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
+            <MetricCard no="Ⅰ" eyebrow="Total sites" value={metrics.total.value} rule="var(--zm-accent)" delta={metrics.total.delta} sub={metrics.total.sub} selected onClick={() => selectKpi('sites')}/>
+            <BigFilterBox label="Draft"            value={visibleDrafts.length}    color={STAGES.draft.color}     active={stage === 'draft'}     onClick={() => setStage(s => s === 'draft' ? 'all' : 'draft')}/>
+            <BigFilterBox label="Shortlist"        value={visibleShortlist.length} color={STAGES.shortlist.color} active={stage === 'shortlist'} onClick={() => setStage(s => s === 'shortlist' ? 'all' : 'shortlist')}/>
+            <BigFilterBox label="Sites in process" value={activeStaging.length}    color={STAGES.staging.color}   active={stage === 'staging'}   onClick={() => setStage(s => s === 'staging' ? 'all' : 'staging')}/>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+            <SearchBox value={search} onChange={setSearch}/>
+            <span style={{ flex: 1 }}/>
+            <DateFilterButton value={advanced} onChange={setAdvanced}/>
+          </div>
+          <MotionTable rows={filteredMotion} limit={Infinity} onOpen={openRowInTab}/>
+        </>
+      )}
+
+      {view === 'archived' && (
+        <>
+          <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
+            <MetricCard no="Ⅱ" eyebrow="Archived" value={metrics.archived.value} rule="var(--zm-fg-3)" delta={metrics.archived.delta} deltaTone="neutral" sub={metrics.archived.sub} selected onClick={() => selectKpi('archived')}/>
+            <BigFilterBox label="Archived" value={archivedOnly} color={STAGES.archived.color} active={archStatus === 'archived'} onClick={() => setArchStatus(s => s === 'archived' ? 'all' : 'archived')}/>
+            <BigFilterBox label="Rejected" value={rejectedOnly} color={STAGES.rejected.color} active={archStatus === 'rejected'} onClick={() => setArchStatus(s => s === 'rejected' ? 'all' : 'rejected')}/>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+            <SearchBox value={archSearch} onChange={setArchSearch}/>
+            <span style={{ flex: 1 }}/>
+            <DateFilterButton value={archAdvanced} onChange={setArchAdvanced} dateLabel="archived date"/>
+          </div>
+          <ArchiveTable rows={filteredArchive} onOpen={(a) => onOpenSite?.(a)}/>
+        </>
+      )}
+
+      {!view && (
+        <>
+          <div style={{ marginBottom: 14 }}>
+            <PipelineFilter
+              stage={stage} onStage={setStage}
+              counts={{ all: allMotion.length, draft: visibleDrafts.length, shortlist: visibleShortlist.length, staging: visibleStaging.length }}
+              advanced={advanced} onAdvanced={setAdvanced}
+            />
+          </div>
+          <MotionTable rows={filteredMotion} onOpen={openRowInTab}/>
+        </>
+      )}
     </>
   );
 }

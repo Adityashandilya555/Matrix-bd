@@ -6,6 +6,7 @@ import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Icon from '../../shared/primitives/Icon.jsx';
 import StatusPill from '../../shared/primitives/StatusPill.jsx';
 import { bdSiteStatusRoute } from '../../../router/routes.js';
+import { useFocusSite } from '../../../hooks/useFocusSite.js';
 
 // Render bodies preserved exactly from Staging.jsx — supervisor-only view.
 
@@ -73,7 +74,7 @@ function SupervisorRow({ site, onPush, onViewLOI, onOpen, onViewStatus }) {
   const pushed = site.pushed;
   const uploaded = site.loiUploaded;
   return (
-    <div className="zm-row" style={{ display: 'grid', gridTemplateColumns: '70px minmax(130px, 0.9fr) 70px 124px minmax(170px, 1.3fr) 170px', alignItems: 'center', gap: 10, padding: '14px 12px', borderBottom: '1px solid var(--zm-line-faint)', background: pushed ? 'rgba(4,120,87,0.04)' : 'transparent', opacity: pushed ? 0.85 : 1 }}>
+    <div className="zm-row" data-site-id={site.id} style={{ display: 'grid', gridTemplateColumns: '70px minmax(130px, 0.9fr) 70px 124px minmax(170px, 1.3fr) 170px', alignItems: 'center', gap: 10, padding: '14px 12px', borderBottom: '1px solid var(--zm-line-faint)', background: pushed ? 'rgba(4,120,87,0.04)' : 'transparent', opacity: pushed ? 0.85 : 1 }}>
       <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{site.code}</span>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 600, color: 'var(--zm-fg)' }}>{site.name}</span><span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 10.5, color: 'var(--zm-fg-3)' }}>by {site.createdBy}</span></div>
       <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{site.city}</span>
@@ -111,6 +112,7 @@ export default function SupervisorStagingPage({ onOpenSite: onOpenSiteProp, show
   const onOpenSite = onOpenSiteProp || ctx.onOpenSite;
   const showToast = showToastProp || ctx.showToast;
   const { staging, pushSite } = useSites();
+  useFocusSite(); // scroll/flash a row reached via /staging?focus=<id>
   const [filters, setFilters] = React.useState({ q: '', city: 'All', month: 'All', status: 'all' });
 
   // Supervisors need to see newly approved rows before LOI upload so the

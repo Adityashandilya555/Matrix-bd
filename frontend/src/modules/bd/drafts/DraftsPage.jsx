@@ -7,6 +7,7 @@ import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Avatar from '../../shared/primitives/Avatar.jsx';
 import StatusPill from '../../shared/primitives/StatusPill.jsx';
 import Icon from '../../shared/primitives/Icon.jsx';
+import { useFocusSite } from '../../../hooks/useFocusSite.js';
 
 // All render bodies preserved exactly from Drafts.jsx.
 // Only change: window globals replaced with ES imports above.
@@ -111,7 +112,7 @@ function applyDraftFilters(drafts, f) {
 function DraftRow({ draft, role, canDecide, onApprove, onReject, onArchive, onOpen }) {
   const overdue = canDecide && draft.days > 7;
   return (
-    <div className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1fr 0.8fr 0.7fr ' + (canDecide ? '230px' : '90px'), alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: overdue ? 'rgba(185,28,28,0.05)' : 'transparent', position: 'relative' }}>
+    <div className="zm-row" data-site-id={draft.id} style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1fr 0.8fr 0.7fr ' + (canDecide ? '230px' : '90px'), alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: overdue ? 'rgba(185,28,28,0.05)' : 'transparent', position: 'relative' }}>
       {overdue && <span style={{ position: 'absolute', left: 0, top: 12, bottom: 12, width: 2, background: 'var(--zm-danger)', borderRadius: 2 }}/>}
       <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{draft.code}</span>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 600, color: 'var(--zm-fg)' }}>{draft.name}</span><span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 10.5, color: 'var(--zm-fg-3)' }}>{draft.id}</span></div>
@@ -139,6 +140,7 @@ export default function DraftsPage({ onOpenSite: onOpenSiteProp, showToast: show
   const showToast = showToastProp || ctx.showToast;
   const { role, user } = useSession();
   const { drafts, moveDraftToShortlist, rejectDraft, archiveDraft } = useSites();
+  useFocusSite(); // scroll/flash a row reached via /pipeline?focus=<id>
   const [filters, setFilters] = React.useState({ q: '', city: 'All', month: 'All', days: 'all' });
   const [rejecting, setRejecting] = React.useState(null);
   const [archiving, setArchiving] = React.useState(null);

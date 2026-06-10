@@ -19,6 +19,7 @@ export const ROUTES = {
   LEGAL_SITE_AGREEMENT:   '/legal/sites/:siteId/agreement',
   LEGAL_SITE_LICENSING:   '/legal/sites/:siteId/licensing',
   PAYMENT:                '/payment',
+  LAUNCH:                 '/launch',
   DESIGN:                 '/design',
   DESIGN_SITE:            '/design/sites/:siteId',
   DESIGN_HISTORY:         '/design/history',
