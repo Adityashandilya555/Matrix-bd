@@ -272,6 +272,27 @@ function AssignDetailsModal({ site, currentUserId, onClose, onAssigned, showToas
   );
 }
 
+// Clickable KPI tile — mirrors the staging pages' KpiTile, with an active
+// (filtering) state. "Awaiting details" = shortlisted, form not submitted;
+// "Pending approval" = details submitted, in supervisor review.
+function ShortlistKpiTile({ label, value, sub, tone = 'neutral', active, onClick }) {
+  const tones = { neutral: { color: 'var(--zm-fg)', rule: 'var(--zm-fg-3)' }, good: { color: 'var(--zm-success)', rule: 'var(--zm-success)' }, warn: { color: 'var(--zm-warning)', rule: 'var(--zm-warning)' }, info: { color: 'var(--zm-info, #2A4FA0)', rule: 'var(--zm-info, #2A4FA0)' } }[tone] || { color: 'var(--zm-fg)', rule: 'var(--zm-fg-3)' };
+  return (
+    <button type="button" onClick={onClick} style={{
+      flex: 1, minWidth: 140, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4,
+      background: active ? 'var(--zm-accent-soft)' : 'var(--zm-surface)',
+      border: active ? '1px solid var(--zm-accent)' : '1px solid var(--zm-line)',
+      borderTop: '2px solid ' + (active ? 'var(--zm-accent)' : tones.rule),
+      borderRadius: 10, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+      transition: 'background 120ms var(--zm-ease), border 120ms var(--zm-ease)',
+    }}>
+      <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9.5, letterSpacing: '0.16em', textTransform: 'uppercase', color: active ? 'var(--zm-accent)' : 'var(--zm-fg-3)' }}>{label}</span>
+      <span style={{ fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 22, fontWeight: 600, color: tones.color, lineHeight: 1.1 }}>{value}</span>
+      {sub && (<span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, color: 'var(--zm-fg-3)' }}>{sub}</span>)}
+    </button>
+  );
+}
+
 function ShortlistCard({ item, role, currentUserId, onView, onAddDetails, onApprove, onDelegate }) {
   const supervisor = role === 'supervisor';
   const assignedToId = item.assignedToId || item.assignedTo?.id || '';
@@ -366,6 +387,15 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
       })
     : shortlist;
 
+  // Shortlist state tracking — two sub-states, surfaced as clickable KPI tiles.
+  const awaitingDetails = visibleShortlist.filter(s => !s.inReview);
+  const pendingApproval = visibleShortlist.filter(s => s.inReview);
+  const [stateFilter, setStateFilter] = React.useState('all'); // all | awaiting | pending
+  const filteredShortlist =
+    stateFilter === 'awaiting' ? awaitingDetails :
+    stateFilter === 'pending' ? pendingApproval :
+    visibleShortlist;
+
   const onApprove = (item) => setApproving(item);
   const onTimelineSubmit = async (item, days) => {
     try {
@@ -413,15 +443,31 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
         lede={`${visibleShortlist.length} site${visibleShortlist.length === 1 ? '' : 's'}`}
         right={<HeaderTag icon="clock" label="OLDEST FIRST"/>}
       />
-      {visibleShortlist.map(item => (
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <ShortlistKpiTile
+          label="Awaiting details" value={String(awaitingDetails.length).padStart(2, '0')}
+          sub="17-field form not submitted yet" tone="warn"
+          active={stateFilter === 'awaiting'}
+          onClick={() => setStateFilter(f => f === 'awaiting' ? 'all' : 'awaiting')}
+        />
+        <ShortlistKpiTile
+          label="Pending approval" value={String(pendingApproval.length).padStart(2, '0')}
+          sub="in review · awaiting supervisor" tone="info"
+          active={stateFilter === 'pending'}
+          onClick={() => setStateFilter(f => f === 'pending' ? 'all' : 'pending')}
+        />
+      </div>
+      {filteredShortlist.map(item => (
         <ShortlistCard key={item.code} item={item} role={role} currentUserId={currentUserId}
           onView={onOpenSite || (() => {})} onAddDetails={onAddDetails} onApprove={onApprove}
           onDelegate={setDelegating}/>
       ))}
-      {visibleShortlist.length === 0 && (
+      {filteredShortlist.length === 0 && (
         <div style={{ padding: 48, textAlign: 'center', background: 'var(--zm-surface)', border: '1px dashed var(--zm-line)', borderRadius: 12 }}>
           <span style={{ display: 'inline-flex', color: 'var(--zm-fg-3)', marginBottom: 12 }}><Icon name="check" size={32}/></span>
-          <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 14, color: 'var(--zm-fg-2)' }}>Queue empty.</p>
+          <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 14, color: 'var(--zm-fg-2)' }}>
+            {visibleShortlist.length === 0 ? 'Queue empty.' : 'No sites in this state — clear the tile filter to see all.'}
+          </p>
         </div>
       )}
       {approving && <LOITimelineModal site={approving} onCancel={() => setApproving(null)} onSubmit={onTimelineSubmit}/>}

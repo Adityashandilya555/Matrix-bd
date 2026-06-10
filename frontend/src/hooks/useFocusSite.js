@@ -28,8 +28,12 @@ export function useFocusSite() {
         setTimeout(tick, 200);
       }
     };
-    tick();
-    return () => { cancelled = true; };
+    // Delay the first attempt past the App-shell effect that resets the main
+    // scroll container to top on every pathname change — running in the same
+    // commit, that reset lands AFTER this page effect and would cancel the
+    // smooth scrollIntoView (most visible on long lists like Sites in process).
+    const t = setTimeout(tick, 120);
+    return () => { cancelled = true; clearTimeout(t); };
   }, [focusId]);
 
   return focusId;
