@@ -145,6 +145,12 @@ def site_to_response(
         project_status=project.project_status if project else None,
         project_current_stage=project.current_stage if project else None,
         project_budget_status=project.budget_status if project else None,
+        finance_status=site.finance_status or "pending",
+        kyc_verified=bool(site.kyc_verified),
+        ca_code=site.ca_code,
+        finance_amount=_float_or_none(site.finance_amount),
+        archived_at=site.archived_at,
+        updated_at=site.updated_at,
     )
 
 

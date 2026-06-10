@@ -72,7 +72,15 @@ async def list_sites(
 ) -> SiteListResponse:
     stmt = select(models.Site).where(models.Site.tenant_id == tenant_id)
     if status:
-        stmt = stmt.where(models.Site.status == status)
+        # Accept a comma-separated list so views spanning several statuses
+        # (e.g. Payments: legal_review,legal_approved,pushed_to_payments) can
+        # load in one request instead of one per status.
+        statuses = [s.strip() for s in status.split(",") if s.strip()]
+        stmt = stmt.where(
+            models.Site.status == statuses[0]
+            if len(statuses) == 1
+            else models.Site.status.in_(statuses)
+        )
     if city:
         stmt = stmt.where(models.Site.city == city)
     stmt = apply_role_scope(stmt, model=models.Site, user=user)

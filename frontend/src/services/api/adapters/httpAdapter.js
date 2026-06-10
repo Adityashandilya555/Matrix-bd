@@ -174,6 +174,14 @@ function siteFromServer(s) {
     projectStatus: s.project_status,
     projectCurrentStage: s.project_current_stage,
     projectBudgetStatus: s.project_budget_status,
+    // Finance / CA mirror columns — Payments and Launch render off these
+    // without a per-site /tracker call.
+    financeStatus: s.finance_status,
+    kycVerified: s.kyc_verified ?? false,
+    caCode: s.ca_code ?? null,
+    financeAmount: s.finance_amount ?? null,
+    updatedAt: s.updated_at,
+    _archivedAt: s.archived_at ? String(s.archived_at).slice(0, 10) : undefined,
   };
 }
 

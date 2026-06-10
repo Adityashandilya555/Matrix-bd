@@ -35,9 +35,10 @@ export default function LaunchPage() {
   const [range, setRange] = React.useState({ from: '', to: '' });
 
   const needle = q.trim().toLowerCase();
-  const filtered = rows.filter(({ site, tracker }) => {
+  const filtered = rows.filter((site) => {
     if (needle) {
-      const hay = `${site.code || ''} ${site.name || ''} ${site.city || ''} ${tracker?.submittedByName || ''}`.toLowerCase();
+      const owner = site.createdBy?.name || site.createdBy || '';
+      const hay = `${site.code || ''} ${site.name || ''} ${site.city || ''} ${owner}`.toLowerCase();
       if (!hay.includes(needle)) return false;
     }
     return inRange(site.updatedAt, range.from, range.to);
@@ -95,8 +96,8 @@ export default function LaunchPage() {
           </div>
         )}
 
-        {!loading && !error && filtered.map(({ site, tracker }) => {
-          const owner = tracker?.submittedByName || site.createdBy?.name || site.createdBy || '—';
+        {!loading && !error && filtered.map((site) => {
+          const owner = site.createdBy?.name || site.createdBy || '—';
           return (
             <div key={site.id} data-site-id={site.id} className="zm-row" onClick={() => onOpenSite?.(site)} style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1.1fr 1.2fr 1.2fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', cursor: 'pointer', position: 'relative', alignItems: 'center' }}>
               <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{site.code}</span>
@@ -107,10 +108,10 @@ export default function LaunchPage() {
                 <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{owner}</span>
               </span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 700, color: 'var(--zm-success)' }}>
-                <Icon name="check" size={12}/> {PROJECT_LABELS[tracker?.projectStatus] || 'With NSO'}
+                <Icon name="check" size={12}/> {PROJECT_LABELS[site.projectStatus] || 'With NSO'}
               </span>
-              <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: tracker?.financeStatus === 'approved' ? 'var(--zm-success)' : 'var(--zm-fg-2)', fontWeight: 600 }}>
-                {FINANCE_LABELS[tracker?.financeStatus || 'pending'] || tracker?.financeStatus}
+              <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: site.financeStatus === 'approved' ? 'var(--zm-success)' : 'var(--zm-fg-2)', fontWeight: 600 }}>
+                {FINANCE_LABELS[site.financeStatus || 'pending'] || site.financeStatus}
               </span>
             </div>
           );

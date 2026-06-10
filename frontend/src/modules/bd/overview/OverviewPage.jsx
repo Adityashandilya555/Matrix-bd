@@ -383,7 +383,7 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
   // the Payments KPI (Legal ∥ Finance run in parallel after the push).
   const activeStaging = visibleStaging.filter(s => !s.pushed);
 
-  const launchIds = new Set((launch.rows || []).map(r => r.site.id));
+  const launchIds = new Set((launch.rows || []).map(r => r.id));
   const paymentSites = sites.filter(s => PUSHED_STATUSES.includes(s.status) && !launchIds.has(s.id));
 
   const totalSites = visibleDrafts.length + visibleShortlist.length + activeStaging.length;

@@ -158,6 +158,14 @@ class SiteResponse(BaseModel):
     project_status: Optional[str] = None
     project_current_stage: Optional[str] = None
     project_budget_status: Optional[str] = None
+    # Finance / CA mirror columns — lets the Payments and Launch views render
+    # straight off GET /sites without a per-site /tracker fan-out.
+    finance_status: Optional[str] = None
+    kyc_verified: bool = False
+    ca_code: Optional[str] = None
+    finance_amount: Optional[float] = None
+    archived_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 class SiteListResponse(BaseModel):

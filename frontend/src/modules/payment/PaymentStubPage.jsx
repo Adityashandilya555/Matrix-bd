@@ -3,7 +3,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import { listSites } from '../../services/api/siteService.js';
-import { getSiteTrackerView } from '../../services/api/siteTrackerApi.js';
 import { siteTrackerDetailRoute } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 
@@ -312,9 +311,10 @@ function MiniField({ label, value }) {
   );
 }
 
-// Build a row straight from the canonical site when the tracker projection
-// fails to load. A pushed site must never silently vanish from this list —
-// that was the bug where "push from Sites in process" looked like a no-op.
+// Rows come straight off GET /sites — the finance/CA mirror columns now ride
+// on the list response, so there is no per-site tracker fan-out and a pushed
+// site can never silently vanish from this list (the old bug where "push from
+// Sites in process" looked like a no-op).
 function rowFromSite(site) {
   return {
     siteId: site.id,
@@ -323,9 +323,9 @@ function rowFromSite(site) {
     city: site.city,
     siteStatus: site.status,
     financeStatus: site.financeStatus || 'pending',
-    kycVerified: false,
-    caCode: null,
-    financeAmount: null,
+    kycVerified: site.kycVerified ?? false,
+    caCode: site.caCode ?? null,
+    financeAmount: site.financeAmount ?? null,
   };
 }
 
@@ -345,31 +345,23 @@ export default function PaymentStubPage() {
   const load = React.useCallback(() => {
     let cancelled = false;
     setState((s) => ({ ...s, status: s.rows.length ? 'ready' : 'loading', error: null }));
-    Promise.all(PAYMENT_STATUSES.map((status) => listSites({ status }).catch(() => [])))
-      .then((groups) => {
-        const seen = new Set();
-        const sites = [];
-        for (const group of groups) {
-          for (const site of group || []) {
-            if (!site?.id || seen.has(site.id)) continue;
-            seen.add(site.id);
-            sites.push(site);
-          }
-        }
-        return Promise.all(
-          sites.map((site) =>
-            getSiteTrackerView(site.id)
-              .then((row) => row || rowFromSite(site))
-              .catch(() => rowFromSite(site)),
-          ),
-        );
-      })
-      .then((rows) => {
+    // One request: the backend accepts a comma-separated status list and the
+    // list response carries the finance mirror columns.
+    listSites({ status: PAYMENT_STATUSES })
+      .then((sites) => {
         if (cancelled) return;
-        const cleanRows = rows.filter(Boolean).sort((a, b) => {
-          const rank = { pending: 0, awaiting: 1, approved: 2 };
-          return (rank[paymentState(a)] ?? 9) - (rank[paymentState(b)] ?? 9);
-        });
+        const seen = new Set();
+        const cleanRows = (sites || [])
+          .filter((site) => {
+            if (!site?.id || seen.has(site.id)) return false;
+            seen.add(site.id);
+            return true;
+          })
+          .map(rowFromSite)
+          .sort((a, b) => {
+            const rank = { pending: 0, awaiting: 1, approved: 2 };
+            return (rank[paymentState(a)] ?? 9) - (rank[paymentState(b)] ?? 9);
+          });
         setState({ status: 'ready', rows: cleanRows, error: null });
       })
       .catch((err) => {
