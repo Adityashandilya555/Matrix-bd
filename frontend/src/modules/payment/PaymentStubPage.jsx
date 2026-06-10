@@ -357,7 +357,11 @@ export default function PaymentStubPage() {
     listSites({ status: PAYMENT_STATUSES })
       .then((sites) => {
         if (cancelled) return;
-        const visible = isExec ? filterByScope(sites || [], role, user) : (sites || []);
+        const visible = (isExec ? filterByScope(sites || [], role, user) : (sites || []))
+          // Sites whose Project work is done have moved on to NSO — they live
+          // in the Launch tab, not here. Keeps this list consistent with the
+          // Overview Payments KPI (which makes the same subtraction).
+          .filter((site) => site.projectStatus !== 'done');
         const seen = new Set();
         const cleanRows = visible
           .filter((site) => {
