@@ -176,7 +176,7 @@ export default function NsoOverviewPage() {
   }, []);
 
   React.useEffect(() => load(), [load]);
-  useSiteDataRefresh(load, { sources: ['nso', 'project', 'businessAdmin', 'payment', 'siteTrackerApi'] });
+  useSiteDataRefresh(load, { sources: ['nso', 'project', 'businessAdmin', 'payment', 'legalApi', 'siteTrackerApi', 'launch'] });
 
   const { items } = state;
   const stageCounts = STAGE_DEFS.reduce((acc, s) => {

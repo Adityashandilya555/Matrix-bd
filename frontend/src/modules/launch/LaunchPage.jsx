@@ -6,6 +6,7 @@ import Icon from '../shared/primitives/Icon.jsx';
 import { useLaunchSites } from '../../hooks/useLaunchSites.js';
 import { useSession } from '../../state/SessionContext.jsx';
 import { filterByScope } from '../../rbac/scope.js';
+import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 import {
   getLaunchQueue, bdConfirmLaunch, supervisorApproveLaunch,
 } from '../../services/api/launchApprovalApi.js';
@@ -121,6 +122,8 @@ export default function LaunchPage() {
   }, []);
 
   React.useEffect(() => { loadApprovals(); }, [loadApprovals]);
+  // Auto-refresh when NSO final-approval fires (source:'nso') or any launch step fires (source:'launch').
+  useSiteDataRefresh(loadApprovals, { sources: ['nso', 'launch'] });
 
   // BD confirm action
   const handleBdConfirm = async (siteId) => {

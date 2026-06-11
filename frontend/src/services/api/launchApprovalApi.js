@@ -7,6 +7,7 @@
 import axios from 'axios';
 import { getAuthToken, clearAuthToken } from './authToken.js';
 import { ApiError } from './adapters/httpAdapter.js';
+import { notifySiteDataChanged } from './siteEvents.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
 const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
@@ -48,35 +49,42 @@ export async function getLaunchApproval(siteId) {
 /** Admin saves editable commercial fields (PATCH — partial update) */
 export async function saveLaunchFields(siteId, fields) {
   const r = await client.patch(`/launch-approvals/${siteId}/fields`, fields);
+  notifySiteDataChanged({ source: 'launch', action: 'fields_saved', siteId });
   return r.data;
 }
 
 /** Admin approves after reviewing/editing fields */
 export async function adminApproveLaunch(siteId) {
   const r = await client.post(`/launch-approvals/${siteId}/admin-approve`);
+  notifySiteDataChanged({ source: 'launch', action: 'admin_approve', siteId });
   return r.data;
 }
 
 /** BD (executive / supervisor) confirms the commercial terms */
 export async function bdConfirmLaunch(siteId) {
   const r = await client.post(`/launch-approvals/${siteId}/bd-confirm`);
+  notifySiteDataChanged({ source: 'launch', action: 'bd_confirm', siteId });
   return r.data;
 }
 
 /** Supervisor approves after BD confirmation */
 export async function supervisorApproveLaunch(siteId) {
   const r = await client.post(`/launch-approvals/${siteId}/supervisor-approve`);
+  notifySiteDataChanged({ source: 'launch', action: 'supervisor_approve', siteId });
   return r.data;
 }
 
 /** Super admin (business_admin) final approval — unlocks Launch button */
 export async function superAdminApproveLaunch(siteId) {
   const r = await client.post(`/launch-approvals/${siteId}/super-admin-approve`);
+  notifySiteDataChanged({ source: 'launch', action: 'super_admin_approve', siteId });
   return r.data;
 }
 
 /** Final launch — sets site.is_launched = true */
 export async function launchSite(siteId) {
   const r = await client.post(`/launch-approvals/${siteId}/launch`);
+  // Broadcast with 'launch' source so NSO, Project, BD pages refresh the LAUNCHED banner.
+  notifySiteDataChanged({ source: 'launch', action: 'launched', siteId });
   return r.data;
 }

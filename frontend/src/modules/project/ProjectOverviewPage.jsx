@@ -171,7 +171,7 @@ export default function ProjectOverviewPage() {
   }, []);
 
   React.useEffect(() => load(), [load]);
-  useSiteDataRefresh(load, { sources: ['project', 'businessAdmin', 'design'] });
+  useSiteDataRefresh(load, { sources: ['project', 'businessAdmin', 'design', 'siteTrackerApi'] });
 
   const items = state.items;
   const loading = state.status === 'loading';

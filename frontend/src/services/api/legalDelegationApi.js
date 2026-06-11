@@ -13,6 +13,7 @@
 import axios from 'axios';
 import { getAuthToken, clearAuthToken } from './authToken.js';
 import { ApiError } from './adapters/httpAdapter.js';
+import { notifySiteDataChanged } from './siteEvents.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
 const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
@@ -66,11 +67,13 @@ export async function delegateLegal(siteId, executiveId, notes) {
   const body = { executive_id: executiveId };
   if (notes) body.notes = notes;
   const data = await client.post(`/legal/${siteId}/delegate`, body).then((r) => r.data);
+  notifySiteDataChanged({ source: 'legalApi', action: 'legal_delegated', siteId });
   return delegationFromServer(data);
 }
 
 export async function revokeLegalDelegation(siteId, userId) {
   const data = await client.delete(`/legal/${siteId}/delegate/${userId}`).then((r) => r.data);
+  notifySiteDataChanged({ source: 'legalApi', action: 'legal_delegation_revoked', siteId });
   return data; // { ok, message }
 }
 

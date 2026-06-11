@@ -418,7 +418,7 @@ export default function NsoReviewPage() {
   React.useEffect(() => load(), [load]);
   useSiteDataRefresh(() => load(true), {
     siteId,
-    sources: ['nso', 'project', 'businessAdmin', 'payment'],
+    sources: ['nso', 'project', 'businessAdmin', 'payment', 'legalApi', 'siteTrackerApi', 'launch'],
     skipWhen: () => busy || dirty,
   });
 

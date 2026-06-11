@@ -114,7 +114,7 @@ export default function NsoQueuePage() {
   }, []);
 
   React.useEffect(() => load(), [load]);
-  useSiteDataRefresh(load, { sources: ['nso', 'project', 'businessAdmin', 'payment', 'siteTrackerApi'] });
+  useSiteDataRefresh(load, { sources: ['nso', 'project', 'businessAdmin', 'payment', 'legalApi', 'siteTrackerApi', 'launch'] });
 
   // useFocusSite polls only ~6s after mount; the queue endpoint can be slower
   // than that. Once rows are actually in the DOM, re-run the scroll + flash so

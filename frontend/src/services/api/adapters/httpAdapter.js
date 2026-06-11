@@ -346,10 +346,26 @@ export async function uploadPhoto(id, file) {
   };
 }
 
-export async function archiveSite(id, note)               { return post(`/sites/${id}/archive`, { note }); }
-export async function reviveSite(id, note)                { return post(`/sites/${id}/revive`, { note: note || null }); }
-export async function rejectSite(id, reasons, comment)    { return post(`/sites/${id}/reject`, { reasons, comment }); }
-export async function assignSite(id, execId)              { return post(`/sites/${id}/assign`, { exec_id: execId }); }
+export async function archiveSite(id, note) {
+  const result = await post(`/sites/${id}/archive`, { note });
+  notifySiteDataChanged({ source: 'bd', action: 'archived', siteId: id });
+  return result;
+}
+export async function reviveSite(id, note) {
+  const result = await post(`/sites/${id}/revive`, { note: note || null });
+  notifySiteDataChanged({ source: 'bd', action: 'revived', siteId: id });
+  return result;
+}
+export async function rejectSite(id, reasons, comment) {
+  const result = await post(`/sites/${id}/reject`, { reasons, comment });
+  notifySiteDataChanged({ source: 'bd', action: 'rejected', siteId: id });
+  return result;
+}
+export async function assignSite(id, execId) {
+  const result = await post(`/sites/${id}/assign`, { exec_id: execId });
+  notifySiteDataChanged({ source: 'bd', action: 'assigned', siteId: id });
+  return result;
+}
 
 // ── Users / auth ────────────────────────────────────────────────────────────
 

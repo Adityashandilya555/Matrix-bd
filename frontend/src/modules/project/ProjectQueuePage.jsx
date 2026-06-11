@@ -100,7 +100,7 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
   }, []);
 
   React.useEffect(() => load(), [load]);
-  useSiteDataRefresh(load, { sources: ['project', 'businessAdmin', 'design'] });
+  useSiteDataRefresh(load, { sources: ['project', 'businessAdmin', 'design', 'siteTrackerApi'] });
 
   const open = (row) => navigate(projectSiteRoute(row.siteId));
   const COLS = '120px minmax(220px, 1fr) 130px 160px 160px 120px';

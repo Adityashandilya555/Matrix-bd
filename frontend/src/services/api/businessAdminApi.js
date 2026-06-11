@@ -15,6 +15,7 @@
 import axios from 'axios';
 import { getAuthToken, clearAuthToken } from './authToken.js';
 import { ApiError } from './adapters/httpAdapter.js';
+import { notifySiteDataChanged } from './siteEvents.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
 const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
@@ -63,14 +64,18 @@ export async function getFinanceQueue() {
 }
 
 export async function approveFinance(siteId) {
-  return client.post(`/business-admin/finance-approvals/${siteId}/approve`).then((r) => r.data);
+  const result = await client.post(`/business-admin/finance-approvals/${siteId}/approve`).then((r) => r.data);
+  notifySiteDataChanged({ source: 'businessAdmin', action: 'finance_approved', siteId });
+  return result;
 }
 
 // Sends the request back for correction: awaiting_admin → pending (fields unlock
 // so the executive can fix KYC / CA code / token amount and re-request).
 export async function rejectFinance(siteId, reason) {
   const body = reason ? { reason } : {};
-  return client.post(`/business-admin/finance-approvals/${siteId}/reject`, body).then((r) => r.data);
+  const result = await client.post(`/business-admin/finance-approvals/${siteId}/reject`, body).then((r) => r.data);
+  notifySiteDataChanged({ source: 'businessAdmin', action: 'finance_rejected', siteId });
+  return result;
 }
 
 // ── Project budget approvals ─────────────────────────────────────────────────
@@ -96,7 +101,9 @@ export async function reviewBudget(siteId, { decision, comments, initializationD
   if (comments) body.comments = comments;
   // On approve, the admin also sets the project initialization date.
   if (decision === 'approve' && initializationDate) body.initialization_date = initializationDate;
-  return client.post(`/project/${siteId}/budget/admin-review`, body).then((r) => r.data);
+  const result = await client.post(`/project/${siteId}/budget/admin-review`, body).then((r) => r.data);
+  notifySiteDataChanged({ source: 'businessAdmin', action: `budget_${decision}`, siteId });
+  return result;
 }
 
 // Full budget breakdown for the approval drawer — Business Admin-safe detail
