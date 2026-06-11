@@ -36,24 +36,43 @@ const num = (n) => n == null ? '—' : Number(n).toLocaleString('en-IN');
 // ── Editable field spec ───────────────────────────────────────────────────────
 const FIELDS = [
   { key: 'rent_type',               label: 'Rent Type',                  type: 'select', options: ['fixed','revshare','mg_revshare'] },
-  { key: 'fixed_rent_amt',          label: 'Fixed Rent (₹)',             type: 'number' },
-  { key: 'expected_rent',           label: 'Expected Rent (₹)',          type: 'number' },
-  { key: 'rev_share_pct',           label: 'Rev Share %',                type: 'number' },
-  { key: 'escalation_pct',          label: 'Escalation %',               type: 'number' },
-  { key: 'escalation_date',         label: 'Escalation Date',            type: 'date' },
-  { key: 'expected_escalation_years', label: 'Escalation Every (yrs)',   type: 'number' },
+  // fixed — shown for 'fixed' and 'mg_revshare'
+  { key: 'fixed_rent_amt',          label: 'Fixed Rent (₹)',             type: 'number', showWhen: ['fixed'] },
+  // MG floor — shown for 'mg_revshare'
+  { key: 'expected_rent',           label: 'Minimum Guarantee (₹)',      type: 'number', showWhen: ['mg_revshare'] },
+  // rev share — shown for 'revshare' and 'mg_revshare'
+  { key: 'rev_share_pct',           label: 'Rev Share %',                type: 'number', showWhen: ['revshare','mg_revshare'] },
+  // escalation — shown for 'fixed' and 'mg_revshare'
+  { key: 'escalation_pct',          label: 'Escalation %',               type: 'number', showWhen: ['fixed','mg_revshare'] },
+  { key: 'escalation_date',         label: 'Escalation Date',            type: 'date',   showWhen: ['fixed','mg_revshare'] },
+  { key: 'expected_escalation_years', label: 'Escalation Every (yrs)',   type: 'number', showWhen: ['fixed','mg_revshare'] },
+  // rent-free — shown for all rent types once one is selected
+  { key: 'rent_free_days',          label: 'Rent-free Days',             type: 'number', showWhen: ['fixed','revshare','mg_revshare'] },
+  // always-visible commercial fields
   { key: 'cam_charges',             label: 'CAM Charges (₹)',            type: 'number' },
   { key: 'security_deposit',        label: 'Security Deposit (₹)',       type: 'number' },
   { key: 'brokerage',               label: 'Brokerage (₹)',              type: 'number' },
   { key: 'lock_in_months',          label: 'Lock-in (months)',           type: 'number' },
   { key: 'tenure_months',           label: 'Tenure (months)',            type: 'number' },
-  { key: 'rent_free_days',          label: 'Rent-free Days',             type: 'number' },
   { key: 'carpet_area_sqft',        label: 'Carpet Area (sqft)',         type: 'number' },
   { key: 'estimated_monthly_sales', label: 'Est. Monthly Sales (₹)',     type: 'number' },
   { key: 'capex',                   label: 'CAPEX (₹)',                  type: 'number' },
   { key: 'score',                   label: 'Score',                      type: 'number' },
   { key: 'notes',                   label: 'Notes',                      type: 'textarea' },
 ];
+
+// Returns fields that should be visible given the currently selected rent_type.
+// Fields without showWhen are always visible (except textarea handled separately).
+// Fields with showWhen are only visible when rent_type matches one of the values.
+function visibleFields(form, includeTextarea = false) {
+  const rt = form.rent_type;
+  return FIELDS.filter((f) => {
+    if (includeTextarea ? f.type !== 'textarea' : f.type === 'textarea') return false;
+    if (!f.showWhen) return true;          // always-visible
+    if (!rt) return false;                  // rent type not yet chosen — hide conditional fields
+    return f.showWhen.includes(rt);
+  });
+}
 
 // ── Field input ───────────────────────────────────────────────────────────────
 function FieldInput({ spec, value, onChange, readOnly }) {
@@ -248,14 +267,65 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
               color: T.textMuted, marginBottom: 14 }}>
               Commercial Fields {canEdit && <span style={{ color: '#E09A3C' }}>· Editable</span>}
             </div>
+
+            {/* ── Rent Type selector — always shown first ── */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, color: T.textFaint, marginBottom: 4, fontWeight: 600 }}>
+                Rent Type <span style={{ color: '#E09A3C' }}>*</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                {['fixed', 'revshare', 'mg_revshare'].map((rt) => {
+                  const labels = { fixed: { title: 'Fixed', sub: 'Flat monthly rent' }, revshare: { title: 'Rev Share', sub: '% of sales only' }, mg_revshare: { title: 'MG + Rev Share', sub: 'Floor + % of sales' } };
+                  const active = form.rent_type === rt;
+                  return (
+                    <button
+                      key={rt}
+                      type="button"
+                      disabled={!canEdit}
+                      onClick={() => canEdit && handleFieldChange('rent_type', rt)}
+                      style={{
+                        textAlign: 'left', padding: '10px 12px', borderRadius: 8, cursor: canEdit ? 'pointer' : 'default',
+                        border: `1px solid ${active ? T.accentText || '#6C9FE6' : T.line}`,
+                        background: active ? T.accentSoft || 'rgba(108,159,230,0.12)' : T.surface,
+                        display: 'flex', alignItems: 'flex-start', gap: 8, fontFamily: 'inherit',
+                      }}
+                    >
+                      <span style={{
+                        width: 15, height: 15, borderRadius: 999, marginTop: 2, flexShrink: 0,
+                        border: `1.5px solid ${active ? T.accentText || '#6C9FE6' : T.lineStrong}`,
+                        background: active ? T.accentText || '#6C9FE6' : 'transparent',
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {active && <span style={{ width: 5, height: 5, borderRadius: 999, background: '#fff' }}/>}
+                      </span>
+                      <span style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: T.text }}>{labels[rt].title}</span>
+                        <span style={{ fontSize: 11, color: T.textFaint }}>{labels[rt].sub}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ── Conditional rent fields — revealed by rent_type ── */}
+            {!form.rent_type && (
+              <div style={{ padding: '12px 14px', borderRadius: 8, background: T.chip,
+                border: `1px dashed ${T.lineStrong}`, color: T.textFaint, fontSize: 12.5,
+                marginBottom: 12, textAlign: 'center' }}>
+                Select a rent type above to reveal rent & escalation fields.
+              </div>
+            )}
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              {FIELDS.filter(f => f.type !== 'textarea').map((spec) => (
+              {visibleFields(form, true).filter((f) => f.key !== 'rent_type').map((spec) => (
                 <div key={spec.key}>
                   <div style={{ fontSize: 11, color: T.textFaint, marginBottom: 4, fontWeight: 600 }}>{spec.label}</div>
                   <FieldInput spec={spec} value={form[spec.key]} onChange={handleFieldChange} readOnly={!canEdit}/>
                 </div>
               ))}
             </div>
+
             {/* Notes spans full width */}
             {FIELDS.filter(f => f.type === 'textarea').map((spec) => (
               <div key={spec.key} style={{ marginTop: 12 }}>
