@@ -248,7 +248,7 @@ function nsoStages(detail) {
     {
       label: 'Final approval',
       status: detail?.finalApprovedAt ? 'done' : 'pending',
-      detail: detail?.finalApprovedAt ? 'NSO completed.' : 'Two sign-offs required before final approval.',
+      detail: detail?.finalApprovedAt ? 'NSO completed.' : 'Two sign-offs required before Site Launched.',
     },
   ];
 }

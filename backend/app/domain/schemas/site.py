@@ -162,6 +162,11 @@ class SiteResponse(BaseModel):
     project_status: Optional[str] = None
     project_current_stage: Optional[str] = None
     project_budget_status: Optional[str] = None
+    nso_status: Optional[str] = None
+    nso_current_stage: Optional[str] = None
+    launch_status: Optional[str] = None
+    is_launched: bool = False
+    launched_at: Optional[datetime] = None
     # Finance / CA mirror columns — lets the Payments and Launch views render
     # straight off GET /sites without a per-site /tracker fan-out.
     finance_status: Optional[str] = None

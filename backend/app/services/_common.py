@@ -93,6 +93,8 @@ def site_to_response(
     project: models.ProjectReview | None = None,
     approval: models.Approval | None = None,
     approved_by_name: str | None = None,
+    nso: models.NsoReview | None = None,
+    launch: models.LaunchApproval | None = None,
 ) -> SiteResponse:
     """Map an ORM Site into the API SiteResponse Pydantic model."""
     rent = _float_or_none(site.expected_rent)
@@ -147,6 +149,11 @@ def site_to_response(
         project_status=project.project_status if project else None,
         project_current_stage=project.current_stage if project else None,
         project_budget_status=project.budget_status if project else None,
+        nso_status=nso.nso_status if nso else None,
+        nso_current_stage=nso.current_stage if nso else None,
+        launch_status=launch.status if launch else None,
+        is_launched=bool(getattr(site, "is_launched", False)),
+        launched_at=getattr(site, "launched_at", None),
         finance_status=site.finance_status or "pending",
         kyc_verified=bool(site.kyc_verified),
         ca_code=site.ca_code,

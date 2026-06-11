@@ -101,6 +101,8 @@ async def list_sites(
     detail_by_site = {}
     project_by_site = {}
     approval_by_site = {}
+    nso_by_site = {}
+    launch_by_site = {}
     if site_ids:
         d_stmt = select(models.SiteDetail).where(models.SiteDetail.site_id.in_(site_ids))
         details = (await session.execute(d_stmt)).scalars().all()
@@ -117,6 +119,12 @@ async def list_sites(
         )
         for a in (await session.execute(a_stmt)).scalars().all():
             approval_by_site.setdefault(a.site_id, a)
+        n_stmt = select(models.NsoReview).where(models.NsoReview.site_id.in_(site_ids))
+        nso_rows = (await session.execute(n_stmt)).scalars().all()
+        nso_by_site = {n.site_id: n for n in nso_rows}
+        l_stmt = select(models.LaunchApproval).where(models.LaunchApproval.site_id.in_(site_ids))
+        launch_rows = (await session.execute(l_stmt)).scalars().all()
+        launch_by_site = {l.site_id: l for l in launch_rows}
 
     approver_ids = {a.approver_id for a in approval_by_site.values() if a.approver_id}
     names = {}
@@ -136,6 +144,8 @@ async def list_sites(
             approved_by_name=(
                 names.get(approval_by_site[r.id].approver_id) if r.id in approval_by_site else None
             ),
+            nso=nso_by_site.get(r.id),
+            launch=launch_by_site.get(r.id),
         )
         for r in rows
     ]
@@ -176,6 +186,10 @@ async def get_site(
     if approval and approval.approver_id:
         approver_stmt = select(models.User.name).where(models.User.id == approval.approver_id)
         approved_by_name = (await session.execute(approver_stmt)).scalar_one_or_none()
+    nso_stmt = select(models.NsoReview).where(models.NsoReview.site_id == site.id)
+    nso = (await session.execute(nso_stmt)).scalar_one_or_none()
+    launch_stmt = select(models.LaunchApproval).where(models.LaunchApproval.site_id == site.id)
+    launch = (await session.execute(launch_stmt)).scalar_one_or_none()
     return site_to_response(
         site,
         created_by_name=name or "",
@@ -184,6 +198,8 @@ async def get_site(
         project=project,
         approval=approval,
         approved_by_name=approved_by_name,
+        nso=nso,
+        launch=launch,
     )
 
 

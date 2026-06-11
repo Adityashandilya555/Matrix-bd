@@ -6,6 +6,7 @@ tracker contract can evolve independently from the change-request view.
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -32,6 +33,11 @@ class SiteTrackerResponse(BaseModel):
     project_status:   Optional[str] = None
     project_current_stage: Optional[str] = None
     project_budget_status: Optional[str] = None
+    nso_status: Optional[str] = None
+    nso_current_stage: Optional[str] = None
+    launch_status: Optional[str] = None
+    is_launched: bool = False
+    launched_at: Optional[datetime] = None
 
     # Only published rows surface to BD. If U3 has not landed yet, the
     # backend treats absent `stage` columns as "published" (see service).

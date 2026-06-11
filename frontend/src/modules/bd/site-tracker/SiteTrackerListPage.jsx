@@ -43,7 +43,8 @@ const PIPELINE_NODES = [
   { id: 'ca',     label: 'CA / Commercial Code', short: 'CA Code', icon: 'rupee' },
   { id: 'design', label: 'Design / Technical',  short: 'Design',  icon: 'grid' },
   { id: 'project', label: 'Project Execution',  short: 'Project', icon: 'box' },
-  { id: 'final',  label: 'Final Approval',      short: 'Final',   icon: 'check' },
+  { id: 'nso',    label: 'NSO',                 short: 'NSO',     icon: 'home' },
+  { id: 'launch', label: 'Site Launched',       short: 'Launch',  icon: 'flag' },
 ];
 
 const PIPELINE_NODE_WIDTH = 142;
@@ -116,11 +117,21 @@ function nodeState(site, nodeId) {
       if (!site.projectStatus || ACTIVE_PROJECT_STATUSES.has(site.projectStatus)) return 'active';
     }
   }
+  if (nodeId === 'nso') {
+    if (site.nsoStatus === 'complete') return 'complete';
+    if (site.projectStatus === 'done') return 'active';
+  }
+  if (nodeId === 'launch') {
+    if (site.isLaunched || site.launchStatus === 'launched') return 'complete';
+    if (site.nsoStatus === 'complete') return 'active';
+  }
   return 'future';
 }
 
 function stageCopy(site) {
-  if (site.projectStatus === 'done') return 'Project completed, ready for final closure';
+  if (site.isLaunched || site.launchStatus === 'launched') return 'Site launched and workflow complete';
+  if (site.nsoStatus === 'complete') return 'NSO complete, launch approval is active';
+  if (site.projectStatus === 'done') return 'Project completed, NSO is active';
   if (site.designStatus === 'approved') return 'Design approved, Project Execution is active';
   const legalState = legalNodeState(site);
   if (legalState === 'rejected') return 'BD notified, legal correction required';
@@ -230,7 +241,7 @@ function PipelineNode({ site, node, onOpenLegal }) {
   const interactive = node.interactive;
   const label =
     state === 'complete' ? (node.id === 'loi' ? 'Done' : 'Complete') :
-    state === 'active' ? (node.id === 'ca' || node.id === 'project' ? 'Pending' : 'Open') :
+    state === 'active' ? (['ca', 'project', 'nso', 'launch'].includes(node.id) ? 'Pending' : 'Open') :
     state === 'rejected' ? 'Rejected' :
     'Queued';
 

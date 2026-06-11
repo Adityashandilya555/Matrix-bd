@@ -6,6 +6,27 @@ import { T, Icon, Card, Button, StatusPill, Skeleton, inr, TABULAR } from '../ui
 // busy/comment state; decisions bubble up to the shell which refetches.
 
 const KIND_LABEL = { recce: 'Recce', '2d': '2D design', '3d': '3D design', boq: 'BOQ + estimate' };
+const DESIGN_CONTEXT_KINDS = ['recce', '2d', '3d'];
+
+const pretty = (value) => {
+  if (value == null || value === '') return 'Pending';
+  return String(value).replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
+};
+
+const dateText = (value) => {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleString(undefined, {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return '—';
+  }
+};
 
 function BlockShell({ icon: BIcon, tone, title, amount, children }) {
   const tones = { design: T.accentText, payment: T.warnText, project: T.projectText };
@@ -195,6 +216,199 @@ function metricRow(label, value) {
       <span style={{ flex: 1, color: T.textMuted }}>{label}</span>
       <span style={{ fontFamily: T.mono, color: T.text, ...TABULAR }}>{value}</span>
     </div>
+  );
+}
+
+function DetailLoadError({ message, onRetry }) {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      padding: '10px 12px',
+      borderRadius: T.radiusSm,
+      border: `1px solid ${T.danger || '#b91c1c'}`,
+      background: 'rgba(185,28,28,0.08)',
+      color: T.danger || '#b91c1c',
+      fontSize: 12.5,
+      marginBottom: 12,
+    }}>
+      <span>{message}</span>
+      {onRetry && (
+        <Button variant="ghost" size="sm" onClick={onRetry}>Retry</Button>
+      )}
+    </div>
+  );
+}
+
+function DesignArtifactRow({ deliverable, kind }) {
+  const status = deliverable?.status || 'pending';
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: '120px minmax(90px, auto) minmax(0, 1fr)',
+      gap: 10,
+      alignItems: 'center',
+      fontSize: 12.5,
+      padding: '8px 0',
+      borderTop: `1px solid ${T.line}`,
+    }}>
+      <span style={{ color: T.textMuted, fontWeight: 750 }}>{KIND_LABEL[kind] || kind}</span>
+      <StatusPill status={status} />
+      {deliverable ? fileLink(deliverable) : <span style={{ color: T.textFaint }}>No artifact yet</span>}
+    </div>
+  );
+}
+
+// ── BOQ approval: final Design-completion gate ───────────────────────────────
+function BoqApprovalBlock({ siteId, deliverable, fetchReview, onDecide }) {
+  const [detail, setDetail] = React.useState(null);
+  const [detailError, setDetailError] = React.useState(null);
+  const [comments, setComments] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+
+  const loadDetail = React.useCallback(() => {
+    let live = true;
+    setDetailError(null);
+    if (!fetchReview) {
+      setDetail({ deliverables: deliverable ? [deliverable] : [] });
+      return () => { live = false; };
+    }
+    fetchReview(siteId)
+      .then((d) => {
+        if (!live) return;
+        setDetail(d || { deliverables: [] });
+      })
+      .catch((err) => {
+        if (!live) return;
+        setDetail({ deliverables: deliverable ? [deliverable] : [] });
+        setDetailError(err?.detail || err?.message || 'Could not load BOQ approval details.');
+      });
+    return () => { live = false; };
+  }, [deliverable, fetchReview, siteId]);
+
+  React.useEffect(() => loadDetail(), [loadDetail]);
+
+  const decide = async (decision) => {
+    if (decision === 'reject' && !comments.trim()) {
+      window.alert('Comments are required to send BOQ back.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await onDecide(siteId, 'boq', { decision, comments });
+    } catch (e) {
+      window.alert(e?.detail || e?.message || 'Decision failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!detail) return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <Skeleton h={14} w="65%" /><Skeleton h={14} w="92%" /><Skeleton h={14} w="50%" />
+    </div>
+  );
+
+  const deliverables = detail.deliverables || [];
+  const byKind = Object.fromEntries(deliverables.map((d) => [d.kind, d]));
+  const boq = byKind.boq || deliverable || {};
+  const boqAmount = boq.estimatedAmount ?? deliverable?.estimatedAmount ?? null;
+
+  return (
+    <>
+      {detailError && <DetailLoadError message={detailError} onRetry={loadDetail} />}
+
+      <div style={{
+        display: 'grid',
+        gap: 10,
+        padding: 12,
+        borderRadius: T.radiusSm,
+        background: T.chip,
+        border: `1px solid ${T.line}`,
+        marginBottom: 12,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <RequestMeta label="GFC status" value={pretty(detail.gfcStatus)} />
+          <RequestMeta label="GFC decided" value={dateText(detail.gfcDecidedAt)} />
+          <RequestMeta label="Submitted by" value={detail.submittedByName || '—'} />
+        </div>
+        {detail.gfcComments && (
+          <div style={{ color: T.textMuted, fontSize: 12.5, lineHeight: 1.5 }}>
+            <strong style={{ color: T.text }}>GFC comments:</strong> {detail.gfcComments}
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <div style={{
+          fontSize: 11,
+          fontWeight: 900,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          color: T.textFaint,
+          marginBottom: 4,
+        }}>
+          Design context package
+        </div>
+        {DESIGN_CONTEXT_KINDS.map((kind) => (
+          <DesignArtifactRow key={kind} kind={kind} deliverable={byKind[kind]} />
+        ))}
+      </div>
+
+      <div style={{
+        display: 'grid',
+        gap: 10,
+        borderTop: `1px solid ${T.line}`,
+        paddingTop: 12,
+        marginBottom: 12,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 800, fontSize: 12.5, color: T.text }}>BOQ + estimate</span>
+          <StatusPill status={boq.status || 'approved'} />
+          {fileLink(boq)}
+        </div>
+        <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+          <RequestMeta label="BOQ amount" value={boqAmount == null ? '—' : inr(boqAmount)} />
+          <RequestMeta label="Supervisor reviewed" value={dateText(boq.reviewedAt || deliverable?.reviewedAt)} />
+          <RequestMeta label="Submitted" value={dateText(boq.submittedAt || deliverable?.submittedAt)} />
+        </div>
+        {boq.supervisorComments && (
+          <div style={{ color: T.textMuted, fontSize: 12.5, lineHeight: 1.5 }}>
+            <strong style={{ color: T.text }}>Supervisor comments:</strong> {boq.supervisorComments}
+          </div>
+        )}
+      </div>
+
+      <textarea
+        className="ac-input"
+        style={taStyle}
+        placeholder="Add comments (required when sending BOQ back)"
+        value={comments}
+        onChange={(e) => setComments(e.target.value)}
+      />
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+        <Button
+          variant="success"
+          size="md"
+          loading={busy}
+          icon={!busy && <Icon.check size={15} />}
+          onClick={() => decide('approve')}
+        >
+          Approve BOQ
+        </Button>
+        <Button
+          variant="danger"
+          size="md"
+          disabled={busy}
+          icon={<Icon.x size={15} />}
+          onClick={() => decide('reject')}
+        >
+          Send back
+        </Button>
+      </div>
+    </>
   );
 }
 
@@ -391,14 +605,26 @@ function BudgetBlock({ site, fetchDetail, onDecide }) {
 
 export default function SiteApprovalPanel({ site, handlers }) {
   const { design, payment, project } = site;
-  const hasDeliverables = design?.deliverables?.length > 0;
+  const deliverables = design?.deliverables || [];
+  const standardDeliverables = deliverables.filter((d) => d.kind !== 'boq');
+  const boqDeliverables = deliverables.filter((d) => d.kind === 'boq');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {hasDeliverables && (
+      {standardDeliverables.length > 0 && (
         <BlockShell icon={Icon.layers} tone="design" title="2D / 3D approvals">
-          <DeliverablesBlock siteId={site.siteId} deliverables={design.deliverables} onDecide={handlers.onDeliverableDecide} />
+          <DeliverablesBlock siteId={site.siteId} deliverables={standardDeliverables} onDecide={handlers.onDeliverableDecide} />
         </BlockShell>
       )}
+      {boqDeliverables.map((boq) => (
+        <BlockShell key={boq.id || boq.kind} icon={Icon.wrench} tone="design" title="BOQ approval" amount={boq.estimatedAmount}>
+          <BoqApprovalBlock
+            siteId={site.siteId}
+            deliverable={boq}
+            fetchReview={handlers.fetchGfcReview}
+            onDecide={handlers.onDeliverableDecide}
+          />
+        </BlockShell>
+      ))}
       {design?.gfcPending && (
         <BlockShell icon={Icon.shield} tone="design" title="GFC approval" amount={design.boqAmount}>
           <GfcBlock siteId={site.siteId} fetchReview={handlers.fetchGfcReview} onDecide={handlers.onGfcDecide} />

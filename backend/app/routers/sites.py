@@ -203,6 +203,12 @@ async def get_site_tracker(
     project = (
         await db.execute(select(models.ProjectReview).where(models.ProjectReview.site_id == site.id))
     ).scalar_one_or_none()
+    nso = (
+        await db.execute(select(models.NsoReview).where(models.NsoReview.site_id == site.id))
+    ).scalar_one_or_none()
+    launch = (
+        await db.execute(select(models.LaunchApproval).where(models.LaunchApproval.site_id == site.id))
+    ).scalar_one_or_none()
 
     return SiteTrackerResponse(
         site_id=str(site.id),
@@ -229,6 +235,11 @@ async def get_site_tracker(
             if project
             else ("draft" if getattr(site, "design_status", None) == "approved" else None)
         ),
+        nso_status=nso.nso_status if nso else None,
+        nso_current_stage=nso.current_stage if nso else None,
+        launch_status=launch.status if launch else None,
+        is_launched=bool(getattr(site, "is_launched", False)),
+        launched_at=getattr(site, "launched_at", None),
         dd=dd_resp,
         agreement=agreement_resp,
         licensing=licensing_resp,

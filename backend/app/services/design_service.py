@@ -15,7 +15,8 @@ Swimlane:
   reviews it yes/no with comments (reject → re-upload loop). After 3D is
   approved the site reaches the GFC gate, where the **business_admin** gives
   Good-For-Construction approval. Once GFC passes, the executive uploads the
-  BOQ + estimate; supervisor approval of the BOQ completes the design.
+  BOQ + estimate; supervisor approval sends the BOQ to business_admin for the
+  final Design-completion gate.
 
   Stage order: recce → 2d → 3d → GFC gate → boq → done
 
@@ -73,8 +74,8 @@ _KIND_ORDER = {"recce": 0, "2d": 1, "3d": 2, "boq": 3}
 _NEXT_STAGE = {"recce": "2d", "2d": "3d", "3d": "gfc", "boq": "done"}
 _DELIVERABLE_KINDS = ("recce", "2d", "3d", "boq")
 # Deliverables that require a SECOND-tier business_admin approval (on top of the
-# supervisor's) before the stage advances. Recce + BOQ are supervisor-only.
-_NEEDS_ADMIN = frozenset({"2d", "3d"})
+# supervisor's) before the stage advances. BOQ is the final design-completion gate.
+_NEEDS_ADMIN = frozenset({"2d", "3d", "boq"})
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -588,8 +589,8 @@ async def _advance_stage_after_approval(
 ) -> None:
     """Advance current_stage after a deliverable is approved — whether by a
     supervisor reviewing an executive's upload, or by a supervisor handling the
-    site directly. recce→2d→3d→boq→gfc. Approving the BOQ opens the GFC gate
-    (design_status='gfc_pending') and notifies the business admins.
+    site directly. The sequence is recce→2d→3d→gfc→boq→done. BOQ only reaches
+    this helper after business-admin approval.
     """
     next_stage = _NEXT_STAGE[kind]
     review.current_stage = next_stage
@@ -677,8 +678,8 @@ async def _after_supervisor_approval(
 ) -> None:
     """Gate after a supervisor approves a deliverable.
 
-    2D/3D need a SECOND-tier business_admin approval before they advance — the
-    site lands in the admin's 2D/3D approval queue. Recce + BOQ advance at once.
+    2D/3D/BOQ need a SECOND-tier business_admin approval before they advance.
+    Recce advances immediately; BOQ completion is owned by the business admin.
     """
     if kind in _NEEDS_ADMIN and deliverable.admin_status != "approved":
         if (site.design_status or "pending") in ("pending", "allocated"):
@@ -690,16 +691,22 @@ async def _after_supervisor_approval(
             detail=f"kind={kind} approved by supervisor — awaiting business_admin approval",
         )
         admins = await recipients_for_business_admins(session, tenant_id=tenant_id)
+        deliverable_label = "BOQ" if kind == "boq" else kind.upper()
+        gate_label = (
+            "final BOQ approval before Design can complete"
+            if kind == "boq"
+            else "approval before the design advances"
+        )
         if admins:
             await notify_enqueue(
                 session, tenant_id=tenant_id, event="design_admin_approval_pending",
                 recipient_ids=admins, site_id=site.id,
                 channels=("in_app", "email"),
                 payload={"site_id": str(site.id), "site_name": site.name, "kind": kind},
-                subject=f"{kind.upper()} approval needed: {site.name}",
+                subject=f"{deliverable_label} approval needed: {site.name}",
                 body=(
-                    f"The {kind} for '{site.name}' ({site.code}) was approved by the design "
-                    f"supervisor and now needs your approval before the design advances."
+                    f"The {deliverable_label} for '{site.name}' ({site.code}) was approved "
+                    f"by the design supervisor and now needs your {gate_label}."
                 ),
             )
     else:
@@ -872,9 +879,8 @@ async def svc_review_deliverable(
 ) -> DesignReviewResponse:
     """Supervisor approves or rejects the submitted deliverable.
 
-    approve → advance current_stage (recce→2d→3d→boq→gfc). Approving the BOQ moves
-             the site to the GFC gate (design_status='gfc_pending') and notifies
-             the business_admins.
+    approve → advance current_stage. 2D, 3D, and BOQ wait for business_admin
+             approval before advancing; BOQ admin approval completes Design.
     reject  → store comments (visible to the executive); executive re-uploads.
     """
     if (actor.get("role") or "").lower() != "supervisor":
@@ -948,12 +954,12 @@ async def svc_review_deliverable(
     return await _build_design_response(session, site)
 
 
-# ── Business admin: 2D/3D approval (second tier) ─────────────────────────────
+# ── Business admin: 2D/3D/BOQ approval (second tier) ─────────────────────────
 
 async def svc_design_admin_queue(
     session: AsyncSession, *, tenant_id: str | UUID,
 ) -> DesignAdminQueueResponse:
-    """2D/3D deliverables a supervisor approved that now await admin approval,
+    """2D/3D/BOQ deliverables a supervisor approved that now await admin approval,
     grouped by site (each site → its pending deliverables)."""
     rows = (await session.execute(
         select(
@@ -961,11 +967,13 @@ async def svc_design_admin_queue(
             models.Site.code, models.Site.name, models.Site.city,
         )
         .join(models.Site, models.Site.id == models.DesignDeliverable.site_id)
+        .join(models.DesignReview, models.DesignReview.site_id == models.DesignDeliverable.site_id)
         .where(
             models.Site.tenant_id == tenant_id,
-            models.DesignDeliverable.kind.in_(("2d", "3d")),
+            models.DesignDeliverable.kind.in_(tuple(_NEEDS_ADMIN)),
             models.DesignDeliverable.status == "approved",
             models.DesignDeliverable.admin_status == "pending",
+            models.DesignReview.current_stage == models.DesignDeliverable.kind,
         )
         .order_by(models.Site.name, models.DesignDeliverable.kind)
     )).all()
@@ -980,8 +988,11 @@ async def svc_design_admin_queue(
             )
             order.append(sid)
         by_site[sid].deliverables.append(AdminQueueDeliverable(
-            kind=d.kind, status=d.status, file_name=d.file_name,
+            id=str(d.id), kind=d.kind, status=d.status, file_name=d.file_name,
             download_url=await _deliverable_download_url(d), submitted_at=d.submitted_at,
+            estimated_amount=float(d.estimated_amount) if d.estimated_amount is not None else None,
+            supervisor_comments=d.supervisor_comments, reviewed_at=d.reviewed_at,
+            admin_status=d.admin_status or "pending",
         ))
     return DesignAdminQueueResponse(items=[by_site[s] for s in order], total=len(order))
 
@@ -995,7 +1006,7 @@ async def svc_admin_review_deliverable(
     kind: str,
     body: AdminReviewDeliverableRequest,
 ) -> DesignReviewResponse:
-    """Business admin approves / sends back a supervisor-approved 2D or 3D deliverable.
+    """Business admin approves / sends back a supervisor-approved 2D, 3D, or BOQ deliverable.
 
     approve → admin_status='approved'; if it's still the active stage, advance.
     reject  → deliverable back to 'rejected' for re-upload; comments to the supervisor.
@@ -1003,7 +1014,7 @@ async def svc_admin_review_deliverable(
     if (actor.get("role") or "").lower() != "business_admin":
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="Only a business admin can approve 2D/3D deliverables.",
+            detail="Only a business admin can approve 2D/3D/BOQ deliverables.",
         )
     if kind not in _NEEDS_ADMIN:
         raise HTTPException(
@@ -1020,6 +1031,14 @@ async def svc_admin_review_deliverable(
             raise HTTPException(
                 status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"No supervisor-approved {kind} awaiting admin approval on this site.",
+            )
+        if review.current_stage != kind:
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"The {kind} admin approval is no longer active "
+                    f"(current stage: '{review.current_stage}')."
+                ),
             )
 
         now = datetime.now(timezone.utc)
@@ -1041,12 +1060,18 @@ async def svc_admin_review_deliverable(
                     session, tenant_id=tenant_id, actor=actor, site=site, review=review, kind=kind,
                 )
             if supervisors:
+                deliverable_label = "BOQ" if kind == "boq" else kind.upper()
+                design_copy = (
+                    "The design is complete."
+                    if kind == "boq"
+                    else "The design advances."
+                )
                 await notify_enqueue(
                     session, tenant_id=tenant_id, event="design_admin_approved",
                     recipient_ids=supervisors, site_id=site.id, channels=("in_app",),
                     payload={"site_id": str(site.id), "site_name": site.name, "kind": kind},
-                    subject=f"{kind.upper()} approved by admin: {site.name}",
-                    body=f"The admin approved the {kind} for '{site.name}'. The design advances.",
+                    subject=f"{deliverable_label} approved by admin: {site.name}",
+                    body=f"The admin approved the {deliverable_label} for '{site.name}'. {design_copy}",
                 )
         else:
             deliverable.status = "rejected"

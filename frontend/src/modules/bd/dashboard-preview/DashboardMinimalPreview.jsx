@@ -7,7 +7,8 @@ const FLOW_STAGES = [
   { id: 'commercial', label: 'CA / Commercial Code', icon: 'rupee' },
   { id: 'design', label: 'Design / Technical', icon: 'grid' },
   { id: 'project', label: 'Project Execution', icon: 'box' },
-  { id: 'final', label: 'Final Approval', icon: 'check' },
+  { id: 'nso', label: 'NSO', icon: 'home' },
+  { id: 'launch', label: 'Site Launched', icon: 'flag' },
 ];
 
 const STAGE_INDEX = FLOW_STAGES.reduce((acc, stage, index) => {
@@ -53,7 +54,7 @@ const SITES = [
     code: 'BT-DEL-0091',
     name: 'Saket M-Block - L13',
     city: 'New Delhi',
-    stage: 'final',
+    stage: 'nso',
     complete: true,
     owner: 'Payment supervisor',
     nextAction: 'Open Payment section',

@@ -261,6 +261,8 @@ async def list_admin_sites(
             "licensing_status": site.licensing_status,
             "finance_status": site.finance_status,
             "design_status": site.design_status,
+            "is_launched": site.is_launched,
+            "launched_at": site.launched_at,
             "finance_amount": site.finance_amount,
             "kyc_verified": site.kyc_verified,
             "created_at": site.created_at,
@@ -284,6 +286,8 @@ async def list_admin_sites(
 
     site_ids = [site["id"] for site in site_rows]
     project_by_site = {}
+    nso_by_site = {}
+    launch_by_site = {}
     if site_ids:
         try:
             project_rows = (await session.execute(
@@ -301,6 +305,34 @@ async def list_admin_sites(
         except SQLAlchemyError:
             await session.rollback()
             project_by_site = {}
+        try:
+            nso_rows = (await session.execute(
+                select(models.NsoReview).where(models.NsoReview.site_id.in_(site_ids))
+            )).scalars().all()
+            nso_by_site = {
+                row.site_id: {
+                    "nso_status": row.nso_status,
+                    "current_stage": row.current_stage,
+                }
+                for row in nso_rows
+            }
+        except SQLAlchemyError:
+            await session.rollback()
+            nso_by_site = {}
+        try:
+            launch_rows = (await session.execute(
+                select(models.LaunchApproval).where(models.LaunchApproval.site_id.in_(site_ids))
+            )).scalars().all()
+            launch_by_site = {
+                row.site_id: {
+                    "status": row.status,
+                    "launched_at": row.launched_at,
+                }
+                for row in launch_rows
+            }
+        except SQLAlchemyError:
+            await session.rollback()
+            launch_by_site = {}
 
     names: dict = {}
     if user_ids:
@@ -313,6 +345,8 @@ async def list_admin_sites(
     now = datetime.now(timezone.utc)
     for site in site_rows:
         project = project_by_site.get(site["id"], {})
+        nso = nso_by_site.get(site["id"], {})
+        launch = launch_by_site.get(site["id"], {})
         created_at = site["created_at"] or site["updated_at"] or now
         updated_at = site["updated_at"] or site["created_at"] or now
         try:
@@ -341,6 +375,11 @@ async def list_admin_sites(
             "project_current_stage": project.get("current_stage"),
             "project_budget_status": project.get("budget_status"),
             "project_completed_at": project.get("project_completed_at"),
+            "nso_status": nso.get("nso_status"),
+            "nso_current_stage": nso.get("current_stage"),
+            "launch_status": launch.get("status"),
+            "is_launched": bool(site["is_launched"]),
+            "launched_at": site["launched_at"] or launch.get("launched_at"),
             "ca_code": site["ca_code"],
             "finance_amount": finance_amount,
             "kyc_verified": bool(site["kyc_verified"]),

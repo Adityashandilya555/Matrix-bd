@@ -89,11 +89,16 @@ function adminQueueSiteFromServer(s) {
     siteName: s.site_name,
     city:     s.city,
     deliverables: (s.deliverables || []).map((d) => ({
+      id:          d.id,
       kind:        d.kind,
       status:      d.status,
       fileName:    d.file_name,
       downloadUrl: d.download_url,
       submittedAt: d.submitted_at,
+      estimatedAmount: d.estimated_amount,
+      supervisorComments: d.supervisor_comments,
+      reviewedAt: d.reviewed_at,
+      adminStatus: d.admin_status,
     })),
   };
 }
@@ -258,7 +263,7 @@ export async function uploadDeliverable(siteId, kind, file) {
   return reviewFromServer(data);
 }
 
-// ── Business-admin 2D/3D approval (second tier) ──────────────────────────────
+// ── Business-admin 2D/3D/BOQ approval (second tier) ──────────────────────────
 
 export async function getDesignAdminQueue() {
   const data = await client.get('/design/admin-queue').then((r) => r.data);

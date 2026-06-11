@@ -22,7 +22,8 @@ const NODES = [
   { id: 'ca',      label: 'CA / Commercial Code', icon: 'rupee',   interactive: true  },
   { id: 'design',  label: 'Design / Technical',   icon: 'grid',    interactive: false },
   { id: 'project', label: 'Project Execution',    icon: 'box',     interactive: false },
-  { id: 'final',   label: 'Final Approval',       icon: 'check',   interactive: false },
+  { id: 'nso',     label: 'NSO',                  icon: 'home',    interactive: false },
+  { id: 'launch',  label: 'Site Launched',        icon: 'flag',    interactive: false },
 ];
 
 const NODE_TONES = {
@@ -56,7 +57,7 @@ function NodeCard({ node, selected, onClick, state, statusOverride }) {
   const greyed = state === 'future';
   const defaultLabel =
     state === 'complete' ? (node.id === 'loi' ? 'DONE' : 'COMPLETE') :
-    state === 'active' ? (node.id === 'ca' || node.id === 'project' ? 'PENDING' : 'OPEN') :
+    state === 'active' ? (['ca', 'project', 'nso', 'launch'].includes(node.id) ? 'PENDING' : 'OPEN') :
     'QUEUED';
   const statusLabel = statusOverride?.label ?? defaultLabel;
   const statusColor = statusOverride?.color ?? tone.color;
@@ -113,6 +114,20 @@ function projectStatusOverride(data) {
   return null;
 }
 
+function nsoStatusOverride(data) {
+  if (data?.nsoStatus === 'complete') return { label: 'DONE', color: 'var(--zm-success, #2D7A48)' };
+  if (data?.projectStatus === 'done') return { label: 'PENDING', color: 'var(--zm-warning, #B45309)' };
+  return null;
+}
+
+function launchStatusOverride(data) {
+  if (data?.isLaunched || data?.launchStatus === 'launched') {
+    return { label: 'LAUNCHED', color: 'var(--zm-success, #2D7A48)' };
+  }
+  if (data?.nsoStatus === 'complete') return { label: 'PENDING', color: 'var(--zm-warning, #B45309)' };
+  return null;
+}
+
 function legalNodeState(data) {
   if (data.siteStatus === 'legal_rejected' || data.legalDdStatus === 'negative') return 'rejected';
   if (
@@ -141,6 +156,14 @@ function detailNodeState(data, nodeId) {
     if (data.designStatus === 'approved') {
       if (!data.projectStatus || ACTIVE_PROJECT_STATUSES.has(data.projectStatus)) return 'active';
     }
+  }
+  if (nodeId === 'nso') {
+    if (data.nsoStatus === 'complete') return 'complete';
+    if (data.projectStatus === 'done') return 'active';
+  }
+  if (nodeId === 'launch') {
+    if (data.isLaunched || data.launchStatus === 'launched') return 'complete';
+    if (data.nsoStatus === 'complete') return 'active';
   }
   return 'future';
 }
@@ -173,7 +196,7 @@ function NodeDiagram({ selected, onSelect, data }) {
         position: 'relative',
         display: 'flex',
         alignItems: 'center',
-        minWidth: 860,
+        minWidth: 1040,
       }}>
         {NODES.map((n, index) => {
           const state = detailNodeState(data, n.id);
@@ -191,7 +214,11 @@ function NodeDiagram({ selected, onSelect, data }) {
                     ? financeStatusOverride(data.financeStatus)
                     : n.id === 'project'
                       ? projectStatusOverride(data)
-                      : undefined
+                      : n.id === 'nso'
+                        ? nsoStatusOverride(data)
+                        : n.id === 'launch'
+                          ? launchStatusOverride(data)
+                          : undefined
                 }
               />
             </React.Fragment>

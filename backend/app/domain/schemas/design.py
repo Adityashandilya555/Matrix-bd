@@ -90,7 +90,7 @@ class DeliverableResponse(BaseModel):
     submitted_at: Optional[datetime] = None
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[datetime] = None
-    admin_status: str = "pending"            # 2D/3D second-tier (business_admin) gate
+    admin_status: str = "pending"            # 2D/3D/BOQ second-tier (business_admin) gate
     admin_comments: Optional[str] = None
     download_url: Optional[str] = None       # short-lived signed URL for the uploaded file
     updated_at: Optional[datetime] = None
@@ -147,10 +147,10 @@ class DesignGfcQueueResponse(BaseModel):
     total: int
 
 
-# ── Admin 2D/3D approval queue (grouped by site) ─────────────────────────────
+# ── Admin 2D/3D/BOQ approval queue (grouped by site) ─────────────────────────
 
 class AdminReviewDeliverableRequest(BaseModel):
-    """Business admin's decision on a supervisor-approved 2D/3D deliverable."""
+    """Business admin's decision on a supervisor-approved 2D/3D/BOQ deliverable."""
     decision: ReviewDecision
     comments: Optional[str] = None
 
@@ -163,11 +163,16 @@ class AdminReviewDeliverableRequest(BaseModel):
 
 
 class AdminQueueDeliverable(BaseModel):
+    id: str
     kind: DeliverableKind
     status: DeliverableStatus
     file_name: Optional[str] = None
     download_url: Optional[str] = None
     submitted_at: Optional[datetime] = None
+    estimated_amount: Optional[float] = None
+    supervisor_comments: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    admin_status: str = "pending"
 
 
 class DesignAdminQueueSite(BaseModel):

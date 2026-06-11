@@ -200,6 +200,11 @@ export function siteFromServer(s) {
     projectStatus: s.project_status,
     projectCurrentStage: s.project_current_stage,
     projectBudgetStatus: s.project_budget_status,
+    nsoStatus: s.nso_status ?? null,
+    nsoCurrentStage: s.nso_current_stage ?? null,
+    launchStatus: s.launch_status ?? null,
+    isLaunched: Boolean(s.is_launched),
+    launchedAt: s.launched_at ?? null,
     // Finance / CA mirror columns — Payments and Launch render off these
     // without a per-site /tracker call.
     financeStatus: s.finance_status,
@@ -503,6 +508,11 @@ export async function listBusinessAdminSites(limit = 80) {
     projectCurrentStage: row.project_current_stage,
     projectBudgetStatus: row.project_budget_status,
     projectCompletedAt: row.project_completed_at,
+    nsoStatus:          row.nso_status,
+    nsoCurrentStage:    row.nso_current_stage,
+    launchStatus:       row.launch_status,
+    isLaunched:         Boolean(row.is_launched),
+    launchedAt:         row.launched_at,
     caCode:             row.ca_code,
     financeAmount:      row.finance_amount,
     kycVerified:        row.kyc_verified,

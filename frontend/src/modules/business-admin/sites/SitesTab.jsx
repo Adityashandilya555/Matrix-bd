@@ -2,16 +2,18 @@ import React from 'react';
 import { T, Icon, Card, Drawer, Skeleton, EmptyState, ErrorState, Avatar, TABULAR } from '../ui/kit.jsx';
 import { MODULE_META, moduleForAction, labelForEntry, dotColor } from './historyMeta.js';
 
-// A compilation of every site as a BD-style pipeline (LOI → Legal → Design →
-// Payment → Project), coloured by each module's status. Click a site for its
+// A compilation of every site as a BD-style pipeline (LOI → Legal → Payment →
+// Design → Project → NSO → Launch), coloured by each module's status. Click a site for its
 // full cross-module history (the /sites/{id}/activity audit feed).
 
 const NODES = [
   { key: 'loi', label: 'LOI' },
   { key: 'legal', label: 'Legal' },
-  { key: 'design', label: 'Design' },
   { key: 'payment', label: 'Pay' },
+  { key: 'design', label: 'Design' },
   { key: 'project', label: 'Project' },
+  { key: 'nso', label: 'NSO' },
+  { key: 'launch', label: 'Launch' },
 ];
 
 const TONE = {
@@ -39,6 +41,10 @@ function toneFor(site, key) {
     case 'design':  return pick(site.designStatus, ['approved'], ['allocated', 'in_progress', 'gfc_pending'], ['rejected']);
     case 'payment': return pick(site.financeStatus, ['approved'], ['awaiting_supervisor', 'awaiting_admin'], []);
     case 'project': return pick(site.projectStatus, ['done', 'completed'], ['allocated', 'budgeting', 'in_progress'], []);
+    case 'nso':     return pick(site.nsoStatus, ['complete'], ['pending', 'in_progress'], []);
+    case 'launch':
+      if (site.isLaunched || site.launchStatus === 'launched') return 'done';
+      return site.nsoStatus === 'complete' ? 'active' : 'pending';
     default: return 'pending';
   }
 }

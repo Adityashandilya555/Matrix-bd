@@ -51,7 +51,7 @@ const CONFIG = {
     icon: 'home',
     eyebrow: 'NSO module',
     title: 'Process flow',
-    lede: 'Read-only state diagram for NSO-stage sites from launch readiness to final approval.',
+    lede: 'Read-only state diagram for NSO-stage sites from project handoff through site launch.',
     list: listNsoHistory,
     listRoute: ROUTES.NSO_PROCESS_FLOW,
     detailRoute: nsoProcessFlowSiteRoute,
@@ -85,7 +85,8 @@ const STAGE_ICONS = {
   ca: 'paymentCard',
   design: 'box',
   project: 'route',
-  final: 'check',
+  nso: 'home',
+  launch: 'flag',
 };
 
 function pretty(value) {
@@ -124,7 +125,10 @@ function buildStages(data) {
   const designActive = !designComplete && isDesignReady(data);
   const projectComplete = data?.projectStatus === 'done';
   const projectActive = !projectComplete && designComplete;
-  const finalActive = projectComplete;
+  const nsoComplete = data?.nsoStatus === 'complete';
+  const nsoActive = !nsoComplete && projectComplete;
+  const launchedComplete = Boolean(data?.isLaunched) || data?.launchStatus === 'launched';
+  const launchedActive = !launchedComplete && nsoComplete;
 
   return [
     {
@@ -158,10 +162,16 @@ function buildStages(data) {
       note: pretty(data?.projectStatus || data?.projectCurrentStage),
     },
     {
-      id: 'final',
-      label: 'Final Approval',
-      state: finalActive ? 'active' : 'queued',
-      note: finalActive ? 'Ready for final gate' : 'Queued',
+      id: 'nso',
+      label: 'NSO',
+      state: nsoComplete ? 'complete' : nsoActive ? 'active' : 'queued',
+      note: pretty(data?.nsoStatus || data?.nsoCurrentStage),
+    },
+    {
+      id: 'launch',
+      label: 'Site Launched',
+      state: launchedComplete ? 'complete' : launchedActive ? 'active' : 'queued',
+      note: launchedComplete ? 'Launched' : launchedActive ? 'Launch pending' : 'Queued',
     },
   ];
 }
@@ -176,7 +186,7 @@ function StageDiagram({ stages }) {
       className="zm-glass"
       style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(6, minmax(128px, 1fr))',
+        gridTemplateColumns: `repeat(${stages.length}, minmax(128px, 1fr))`,
         gap: 14,
         alignItems: 'stretch',
         padding: 18,
@@ -309,7 +319,7 @@ function summaryFor(moduleKey, item) {
   if (moduleKey === 'legal') return [item.legalDdStatus, item.agreementStatus, item.licensingStatus];
   if (moduleKey === 'design') return [item.designStatus, item.currentStage, item.gfcStatus];
   if (moduleKey === 'project') return [item.projectStatus, item.currentStage, item.budgetStatus];
-  return [item.nsoStatus, item.currentStage, item.projectStatus];
+  return [item.nsoStatus, item.currentStage, item.projectStatus, item.launchStatus, item.isLaunched];
 }
 
 export default function ModuleProcessFlowPage({ moduleKey }) {

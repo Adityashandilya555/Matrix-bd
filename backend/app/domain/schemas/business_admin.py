@@ -68,6 +68,11 @@ class AdminSiteOut(BaseModel):
     project_current_stage: Optional[str] = None
     project_budget_status: Optional[str] = None
     project_completed_at: Optional[datetime] = None
+    nso_status: Optional[str] = None
+    nso_current_stage: Optional[str] = None
+    launch_status: Optional[str] = None
+    is_launched: bool = False
+    launched_at: Optional[datetime] = None
     ca_code: Optional[str] = None
     finance_amount: Optional[float] = None
     kyc_verified: bool = False
