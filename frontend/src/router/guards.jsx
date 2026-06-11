@@ -7,8 +7,19 @@ import { ROUTES } from './routes.js';
 // `roles` can contain canonical ROLE values or legacy display values.
 // Treats 'exec' and 'executive' as the same role so HTTP-mode JWTs (which
 // always emit 'executive') match guards that still list the legacy 'exec' alias.
+// Shown while /auth/whoami is still resolving, so a guard never decides off the
+// pre-hydration default session ('supervisor', module=null). (#114)
+function HydratingGate() {
+  return (
+    <div style={{ padding: '4rem', textAlign: 'center', opacity: 0.6 }}>Loading…</div>
+  );
+}
+
 export function RequireRole({ roles, children }) {
-  const { role } = useSession();
+  const { role, authReady } = useSession();
+  // Wait for the real role before judging it — the default pre-hydration role
+  // is 'supervisor', which would misroute execs/business-admins. (#114)
+  if (!authReady) return <HydratingGate />;
   const allowed = new Set(roles);
   if (allowed.has('exec'))      allowed.add('executive');
   if (allowed.has('executive')) allowed.add('exec');
@@ -35,8 +46,11 @@ function homeForSession(role, module) {
 }
 
 export function RequireModule({ modules, children }) {
-  const { role, session } = useSession();
+  const { role, session, authReady } = useSession();
   if (USE_MOCK) return children;
+  // Wait for hydration — pre-hydration `session.module` is undefined, which
+  // would bounce every module user off their deep link on refresh. (#114)
+  if (!authReady) return <HydratingGate />;
   const module = session?.module;
   if (!module || !modules.includes(module)) {
     return <Navigate to={homeForSession(role, module)} replace />;

@@ -153,9 +153,12 @@ export default function DdrPage() {
   const [delegations, setDelegations] = React.useState([]);
   const [selectedExec, setSelectedExec] = React.useState('');
   const [delegating, setDelegating] = React.useState(false);
+  // Distinguishes a real load failure from a genuinely empty list (#143)
+  const [delegationsError, setDelegationsError] = React.useState(null);
 
   const loadDelegations = React.useCallback(async () => {
     if (!siteId) return;
+    setDelegationsError(null);
     try {
       if (isExecutive) {
         const r = await listMyLegalAssignments();
@@ -169,6 +172,7 @@ export default function DdrPage() {
       setDelegations(r.items || []);
     } catch {
       setDelegations([]);
+      setDelegationsError('Could not load the executive list — refresh to retry.');
     }
   }, [siteId, isExecutive, myUserId]);
 
@@ -525,6 +529,9 @@ export default function DdrPage() {
 
       {isSupervisor && (
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {delegationsError && (
+            <div role="alert" style={{ flexBasis: '100%', fontSize: 12, color: 'var(--zm-danger)' }}>{delegationsError}</div>
+          )}
           <select
             value={selectedExec}
             onChange={(e) => setSelectedExec(e.target.value)}

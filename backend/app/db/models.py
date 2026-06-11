@@ -135,6 +135,14 @@ class Site(Base):
     design_status: Mapped[Optional[str]] = mapped_column(Text, server_default="pending")
     design_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
+    # Project (execution) module mirror — the live column already exists
+    # (NOT NULL DEFAULT 'pending', CHECK over pending/allocated/budgeting/
+    # in_progress/done) but was unmapped and unwritten, so every completed store
+    # read 'pending' forever. project_service now mirrors each milestone here,
+    # matching the legal/design/finance mirror contract BD/BI read. (#134)
+    project_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    project_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
     # Finance / CA code flow (managed from the Site Tracker Finance tab).
     # Once ca_code is set it replaces site.code as the display identifier.
     kyc_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")

@@ -69,14 +69,24 @@ function homeForRoleModule(role, module) {
 
 function RequireAuth({ children }) {
   const token = useAuthToken();
-  const { role } = useSession();
+  const { role, authReady } = useSession();
   if (USE_MOCK) return children; // mock mode is always "signed in"
   if (!token)   return <Navigate to={LANDING_PATH} replace/>;
+  // Block the authed shell until /auth/whoami resolves. This single gate keeps
+  // IndexRedirect and every nested module/role guard from evaluating the
+  // pre-hydration default session ('supervisor', module=null) on refresh /
+  // deep-link, which otherwise misroutes module users and strands execs. (#114)
+  if (!authReady) return <HydratingFallback/>;
   // Business admins have no presence in the tenant app shell — their entire
   // surface lives at /business-admin. Forward them out of any BD/legal/payment
   // route so they cannot land on a chrome that isn't meant for them.
   if (role === 'business_admin') return <Navigate to="/business-admin" replace/>;
   return children;
+}
+
+function HydratingFallback() {
+  // Neutral full-height placeholder while the session hydrates.
+  return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', opacity: 0.6 }}>Loading…</div>;
 }
 
 function LandingFallback() {

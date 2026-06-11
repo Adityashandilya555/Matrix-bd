@@ -130,6 +130,16 @@ async def approve_supervisor(
     module: Module,
 ) -> None:
     async with transaction(session):
+        # Only act on a genuinely PENDING candidate in this tenant. Without this
+        # guard a re-submit (double-click) re-activates the row and tries to
+        # inject a second membership — which the UNIQUE(user_id, module) then
+        # rejects as an unhandled 500. Idempotent no-op instead. (#123)
+        target = (await session.execute(
+            text("SELECT is_active FROM users WHERE id = CAST(:uid AS uuid) AND tenant_id = :tid"),
+            {"uid": user_id, "tid": tenant_id},
+        )).mappings().first()
+        if not target or target["is_active"]:
+            return
         await session.execute(
             text("""
                 UPDATE users
@@ -140,11 +150,14 @@ async def approve_supervisor(
             """),
             {"uid": user_id, "tid": tenant_id},
         )
+        # ON CONFLICT guards the residual race where two approvals slip past the
+        # pending check concurrently.
         await session.execute(
             text("""
                 INSERT INTO user_module_memberships
                        (user_id, tenant_id, module, role_in_module, supervisor_id)
                 VALUES (CAST(:uid AS uuid), :tid, :module, 'supervisor', NULL)
+                ON CONFLICT (user_id, module) DO NOTHING
             """),
             {"uid": user_id, "tid": tenant_id, "module": module},
         )

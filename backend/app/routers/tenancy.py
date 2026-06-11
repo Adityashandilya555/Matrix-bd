@@ -24,6 +24,7 @@ from sqlalchemy import func, select, text
 from app.core.config import settings
 from app.core.deps import CurrentUser, DbDep, TenantId
 from app.core.passwords import hash_password
+from app.core.uploads import read_upload_capped
 from app.db import models
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
@@ -754,7 +755,8 @@ async def public_branding(code: str, db: DbDep) -> dict:
     if logo and not logo.startswith("http"):
         try:
             logo = await signed_url(logo, expires_in=3600)
-        except Exception:
+        except Exception as exc:
+            logger.debug("public_branding: could not sign logo for code=%s: %s", code, exc)
             logo = None
     return {"name": row["name"], "logo_url": logo}
 
@@ -781,7 +783,7 @@ async def set_tenant_branding(
 
     logo_path = tenant["logo_url"]
     if logo is not None:
-        body = await logo.read()
+        body = await read_upload_capped(logo)
         if body:
             safe = safe_object_name(logo.filename or "logo.png")
             logo_path = f"branding/{tenant_id}/{safe}"

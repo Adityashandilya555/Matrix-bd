@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     db_pool_size: int = 5
     db_max_overflow: int = 10
     db_pool_recycle_seconds: int = 300
+    # asyncpg timeouts (both pgBouncer-safe). Without them asyncpg waits
+    # forever, so one stuck query or connection pins a pooler slot indefinitely
+    # and cascades into pool exhaustion under load (#90).
+    db_command_timeout_seconds: float = 30.0
+    db_connect_timeout_seconds: float = 10.0
 
     # ── Auth ────────────────────────────────────────────────────────────────
     supabase_jwt_secret: str = "change-me-in-production"
@@ -55,6 +60,11 @@ class Settings(BaseSettings):
     supabase_project_url: str = ""
     supabase_service_role_key: str = ""
     supabase_storage_bucket: str = "site-files"
+    # Hard cap (bytes) on any single uploaded file. Without it every upload
+    # endpoint buffered the whole body in RAM uncapped — a few large/malicious
+    # uploads OOM the backend and drop all sessions (#93). 25 MB covers LOI
+    # PDFs, site photos, quality-audit reports, and branding logos.
+    max_upload_bytes: int = 25 * 1024 * 1024
 
     # ── Platform admin (workspace-request approval) ─────────────────────────
     # The portal at /admin uses a baked-in email + password pair (overridable

@@ -10,6 +10,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.core.deps import DbDep, TenantId
+from app.core.uploads import read_upload_capped
 from app.domain.schemas.common import OkResponse
 from app.domain.schemas.loi import LOIUploadResponse, LOIViewResponse, SetLOITimelineRequest
 from app.rbac.guards import require_role
@@ -32,7 +33,7 @@ async def upload_loi(
     tenant_id: TenantId,
     file: UploadFile = File(...),
 ) -> LOIUploadResponse:
-    body = await file.read()
+    body = await read_upload_capped(file)
     return await svc_upload_loi(
         db,
         tenant_id=tenant_id, actor=current_user, site_id=site_id,

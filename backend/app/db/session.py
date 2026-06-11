@@ -28,7 +28,7 @@ from sqlalchemy.pool import NullPool
 from app.core.config import settings
 
 
-def _make_engine() -> AsyncEngine:
+def _build_engine_kwargs(database_url: str) -> dict:
     # Supabase's transaction pooler is pgBouncer in transaction mode, which
     # does NOT support prepared statements. The documented fix when going
     # through pgBouncer is:
@@ -37,19 +37,33 @@ def _make_engine() -> AsyncEngine:
     #      transactions (pgBouncer assigns a different backend per txn anyway,
     #      and SQLAlchemy's own pool would hand out connections that
     #      already-cached statements at the asyncpg layer).
-    is_pooler = ":6543/" in settings.database_url or "pooler.supabase.com" in settings.database_url
+    is_pooler = ":6543/" in database_url or "pooler.supabase.com" in database_url
+
+    # asyncpg connect_args. `command_timeout` caps any single query and
+    # `timeout` caps connection establishment — both pgBouncer-safe. asyncpg's
+    # defaults are *wait forever*, so without these one stuck query holds its
+    # connection (and pooler slot) indefinitely and the app stalls under load.
+    connect_args: dict = {
+        "command_timeout": settings.db_command_timeout_seconds,
+        "timeout": settings.db_connect_timeout_seconds,
+    }
     kwargs: dict = {
         "echo": settings.debug,
     }
     if is_pooler:
         kwargs["poolclass"]   = NullPool
-        kwargs["connect_args"] = {"statement_cache_size": 0}
+        connect_args["statement_cache_size"] = 0
     else:
         kwargs["pool_size"]       = settings.db_pool_size
         kwargs["max_overflow"]    = settings.db_max_overflow
         kwargs["pool_pre_ping"]   = True
         kwargs["pool_recycle"]    = settings.db_pool_recycle_seconds
-    return create_async_engine(settings.database_url, **kwargs)
+    kwargs["connect_args"] = connect_args
+    return kwargs
+
+
+def _make_engine() -> AsyncEngine:
+    return create_async_engine(settings.database_url, **_build_engine_kwargs(settings.database_url))
 
 
 engine: AsyncEngine = _make_engine()

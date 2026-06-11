@@ -29,6 +29,36 @@ _ROLE_ALIASES = {
 }
 
 
+def _membership_from_notes(notes: Optional[str]) -> Optional[tuple[str, str, Optional[str]]]:
+    """Decode a pending-signup `notes` marker into a module membership.
+
+    Module-code / supervisor-code signups stash their intended module in
+    `users.notes` until approval (see auth.py signup routes):
+
+        pending_module:<m>                     → supervisor for module <m>
+        pending_supervisor:<sid>|module:<m>    → executive under <sid> in <m>
+
+    Returns ``(module, role_in_module, supervisor_id)`` or ``None`` for the
+    generic (module-less) workspace-code signups. Used so the generic Team
+    approval path also provisions the membership row module-gated routes need
+    (#121) — otherwise the user activates with module=None and is stranded.
+    """
+    if not notes:
+        return None
+    notes = notes.strip()
+    if notes.startswith("pending_supervisor:"):
+        rest = notes[len("pending_supervisor:"):]
+        sid, _, module = rest.partition("|module:")
+        if sid and module:
+            return (module, "executive", sid)
+        return None
+    if notes.startswith("pending_module:"):
+        module = notes[len("pending_module:"):]
+        if module:
+            return (module, "supervisor", None)
+    return None
+
+
 @router.get("/me", summary="Get current user")
 async def get_me(current_user: CurrentUser) -> dict:
     return current_user
@@ -129,7 +159,7 @@ async def assign_role(
     # 1. Confirm the pending user exists in this tenant.
     user_row = (await db.execute(
         text("""
-            SELECT id, email, name, role, is_active
+            SELECT id, email, name, role, is_active, notes
               FROM users
              WHERE id = CAST(:uid AS uuid) AND tenant_id = :tid
              FOR UPDATE
@@ -146,18 +176,39 @@ async def assign_role(
 
     # 2. Activate the public.users row. The user's next /auth/login call will
     #    see is_active=true and the new role, and a JWT will be minted with
-    #    those claims.
+    #    those claims. Clear the pending-signup marker so it doesn't linger in
+    #    `notes` and confuse the module approval queues (#121).
     await db.execute(
         text("""
             UPDATE users
                SET role          = :role,
                    assigned_city = :city,
                    is_active     = true,
+                   notes         = NULL,
                    name          = COALESCE(:name, name)
              WHERE id = CAST(:uid AS uuid) AND tenant_id = :tid
         """),
         {"role": body.role, "city": body.city, "name": body.name, "uid": user_id, "tid": tenant_id},
     )
+
+    # 2b. If this pending user came from a module-/supervisor-code signup, its
+    #     intended module lived in `notes`. The module-gated routes and queues
+    #     key off user_module_memberships, so provision that row here too —
+    #     otherwise the login JWT carries module=None and the user is stranded
+    #     (can act in no module AND has vanished from the module queues). (#121)
+    membership = _membership_from_notes(user_row["notes"])
+    if membership is not None:
+        module, role_in_module, supervisor_id = membership
+        await db.execute(
+            text("""
+                INSERT INTO user_module_memberships
+                       (user_id, tenant_id, module, role_in_module, supervisor_id)
+                VALUES (CAST(:uid AS uuid), :tid, :module, :rim, CAST(:sid AS uuid))
+                ON CONFLICT (user_id, module) DO NOTHING
+            """),
+            {"uid": user_id, "tid": tenant_id, "module": module,
+             "rim": role_in_module, "sid": supervisor_id},
+        )
 
     # 3. Audit.
     await write_audit_event(

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from pydantic import BaseModel
 
 from app.core.deps import CurrentUser, DbDep, TenantId
+from app.core.uploads import read_upload_capped
 from app.domain.schemas.audit import AuditListResponse
 from app.domain.schemas.common import OkResponse
 from app.domain.schemas.loi import LOIUploadResponse
@@ -443,7 +444,7 @@ async def upload_site_photo(
     frontend can replace its local blob URL with the persisted signed URL.
     """
     from app.services.photo_service import svc_upload_photo
-    body = await file.read()
+    body = await read_upload_capped(file)
     return await svc_upload_photo(
         db,
         tenant_id=tenant_id,
@@ -543,7 +544,7 @@ async def upload_loi_alias(
     tenant_id: TenantId,
     file: UploadFile = File(...),
 ) -> LOIUploadResponse:
-    body = await file.read()
+    body = await read_upload_capped(file)
     return await svc_upload_loi(
         db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
         filename=file.filename or "loi.pdf", content_type=file.content_type, file_bytes=body,

@@ -1,0 +1,49 @@
+"""Shared upload helpers.
+
+`read_upload_capped` is the single guard every multipart endpoint uses to read a
+file body. It enforces a hard size cap — first via the declared part size when
+present, then defensively while streaming — so no endpoint can buffer an
+unbounded body into process memory and OOM the backend (#93).
+"""
+from __future__ import annotations
+
+from fastapi import HTTPException, UploadFile, status
+
+from app.core.config import settings
+
+# Read the spooled file in 1 MB chunks so we never materialise more than the cap
+# (plus one chunk) in memory before rejecting an oversized upload.
+_CHUNK_BYTES = 1024 * 1024
+
+
+def _too_large(limit: int) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        detail=f"File too large. Maximum upload size is {limit // (1024 * 1024)} MB.",
+    )
+
+
+async def read_upload_capped(file: UploadFile, *, max_bytes: int | None = None) -> bytes:
+    """Read an UploadFile fully, but never more than ``max_bytes``.
+
+    Raises 413 if the declared part size exceeds the cap (fast path) or if the
+    streamed body grows past it (defensive — a lying/absent Content-Length).
+    """
+    limit = max_bytes if max_bytes is not None else settings.max_upload_bytes
+
+    # Fast reject when the multipart part already declares an oversized body.
+    declared = getattr(file, "size", None)
+    if declared is not None and declared > limit:
+        raise _too_large(limit)
+
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(_CHUNK_BYTES)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            raise _too_large(limit)
+        chunks.append(chunk)
+    return b"".join(chunks)

@@ -31,3 +31,12 @@ dev = [
 include = ["app*"]
 exclude = ["database*", "tests*", ".venv*"]
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+

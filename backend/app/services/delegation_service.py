@@ -20,6 +20,7 @@ API surface (see `routers/delegations.py`):
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
@@ -33,6 +34,8 @@ from app.db.session import transaction
 from app.domain.schemas.common import OkResponse
 from app.services._common import fetch_site_or_404
 from app.services.audit_service import write_audit_event
+
+logger = logging.getLogger(__name__)
 
 
 async def svc_grant_delegation(
@@ -439,6 +442,10 @@ async def svc_assigned_sites(
         rows = (await session.execute(stmt)).scalars().all()
         return [str(r) for r in rows]
     except Exception:
+        logger.exception(
+            "delegation_service.svc_assigned_sites failed (tenant=%s, user=%s, module=%s) — "
+            "returning safe default []", tenant_id, user_id, module,
+        )
         return []
 
 
@@ -467,6 +474,10 @@ async def svc_is_delegated(
         )).first()
         return row is not None
     except Exception:
+        logger.exception(
+            "delegation_service.svc_is_delegated failed (tenant=%s, site=%s, user=%s, module=%s) — "
+            "returning safe default False", tenant_id, site_id, user_id, module,
+        )
         return False
 
 
@@ -491,6 +502,10 @@ async def svc_list_legal_delegations_for_site(
         )
         rows = (await session.execute(stmt)).all()
     except Exception:
+        logger.exception(
+            "delegation_service.svc_list_legal_delegations_for_site failed (tenant=%s, site=%s) — "
+            "returning empty list", tenant_id, site_id,
+        )
         return {"items": [], "total": 0}
     return {
         "items": [
@@ -541,6 +556,10 @@ async def svc_list_my_legal_assignments(
         )
         rows = (await session.execute(stmt)).all()
     except Exception:
+        logger.exception(
+            "delegation_service.svc_list_my_legal_assignments failed (tenant=%s, actor=%s) — "
+            "returning empty list", tenant_id, actor.get("sub"),
+        )
         return {"items": [], "total": 0}
 
     return {

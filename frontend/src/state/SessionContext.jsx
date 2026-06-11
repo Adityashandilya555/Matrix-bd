@@ -21,6 +21,15 @@ const INITIAL_SESSION = {
 
 const SessionContext = createContext(null);
 
+// Only a genuine auth rejection (401/403) means the token is stale and should
+// be dropped. A timeout / network blip / 5xx surfaces as ApiError status 0 or
+// >=500 — those must NOT log the user out (a Railway cold start would sign
+// everyone out on refresh). Exported for tests. (#128)
+export function isAuthRejection(err) {
+  const status = err?.status;
+  return status === 401 || status === 403;
+}
+
 export function SessionProvider({ children }) {
   const [session, setSession] = useState(INITIAL_SESSION);
   // authReady: false until the first /auth/whoami resolves (HTTP mode). The
@@ -82,11 +91,17 @@ export function SessionProvider({ children }) {
           userId:    claims.sub || INITIAL_SESSION.userId || null,
         });
       } catch (err) {
-        // 401/403 → token is stale or app_metadata missing. Clear so the UI
-        // bounces back to the landing page.
-        // eslint-disable-next-line no-console
-        console.warn('[session] /auth/whoami failed — clearing token', err);
-        clearAuthToken();
+        if (isAuthRejection(err)) {
+          // Stale token / missing app_metadata — clear so the UI routes to login.
+          // eslint-disable-next-line no-console
+          console.warn('[session] /auth/whoami unauthorized — clearing token', err);
+          clearAuthToken();
+        } else {
+          // Transient (timeout / network / 5xx). Keep the token so the user
+          // isn't logged out by a slow backend; a refresh re-hydrates. (#128)
+          // eslint-disable-next-line no-console
+          console.warn('[session] /auth/whoami failed transiently — keeping token', err);
+        }
       } finally {
         // Session resolved (success or failure) — role is now authoritative,
         // so role-gated shell calls are safe to fire.

@@ -91,6 +91,8 @@ def site_to_response(
     assigned_to_name: str | None = None,
     details: models.SiteDetail | None = None,
     project: models.ProjectReview | None = None,
+    approval: models.Approval | None = None,
+    approved_by_name: str | None = None,
 ) -> SiteResponse:
     """Map an ORM Site into the API SiteResponse Pydantic model."""
     rent = _float_or_none(site.expected_rent)
@@ -149,6 +151,14 @@ def site_to_response(
         kyc_verified=bool(site.kyc_verified),
         ca_code=site.ca_code,
         finance_amount=_float_or_none(site.finance_amount),
+        # LOI SLA tracking (#115)
+        expected_loi_days=approval.expected_loi_days if approval else None,
+        approved_at=site.approved_at,
+        approved_by=approved_by_name,
+        loi_uploaded_at=site.loi_uploaded_at,
+        # Reject / archive justification (#126)
+        rejection_reason=site.rejection_reason,
+        archive_note=site.archive_note,
         archived_at=site.archived_at,
         updated_at=site.updated_at,
     )

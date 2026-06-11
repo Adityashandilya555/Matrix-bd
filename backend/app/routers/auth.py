@@ -206,11 +206,17 @@ async def login(payload: LoginIn, db: DbDep):
         await db.commit()
 
     # 4. Active user → mint a JWT. Optionally enrich with module membership.
+    # A user may belong to multiple modules (the table only enforces
+    # UNIQUE(user_id, module)). Without an ORDER BY, Postgres returns an
+    # arbitrary row, so the JWT's module claim — and therefore which
+    # require_module routes the user can reach — flips between logins (#124).
+    # Order deterministically so the chosen module is stable across sessions.
     membership = (await db.execute(
         text("""
             SELECT module, role_in_module, supervisor_id
               FROM user_module_memberships
              WHERE user_id = :uid
+             ORDER BY module
              LIMIT 1
         """),
         {"uid": user["id"]},

@@ -28,6 +28,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status as http_status
 
 from app.core.deps import DbDep, TenantId
+from app.core.uploads import read_upload_capped
 from app.domain.schemas.common import OkResponse
 from app.domain.schemas.design import (
     AdminReviewDeliverableRequest,
@@ -306,7 +307,7 @@ async def upload_deliverable(
     tenant_id: TenantId,
     file: UploadFile = File(...),
 ) -> DesignReviewResponse:
-    body_bytes = await file.read()
+    body_bytes = await read_upload_capped(file)
     safe_name = (file.filename or "document").replace("/", "_").replace("\\", "_")
     path = f"design/{site_id}/{kind}/{safe_name}"
     await storage_upload(

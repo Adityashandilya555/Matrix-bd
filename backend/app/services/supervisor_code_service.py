@@ -87,6 +87,15 @@ async def approve_my_pending_exec(
     module: str,
 ) -> None:
     async with transaction(session):
+        # Guard against approving an already-active user (double-click / replay):
+        # only a pending row gets activated, and the membership INSERT is made
+        # idempotent so the UNIQUE(user_id, module) can't 500 the request. (#123)
+        target = (await session.execute(
+            text("SELECT is_active FROM users WHERE id = :uid AND tenant_id = :tid"),
+            {"uid": user_id, "tid": tenant_id},
+        )).mappings().first()
+        if not target or target["is_active"]:
+            return
         await session.execute(
             text(
                 "UPDATE users SET is_active = true, notes = NULL "
@@ -98,7 +107,8 @@ async def approve_my_pending_exec(
             text(
                 "INSERT INTO user_module_memberships "
                 "(user_id, tenant_id, module, role_in_module, supervisor_id) "
-                "VALUES (:uid, :tid, :module, 'executive', :sid)"
+                "VALUES (:uid, :tid, :module, 'executive', :sid) "
+                "ON CONFLICT (user_id, module) DO NOTHING"
             ),
             {"uid": user_id, "tid": tenant_id, "module": module, "sid": supervisor_id},
         )

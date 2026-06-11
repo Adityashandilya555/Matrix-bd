@@ -7,6 +7,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from app.core.deps import DbDep, TenantId
+from app.core.uploads import read_upload_capped
 from app.domain.schemas.common import OkResponse
 from app.domain.schemas.project import (
     AdminBudgetReviewRequest,
@@ -307,7 +308,7 @@ async def upload_project_quality_audit(
     inspection_date: Optional[str] = Form(None),
 ) -> ProjectStateResponse:
     """Executive uploads the quality-audit report + inspection date, then submits."""
-    body_bytes = await file.read()
+    body_bytes = await read_upload_capped(file)
     safe_name = (file.filename or "quality_audit").replace("/", "_").replace("\\", "_")
     parsed_date: Optional[date] = None
     if inspection_date:

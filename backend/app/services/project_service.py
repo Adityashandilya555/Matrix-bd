@@ -534,6 +534,7 @@ async def svc_allocate_project(
         review.allocated_to = delegate.id
         review.project_status = "allocated"
         review.current_stage = "budget"
+        site.project_status = "allocated"  # keep the sites mirror in sync (#134)
         await write_audit_event(
             session,
             tenant_id=tenant_id,
@@ -621,6 +622,7 @@ async def svc_save_budget(
         review.covers = body.covers
         review.project_status = "budgeting"
         review.current_stage = "budget"
+        site.project_status = "budgeting"  # keep the sites mirror in sync (#134)
         if body.action == "submit":
             review.budget_status = "pending_admin" if _is_supervisor(actor) else "pending_supervisor"
         else:
@@ -708,6 +710,7 @@ async def svc_admin_review_budget(
             review.budget_status = "approved"
             review.project_status = "in_progress"
             review.current_stage = "execution"
+            site.project_status = "in_progress"  # keep the sites mirror in sync (#134)
             # The admin sets the project initialization date here (UI defaults
             # it to today + 2 days). It then goes to the executive to accept/
             # reject, so the status becomes 'proposed'.
@@ -756,6 +759,8 @@ async def svc_submit_milestone(
             review.project_status = "done"
             review.current_stage = "done"
             review.project_completed_at = datetime.now(timezone.utc)
+            site.project_status = "done"  # keep the sites mirror in sync (#134)
+            site.project_completed_at = review.project_completed_at
         else:
             raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail=f"Unsupported milestone field: {field}")
         await write_audit_event(
@@ -908,22 +913,34 @@ async def svc_submit_quality_audit_report(
     inspection_date: Optional[date],
 ) -> ProjectStateResponse:
     """Executive uploads the quality-audit report + inspection date, then submits for review."""
+    # Pure param check — fail before any DB/Storage work.
+    if inspection_date is None:
+        raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Inspection date is required.")
+
+    # Validate read-only first, then release the connection BEFORE the slow
+    # Supabase Storage upload. Running upload_bytes inside the transaction (the
+    # old shape) pinned a pgBouncer slot for the whole 30s HTTP budget and
+    # exhausted the pool under load (#89).
+    site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+    await _assert_can_work_project(session, tenant_id=tenant_id, actor=actor, site_id=site.id)
+    review = await _fetch_review_or_create(session, site=site)
+    if review.mid_project_visit_date is None:
+        raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Mid-project visit date must be set before the quality audit.")
+    await session.rollback()  # end the implicit read txn → free the slot for the upload
+
+    file_id = uuid4()
+    safe_name = f"{file_id.hex[:8]}_{safe_object_name(filename, fallback='quality_audit')}"
+    storage_path = f"quality_audit/{site_id}/{safe_name}"
+    await upload_bytes(
+        path=storage_path,
+        body=file_bytes,
+        content_type=content_type or "application/pdf",
+    )
+
     async with transaction(session):
+        # Re-load inside the write txn (the read above was rolled back).
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        await _assert_can_work_project(session, tenant_id=tenant_id, actor=actor, site_id=site.id)
         review = await _fetch_review_or_create(session, site=site)
-        if review.mid_project_visit_date is None:
-            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Mid-project visit date must be set before the quality audit.")
-        if inspection_date is None:
-            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Inspection date is required.")
-        file_id = uuid4()
-        safe_name = f"{file_id.hex[:8]}_{safe_object_name(filename, fallback='quality_audit')}"
-        storage_path = f"quality_audit/{site.id}/{safe_name}"
-        await upload_bytes(
-            path=storage_path,
-            body=file_bytes,
-            content_type=content_type or "application/pdf",
-        )
         session.add(models.SiteFile(
             id=file_id,
             tenant_id=tenant_id,
@@ -973,6 +990,8 @@ async def svc_review_quality_audit(
             review.project_status = "done"
             review.current_stage = "done"
             review.project_completed_at = now
+            site.project_status = "done"  # keep the sites mirror in sync (#134)
+            site.project_completed_at = now
             review.nso_status = "pushed"
             review.pushed_to_nso_at = now
         else:

@@ -15,6 +15,12 @@ import { notifySiteDataChanged } from '../siteEvents.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
 const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
+// Multipart uploads relay the body to Supabase Storage (its own 30s budget)
+// before responding, so the default 20s client timeout fires first on big
+// files / slow links — axios reports a bare "Network Error" while the upload
+// actually completes server-side and the user re-uploads needlessly. Give
+// uploads the same longer budget designApi already uses. (#127)
+const UPLOAD_TIMEOUT_MS = Number(import.meta.env.VITE_API_UPLOAD_TIMEOUT_MS ?? 120000);
 
 const client = axios.create({ baseURL: BASE_URL, timeout: TIMEOUT_MS });
 
@@ -91,8 +97,28 @@ function detailsToServer(details = {}) {
 
 // ── snake_case → camelCase response shaping ─────────────────────────────────
 
-function siteFromServer(s) {
+// Whole-day difference between two dates (or a Date.now() number). Returns null
+// if either side is missing/unparseable. Used to derive the LOI SLA clocks the
+// staging pages read (#115).
+function _dayDiff(a, b) {
+  if (!a || !b) return null;
+  const da = new Date(a).getTime();
+  const db = new Date(b).getTime();
+  if (Number.isNaN(da) || Number.isNaN(db)) return null;
+  return Math.max(0, Math.floor((db - da) / 86400000));
+}
+
+export function siteFromServer(s) {
   if (!s) return s;
+  // LOI SLA tracking — previously supplied ONLY by the mock adapter, so the
+  // staging tracker rendered fabricated 0s in production. Map the real wire
+  // fields and derive the day counts the staging shapes consume. (#115)
+  const _approvedDate = s.approved_at ? String(s.approved_at).slice(0, 10) : '';
+  const _loiUploadedAt = s.loi_uploaded_at ?? null;
+  const _daysToLOI = (s.approved_at && s.loi_uploaded_at)
+    ? _dayDiff(s.approved_at, s.loi_uploaded_at)
+    : null;
+  const _daysSinceApproval = s.approved_at ? (_dayDiff(s.approved_at, Date.now()) ?? 0) : 0;
   const details = {
     name: s.name,
     visitDate: s.visit_date,
@@ -180,6 +206,17 @@ function siteFromServer(s) {
     kycVerified: s.kyc_verified ?? false,
     caCode: s.ca_code ?? null,
     financeAmount: s.finance_amount ?? null,
+    // LOI SLA tracking (staging pages read these) (#115)
+    expectedLoiDays: s.expected_loi_days ?? null,
+    _approvedDate,
+    _approvedBy: s.approved_by ?? '',
+    _daysSinceApproval,
+    _loiUploadedAt,
+    _daysToLOI,
+    // Reject / archive justification (Archive page Reason column) (#126)
+    rejectionReason: s.rejection_reason ?? null,
+    rejectionReasons: s.rejection_reason ? [s.rejection_reason] : [],
+    archiveNote: s.archive_note ?? '',
     updatedAt: s.updated_at,
     _archivedAt: s.archived_at ? String(s.archived_at).slice(0, 10) : undefined,
   };
@@ -278,6 +315,7 @@ export async function uploadLoi(id, file) {
   }
   const r = await client.post(`/sites/${id}/loi`, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: UPLOAD_TIMEOUT_MS,
   });
   return r.data;
 }
@@ -291,6 +329,7 @@ export async function uploadPhoto(id, file) {
   }
   const r = await client.post(`/sites/${id}/photos`, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: UPLOAD_TIMEOUT_MS,
   });
   // Backend returns { id, url, file_name, file_size_kb, mime_type }
   return {

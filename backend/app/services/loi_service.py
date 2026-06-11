@@ -32,29 +32,40 @@ async def svc_upload_loi(
 ) -> LOIUploadResponse:
     """Upload the signed LOI: transitions approved -> loi_uploaded, stores the
     file in Supabase Storage, persists a site_files row, writes audit + outbox."""
-    async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        # Site owner restriction (Todo #6). The executive who originally
-        # captured the site may upload the LOI. Supervisor-created pipelines
-        # are handed off through `assigned_to`, so that assigned executive must
-        # also be allowed to complete the LOI step.
-        actor_role = (actor.get("role") or "").lower()
-        actor_id = str(actor["sub"])
-        submitted_by = str(site.submitted_by) if site.submitted_by else None
-        assigned_to = str(site.assigned_to) if site.assigned_to else None
-        if actor_role == "executive" and actor_id not in {submitted_by, assigned_to}:
-            raise HTTPException(
-                status_code=http_status.HTTP_403_FORBIDDEN,
-                detail="Only the executive who submitted or was assigned this site can upload its LOI.",
-            )
-        assert_transition(SiteStatus(site.status), SiteStatus.LOI_UPLOADED)
+    # Validate read-only FIRST, capturing what we need, then release the
+    # connection BEFORE the slow Supabase Storage upload. Running the upload
+    # inside the transaction (the old shape) pinned a pgBouncer slot for the
+    # whole 30s HTTP budget and exhausted the pool under load (#89).
+    site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+    # Site owner restriction (Todo #6). The executive who originally captured
+    # the site may upload the LOI. Supervisor-created pipelines are handed off
+    # through `assigned_to`, so that assigned executive must also be allowed.
+    actor_role = (actor.get("role") or "").lower()
+    actor_id = str(actor["sub"])
+    submitted_by = str(site.submitted_by) if site.submitted_by else None
+    assigned_to = str(site.assigned_to) if site.assigned_to else None
+    status_now = site.status
+    await session.rollback()  # end the implicit read txn → free the slot for the upload
 
-        # Sanitise the storage key — Supabase rejects non-ASCII keys (400).
-        # The original name is kept on the file_name column for display.
-        storage_path = f"loi/{tenant_id}/{site_id}/{safe_object_name(filename, fallback='loi.pdf')}"
-        await upload_bytes(
-            path=storage_path, body=file_bytes, content_type=content_type or "application/pdf",
+    if actor_role == "executive" and actor_id not in {submitted_by, assigned_to}:
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Only the executive who submitted or was assigned this site can upload its LOI.",
         )
+    assert_transition(SiteStatus(status_now), SiteStatus.LOI_UPLOADED)
+
+    # Sanitise the storage key — Supabase rejects non-ASCII keys (400).
+    # The original name is kept on the file_name column for display.
+    storage_path = f"loi/{tenant_id}/{site_id}/{safe_object_name(filename, fallback='loi.pdf')}"
+    await upload_bytes(
+        path=storage_path, body=file_bytes, content_type=content_type or "application/pdf",
+    )
+
+    async with transaction(session):
+        # Re-load inside the write txn and re-assert — the validation above can
+        # race a concurrent transition.
+        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        assert_transition(SiteStatus(site.status), SiteStatus.LOI_UPLOADED)
 
         session.add(models.SiteFile(
             tenant_id=tenant_id,

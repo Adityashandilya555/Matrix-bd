@@ -5,6 +5,7 @@ state machine transitions.
 """
 from __future__ import annotations
 
+import logging
 from typing import Optional
 from uuid import UUID
 
@@ -15,6 +16,8 @@ from app.db import models
 from app.domain.schemas.audit import AuditEvent, AuditListResponse
 from app.domain.schemas.site import SiteListResponse, SiteResponse
 from app.services._common import apply_role_scope, fetch_site_or_404, site_to_response
+
+logger = logging.getLogger(__name__)
 
 
 # Slice U3 adds a `stage` column on legal_dd_checklist + site_licensing
@@ -35,6 +38,9 @@ def _row_stage(row) -> str:
     try:
         return getattr(row, "stage", "published") or "published"
     except Exception:  # pragma: no cover — defensive
+        logger.exception(
+            "query_service._row_stage: unexpected error reading stage — defaulting to 'published'",
+        )
         return "published"
 
 
@@ -87,17 +93,14 @@ async def list_sites(
     stmt = stmt.order_by(desc(models.Site.updated_at)).limit(limit)
     rows = (await session.execute(stmt)).scalars().all()
 
-    # Resolve names for the SiteResponse.created_by / assigned_to fields in one query.
+    # Collect detail/project/approval rows first, then resolve all the user ids
+    # (submitter + assignee + approver) in one names query.
     submitter_ids = {r.submitted_by for r in rows if r.submitted_by}
     assignee_ids = {r.assigned_to for r in rows if r.assigned_to}
     site_ids = [r.id for r in rows]
-    names = {}
-    user_ids = submitter_ids | assignee_ids
-    if user_ids:
-        u_stmt = select(models.User.id, models.User.name).where(models.User.id.in_(user_ids))
-        names = dict((u_id, n) for u_id, n in (await session.execute(u_stmt)).all())
     detail_by_site = {}
     project_by_site = {}
+    approval_by_site = {}
     if site_ids:
         d_stmt = select(models.SiteDetail).where(models.SiteDetail.site_id.in_(site_ids))
         details = (await session.execute(d_stmt)).scalars().all()
@@ -105,6 +108,22 @@ async def list_sites(
         p_stmt = select(models.ProjectReview).where(models.ProjectReview.site_id.in_(site_ids))
         projects = (await session.execute(p_stmt)).scalars().all()
         project_by_site = {p.site_id: p for p in projects}
+        # Latest approval per site carries expected_loi_days + the approver, which
+        # power the LOI SLA tracker (#115). desc(created_at) → first seen is newest.
+        a_stmt = (
+            select(models.Approval)
+            .where(models.Approval.site_id.in_(site_ids))
+            .order_by(desc(models.Approval.created_at))
+        )
+        for a in (await session.execute(a_stmt)).scalars().all():
+            approval_by_site.setdefault(a.site_id, a)
+
+    approver_ids = {a.approver_id for a in approval_by_site.values() if a.approver_id}
+    names = {}
+    user_ids = submitter_ids | assignee_ids | approver_ids
+    if user_ids:
+        u_stmt = select(models.User.id, models.User.name).where(models.User.id.in_(user_ids))
+        names = dict((u_id, n) for u_id, n in (await session.execute(u_stmt)).all())
 
     items = [
         site_to_response(
@@ -113,6 +132,10 @@ async def list_sites(
             assigned_to_name=names.get(r.assigned_to, "") if r.assigned_to else None,
             details=detail_by_site.get(r.id),
             project=project_by_site.get(r.id),
+            approval=approval_by_site.get(r.id),
+            approved_by_name=(
+                names.get(approval_by_site[r.id].approver_id) if r.id in approval_by_site else None
+            ),
         )
         for r in rows
     ]
@@ -141,12 +164,26 @@ async def get_site(
     details = (await session.execute(detail_stmt)).scalar_one_or_none()
     project_stmt = select(models.ProjectReview).where(models.ProjectReview.site_id == site.id)
     project = (await session.execute(project_stmt)).scalar_one_or_none()
+    # Latest approval → expected_loi_days + approver name for the SLA view (#115).
+    approval_stmt = (
+        select(models.Approval)
+        .where(models.Approval.site_id == site.id)
+        .order_by(desc(models.Approval.created_at))
+        .limit(1)
+    )
+    approval = (await session.execute(approval_stmt)).scalar_one_or_none()
+    approved_by_name = None
+    if approval and approval.approver_id:
+        approver_stmt = select(models.User.name).where(models.User.id == approval.approver_id)
+        approved_by_name = (await session.execute(approver_stmt)).scalar_one_or_none()
     return site_to_response(
         site,
         created_by_name=name or "",
         assigned_to_name=assigned_to_name,
         details=details,
         project=project,
+        approval=approval,
+        approved_by_name=approved_by_name,
     )
 
 

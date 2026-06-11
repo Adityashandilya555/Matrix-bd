@@ -23,8 +23,17 @@ function EyeIcon({ size = 16 }) {
   );
 }
 
-function LOITimelineModal({ site, onCancel, onSubmit }) {
+export function LOITimelineModal({ site, onCancel, onSubmit }) {
   const [days, setDays] = React.useState(14);
+  // Guard against double-submit: a second click before the first approve
+  // resolves double-fires the (unlocked) backend state transition. (#96)
+  const [submitting, setSubmitting] = React.useState(false);
+  const submit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try { await onSubmit(site, days); }
+    finally { setSubmitting(false); }
+  };
   if (!site) return null;
   const presets = [7, 14, 21, 30];
   return (
@@ -53,8 +62,8 @@ function LOITimelineModal({ site, onCancel, onSubmit }) {
           On approval, this site moves to Sites in process. The BD exec is notified and the timer starts.
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={onCancel} className="zm-btn" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-          <button onClick={() => onSubmit(site, days)} className="zm-btn-primary" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: 'var(--zm-shadow-1)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="check" size={13}/> Approve & set timeline</button>
+          <button onClick={onCancel} disabled={submitting} className="zm-btn" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: submitting ? 'wait' : 'pointer' }}>Cancel</button>
+          <button onClick={submit} disabled={submitting} className="zm-btn-primary" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: submitting ? 'wait' : 'pointer', opacity: submitting ? 0.7 : 1, boxShadow: 'var(--zm-shadow-1)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="check" size={13}/> {submitting ? 'Approving…' : 'Approve & set timeline'}</button>
         </div>
       </div>
     </div>
@@ -73,26 +82,35 @@ function DelegationModal({ site, onClose, onChanged, showToast }) {
   const [notes, setNotes] = React.useState('');
   const [busy, setBusy] = React.useState(false);
 
-  const load = React.useCallback(async () => {
+  // `isCancelled` lets the mount effect abort its own load: if the modal closes
+  // (or reopens for a different site) before the two requests resolve, we skip
+  // the setState — preventing an unmounted-component update and a stale
+  // previous-site delegation list flashing in. (#98)
+  const load = React.useCallback(async (isCancelled = () => false) => {
     setLoading(true); setError(null);
     try {
       const [list, team] = await Promise.all([
         siteService.listSiteDelegations(site.id),
         listMyTeam('bd'),
       ]);
+      if (isCancelled()) return;
       setDelegations(list);
       // listMyTeam('bd') returns only this supervisor's BD executives — the same
       // module-scoped primitive Legal/Design/Project use — so executives from
       // other departments never appear in the picker.
       setCandidates(team);
     } catch (err) {
-      setError(err?.message || 'Failed to load delegations');
+      if (!isCancelled()) setError(err?.message || 'Failed to load delegations');
     } finally {
-      setLoading(false);
+      if (!isCancelled()) setLoading(false);
     }
   }, [site.id]);
 
-  React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => {
+    let cancelled = false;
+    load(() => cancelled);
+    return () => { cancelled = true; };
+  }, [load]);
 
   const alreadyDelegated = new Set(delegations.map(d => d.delegateUserId));
   const eligible = candidates.filter(u => !alreadyDelegated.has(u.id));
@@ -392,12 +410,22 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
     setDetailing(item);
   };
   const onDetailsSubmit = async (item, formData) => {
-    setDetailing(null);
+    // Keep the modal open until the submit resolves; close ONLY on success so a
+    // backend error doesn't discard everything the BD exec typed. Mirrors the
+    // save-draft handler (detailSaving disables the button, detailError shows
+    // the message inline). (#97)
+    setDetailError(null);
+    setDetailSaving(true);
     try {
       await submitDetailsForReview(item, formData);
+      setDetailing(null);
       showToast?.(`Sent for review · ${formData.name}. Supervisor notified.`);
     } catch (err) {
-      showToast?.(`Submit failed: ${err?.detail || err?.message || 'Unknown error'}`, 'danger');
+      const message = err?.detail || err?.message || 'Unknown error';
+      setDetailError(message);
+      showToast?.(`Submit failed: ${message}`, 'danger');
+    } finally {
+      setDetailSaving(false);
     }
   };
   const onDetailsSaveDraft = async (item, formData) => {

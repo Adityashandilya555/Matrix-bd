@@ -82,7 +82,7 @@ function ConfirmRow({ item, onAction, acting }) {
 }
 
 export default function LaunchPage() {
-  const { onOpenSite } = usePageContext();
+  const { onOpenSite, showToast } = usePageContext();
   const { role, user } = useSession();
   const { rows: allRows, loading, error, refresh: refreshNso } = useLaunchSites();
   const [q, setQ] = React.useState('');
@@ -129,7 +129,7 @@ export default function LaunchPage() {
       await bdConfirmLaunch(siteId);
       await loadApprovals();
     } catch (e) {
-      alert(e?.detail || e?.message || 'Failed to confirm');
+      showToast(e?.detail || e?.message || 'Failed to confirm', 'error');
     } finally {
       setActing(null);
     }
@@ -142,7 +142,7 @@ export default function LaunchPage() {
       await supervisorApproveLaunch(siteId);
       await loadApprovals();
     } catch (e) {
-      alert(e?.detail || e?.message || 'Failed to approve');
+      showToast(e?.detail || e?.message || 'Failed to approve', 'error');
     } finally {
       setActing(null);
     }

@@ -1,5 +1,6 @@
 import React from 'react';
-import { getAuthToken, clearAuthToken } from '../../services/api/authToken.js';
+import { clearAuthToken } from '../../services/api/authToken.js';
+import { useAuthToken } from '../../state/useAuthToken.js';
 import { decodeJwtPayload } from './jwt.js';
 import GateScreen from './GateScreen.jsx';
 import TeamDashboard from './TeamDashboard.jsx';
@@ -56,15 +57,21 @@ class BusinessAdminErrorBoundary extends React.Component {
 }
 
 export default function BusinessAdminPortalPage() {
-  const [token, setToken] = React.useState(() => getAuthToken());
+  // Subscribe to the shared token store so a mid-session 401 (the axios
+  // interceptor clears the token) immediately drops back to the GateScreen,
+  // instead of leaving the portal stuck rendering with a dead token while every
+  // call 401s until a manual reload. Also reacts to GateScreen sign-in, which
+  // sets the same store. (#129)
+  const token = useAuthToken();
   const role = decodeJwtPayload(token).role;
   const logout = React.useCallback(() => {
-    clearAuthToken();
-    setToken(null);
+    clearAuthToken(); // useAuthToken flips to null → GateScreen
   }, []);
 
   if (!token || role !== 'business_admin') {
-    return <GateScreen onAuth={setToken}/>;
+    // GateScreen's sign-in writes the token to the store; useAuthToken reacts,
+    // so onAuth needs no extra wiring here.
+    return <GateScreen onAuth={() => {}}/>;
   }
   return (
     <BusinessAdminErrorBoundary key={token} onLogout={logout}>

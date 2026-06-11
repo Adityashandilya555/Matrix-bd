@@ -15,6 +15,7 @@ Behaviour without config:
 """
 from __future__ import annotations
 
+import logging
 import re
 import unicodedata
 
@@ -22,6 +23,8 @@ import httpx
 from fastapi import HTTPException, status
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def safe_object_name(filename: str, *, fallback: str = "file") -> str:
@@ -69,12 +72,21 @@ async def upload_bytes(*, path: str, body: bytes, content_type: str) -> None:
     """PUT raw bytes into the configured bucket at `path`. Overwrites."""
     _require_storage_config()
     url = f"{_storage_base()}/object/{settings.supabase_storage_bucket}/{path}"
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.put(
-            url,
-            content=body,
-            headers=_auth_headers({"Content-Type": content_type, "x-upsert": "true"}),
-        )
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.put(
+                url,
+                content=body,
+                headers=_auth_headers({"Content-Type": content_type, "x-upsert": "true"}),
+            )
+    except httpx.HTTPError as exc:
+        # Network timeout / DNS failure / connection reset — would otherwise be
+        # an unhandled 500 (CORS-masked "Network Error") (#92).
+        logger.warning("storage upload transport error for %s: %s", path, exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Storage upload failed: storage service unreachable.",
+        ) from exc
     if r.status_code >= 300:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -87,9 +99,16 @@ async def signed_url(path: str, *, expires_in: int = 300) -> str | None:
     if not settings.supabase_project_url or not settings.supabase_service_role_key:
         return None
     url = f"{_storage_base()}/object/sign/{settings.supabase_storage_bucket}/{path}"
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        r = await client.post(url, json={"expiresIn": expires_in}, headers=_auth_headers())
-    if r.status_code >= 300:
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            r = await client.post(url, json={"expiresIn": expires_in}, headers=_auth_headers())
+        if r.status_code >= 300:
+            return None
+        signed_path = r.json().get("signedURL")
+    except (httpx.HTTPError, ValueError) as exc:
+        # ValueError covers JSONDecodeError when a 2xx body isn't JSON (a gateway
+        # error page). Degrade to no-url instead of 500-ing the whole response so
+        # a transient storage hiccup doesn't break list/view endpoints (#92).
+        logger.warning("could not sign url for %s: %s", path, exc)
         return None
-    signed_path = r.json().get("signedURL")
     return f"{settings.supabase_project_url.rstrip('/')}/storage/v1{signed_path}" if signed_path else None

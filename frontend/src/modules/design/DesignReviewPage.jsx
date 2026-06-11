@@ -287,6 +287,10 @@ export default function DesignReviewPage() {
   const [team, setTeam] = React.useState([]);
   const [allocation, setAllocation] = React.useState(null);
   const [chosenExec, setChosenExec] = React.useState('');
+  // Non-blocking action errors (replaces window.alert, which froze the tab) (#138)
+  const [actionError, setActionError] = React.useState(null);
+  // Surfaces a team/allocation load failure instead of a silently empty dropdown (#142)
+  const [teamError, setTeamError] = React.useState(null);
 
   const load = React.useCallback(async ({ silent = false } = {}) => {
     // Background refreshes (window 'focus' / visibility / data events) MUST be
@@ -321,41 +325,48 @@ export default function DesignReviewPage() {
     if (!isSupervisor) return;
     let cancelled = false;
     (async () => {
-      try { const t = await listMyTeam('design'); if (!cancelled) setTeam(t); } catch { /* silent */ }
-      try { const d = await listDesignDelegationsForSite(siteId); if (!cancelled) setAllocation(d.items?.[0] || null); } catch { /* silent */ }
+      if (!cancelled) setTeamError(null);
+      try { const t = await listMyTeam('design'); if (!cancelled) setTeam(t); }
+      catch { if (!cancelled) setTeamError('Could not load your design team — refresh to retry.'); }
+      try { const d = await listDesignDelegationsForSite(siteId); if (!cancelled) setAllocation(d.items?.[0] || null); }
+      catch { if (!cancelled) setTeamError('Could not load the current allocation — refresh to retry.'); }
     })();
     return () => { cancelled = true; };
   }, [isSupervisor, siteId, designStatus]);
 
   const onAllocate = async () => {
     if (!chosenExec) return;
+    setActionError(null);
     setBusy(true);
     try {
       const r = await allocateDesign(siteId, chosenExec);
       setReview(r); setChosenExec('');
       const d = await listDesignDelegationsForSite(siteId);
       setAllocation(d.items?.[0] || null);
-    } catch (err) { window.alert(err?.detail || err?.message || 'Allocation failed'); }
+    } catch (err) { setActionError(err?.detail || err?.message || 'Allocation failed'); }
     finally { setBusy(false); }
   };
 
   const onRevoke = async () => {
     if (!allocation) return;
+    setActionError(null);
     setBusy(true);
     try { await revokeDesignAllocation(siteId, allocation.delegateUserId); setAllocation(null); await load(); }
-    catch (err) { window.alert(err?.detail || err?.message || 'Revoke failed'); }
+    catch (err) { setActionError(err?.detail || err?.message || 'Revoke failed'); }
     finally { setBusy(false); }
   };
 
   const onSubmit = async (kind, payload) => {
+    setActionError(null);
     setBusy(true);
     try { const r = await submitDeliverable(siteId, kind, payload); setReview(r); }
-    catch (err) { window.alert(err?.detail || err?.message || 'Submit failed'); }
+    catch (err) { setActionError(err?.detail || err?.message || 'Submit failed'); }
     finally { setBusy(false); }
   };
 
   const onUpload = async (kind, file) => {
     if (!file) return;
+    setActionError(null);
     setBusy(true);
     try {
       const r = await uploadDeliverable(siteId, kind, file);
@@ -364,17 +375,18 @@ export default function DesignReviewPage() {
       // (status flips to 'submitted'), so we don't need to reset local file
       // state explicitly — the card unmounts/remounts with fresh state.
     }
-    catch (err) { window.alert(err?.detail || err?.message || 'Upload failed'); }
+    catch (err) { setActionError(err?.detail || err?.message || 'Upload failed'); }
     finally { setBusy(false); }
   };
 
   const onReview = async (kind, payload) => {
     if (payload.decision === 'reject' && !payload.comments?.trim()) {
-      window.alert('Comments are required to send a deliverable back.'); return;
+      setActionError('Comments are required to send a deliverable back.'); return;
     }
+    setActionError(null);
     setBusy(true);
     try { const r = await reviewDeliverable(siteId, kind, payload); setReview(r); }
-    catch (err) { window.alert(err?.detail || err?.message || 'Review failed'); }
+    catch (err) { setActionError(err?.detail || err?.message || 'Review failed'); }
     finally { setBusy(false); }
   };
 
@@ -397,6 +409,12 @@ export default function DesignReviewPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {actionError && (
+        <div className="zm-glass" role="alert" style={{ padding: 12, color: 'var(--zm-danger)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <span>{actionError}</span>
+          <button type="button" onClick={() => setActionError(null)} style={{ ...btn('var(--zm-surface-2)'), color: 'var(--zm-fg-2)' }}>Dismiss</button>
+        </div>
+      )}
       <PageHeader
         file={`Site · ${r.siteCode || ''}`}
         eyebrow="Design module"
@@ -415,6 +433,7 @@ export default function DesignReviewPage() {
           <div style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)', marginBottom: 10 }}>
             Allocation
           </div>
+          {teamError && <div style={{ fontSize: 12, color: 'var(--zm-danger)', marginBottom: 8 }}>{teamError}</div>}
           {allocation ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <Badge label={`Allocated · ${allocation.delegateName || allocation.delegateEmail}`} color="var(--zm-accent)"/>

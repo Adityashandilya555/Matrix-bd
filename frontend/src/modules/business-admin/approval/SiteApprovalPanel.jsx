@@ -45,12 +45,14 @@ const taStyle = {
 function DeliverablesBlock({ siteId, deliverables, onDecide }) {
   const [comments, setComments] = React.useState({});
   const [busy, setBusy] = React.useState(null);
+  const [errs, setErrs] = React.useState({}); // per-kind inline error, replaces blocking window.alert (#139)
   const decide = async (kind, decision) => {
     const c = comments[kind] || '';
-    if (decision === 'reject' && !c.trim()) { window.alert('Comments are required to send back.'); return; }
+    setErrs((e) => ({ ...e, [kind]: null }));
+    if (decision === 'reject' && !c.trim()) { setErrs((e) => ({ ...e, [kind]: 'Comments are required to send back.' })); return; }
     setBusy(kind);
     try { await onDecide(siteId, kind, { decision, comments: c }); }
-    catch (e) { window.alert(e?.detail || e?.message || 'Decision failed'); }
+    catch (e) { setErrs((er) => ({ ...er, [kind]: e?.detail || e?.message || 'Decision failed' })); }
     finally { setBusy(null); }
   };
   return deliverables.map((d, i) => (
@@ -61,6 +63,7 @@ function DeliverablesBlock({ siteId, deliverables, onDecide }) {
       </div>
       <textarea className="ac-input" style={taStyle} placeholder="Comments (required to send back)"
         value={comments[d.kind] || ''} onChange={(e) => setComments((c) => ({ ...c, [d.kind]: e.target.value }))} />
+      {errs[d.kind] && <div role="alert" style={{ color: T.dangerText, fontSize: 12, margin: '6px 0' }}>{errs[d.kind]}</div>}
       <div style={{ display: 'flex', gap: 8 }}>
         <Button variant="success" size="sm" loading={busy === d.kind} icon={busy !== d.kind && <Icon.check size={14} />}
           onClick={() => decide(d.kind, 'approve')}>Approve</Button>
@@ -76,16 +79,18 @@ function GfcBlock({ siteId, fetchReview, onDecide }) {
   const [detail, setDetail] = React.useState(null);
   const [comments, setComments] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState(null); // inline error, replaces blocking window.alert (#139)
   React.useEffect(() => {
     let live = true;
     fetchReview(siteId).then((d) => { if (live) setDetail(d); }).catch(() => { if (live) setDetail({ deliverables: [] }); });
     return () => { live = false; };
   }, [siteId, fetchReview]);
   const decide = async (decision) => {
-    if (decision === 'reject' && !comments.trim()) { window.alert('Comments are required to send back.'); return; }
+    setErr(null);
+    if (decision === 'reject' && !comments.trim()) { setErr('Comments are required to send back.'); return; }
     setBusy(true);
     try { await onDecide(siteId, { decision, comments }); }
-    catch (e) { window.alert(e?.detail || e?.message || 'Decision failed'); }
+    catch (e) { setErr(e?.detail || e?.message || 'Decision failed'); }
     finally { setBusy(false); }
   };
   if (!detail) return (
@@ -117,6 +122,7 @@ function GfcBlock({ siteId, fetchReview, onDecide }) {
       )}
       <textarea className="ac-input" style={taStyle} placeholder="Add comments (required when sending back)"
         value={comments} onChange={(e) => setComments(e.target.value)} />
+      {err && <div role="alert" style={{ color: T.dangerText, fontSize: 12, margin: '6px 0' }}>{err}</div>}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
         <Button variant="success" size="md" loading={busy} icon={!busy && <Icon.check size={15} />}
           onClick={() => decide('approve')}>Approve GFC</Button>
@@ -131,14 +137,16 @@ function GfcBlock({ siteId, fetchReview, onDecide }) {
 function PaymentBlock({ site, onApprove, onReject }) {
   const [comments, setComments] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState(null); // inline error, replaces blocking window.alert (#139)
   const decide = async (decision) => {
-    if (decision === 'reject' && !comments.trim()) { window.alert('Comments are required to send back.'); return; }
+    setErr(null);
+    if (decision === 'reject' && !comments.trim()) { setErr('Comments are required to send back.'); return; }
     setBusy(true);
     try {
       if (decision === 'approve') await onApprove(site.siteId);
       else await onReject(site.siteId, comments.trim());
     }
-    catch (e) { window.alert(e?.detail || e?.message || 'Decision failed'); }
+    catch (e) { setErr(e?.detail || e?.message || 'Decision failed'); }
     finally { setBusy(false); }
   };
   return (
@@ -154,6 +162,7 @@ function PaymentBlock({ site, onApprove, onReject }) {
       <div style={{ fontSize: 11.5, color: T.textFaint, marginBottom: 10 }}>Supervisor-approved — awaiting your final sign-off.</div>
       <textarea className="ac-input" style={taStyle} placeholder="Add comments (required when sending back)"
         value={comments} onChange={(e) => setComments(e.target.value)} />
+      {err && <div role="alert" style={{ color: T.dangerText, fontSize: 12, margin: '6px 0' }}>{err}</div>}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
         <Button variant="success" size="md" loading={busy} icon={!busy && <Icon.check size={15} />}
           onClick={() => decide('approve')}>Approve payment</Button>
@@ -206,6 +215,7 @@ function BudgetBlock({ site, fetchDetail, onDecide }) {
   // budget; defaults to 2 days out, overridable via the calendar.
   const [initDate, setInitDate] = React.useState(() => plusDaysISO(2));
   const [busy, setBusy] = React.useState(false);
+  const [actionErr, setActionErr] = React.useState(null); // inline decide error, replaces blocking window.alert (#139)
   const acTheme = (typeof document !== 'undefined'
     && document.querySelector('.ac-root[data-theme]')?.getAttribute('data-theme')) || 'dark';
   const request = site.project || {};
@@ -247,11 +257,12 @@ function BudgetBlock({ site, fetchDetail, onDecide }) {
   }, [fallback, fetchDetail, site.siteId]);
   React.useEffect(() => loadDetail(), [loadDetail]);
   const decide = async (decision) => {
-    if (decision === 'reject' && !comments.trim()) { window.alert('Comments are required to send back.'); return; }
-    if (decision === 'approve' && !initDate) { window.alert('Set the project initialization date to approve.'); return; }
+    setActionErr(null);
+    if (decision === 'reject' && !comments.trim()) { setActionErr('Comments are required to send back.'); return; }
+    if (decision === 'approve' && !initDate) { setActionErr('Set the project initialization date to approve.'); return; }
     setBusy(true);
     try { await onDecide(site.siteId, { decision, comments, initializationDate: initDate }); }
-    catch (e) { window.alert(e?.detail || e?.message || 'Decision failed'); }
+    catch (e) { setActionErr(e?.detail || e?.message || 'Decision failed'); }
     finally { setBusy(false); }
   };
   if (!detail) return (
@@ -367,6 +378,7 @@ function BudgetBlock({ site, fetchDetail, onDecide }) {
       </label>
       <textarea className="ac-input" style={taStyle} placeholder="Add comments (required when sending back)"
         value={comments} onChange={(e) => setComments(e.target.value)} />
+      {actionErr && <div role="alert" style={{ color: T.dangerText, fontSize: 12, margin: '6px 0' }}>{actionErr}</div>}
       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
         <Button variant="success" size="md" loading={busy} icon={!busy && <Icon.check size={15} />}
           onClick={() => decide('approve')}>Approve budget</Button>

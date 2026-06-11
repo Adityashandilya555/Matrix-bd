@@ -10,12 +10,14 @@ Called from:
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -29,8 +31,26 @@ from app.domain.schemas.launch import (
 from app.services._common import fetch_site_or_404, fetch_user_name
 from app.services.audit_service import write_audit_event
 
+logger = logging.getLogger(__name__)
+
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+
+def _actor_uuid(actor: dict) -> UUID:
+    """Coerce the JWT ``sub`` claim into a UUID, or raise a clean 401.
+
+    The five approval-chain steps stamp ``*_by`` FK columns with the actor's id.
+    A missing/malformed ``sub`` (KeyError/ValueError) would otherwise surface as
+    an opaque 500; translate it to a meaningful 401 instead (#145).
+    """
+    try:
+        return UUID(actor["sub"])
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid actor identity in token.",
+        ) from exc
 
 async def _fetch_approval(
     session: AsyncSession,
@@ -156,7 +176,20 @@ async def svc_create_launch_approval(
         row.capex = _num(detail.capex)
         row.score = _num(detail.score)
 
-    session.add(row)
+    # Insert inside a SAVEPOINT and flush immediately so a duplicate/constraint
+    # violation surfaces HERE — and rolls back only the savepoint — instead of
+    # poisoning the caller's NSO transaction at commit time and undoing the
+    # already-applied final approval (#141). On a race (another path created the
+    # row first) we re-fetch and return the winner rather than 500-ing.
+    try:
+        async with session.begin_nested():
+            session.add(row)
+            await session.flush()
+    except IntegrityError:
+        logger.warning(
+            "launch_approval insert lost a race for site %s — returning existing row", site.id,
+        )
+        return await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id, required=True)
     return row
 
 
@@ -261,7 +294,7 @@ async def svc_admin_approve(
             )
         row.status = "admin_approved"
         row.admin_approved_at = datetime.now(timezone.utc)
-        row.admin_approved_by = UUID(actor["sub"])
+        row.admin_approved_by = _actor_uuid(actor)
 
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
@@ -290,7 +323,7 @@ async def svc_bd_confirm(
             )
         row.status = "bd_confirmed"
         row.bd_confirmed_at = datetime.now(timezone.utc)
-        row.bd_confirmed_by = UUID(actor["sub"])
+        row.bd_confirmed_by = _actor_uuid(actor)
 
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
@@ -319,7 +352,7 @@ async def svc_supervisor_approve(
             )
         row.status = "supervisor_approved"
         row.supervisor_approved_at = datetime.now(timezone.utc)
-        row.supervisor_approved_by = UUID(actor["sub"])
+        row.supervisor_approved_by = _actor_uuid(actor)
 
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
@@ -348,7 +381,7 @@ async def svc_super_admin_approve(
             )
         row.status = "super_admin_approved"
         row.super_admin_approved_at = datetime.now(timezone.utc)
-        row.super_admin_approved_by = UUID(actor["sub"])
+        row.super_admin_approved_by = _actor_uuid(actor)
 
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
@@ -379,7 +412,7 @@ async def svc_launch(
         now = datetime.now(timezone.utc)
         row.status = "launched"
         row.launched_at = now
-        row.launched_by = UUID(actor["sub"])
+        row.launched_by = _actor_uuid(actor)
 
         # Flip the cross-module flag on the parent sites row
         site.is_launched = True

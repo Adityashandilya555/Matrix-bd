@@ -5,6 +5,10 @@ import { notifySiteDataChanged } from './siteEvents.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
 const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
+// Quality-audit uploads relay to Supabase Storage server-side; the default 20s
+// client timeout aborts successful uploads on slow links → duplicate retries.
+// Match designApi's longer upload budget. (#127)
+const UPLOAD_TIMEOUT_MS = Number(import.meta.env.VITE_API_UPLOAD_TIMEOUT_MS ?? 120000);
 
 const client = axios.create({ baseURL: BASE_URL, timeout: TIMEOUT_MS });
 
@@ -239,7 +243,9 @@ export async function uploadQualityAuditReport(siteId, file, inspectionDate) {
   const form = new FormData();
   form.append('file', file);
   if (inspectionDate) form.append('inspection_date', inspectionDate);
-  const data = await client.post(`/project/${siteId}/quality-audit/upload`, form).then((r) => r.data);
+  const data = await client.post(`/project/${siteId}/quality-audit/upload`, form, {
+    timeout: UPLOAD_TIMEOUT_MS,
+  }).then((r) => r.data);
   notifySiteDataChanged({ source: 'project', action: 'quality_upload', siteId });
   return stateFromServer(data);
 }
