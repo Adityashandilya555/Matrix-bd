@@ -233,8 +233,9 @@ export async function patchSiteDetails(id, details) {
   return patch(`/sites/${id}/details`, { details: detailsToServer(details) });
 }
 
-export async function getSiteActivity(id) {
-  const data = await get(`/audit/site/${id}`);
+export async function getSiteActivity(id, options = {}) {
+  const params = options?.module ? { module: options.module } : undefined;
+  const data = await get(`/audit/site/${id}`, params);
   const items = (data?.items || []).map(e => ({
     id: e.id,
     siteId: e.site_id,

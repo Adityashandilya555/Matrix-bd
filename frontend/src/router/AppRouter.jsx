@@ -27,6 +27,7 @@ import AgreementPage         from '../modules/legal/agreement/AgreementPage.jsx'
 import DesignQueuePage       from '../modules/design/DesignQueuePage.jsx';
 import DesignReviewPage      from '../modules/design/DesignReviewPage.jsx';
 import ModuleHistoryPage     from '../modules/module-history/ModuleHistoryPage.jsx';
+import ModuleProcessFlowPage from '../modules/module-process-flow/ModuleProcessFlowPage.jsx';
 import SiteStatusPage        from '../modules/bd/site-status/SiteStatusPage.jsx';
 import DdFailedPage          from '../modules/bd/dd-failed/DdFailedPage.jsx';
 import SiteTrackerListPage   from '../modules/bd/site-tracker/SiteTrackerListPage.jsx';
@@ -205,6 +206,20 @@ export default function AppRouter() {
             </RequireModule>
           </RequireRole>
         }/>
+        <Route path={ROUTES.LEGAL_PROCESS_FLOW} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['legal']}>
+              <ModuleProcessFlowPage moduleKey="legal"/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.LEGAL_PROCESS_FLOW_SITE} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['legal']}>
+              <ModuleProcessFlowPage moduleKey="legal"/>
+            </RequireModule>
+          </RequireRole>
+        }/>
         <Route path={ROUTES.LEGAL_SITE_DDR} element={
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <RequireModule modules={['legal']}>
@@ -274,6 +289,20 @@ export default function AppRouter() {
             </RequireModule>
           </RequireRole>
         }/>
+        <Route path={ROUTES.DESIGN_PROCESS_FLOW} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['design']}>
+              <ModuleProcessFlowPage moduleKey="design"/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.DESIGN_PROCESS_FLOW_SITE} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['design']}>
+              <ModuleProcessFlowPage moduleKey="design"/>
+            </RequireModule>
+          </RequireRole>
+        }/>
         <Route path="/design/*" element={<Navigate to={ROUTES.DESIGN} replace/>}/>
 
         <Route path={ROUTES.PROJECT} element={
@@ -318,6 +347,20 @@ export default function AppRouter() {
             </RequireModule>
           </RequireRole>
         }/>
+        <Route path={ROUTES.PROJECT_PROCESS_FLOW} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['project']}>
+              <ModuleProcessFlowPage moduleKey="project"/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.PROJECT_PROCESS_FLOW_SITE} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['project']}>
+              <ModuleProcessFlowPage moduleKey="project"/>
+            </RequireModule>
+          </RequireRole>
+        }/>
         <Route path="/project/*" element={<Navigate to={ROUTES.PROJECT} replace/>}/>
 
         <Route path={ROUTES.NSO} element={
@@ -352,6 +395,20 @@ export default function AppRouter() {
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <RequireModule modules={['nso']}>
               <ModuleHistoryPage moduleKey="nso"/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.NSO_PROCESS_FLOW} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['nso']}>
+              <ModuleProcessFlowPage moduleKey="nso"/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.NSO_PROCESS_FLOW_SITE} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['nso']}>
+              <ModuleProcessFlowPage moduleKey="nso"/>
             </RequireModule>
           </RequireRole>
         }/>

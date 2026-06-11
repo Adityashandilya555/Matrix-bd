@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -150,15 +150,54 @@ async def get_site(
     )
 
 
+_MODULE_AUDIT_FILTERS = {
+    "legal": (
+        ("eq", "send_to_legal"),
+        ("prefix", "legal_"),
+        ("prefix", "change_request_"),
+    ),
+    "design": (
+        ("prefix", "design_"),
+    ),
+    "project": (
+        ("prefix", "project_"),
+    ),
+    "nso": (
+        ("prefix", "nso_"),
+        ("eq", "project_pushed_to_nso"),
+    ),
+}
+
+
+def _module_audit_clause(module: Optional[str]):
+    rules = _MODULE_AUDIT_FILTERS.get((module or "").lower())
+    if not rules:
+        return None
+    clauses = []
+    for kind, value in rules:
+        if kind == "eq":
+            clauses.append(models.AuditLog.action == value)
+        elif kind == "prefix":
+            clauses.append(models.AuditLog.action.like(f"{value}%"))
+    return or_(*clauses) if clauses else None
+
+
 async def list_site_activity(
-    session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID, limit: int = 100,
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    site_id: str | UUID,
+    limit: int = 100,
+    module: Optional[str] = None,
 ) -> AuditListResponse:
-    stmt = (
-        select(models.AuditLog)
-        .where(models.AuditLog.tenant_id == tenant_id, models.AuditLog.site_id == site_id)
-        .order_by(desc(models.AuditLog.created_at))
-        .limit(limit)
+    module_clause = _module_audit_clause(module)
+    stmt = select(models.AuditLog).where(
+        models.AuditLog.tenant_id == tenant_id,
+        models.AuditLog.site_id == site_id,
     )
+    if module_clause is not None:
+        stmt = stmt.where(module_clause)
+    stmt = stmt.order_by(desc(models.AuditLog.created_at)).limit(limit)
     rows = (await session.execute(stmt)).scalars().all()
     items = [_audit_to_event(r) for r in rows]
     return AuditListResponse(items=items, total=len(items))

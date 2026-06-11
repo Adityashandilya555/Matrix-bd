@@ -112,15 +112,19 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
     path === ROUTES.PROJECT_OVERVIEW                     ? 'project-overview' :
     path === ROUTES.NSO_OVERVIEW                         ? 'nso-overview' :
     path === ROUTES.LEGAL_CHANGE_REQUESTS                ? 'legal-change-requests' :
+    path.startsWith('/legal/process-flow')               ? 'legal-process-flow' :
     path === ROUTES.LEGAL_REJECTED || path.startsWith('/legal/history') ? 'legal-history' :
     path.startsWith('/legal')                            ? 'legal-ddr' :
     path.startsWith('/payment')                          ? 'payment-licensing' :
     path.startsWith('/launch')                           ? 'launch' :
+    path.startsWith('/design/process-flow')              ? 'design-process-flow' :
     path.startsWith('/design/history')                   ? 'design-history' :
     path.startsWith('/design')                           ? 'design' :
+    path.startsWith('/project/process-flow')             ? 'project-process-flow' :
     path.startsWith('/project/history')                  ? 'project-history' :
     path.startsWith('/project/sites')                    ? 'project-sites' :
     path.startsWith('/project')                          ? 'project-home' :
+    path.startsWith('/nso/process-flow')                 ? 'nso-process-flow' :
     path.startsWith('/nso/history')                      ? 'nso-history' :
     path.startsWith('/nso')                              ? 'nso-home' :
     'overview';
@@ -185,6 +189,13 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
             collapsed={collapsed}
           />
           <SidebarItem
+            icon="route"
+            label="Process flow"
+            active={activeView === 'legal-process-flow'}
+            onClick={() => go(ROUTES.LEGAL_PROCESS_FLOW)}
+            collapsed={collapsed}
+          />
+          <SidebarItem
             icon="archiveBox"
             label="History"
             active={activeView === 'legal-history'}
@@ -209,6 +220,13 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
             label="Sites"
             active={activeView === 'design'}
             onClick={() => go(ROUTES.DESIGN)}
+            collapsed={collapsed}
+          />
+          <SidebarItem
+            icon="route"
+            label="Process flow"
+            active={activeView === 'design-process-flow'}
+            onClick={() => go(ROUTES.DESIGN_PROCESS_FLOW)}
             collapsed={collapsed}
           />
           <SidebarItem
@@ -246,6 +264,13 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
             collapsed={collapsed}
           />
           <SidebarItem
+            icon="route"
+            label="Process flow"
+            active={activeView === 'project-process-flow'}
+            onClick={() => go(ROUTES.PROJECT_PROCESS_FLOW)}
+            collapsed={collapsed}
+          />
+          <SidebarItem
             icon="archiveBox"
             label="History"
             active={activeView === 'project-history'}
@@ -270,6 +295,13 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
             label="Sites"
             active={activeView === 'nso-home'}
             onClick={() => go(ROUTES.NSO)}
+            collapsed={collapsed}
+          />
+          <SidebarItem
+            icon="route"
+            label="Process flow"
+            active={activeView === 'nso-process-flow'}
+            onClick={() => go(ROUTES.NSO_PROCESS_FLOW)}
             collapsed={collapsed}
           />
           <SidebarItem

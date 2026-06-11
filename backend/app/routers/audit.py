@@ -41,5 +41,6 @@ async def get_site_audit(
         dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR, Role.BUSINESS_ADMIN))
     ],
     tenant_id: TenantId,
+    module: str | None = Query(None, description="Optional module-scoped audit slice: legal, design, project, or nso"),
 ) -> AuditListResponse:
-    return await list_site_activity(db, tenant_id=tenant_id, site_id=site_id)
+    return await list_site_activity(db, tenant_id=tenant_id, site_id=site_id, module=module)
