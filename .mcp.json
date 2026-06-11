@@ -3,6 +3,17 @@
     "supabase": {
       "type": "http",
       "url": "https://mcp.supabase.com/mcp?project_ref=xybgldzpvzkkrxrbhzit&features=development%2Cdebugging%2Cdatabase%2Cstorage%2Cbranching"
+    },
+    "semgrep": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@semgrep/mcp-server",
+        "--config", "p/owasp-top-ten",
+        "--config", "p/python",
+        "--config", "p/react"
+      ]
     }
   }
 }
