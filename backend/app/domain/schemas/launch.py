@@ -6,9 +6,11 @@ After NSO final_approved_at is set, the approval chain runs:
     → Admin reviews + edits commercial fields → admin_approve
     → BD confirms                             → bd_confirm
     → Supervisor approves                     → supervisor_approve
-    → Super Admin approves                    → super_admin_approve
     → Admin launches                          → launch
     → site.is_launched = True (cross-module highlight)
+
+Legacy records may include super_admin_approved; those fields remain on the
+response for compatibility but are not part of the current user-facing flow.
 """
 from __future__ import annotations
 

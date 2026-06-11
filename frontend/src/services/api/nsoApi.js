@@ -88,6 +88,19 @@ function propertySnapshotFromServer(row = {}) {
   };
 }
 
+function legalLicensingSnapshotFromServer(row = {}) {
+  return {
+    overallStatus: row.overall_status || 'pending',
+    stage: row.stage || null,
+    complete: Boolean(row.complete),
+    fssai: row.fssai || 'pending',
+    healthTrade: row.health_trade || 'pending',
+    shopsEstabReg: row.shops_estab_reg || 'pending',
+    fireNoc: row.fire_noc || 'pending',
+    storageLicense: row.storage_license || 'pending',
+  };
+}
+
 function stateFromServer(row) {
   if (!row) return row;
   return {
@@ -110,6 +123,7 @@ function stateFromServer(row) {
     currentStage: row.current_stage,
     triggers: (row.triggers || []).map(triggerFromServer),
     propertySnapshot: propertySnapshotFromServer(row.property_snapshot || {}),
+    legalLicensingSnapshot: legalLicensingSnapshotFromServer(row.legal_licensing_snapshot || {}),
     propertyDetails: row.property_details,
     communicationFloated: row.communication_floated,
     fssaiStatus: row.fssai_status,

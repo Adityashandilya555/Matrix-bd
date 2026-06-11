@@ -19,6 +19,7 @@ from app.db import models
 from app.db.session import transaction
 from app.domain.schemas.nso import (
     NsoHistoryResponse,
+    NsoLegalLicensingSnapshot,
     NsoQueueItem,
     NsoQueueResponse,
     NsoPropertySnapshot,
@@ -35,12 +36,12 @@ from app.services.launch_service import svc_create_launch_approval
 logger = logging.getLogger(__name__)
 
 
-LICENSE_FIELDS = (
-    "fssai_status",
-    "health_trade_status",
-    "shops_estab_status",
-    "fire_noc_status",
-    "storage_license_status",
+LEGAL_LICENSE_FIELDS = (
+    "fssai",
+    "health_trade",
+    "shops_estab_reg",
+    "fire_noc",
+    "storage_license",
 )
 
 
@@ -57,6 +58,14 @@ async def _fetch_site_detail(
 ) -> Optional[models.SiteDetail]:
     return (await session.execute(
         select(models.SiteDetail).where(models.SiteDetail.site_id == site_id)
+    )).scalar_one_or_none()
+
+
+async def _fetch_licensing(
+    session: AsyncSession, *, site_id: str | UUID,
+) -> Optional[models.SiteLicensing]:
+    return (await session.execute(
+        select(models.SiteLicensing).where(models.SiteLicensing.site_id == site_id)
     )).scalar_one_or_none()
 
 
@@ -156,8 +165,39 @@ def _stage_one_complete(row: models.NsoReview) -> bool:
     return row.communication_floated is not None
 
 
-def _stage_two_complete(row: models.NsoReview) -> bool:
-    return all(getattr(row, field) == "done" for field in LICENSE_FIELDS)
+def _legal_license_values(licensing: Optional[models.SiteLicensing]) -> dict[str, str]:
+    if licensing is None:
+        return {field: "pending" for field in LEGAL_LICENSE_FIELDS}
+    return {field: (getattr(licensing, field) or "pending") for field in LEGAL_LICENSE_FIELDS}
+
+
+def _legal_licensing_complete(site: models.Site, licensing: Optional[models.SiteLicensing]) -> bool:
+    values = _legal_license_values(licensing)
+    return bool(
+        licensing
+        and (site.licensing_status or "pending") == "complete"
+        and all(value == "yes" for value in values.values())
+    )
+
+
+def _legacy_done(value: str) -> str:
+    return "done" if value == "yes" else "pending"
+
+
+def _legal_licensing_snapshot(
+    site: models.Site, licensing: Optional[models.SiteLicensing],
+) -> NsoLegalLicensingSnapshot:
+    values = _legal_license_values(licensing)
+    return NsoLegalLicensingSnapshot(
+        overall_status=site.licensing_status or "pending",
+        stage=licensing.stage if licensing else None,
+        complete=_legal_licensing_complete(site, licensing),
+        fssai=values["fssai"],
+        health_trade=values["health_trade"],
+        shops_estab_reg=values["shops_estab_reg"],
+        fire_noc=values["fire_noc"],
+        storage_license=values["storage_license"],
+    )
 
 
 def _stage_three_complete(row: models.NsoReview) -> bool:
@@ -176,24 +216,37 @@ def _stage_two_unlocked(row: models.NsoReview, project: Optional[models.ProjectR
     return _stage_one_complete(row) and _project_init_unlocked(project)
 
 
-def _stage_three_unlocked(row: models.NsoReview, project: Optional[models.ProjectReview]) -> bool:
-    return _stage_two_complete(row) and _project_done(project)
+def _stage_three_unlocked(
+    row: models.NsoReview,
+    site: models.Site,
+    licensing: Optional[models.SiteLicensing],
+    project: Optional[models.ProjectReview],
+) -> bool:
+    return _stage_one_complete(row) and _legal_licensing_complete(site, licensing) and _project_done(project)
 
 
-def _compute_stage(row: models.NsoReview, project: Optional[models.ProjectReview]) -> str:
+def _compute_stage(
+    site: models.Site,
+    row: models.NsoReview,
+    project: Optional[models.ProjectReview],
+    licensing: Optional[models.SiteLicensing],
+) -> str:
     if row.nso_status == "complete":
         return "done"
     if not _stage_one_complete(row):
         return "stage_one"
-    if not _stage_two_unlocked(row, project) or not _stage_two_complete(row):
+    if not _stage_two_unlocked(row, project) or not _legal_licensing_complete(site, licensing):
         return "stage_two"
-    if not _stage_three_unlocked(row, project) or not _stage_three_complete(row):
+    if not _stage_three_unlocked(row, site, licensing, project) or not _stage_three_complete(row):
         return "stage_three"
     return "final"
 
 
 def _display_rollups(
-    row: models.NsoReview, project: Optional[models.ProjectReview],
+    site: models.Site,
+    row: models.NsoReview,
+    project: Optional[models.ProjectReview],
+    licensing: Optional[models.SiteLicensing],
 ) -> tuple[str, str]:
     """Display-time (nso_status, current_stage) WITHOUT mutating the row.
 
@@ -202,7 +255,7 @@ def _display_rollups(
     row-creation variant into N INSERTs), which is what made /nso/queue take
     seconds. Rollup persistence belongs to the stage-save write paths only.
     """
-    current_stage = _compute_stage(row, project)
+    current_stage = _compute_stage(site, row, project, licensing)
     if row.nso_status == "complete":
         nso_status = "complete"
     else:
@@ -210,25 +263,35 @@ def _display_rollups(
     return nso_status, current_stage
 
 
-def _sync_rollups(row: models.NsoReview, project: Optional[models.ProjectReview]) -> None:
+def _sync_rollups(
+    site: models.Site,
+    row: models.NsoReview,
+    project: Optional[models.ProjectReview],
+    licensing: Optional[models.SiteLicensing],
+) -> None:
     now = datetime.now(timezone.utc)
     if _stage_one_complete(row) and row.stage_one_completed_at is None:
         row.stage_one_completed_at = now
-    if _stage_two_complete(row) and row.stage_two_completed_at is None:
+    if _legal_licensing_complete(site, licensing) and row.stage_two_completed_at is None:
         row.stage_two_completed_at = now
     if _stage_three_complete(row) and row.stage_three_completed_at is None:
         row.stage_three_completed_at = now
-    row.current_stage = _compute_stage(row, project)
+    row.current_stage = _compute_stage(site, row, project, licensing)
     if row.nso_status != "complete":
         row.nso_status = "in_progress" if row.current_stage != "stage_one" or _stage_one_complete(row) else "pending"
 
 
-def _triggers(site: models.Site, row: models.NsoReview, project: Optional[models.ProjectReview]) -> list[NsoTriggerState]:
+def _triggers(
+    site: models.Site,
+    row: models.NsoReview,
+    project: Optional[models.ProjectReview],
+    licensing: Optional[models.SiteLicensing],
+) -> list[NsoTriggerState]:
     trigger1 = _trigger_one_unlocked(site)
     stage1_done = _stage_one_complete(row)
     project_init = _project_init_unlocked(project)
     project_done = _project_done(project)
-    stage2_done = _stage_two_complete(row)
+    stage2_done = _legal_licensing_complete(site, licensing)
     return [
         NsoTriggerState(
             key="finance_ca",
@@ -250,11 +313,11 @@ def _triggers(site: models.Site, row: models.NsoReview, project: Optional[models
         NsoTriggerState(
             key="project_completion",
             label="Project completion date",
-            unlocked=stage2_done and project_done,
+            unlocked=stage1_done and stage2_done and project_done,
             complete=_stage_three_complete(row),
             reason=(
-                None if stage2_done and project_done
-                else "Complete license checks and wait for Project completion."
+                None if stage1_done and stage2_done and project_done
+                else "Complete Stage 1, Legal licensing, and wait for Project completion."
             ),
         ),
     ]
@@ -265,17 +328,18 @@ async def _queue_item(
     site: models.Site,
     row: Optional[models.NsoReview],
     project: Optional[models.ProjectReview],
+    licensing: Optional[models.SiteLicensing],
 ) -> NsoQueueItem:
     nso_status = row.nso_status if row else "pending"
     current_stage = row.current_stage if row else "stage_one"
     if row is not None:
-        nso_status, current_stage = _display_rollups(row, project)
+        nso_status, current_stage = _display_rollups(site, row, project, licensing)
     next_action = "Open Stage 1"
     if row is not None:
         if nso_status == "complete":
             next_action = "Complete"
         elif current_stage == "stage_two":
-            next_action = "Open license checks"
+            next_action = "Review Legal licenses"
         elif current_stage == "stage_three":
             next_action = "Open launch readiness"
         elif current_stage == "final":
@@ -301,9 +365,11 @@ async def _state_response(
     site: models.Site,
     row: models.NsoReview,
     project: Optional[models.ProjectReview],
+    licensing: Optional[models.SiteLicensing],
 ) -> NsoStateResponse:
-    nso_status, current_stage = _display_rollups(row, project)
+    nso_status, current_stage = _display_rollups(site, row, project, licensing)
     snapshot = await _property_snapshot(session, site=site)
+    legal_snapshot = _legal_licensing_snapshot(site, licensing)
     return NsoStateResponse(
         site_id=str(site.id),
         site_code=site.ca_code or site.code or "",
@@ -322,15 +388,20 @@ async def _state_response(
         project_completed_at=(project.project_completed_at if project else None),
         nso_status=nso_status,
         current_stage=current_stage,
-        triggers=_triggers(site, row, project),
+        triggers=_triggers(site, row, project, licensing),
         property_snapshot=snapshot,
+        legal_licensing_snapshot=legal_snapshot,
         property_details=row.property_details,
         communication_floated=row.communication_floated,
-        fssai_status=row.fssai_status,
-        health_trade_status=row.health_trade_status,
-        shops_estab_status=row.shops_estab_status,
-        fire_noc_status=row.fire_noc_status,
-        storage_license_status=row.storage_license_status,
+        # Legacy compatibility fields: NSO used to own these as editable
+        # "done/pending" flags. Legal Licensing is now canonical, so expose a
+        # read-compatible projection for older clients without treating it as
+        # the source of truth.
+        fssai_status=_legacy_done(legal_snapshot.fssai),
+        health_trade_status=_legacy_done(legal_snapshot.health_trade),
+        shops_estab_status=_legacy_done(legal_snapshot.shops_estab_reg),
+        fire_noc_status=_legacy_done(legal_snapshot.fire_noc),
+        storage_license_status=_legacy_done(legal_snapshot.storage_license),
         dry_stock_order_status=row.dry_stock_order_status,
         online_delivery_status=row.online_delivery_status,
         handover_checklist_signed=row.handover_checklist_signed,
@@ -368,6 +439,7 @@ async def svc_nso_queue(session: AsyncSession, *, tenant_id: str | UUID) -> NsoQ
         site_ids = [site.id for site in sites]
         nso_rows: dict = {}
         projects: dict = {}
+        licensing_rows: dict = {}
         if site_ids:
             nso_rows = {r.site_id: r for r in (await session.execute(
                 select(models.NsoReview).where(models.NsoReview.site_id.in_(site_ids))
@@ -375,9 +447,18 @@ async def svc_nso_queue(session: AsyncSession, *, tenant_id: str | UUID) -> NsoQ
             projects = {p.site_id: p for p in (await session.execute(
                 select(models.ProjectReview).where(models.ProjectReview.site_id.in_(site_ids))
             )).scalars()}
+            licensing_rows = {l.site_id: l for l in (await session.execute(
+                select(models.SiteLicensing).where(models.SiteLicensing.site_id.in_(site_ids))
+            )).scalars()}
         items: list[NsoQueueItem] = []
         for site in sites:
-            items.append(await _queue_item(session, site, nso_rows.get(site.id), projects.get(site.id)))
+            items.append(await _queue_item(
+                session,
+                site,
+                nso_rows.get(site.id),
+                projects.get(site.id),
+                licensing_rows.get(site.id),
+            ))
         return NsoQueueResponse(items=items, total=len(items))
 
 
@@ -386,9 +467,10 @@ async def svc_nso_history(
 ) -> NsoHistoryResponse:
     async with transaction(session):
         stmt = (
-            select(models.Site, models.NsoReview, models.ProjectReview)
+            select(models.Site, models.NsoReview, models.ProjectReview, models.SiteLicensing)
             .outerjoin(models.NsoReview, models.NsoReview.site_id == models.Site.id)
             .outerjoin(models.ProjectReview, models.ProjectReview.site_id == models.Site.id)
+            .outerjoin(models.SiteLicensing, models.SiteLicensing.site_id == models.Site.id)
             .where(
                 models.Site.tenant_id == tenant_id,
                 or_(
@@ -407,7 +489,7 @@ async def svc_nso_history(
         rows = (await session.execute(
             stmt.order_by(desc(models.NsoReview.updated_at).nulls_last(), desc(models.Site.updated_at))
         )).all()
-        items = [await _queue_item(session, site, row, project) for (site, row, project) in rows]
+        items = [await _queue_item(session, site, row, project, licensing) for (site, row, project, licensing) in rows]
         return NsoHistoryResponse(items=items, total=len(items))
 
 
@@ -417,6 +499,7 @@ async def svc_get_nso(
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         project = await _fetch_project(session, site_id=site.id)
+        licensing = await _fetch_licensing(session, site_id=site.id)
         row = await _fetch_nso_or_create(session, site=site) if create else await _fetch_nso_or_none(session, site_id=site.id)
         if row is None:
             if not _trigger_one_unlocked(site):
@@ -437,7 +520,7 @@ async def svc_get_nso(
                 final_approval_signoff_2=False,
             )
             row.updated_at = site.updated_at
-        return await _state_response(session, site, row, project)
+        return await _state_response(session, site, row, project, licensing)
 
 
 async def svc_save_stage_one(
@@ -453,6 +536,7 @@ async def svc_save_stage_one(
         if not _trigger_one_unlocked(site):
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="NSO Stage 1 is locked until Finance / CA is approved.")
         project = await _fetch_project(session, site_id=site.id)
+        licensing = await _fetch_licensing(session, site_id=site.id)
         row = await _fetch_nso_or_create(session, site=site)
         snapshot = await _property_snapshot(session, site=site)
         if body.property_details and body.property_details.strip():
@@ -460,14 +544,14 @@ async def svc_save_stage_one(
         elif not (row.property_details or "").strip():
             row.property_details = _property_summary(snapshot)
         row.communication_floated = body.communication_floated
-        _sync_rollups(row, project)
+        _sync_rollups(site, row, project, licensing)
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor.get("name"),
             action="nso_stage_one_saved",
             detail="Property details and communication status captured.",
         )
-        return await _state_response(session, site, row, project)
+        return await _state_response(session, site, row, project, licensing)
 
 
 async def svc_save_stage_two(
@@ -481,19 +565,18 @@ async def svc_save_stage_two(
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         project = await _fetch_project(session, site_id=site.id)
+        licensing = await _fetch_licensing(session, site_id=site.id)
         row = await _fetch_nso_or_create(session, site=site)
         if not _stage_two_unlocked(row, project):
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="NSO Stage 2 is locked until Stage 1 and Project initiation are complete.")
-        for field in LICENSE_FIELDS:
-            setattr(row, field, getattr(body, field))
-        _sync_rollups(row, project)
+        _sync_rollups(site, row, project, licensing)
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor.get("name"),
-            action="nso_stage_two_saved",
-            detail="License status checklist captured.",
+            action="nso_stage_two_reflected",
+            detail="NSO Stage 2 refreshed from canonical Legal Licensing status.",
         )
-        return await _state_response(session, site, row, project)
+        return await _state_response(session, site, row, project, licensing)
 
 
 async def svc_save_stage_three(
@@ -507,9 +590,10 @@ async def svc_save_stage_three(
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         project = await _fetch_project(session, site_id=site.id)
+        licensing = await _fetch_licensing(session, site_id=site.id)
         row = await _fetch_nso_or_create(session, site=site)
-        if not _stage_three_unlocked(row, project):
-            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="NSO Stage 3 is locked until license checks and Project completion are complete.")
+        if not _stage_three_unlocked(row, site, licensing, project):
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="NSO Stage 3 is locked until Legal Licensing and Project completion are complete.")
         row.dry_stock_order_status = body.dry_stock_order_status
         row.online_delivery_status = body.online_delivery_status
         row.handover_checklist_signed = body.handover_checklist_signed
@@ -517,14 +601,14 @@ async def svc_save_stage_three(
         row.launch_ready = body.launch_ready
         row.final_approval_signoff_1 = body.final_approval_signoff_1
         row.final_approval_signoff_2 = body.final_approval_signoff_2
-        _sync_rollups(row, project)
+        _sync_rollups(site, row, project, licensing)
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor.get("name"),
             action="nso_stage_three_saved",
             detail="Launch readiness checklist captured.",
         )
-        return await _state_response(session, site, row, project)
+        return await _state_response(session, site, row, project, licensing)
 
 
 async def svc_final_approval(
@@ -537,6 +621,7 @@ async def svc_final_approval(
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         project = await _fetch_project(session, site_id=site.id)
+        licensing = await _fetch_licensing(session, site_id=site.id)
         row = await _fetch_nso_or_create(session, site=site)
         if not _stage_three_complete(row):
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Complete Stage 3 before final NSO approval.")
@@ -558,4 +643,4 @@ async def svc_final_approval(
             logger.exception(
                 "Could not create launch_approval for site %s — NSO approval still committed", site.id,
             )
-        return await _state_response(session, site, row, project)
+        return await _state_response(session, site, row, project, licensing)

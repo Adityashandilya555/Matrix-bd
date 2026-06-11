@@ -6,8 +6,7 @@
  *   2. Admin opens the site, edits commercial fields, clicks "Approve".
  *   3. Once BD confirms (status='bd_confirmed'), shows "BD Verified ✓".
  *   4. Supervisor must approve (status='supervisor_approved').
- *   5. Admin does super-admin approval → Launch button unlocks.
- *   6. Admin clicks Launch → site.is_launched = true.
+ *   5. Admin clicks Launch → site.is_launched = true.
  */
 import React from 'react';
 import {
@@ -16,7 +15,7 @@ import {
 } from '../ui/kit.jsx';
 import {
   getLaunchQueue, getLaunchApproval, saveLaunchFields,
-  adminApproveLaunch, superAdminApproveLaunch, launchSite,
+  adminApproveLaunch, launchSite,
 } from '../../../services/api/launchApprovalApi.js';
 
 // ── Status display map ─────────────────────────────────────────────────────────
@@ -24,8 +23,8 @@ const STATUS_LABELS = {
   pending:             { label: 'Pending Admin Review', color: '#E09A3C' },
   admin_approved:      { label: 'Awaiting BD Confirmation', color: '#6C9FE6' },
   bd_confirmed:        { label: 'BD Verified ✓', color: '#4CAF82' },
-  supervisor_approved: { label: 'Awaiting Super Admin', color: '#9B8AF2' },
-  super_admin_approved:{ label: 'Ready to Launch', color: '#58E0A4' },
+  supervisor_approved: { label: 'Ready for Admin Launch', color: '#58E0A4' },
+  super_admin_approved:{ label: 'Ready for Admin Launch', color: '#58E0A4' },
   launched:            { label: 'LAUNCHED 🚀', color: '#58E0A4' },
 };
 
@@ -162,7 +161,6 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
     try {
       let d;
       if (action === 'admin_approve') d = await adminApproveLaunch(siteId);
-      else if (action === 'super_admin_approve') d = await superAdminApproveLaunch(siteId);
       else if (action === 'launch') d = await launchSite(siteId);
       setData(d);
       onRefresh();
@@ -176,8 +174,7 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   const status = data?.status;
   const canEdit = status === 'pending' || status === 'admin_approved';
   const canAdminApprove = status === 'pending';
-  const canSuperApprove = status === 'supervisor_approved';
-  const canLaunch = status === 'super_admin_approved';
+  const canLaunch = status === 'supervisor_approved' || status === 'super_admin_approved';
 
   const statusInfo = STATUS_LABELS[status] || { label: status, color: T.textMuted };
 
@@ -206,11 +203,6 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
             {canAdminApprove && (
               <Button variant="primary" loading={acting} onClick={() => handleAction('admin_approve')}>
                 Approve & Send to BD
-              </Button>
-            )}
-            {canSuperApprove && (
-              <Button variant="primary" loading={acting} onClick={() => handleAction('super_admin_approve')}>
-                Super Admin Approve
               </Button>
             )}
             {canLaunch && (
@@ -245,7 +237,6 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
               { label: 'Admin Approved', ts: data.admin_approved_at, by: data.admin_approved_by_name },
               { label: 'BD Confirmed',   ts: data.bd_confirmed_at,   by: data.bd_confirmed_by_name },
               { label: 'Supervisor',     ts: data.supervisor_approved_at, by: data.supervisor_approved_by_name },
-              { label: 'Super Admin',    ts: data.super_admin_approved_at, by: data.super_admin_approved_by_name },
             ].map(({ label, ts, by }) => (
               <div key={label} style={{ padding: '8px 12px', borderRadius: 8,
                 background: ts ? 'rgba(46,168,106,0.10)' : T.bg,
@@ -400,17 +391,17 @@ export default function LaunchApprovalTab() {
     { key: 'pending',            label: 'Pending Review' },
     { key: 'admin_approved',     label: 'Awaiting BD' },
     { key: 'bd_confirmed',       label: 'BD Verified' },
-    { key: 'supervisor_approved',label: 'Awaiting Super Admin' },
-    { key: 'super_admin_approved',label: 'Ready to Launch' },
+    { key: 'ready_to_launch',    label: 'Ready to Launch' },
     { key: 'launched',           label: 'Launched' },
   ];
 
+  const isReadyToLaunch = (item) => item.status === 'supervisor_approved' || item.status === 'super_admin_approved';
   const displayedItems = statusFilter === 'all'
     ? queue.items
-    : queue.items.filter((i) => i.status === statusFilter);
+    : queue.items.filter((i) => statusFilter === 'ready_to_launch' ? isReadyToLaunch(i) : i.status === statusFilter);
 
   const pendingCount = queue.items.filter((i) => i.status === 'pending').length;
-  const readyCount = queue.items.filter((i) => i.status === 'super_admin_approved').length;
+  const readyCount = queue.items.filter(isReadyToLaunch).length;
 
   return (
     <div>
@@ -427,7 +418,9 @@ export default function LaunchApprovalTab() {
       {/* Status filter pills */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18, marginTop: 14 }}>
         {STATUS_TABS.map(({ key, label }) => {
-          const count = key === 'all' ? queue.items.length : queue.items.filter(i => i.status === key).length;
+          const count = key === 'all'
+            ? queue.items.length
+            : queue.items.filter(i => key === 'ready_to_launch' ? isReadyToLaunch(i) : i.status === key).length;
           const active = statusFilter === key;
           return (
             <button key={key} onClick={() => setStatusFilter(key)}

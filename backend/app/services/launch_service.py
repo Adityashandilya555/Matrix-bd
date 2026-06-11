@@ -2,7 +2,11 @@
 
 Manages the post-NSO multi-step sign-off chain:
   pending → admin_approved → bd_confirmed → supervisor_approved
-  → super_admin_approved → launched (sites.is_launched = true)
+  → launched (sites.is_launched = true)
+
+Legacy rows may still contain ``super_admin_approved``; launch accepts that
+state for backwards compatibility, but the UI no longer requires that separate
+approval step.
 
 Called from:
   - nso_service.svc_final_approval  (creates the initial launch_approvals row)
@@ -387,7 +391,7 @@ async def svc_super_admin_approve(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor.get("name"),
             action="launch_super_admin_approved",
-            detail="Super admin approved. Launch button is now unlocked.",
+            detail="Legacy admin launch approval recorded. Launch button is now unlocked.",
         )
         return await _build_response(session, row=row, site=site)
 
@@ -403,10 +407,10 @@ async def svc_launch(
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         row = await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id)
 
-        if row.status != "super_admin_approved":
+        if row.status not in {"supervisor_approved", "super_admin_approved"}:
             raise HTTPException(
                 status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Cannot launch from status '{row.status}'. Requires super admin approval first.",
+                detail=f"Cannot launch from status '{row.status}'. Requires BD supervisor approval first.",
             )
 
         now = datetime.now(timezone.utc)

@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 
 DoneStatus = Literal["pending", "done"]
+LegalLicenseStatus = Literal["pending", "yes", "no"]
 DryStockStatus = Literal["pending", "ordered", "received"]
 OnlineDeliveryStatus = Literal["pending", "ready", "active"]
 
@@ -73,6 +74,17 @@ class NsoPropertySnapshot(BaseModel):
     nearest_twc_m: Optional[int] = None
 
 
+class NsoLegalLicensingSnapshot(BaseModel):
+    overall_status: str = "pending"
+    stage: Optional[str] = None
+    complete: bool = False
+    fssai: LegalLicenseStatus = "pending"
+    health_trade: LegalLicenseStatus = "pending"
+    shops_estab_reg: LegalLicenseStatus = "pending"
+    fire_noc: LegalLicenseStatus = "pending"
+    storage_license: LegalLicenseStatus = "pending"
+
+
 class NsoStateResponse(BaseModel):
     site_id: str
     site_code: str
@@ -95,6 +107,7 @@ class NsoStateResponse(BaseModel):
     triggers: list[NsoTriggerState] = Field(default_factory=list)
 
     property_snapshot: NsoPropertySnapshot
+    legal_licensing_snapshot: NsoLegalLicensingSnapshot = Field(default_factory=NsoLegalLicensingSnapshot)
     property_details: Optional[str] = None
     communication_floated: Optional[bool] = None
 

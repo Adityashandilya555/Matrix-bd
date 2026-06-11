@@ -2,7 +2,10 @@
  * Launch Approval API — post-NSO multi-step sign-off chain.
  *
  * Flow: pending → admin_approved → bd_confirmed → supervisor_approved
- *       → super_admin_approved → launched (site.is_launched = true)
+ *       → launched (site.is_launched = true)
+ *
+ * Legacy rows may still pass through super_admin_approved; the compatibility
+ * endpoint remains exported, but current UI launches after supervisor approval.
  */
 import axios from 'axios';
 import { getAuthToken, clearAuthToken } from './authToken.js';
@@ -74,7 +77,7 @@ export async function supervisorApproveLaunch(siteId) {
   return r.data;
 }
 
-/** Super admin (business_admin) final approval — unlocks Launch button */
+/** Legacy compatibility approval. Current UI launches after supervisor approval. */
 export async function superAdminApproveLaunch(siteId) {
   const r = await client.post(`/launch-approvals/${siteId}/super-admin-approve`);
   notifySiteDataChanged({ source: 'launch', action: 'super_admin_approve', siteId });

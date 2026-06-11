@@ -7,17 +7,16 @@ import {
   getNso,
   saveNsoStageOne,
   saveNsoStageThree,
-  saveNsoStageTwo,
 } from '../../services/api/nsoApi.js';
 import { ROUTES } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 
 const LICENSE_FIELDS = [
-  ['fssaiStatus', 'FSSAI'],
-  ['healthTradeStatus', 'Health Trade'],
-  ['shopsEstabStatus', 'Shops & Establishment'],
-  ['fireNocStatus', 'Fire NOC'],
-  ['storageLicenseStatus', 'Storage License'],
+  ['fssai', 'FSSAI'],
+  ['healthTrade', 'Health Trade'],
+  ['shopsEstabReg', 'Shops & Establishment'],
+  ['fireNoc', 'Fire NOC'],
+  ['storageLicense', 'Storage License'],
 ];
 
 function pretty(value) {
@@ -29,6 +28,12 @@ function statusTone(done, unlocked) {
   if (done) return { bg: 'rgba(47, 125, 82, 0.1)', border: 'rgba(47, 125, 82, 0.5)', color: 'var(--zm-success)', label: 'Done' };
   if (unlocked) return { bg: 'rgba(174, 111, 36, 0.1)', border: 'rgba(174, 111, 36, 0.45)', color: 'var(--zm-copper)', label: 'Open' };
   return { bg: 'var(--zm-surface-2)', border: 'var(--zm-line)', color: 'var(--zm-fg-3)', label: 'Locked' };
+}
+
+function licenseTone(value) {
+  if (value === 'yes') return { label: 'Yes', color: 'var(--zm-success)', bg: 'rgba(47, 125, 82, 0.1)', border: 'rgba(47, 125, 82, 0.35)' };
+  if (value === 'no') return { label: 'No', color: 'var(--zm-danger)', bg: 'rgba(160, 42, 42, 0.08)', border: 'rgba(160, 42, 42, 0.28)' };
+  return { label: 'Pending', color: 'var(--zm-fg-3)', bg: 'var(--zm-surface)', border: 'var(--zm-line)' };
 }
 
 function FieldLabel({ children }) {
@@ -172,6 +177,89 @@ function PropertySnapshotPanel({ snapshot = {} }) {
         lineHeight: 1.45,
       }}>
         Property details are inherited from BD, Add Details, and Finance / CA. NSO can review this snapshot but should not overwrite upstream property data.
+      </div>
+    </div>
+  );
+}
+
+function LegalLicenseSnapshotPanel({ snapshot = {} }) {
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div style={{
+        padding: '10px 12px',
+        borderRadius: 10,
+        border: '1px solid rgba(10, 91, 74, 0.22)',
+        background: 'rgba(10, 91, 74, 0.06)',
+        color: 'var(--zm-fg-2)',
+        fontSize: 12.5,
+        lineHeight: 1.45,
+        fontWeight: 650,
+      }}>
+        License statuses are pulled from Legal Licensing. NSO can review them here, but Legal remains the source of truth.
+      </div>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        padding: '12px 14px',
+        borderRadius: 10,
+        border: '1px solid var(--zm-line)',
+        background: 'var(--zm-surface-2)',
+      }}>
+        <div>
+          <div style={{
+            color: 'var(--zm-fg-3)',
+            fontSize: 10,
+            fontWeight: 850,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+          }}>Overall Licensing</div>
+          <div style={{ marginTop: 3, color: 'var(--zm-fg)', fontWeight: 850 }}>
+            {pretty(snapshot.overallStatus)}
+            {snapshot.stage ? <span style={{ color: 'var(--zm-fg-3)', fontWeight: 700 }}> · {pretty(snapshot.stage)}</span> : null}
+          </div>
+        </div>
+        <StatusChip value={snapshot.complete ? 'Complete' : 'Pending'} tone={snapshot.complete ? 'var(--zm-success)' : 'var(--zm-copper)'}/>
+      </div>
+      <div style={{ display: 'grid', gap: 10 }}>
+        {LICENSE_FIELDS.map(([key, label]) => {
+          const tone = licenseTone(snapshot[key] || 'pending');
+          return (
+            <div
+              key={key}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 14,
+                padding: 12,
+                borderRadius: 10,
+                border: `1px solid ${tone.border}`,
+                background: tone.bg,
+              }}
+            >
+              <span style={{ color: 'var(--zm-fg)', fontWeight: 850 }}>{label}</span>
+              <span style={{
+                height: 28,
+                minWidth: 92,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 8,
+                border: `1px solid ${tone.border}`,
+                background: 'var(--zm-surface)',
+                color: tone.color,
+                fontSize: 11,
+                fontWeight: 850,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+              }}>
+                {tone.label}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -352,13 +440,6 @@ export default function NsoReviewPage() {
   const navigate = useNavigate();
   const [state, setState] = React.useState({ status: 'loading', review: null, error: null });
   const [stageOne, setStageOne] = React.useState({ communicationFloated: null });
-  const [stageTwo, setStageTwo] = React.useState({
-    fssaiStatus: 'pending',
-    healthTradeStatus: 'pending',
-    shopsEstabStatus: 'pending',
-    fireNocStatus: 'pending',
-    storageLicenseStatus: 'pending',
-  });
   const [stageThree, setStageThree] = React.useState({
     dryStockOrderStatus: 'pending',
     onlineDeliveryStatus: 'pending',
@@ -375,13 +456,6 @@ export default function NsoReviewPage() {
   const hydrate = React.useCallback((review) => {
     setStageOne({
       communicationFloated: review.communicationFloated ?? null,
-    });
-    setStageTwo({
-      fssaiStatus: review.fssaiStatus || 'pending',
-      healthTradeStatus: review.healthTradeStatus || 'pending',
-      shopsEstabStatus: review.shopsEstabStatus || 'pending',
-      fireNocStatus: review.fireNocStatus || 'pending',
-      storageLicenseStatus: review.storageLicenseStatus || 'pending',
     });
     setStageThree({
       dryStockOrderStatus: review.dryStockOrderStatus || 'pending',
@@ -425,8 +499,9 @@ export default function NsoReviewPage() {
   const review = state.review;
   const triggerMap = Object.fromEntries((review?.triggers || []).map((item) => [item.key, item]));
   const stageOneUnlocked = Boolean(triggerMap.finance_ca?.unlocked);
-  const stageTwoUnlocked = Boolean(triggerMap.project_initiation?.unlocked && review?.stageOneCompletedAt);
-  const stageThreeUnlocked = Boolean(triggerMap.project_completion?.unlocked && review?.stageTwoCompletedAt);
+  const stageTwoUnlocked = Boolean(triggerMap.project_initiation?.unlocked);
+  const stageTwoDone = Boolean(review?.legalLicensingSnapshot?.complete || review?.stageTwoCompletedAt);
+  const stageThreeUnlocked = Boolean(triggerMap.project_completion?.unlocked);
   const finalUnlocked = Boolean(review?.stageThreeCompletedAt && !review?.finalApprovedAt);
 
   const markDirty = (setter) => (value) => {
@@ -444,21 +519,6 @@ export default function NsoReviewPage() {
       setNotice('Stage 1 saved.');
     } catch (err) {
       setNotice(err?.detail || err?.message || 'Could not save Stage 1.');
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const saveTwo = async () => {
-    setBusy('stage-two');
-    setNotice(null);
-    try {
-      const next = await saveNsoStageTwo(siteId, stageTwo);
-      setState({ status: 'ready', review: next, error: null });
-      hydrate(next);
-      setNotice('Stage 2 saved.');
-    } catch (err) {
-      setNotice(err?.detail || err?.message || 'Could not save Stage 2.');
     } finally {
       setBusy(null);
     }
@@ -609,51 +669,13 @@ export default function NsoReviewPage() {
           <StageCard
             eyebrow="Stage 2"
             title="License status"
-            done={Boolean(review.stageTwoCompletedAt)}
+            done={stageTwoDone}
             unlocked={stageTwoUnlocked}
-            footer={saveButton('Save Stage 2', saveTwo, !stageTwoUnlocked, 'stage-two')}
           >
             {!stageTwoUnlocked ? (
               <LockedNotice>Stage 2 unlocks after Stage 1 is complete and the Project initiation date is approved.</LockedNotice>
             ) : (
-              <div style={{ display: 'grid', gap: 10 }}>
-                {LICENSE_FIELDS.map(([key, label]) => (
-                  <div
-                    key={key}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 14,
-                      padding: 12,
-                      borderRadius: 10,
-                      border: '1px solid var(--zm-line)',
-                      background: 'var(--zm-surface-2)',
-                    }}
-                  >
-                    <span style={{ color: 'var(--zm-fg)', fontWeight: 850 }}>{label}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDirty(true);
-                        setStageTwo((prev) => ({ ...prev, [key]: prev[key] === 'done' ? 'pending' : 'done' }));
-                      }}
-                      style={{
-                        height: 32,
-                        minWidth: 92,
-                        borderRadius: 8,
-                        border: `1px solid ${stageTwo[key] === 'done' ? 'var(--zm-success)' : 'var(--zm-line)'}`,
-                        background: stageTwo[key] === 'done' ? 'rgba(47, 125, 82, 0.1)' : 'var(--zm-surface)',
-                        color: stageTwo[key] === 'done' ? 'var(--zm-success)' : 'var(--zm-fg-2)',
-                        fontWeight: 850,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {stageTwo[key] === 'done' ? 'Done' : 'Pending'}
-                    </button>
-                  </div>
-                ))}
-              </div>
+              <LegalLicenseSnapshotPanel snapshot={review.legalLicensingSnapshot} />
             )}
           </StageCard>
 
@@ -665,7 +687,7 @@ export default function NsoReviewPage() {
             footer={saveButton('Save Stage 3', saveThree, !stageThreeUnlocked, 'stage-three')}
           >
             {!stageThreeUnlocked ? (
-              <LockedNotice>Stage 3 unlocks after licenses are complete and Project has reached completion.</LockedNotice>
+              <LockedNotice>Stage 3 unlocks after Legal Licensing is complete and Project has reached completion.</LockedNotice>
             ) : (
               <div style={{ display: 'grid', gap: 16 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

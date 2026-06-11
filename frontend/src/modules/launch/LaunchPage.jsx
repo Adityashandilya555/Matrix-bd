@@ -29,7 +29,7 @@ const FINANCE_LABELS = {
 const CONFIRM_STATUS_COLORS = {
   admin_approved:      '#6C9FE6',
   bd_confirmed:        '#4CAF82',
-  supervisor_approved: '#9B8AF2',
+  supervisor_approved: '#58E0A4',
   super_admin_approved:'#58E0A4',
   launched:            '#58E0A4',
 };
@@ -43,7 +43,7 @@ function inRange(iso, from, to) {
 }
 
 // ── Confirmation queue row ─────────────────────────────────────────────────────
-function ConfirmRow({ item, onAction, acting }) {
+function ConfirmRow({ item, onAction, acting, actionLabel = 'Confirm' }) {
   const color = CONFIRM_STATUS_COLORS[item.status] || '#888';
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.5fr 0.9fr 1.4fr auto',
@@ -64,7 +64,8 @@ function ConfirmRow({ item, onAction, acting }) {
           color, background: `${color}22` }}>
           {item.status === 'admin_approved' ? 'Admin Approved · Awaiting BD'
             : item.status === 'bd_confirmed' ? 'BD Verified ✓'
-            : item.status === 'supervisor_approved' ? 'Supervisor Approved'
+            : item.status === 'supervisor_approved' ? 'Supervisor Approved · Ready for Admin Launch'
+            : item.status === 'super_admin_approved' ? 'Ready for Admin Launch'
             : item.status}
         </span>
       </span>
@@ -74,7 +75,7 @@ function ConfirmRow({ item, onAction, acting }) {
             style={{ height: 32, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-accent)',
               background: 'var(--zm-accent)', color: '#fff', fontSize: 12, fontWeight: 700,
               cursor: acting ? 'not-allowed' : 'pointer', opacity: acting ? 0.7 : 1 }}>
-            {acting ? '…' : 'Confirm'}
+            {acting ? '…' : actionLabel}
           </button>
         )}
       </span>
@@ -305,7 +306,7 @@ export default function LaunchPage() {
         <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
           <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--zm-line)', background: 'var(--zm-surface-2)' }}>
             <div style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-2)' }}>
-              BD has confirmed the terms. Supervisor approval required to advance to Super Admin.
+              BD has confirmed the terms. Supervisor approval sends the site back to Admin for launch.
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.5fr 0.9fr 1.4fr auto', gap: 12, padding: '9px 16px', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
@@ -317,7 +318,8 @@ export default function LaunchPage() {
           {!approvalQueue.loading && supervisorItems.map((item) => (
             <ConfirmRow key={item.site_id} item={item}
               onAction={handleSupervisorApprove}
-              acting={acting === item.site_id}/>
+              acting={acting === item.site_id}
+              actionLabel="Approve"/>
           ))}
 
           {!approvalQueue.loading && supervisorItems.length === 0 && (
