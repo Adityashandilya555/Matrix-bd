@@ -6,13 +6,11 @@
     },
     "semgrep": {
       "type": "stdio",
-      "command": "npx",
+      "command": "/opt/homebrew/bin/uvx",
       "args": [
-        "-y",
-        "@semgrep/mcp-server",
-        "--config", "p/owasp-top-ten",
-        "--config", "p/python",
-        "--config", "p/react"
+        "--python", "3.12",
+        "--with", "setuptools<81",
+        "semgrep-mcp"
       ]
     }
   }
