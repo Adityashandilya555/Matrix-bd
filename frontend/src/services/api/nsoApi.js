@@ -129,6 +129,8 @@ function stateFromServer(row) {
     stageThreeCompletedAt: row.stage_three_completed_at,
     finalApprovedAt: row.final_approved_at,
     updatedAt: row.updated_at,
+    isLaunched: Boolean(row.is_launched),
+    launchedAt: row.launched_at,
   };
 }
 

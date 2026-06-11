@@ -29,6 +29,7 @@ from app.domain.schemas.nso import (
 )
 from app.services._common import fetch_site_or_404, fetch_user_name
 from app.services.audit_service import write_audit_event
+from app.services.launch_service import svc_create_launch_approval
 
 
 LICENSE_FIELDS = (
@@ -339,6 +340,8 @@ async def _state_response(
         stage_three_completed_at=row.stage_three_completed_at,
         final_approved_at=row.final_approved_at,
         updated_at=row.updated_at,
+        is_launched=bool(site.is_launched),
+        launched_at=site.launched_at,
     )
 
 
@@ -543,4 +546,6 @@ async def svc_final_approval(
             action="nso_final_approved",
             detail="NSO final approval complete.",
         )
+        # Kick off the post-NSO launch approval chain.
+        await svc_create_launch_approval(session, site=site, tenant_id=tenant_id)
         return await _state_response(session, site, row, project)

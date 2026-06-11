@@ -19,6 +19,7 @@ import Sidebar from './ui/Sidebar.jsx';
 import ApprovalCenter from './approval/ApprovalCenter.jsx';
 import DepartmentsTab from './departments/DepartmentsTab.jsx';
 import SitesTab from './sites/SitesTab.jsx';
+import LaunchApprovalTab from './launch/LaunchApprovalTab.jsx';
 
 // Real API wiring. Injectable so the dev preview (and tests) can drive the whole
 // portal with mock data — see ./_preview/ApprovalCenterPreview.jsx.
@@ -65,8 +66,9 @@ function useQueue(fetcher) {
 
 const TABS = [
   { key: 'approvals',   label: 'Approval Center', icon: Icon.check },
-  { key: 'departments', label: 'Departments',     icon: Icon.key },
-  { key: 'sites',       label: 'Sites',           icon: Icon.pin },
+  { key: 'launch',      label: 'Launch Approvals', icon: Icon.flag },
+  { key: 'departments', label: 'Departments',      icon: Icon.key },
+  { key: 'sites',       label: 'Sites',            icon: Icon.pin },
 ];
 
 export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, workspaceName }) {
@@ -173,8 +175,9 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
 
   const navItems = [
     { ...TABS[0], count: approvalSites.length },
-    { ...TABS[1], count: supCount },
-    { ...TABS[2] },
+    { ...TABS[1] }, // Launch Approvals — count fetched inside the tab
+    { ...TABS[2], count: supCount },
+    { ...TABS[3] },
   ];
 
   return (
@@ -229,6 +232,9 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
           <div key={tab} className="ac-fade-in">
             {tab === 'approvals' && (
               <ApprovalCenter data={approvalData} handlers={handlers} onRetry={() => reloadApprovals(false)} />
+            )}
+            {tab === 'launch' && (
+              <LaunchApprovalTab />
             )}
             {tab === 'departments' && (
               <DepartmentsTab org={org} pendingSupervisors={supervisors} handlers={handlers} />

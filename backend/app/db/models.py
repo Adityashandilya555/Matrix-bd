@@ -149,6 +149,10 @@ class Site(Base):
     # Snapshot of sites.status taken at archive time so Revive can restore exactly.
     archived_from_status: Mapped[Optional[str]] = mapped_column(Text)
 
+    # Post-NSO launch flag — set by the Launch Approval workflow.
+    is_launched: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    launched_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False,
@@ -185,6 +189,8 @@ class SiteDetail(Base):
     rent_free_days: Mapped[Optional[int]] = mapped_column(Integer)
     nearest_starbucks_m: Mapped[Optional[int]] = mapped_column(Integer)
     nearest_twc_m: Mapped[Optional[int]] = mapped_column(Integer)
+    # Extra field added for the Launch Approval flow (migration 202606094).
+    escalation_date: Mapped[Optional[date]] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False,
@@ -834,6 +840,70 @@ class NsoReview(Base):
             name="chk_nso_online_delivery_status",
         ),
         Index("idx_nso_reviews_tenant_status", "tenant_id", "nso_status"),
+    )
+
+
+# ── Post-NSO Launch Approval workflow ────────────────────────────────────────
+# Opens when NSO final_approved_at is set. Drives the multi-step sign-off:
+#   pending → admin_approved → bd_confirmed → supervisor_approved
+#   → super_admin_approved → launched
+# Mirrors an editable snapshot of commercial fields from site_details + sites.
+
+class LaunchApproval(Base):
+    """One row per site for the post-NSO launch approval chain."""
+    __tablename__ = "launch_approvals"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4())
+    site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), unique=True, nullable=False)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+
+    # Editable commercial snapshot (pre-populated from site_details + sites)
+    rent_type: Mapped[Optional[str]] = mapped_column(Text)
+    fixed_rent_amt: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    expected_rent: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    rev_share_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
+    escalation_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
+    escalation_date: Mapped[Optional[date]] = mapped_column(Date)
+    expected_escalation_years: Mapped[Optional[int]] = mapped_column(Integer)
+    cam_charges: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    security_deposit: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    brokerage: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    lock_in_months: Mapped[Optional[int]] = mapped_column(Integer)
+    tenure_months: Mapped[Optional[int]] = mapped_column(Integer)
+    rent_free_days: Mapped[Optional[int]] = mapped_column(Integer)
+    carpet_area_sqft: Mapped[Optional[float]] = mapped_column(Numeric(10, 2))
+    estimated_monthly_sales: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    capex: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    score: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Workflow status FSM
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+
+    # Approval chain timestamps + actors
+    admin_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    admin_approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    bd_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    bd_confirmed_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    supervisor_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    supervisor_approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    super_admin_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    super_admin_approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    launched_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    launched_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending','admin_approved','bd_confirmed',"
+            "'supervisor_approved','super_admin_approved','launched')",
+            name="chk_launch_approval_status",
+        ),
+        Index("idx_launch_approvals_tenant_status", "tenant_id", "status"),
     )
 
 

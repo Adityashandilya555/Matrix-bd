@@ -117,6 +117,9 @@ class NsoStateResponse(BaseModel):
     stage_three_completed_at: Optional[datetime] = None
     final_approved_at: Optional[datetime] = None
     updated_at: datetime
+    # Cross-module launch flag — set by the Launch Approval workflow.
+    is_launched: bool = False
+    launched_at: Optional[datetime] = None
 
 
 class NsoStageOneRequest(BaseModel):

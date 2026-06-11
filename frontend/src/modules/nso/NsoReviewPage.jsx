@@ -543,6 +543,19 @@ export default function NsoReviewPage() {
 
       <TriggerRail triggers={review.triggers || []}/>
 
+      {review.isLaunched && (
+        <div style={{
+          padding: '14px 20px', borderRadius: 12,
+          background: 'rgba(46,168,106,0.12)', border: '1px solid rgba(46,168,106,0.35)',
+          color: '#2EA86A', fontWeight: 750, fontSize: 15,
+          display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          🚀 <span>This site has been <strong>LAUNCHED</strong>
+          {review.launchedAt ? ` on ${new Date(review.launchedAt).toLocaleDateString('en-IN')}` : ''}.
+          All approval steps are complete.</span>
+        </div>
+      )}
+
       {notice && (
         <div className="zm-glass" style={{
           padding: 14,
