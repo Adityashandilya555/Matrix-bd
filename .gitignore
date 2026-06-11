@@ -55,3 +55,7 @@ frontend/dist/
 .claude/sessions/
 .agents/
 skills-lock.json
+
+# Claude Code local MCP server config — developer tooling, not app/deploy code.
+# Keep it local (paths like /opt/homebrew/bin/uvx are machine-specific).
+.mcp.json
