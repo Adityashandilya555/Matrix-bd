@@ -12,10 +12,12 @@ It does NOT depend on the linear site status — progress is tracked by:
 Swimlane:
   Supervisor allocates a finance-approved site to a *design* executive (separate
   pool, module='design'). The executive uploads each deliverable; the supervisor
-  reviews it yes/no with comments (reject → re-upload loop). When the BOQ is
-  approved the site reaches the GFC gate, where the **business_admin** gives the
-  final Good-For-Construction approval (a comments dialog visible to the
-  supervisor).
+  reviews it yes/no with comments (reject → re-upload loop). After 3D is
+  approved the site reaches the GFC gate, where the **business_admin** gives
+  Good-For-Construction approval. Once GFC passes, the executive uploads the
+  BOQ + estimate; supervisor approval of the BOQ completes the design.
+
+  Stage order: recce → 2d → 3d → GFC gate → boq → done
 
 Mirror column sites.design_status:
   pending | allocated | in_progress | gfc_pending | approved | rejected
@@ -65,9 +67,10 @@ from app.services.notification_service import (
 logger = logging.getLogger(__name__)
 
 # Deliverable order + the supervisor-approval advance map.
-# Approving the BOQ advances current_stage to 'gfc' (the business_admin gate).
+# Approving 3D advances current_stage to 'gfc' (the business_admin GFC gate).
+# Approving the BOQ (which comes AFTER GFC) completes the design ('done').
 _KIND_ORDER = {"recce": 0, "2d": 1, "3d": 2, "boq": 3}
-_NEXT_STAGE = {"recce": "2d", "2d": "3d", "3d": "boq", "boq": "gfc"}
+_NEXT_STAGE = {"recce": "2d", "2d": "3d", "3d": "gfc", "boq": "done"}
 _DELIVERABLE_KINDS = ("recce", "2d", "3d", "boq")
 # Deliverables that require a SECOND-tier business_admin approval (on top of the
 # supervisor's) before the stage advances. Recce + BOQ are supervisor-only.
@@ -593,12 +596,13 @@ async def _advance_stage_after_approval(
     review.approved_by = actor["sub"]
 
     if next_stage == "gfc":
+        # 3D approved → open the GFC gate for the business admin.
         site.design_status = "gfc_pending"
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor.get("name"),
-            action="design_boq_approved",
-            detail="BOQ approved — site moved to GFC gate (awaiting admin)",
+            action="design_3d_approved",
+            detail="3D approved — site moved to GFC gate (awaiting admin GFC sign-off)",
         )
         admins = await recipients_for_business_admins(session, tenant_id=tenant_id)
         if admins:
@@ -609,8 +613,32 @@ async def _advance_stage_after_approval(
                 payload={"site_id": str(site.id), "site_name": site.name},
                 subject=f"GFC approval needed: {site.name}",
                 body=(
-                    f"The design package for '{site.name}' ({site.code}) is ready. "
-                    f"Open the Design tab to give Good-For-Construction approval."
+                    f"The 3D design for '{site.name}' ({site.code}) is approved. "
+                    f"Open the Design tab to give Good-For-Construction sign-off "
+                    f"before the BOQ is uploaded."
+                ),
+            )
+    elif next_stage == "done":
+        # BOQ approved → design is now complete.
+        site.design_status = "approved"
+        site.design_approved_at = datetime.now(timezone.utc)
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=site.id,
+            actor_id=actor["sub"], actor_name=actor.get("name"),
+            action="design_boq_approved",
+            detail="BOQ approved — design complete",
+        )
+        supervisors = await recipients_for_design_supervisors(session, tenant_id=tenant_id)
+        if supervisors:
+            await notify_enqueue(
+                session, tenant_id=tenant_id, event="design_complete",
+                recipient_ids=supervisors, site_id=site.id,
+                channels=("in_app", "email"),
+                payload={"site_id": str(site.id), "site_name": site.name},
+                subject=f"Design complete: {site.name}",
+                body=(
+                    f"The BOQ for '{site.name}' ({site.code}) was approved. "
+                    f"The design module is complete."
                 ),
             )
     else:
@@ -1091,9 +1119,10 @@ async def svc_gfc_decision(
 ) -> DesignReviewResponse:
     """Business admin's Good-For-Construction decision (the admin gate).
 
-    approve → design complete: design_status='approved', current_stage='done'.
-    reject  → bounce to BOQ revision: design_status='in_progress', stage='boq',
-              admin comments surfaced to the supervisor (and onto the BOQ row).
+    approve → advance to BOQ stage: design_status='in_progress', stage='boq'.
+              Notifies the executive (and supervisors) to upload the BOQ + estimate.
+    reject  → bounce to 3D revision: design_status='in_progress', stage='3d',
+              admin comments surfaced to the supervisor (and onto the 3D row).
     """
     if (actor.get("role") or "").lower() != "business_admin":
         raise HTTPException(
@@ -1121,36 +1150,53 @@ async def svc_gfc_decision(
         supervisors = await recipients_for_design_supervisors(session, tenant_id=tenant_id)
 
         if body.decision == "approve":
+            # GFC approved → advance to BOQ stage (design not yet complete).
             review.gfc_status = "approved"
-            review.current_stage = "done"
-            site.design_status = "approved"
-            site.design_approved_at = now
+            review.current_stage = "boq"
+            site.design_status = "in_progress"
             await write_audit_event(
                 session, tenant_id=tenant_id, site_id=site.id,
                 actor_id=actor["sub"], actor_name=actor.get("name"),
                 action="design_gfc_approved",
-                detail="GFC approved — design complete",
+                detail="GFC approved — advancing to BOQ + estimate stage",
             )
+            # Notify the design executive (if any) and supervisors to upload the BOQ.
+            delegate = await _active_design_delegate(session, site_id=site.id)
+            if delegate:
+                await notify_enqueue(
+                    session, tenant_id=tenant_id, event="design_gfc_approved",
+                    recipient_ids=[delegate[0]], site_id=site.id,
+                    channels=("in_app", "email"),
+                    payload={"site_id": str(site.id), "site_name": site.name},
+                    subject=f"GFC approved — upload BOQ: {site.name}",
+                    body=(
+                        f"Good-For-Construction was approved for '{site.name}'. "
+                        f"Please upload the BOQ + estimate to complete the design."
+                    ),
+                )
             if supervisors:
                 await notify_enqueue(
                     session, tenant_id=tenant_id, event="design_gfc_approved",
                     recipient_ids=supervisors, site_id=site.id,
-                    channels=("in_app", "email"),
+                    channels=("in_app",),
                     payload={"site_id": str(site.id), "site_name": site.name},
                     subject=f"GFC approved: {site.name}",
                     body=(
-                        f"'{site.name}' ({site.code}) received Good-For-Construction "
-                        f"approval. The design module is complete."
+                        f"'{site.name}' ({site.code}) received GFC approval. "
+                        f"BOQ + estimate upload is next."
                     ),
                 )
         else:
+            # GFC rejected → bounce back to 3D for revision (BOQ hasn't been
+            # submitted yet, so we reset the 3D deliverable, not the BOQ).
             review.gfc_status = "rejected"
-            review.current_stage = "boq"
+            review.current_stage = "3d"
             site.design_status = "in_progress"
-            boq = await _fetch_deliverable_or_none(session, site_id=site.id, kind="boq")
-            if boq is not None:
-                boq.status = "rejected"
-                boq.supervisor_comments = f"GFC rejected by admin: {review.gfc_comments or ''}"
+            deliverable_3d = await _fetch_deliverable_or_none(session, site_id=site.id, kind="3d")
+            if deliverable_3d is not None:
+                deliverable_3d.status = "rejected"
+                deliverable_3d.admin_status = "pending"
+                deliverable_3d.supervisor_comments = f"GFC rejected by admin: {review.gfc_comments or ''}"
             await write_audit_event(
                 session, tenant_id=tenant_id, site_id=site.id,
                 actor_id=actor["sub"], actor_name=actor.get("name"),
@@ -1166,7 +1212,8 @@ async def svc_gfc_decision(
                              "comments": review.gfc_comments},
                     subject=f"GFC sent back: {site.name}",
                     body=(
-                        f"The GFC for '{site.name}' ({site.code}) was sent back by the admin.\n\n"
+                        f"The GFC for '{site.name}' ({site.code}) was sent back by the admin. "
+                        f"The 3D design needs revision.\n\n"
                         f"Comments: {review.gfc_comments or '(none)'}"
                     ),
                 )

@@ -11,9 +11,12 @@ import {
 } from '../../services/api/designApi.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 
-const KINDS = ['recce', '2d', '3d', 'boq'];
+// Stage order: recce → 2d → 3d → GFC gate → boq
+// GFC is rendered as a card between 3D and BOQ, so we split into two groups.
+const KINDS_BEFORE_GFC = ['recce', '2d', '3d'];
+const KINDS_AFTER_GFC  = ['boq'];
 const KIND_LABEL = { recce: 'Recce', '2d': '2D design', '3d': '3D design', boq: 'BOQ + estimate' };
-const KIND_NUM = { recce: '01', '2d': '02', '3d': '03', boq: '04' };
+const KIND_NUM = { recce: '01', '2d': '02', '3d': '03', boq: '05' };
 
 const DELIV_TONE = {
   pending:   { label: 'Not uploaded', color: 'var(--zm-fg-3)' },
@@ -441,9 +444,9 @@ export default function DesignReviewPage() {
         </div>
       )}
 
-      {/* Deliverables */}
+      {/* Deliverables before GFC: recce → 2d → 3d */}
       <div style={{ display: 'grid', gap: 12 }}>
-        {KINDS.map((kind) => (
+        {KINDS_BEFORE_GFC.map((kind) => (
           <DeliverableCard
             key={kind}
             kind={kind}
@@ -460,10 +463,15 @@ export default function DesignReviewPage() {
         ))}
       </div>
 
-      {/* GFC gate (read-only here — the business admin approves it in their portal) */}
-      <div className="zm-glass" style={{ borderRadius: 12, padding: 16 }}>
+      {/* GFC gate — sits between 3D and BOQ (read-only here; admin approves from their portal) */}
+      <div className="zm-glass" style={{
+        borderRadius: 12, padding: 16,
+        opacity: ['pending', 'allocated', 'in_progress'].includes(r.designStatus) && r.currentStage !== 'gfc' && r.gfcStatus === 'pending' ? 0.55 : 1,
+      }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+          <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11, color: 'var(--zm-fg-3)' }}>04</span>
           <strong style={{ fontFamily: 'var(--zm-font-body)', fontSize: 14, color: 'var(--zm-fg)' }}>GFC · Good-For-Construction</strong>
+          {r.currentStage === 'gfc' && <Badge label="Active" color="var(--zm-accent)"/>}
           <span style={{ marginLeft: 'auto' }}>
             <Badge
               label={r.gfcStatus === 'approved' ? 'Approved' : r.gfcStatus === 'rejected' ? 'Sent back' : (r.designStatus === 'gfc_pending' ? 'Awaiting admin' : 'Pending')}
@@ -473,16 +481,37 @@ export default function DesignReviewPage() {
         </div>
         <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-3)' }}>
           {r.designStatus === 'gfc_pending'
-            ? 'BOQ approved — the business admin gives the final GFC sign-off from the Business Admin portal.'
+            ? '3D design approved — the business admin gives Good-For-Construction sign-off from the Business Admin portal.'
             : r.gfcStatus === 'approved'
-              ? 'Design complete — Good-For-Construction approved.'
-              : 'Becomes active once the BOQ is approved.'}
+              ? 'GFC approved — proceed to BOQ + estimate upload.'
+              : r.gfcStatus === 'rejected'
+                ? '3D design was sent back for revision after GFC rejection.'
+                : 'Becomes active once 3D design is approved.'}
         </p>
         {r.gfcComments && (
           <div style={{ marginTop: 8, fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-2)', background: 'var(--zm-surface-2)', borderRadius: 7, padding: '8px 10px' }}>
             <strong>Admin:</strong> {r.gfcComments}
           </div>
         )}
+      </div>
+
+      {/* Deliverables after GFC: boq */}
+      <div style={{ display: 'grid', gap: 12 }}>
+        {KINDS_AFTER_GFC.map((kind) => (
+          <DeliverableCard
+            key={kind}
+            kind={kind}
+            deliverable={deliverableFor(kind)}
+            isActive={r.currentStage === kind}
+            isExecutive={isExecutive}
+            isSupervisor={isSupervisor}
+            canSelfUpload={isSupervisor && !allocation}
+            busy={busy}
+            onSubmit={onSubmit}
+            onUpload={onUpload}
+            onReview={onReview}
+          />
+        ))}
       </div>
     </div>
   );
