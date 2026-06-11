@@ -325,7 +325,7 @@ export default function ModuleHistoryPage({ moduleKey, defaultFilter = 'all' }) 
     }
     let cancelled = false;
     setDetailState({ status: 'loading', detail: null, audit: [], error: null });
-    Promise.allSettled([config.detail(siteId), getSiteActivity(siteId)])
+    Promise.allSettled([config.detail(siteId), getSiteActivity(siteId, { module: moduleKey })])
       .then(([detailRes, auditRes]) => {
         if (cancelled) return;
         if (detailRes.status === 'rejected') {

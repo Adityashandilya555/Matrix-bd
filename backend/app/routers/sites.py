@@ -89,8 +89,9 @@ async def get_site_activity(
         dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))
     ],
     tenant_id: TenantId,
+    module: Optional[str] = Query(None),
 ) -> AuditListResponse:
-    return await list_site_activity(db, tenant_id=tenant_id, site_id=site_id)
+    return await list_site_activity(db, tenant_id=tenant_id, site_id=site_id, module=module)
 
 
 @router.get(
