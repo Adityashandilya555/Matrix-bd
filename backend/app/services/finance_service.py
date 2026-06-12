@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import transaction
 from app.domain.state_machine import SiteStatus
-from app.services._common import fetch_site_or_404
+from app.services._common import assert_executive_owns_site, fetch_site_or_404
 from app.services.audit_service import write_audit_event
 from app.services.workflow_unlocks import maybe_unlock_design
 from app.services.notification_service import (
@@ -57,6 +57,7 @@ async def svc_save_finance_draft(
     """
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        assert_executive_owns_site(actor, site)
 
         if site.status not in _LOI_AND_BEYOND:
             raise HTTPException(
@@ -103,6 +104,7 @@ async def svc_finance_request_approval(
     """
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        assert_executive_owns_site(actor, site)
 
         if site.status not in _LOI_AND_BEYOND:
             raise HTTPException(

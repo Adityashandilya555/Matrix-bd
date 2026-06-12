@@ -49,6 +49,22 @@ async def fetch_site_or_404(
     return site
 
 
+def assert_executive_owns_site(actor: dict, site: models.Site) -> None:
+    """Object-level authorization (#104): executives may only act on sites they
+    submitted or are assigned. Mirrors the check `get_site` and the LOI upload
+    already enforce; non-executive roles pass through (tenant scoping applies).
+    """
+    if (actor.get("role") or "").lower() != Role.EXECUTIVE.value:
+        return
+    actor_id = str(actor["sub"])
+    if str(site.submitted_by) == actor_id or str(site.assigned_to or "") == actor_id:
+        return
+    raise HTTPException(
+        status_code=http_status.HTTP_403_FORBIDDEN,
+        detail="This site is not assigned to you.",
+    )
+
+
 async def fetch_user_name(session: AsyncSession, user_id: str | UUID | None) -> Optional[str]:
     if not user_id:
         return None

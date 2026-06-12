@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import secrets
 
+from fastapi import HTTPException, status as http_status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -86,22 +87,45 @@ async def approve_my_pending_exec(
     user_id: str,
     module: str,
 ) -> None:
+    # Ownership re-check (#86): the approve path must enforce the same
+    # `notes` marker the list query scopes by — otherwise any supervisor in
+    # the tenant can activate ANY pending user and bind them under themself.
+    marker = f"{_PENDING_PREFIX}{supervisor_id}{_MODULE_MARKER}{module}"
+    not_found = HTTPException(
+        status_code=http_status.HTTP_404_NOT_FOUND,
+        detail="No pending executive with that id awaits your approval.",
+    )
     async with transaction(session):
-        # Guard against approving an already-active user (double-click / replay):
-        # only a pending row gets activated, and the membership INSERT is made
-        # idempotent so the UNIQUE(user_id, module) can't 500 the request. (#123)
         target = (await session.execute(
-            text("SELECT is_active FROM users WHERE id = :uid AND tenant_id = :tid"),
+            text("SELECT is_active, role, notes FROM users WHERE id = :uid AND tenant_id = :tid"),
             {"uid": user_id, "tid": tenant_id},
         )).mappings().first()
-        if not target or target["is_active"]:
-            return
+        if not target:
+            raise not_found
+        if target["is_active"]:
+            # Double-click / replay (#123): stay idempotent, but ONLY when the
+            # user is already this supervisor's member in this module.
+            member = (await session.execute(
+                text(
+                    "SELECT 1 FROM user_module_memberships "
+                    "WHERE user_id = :uid AND module = :m AND supervisor_id = :sid"
+                ),
+                {"uid": user_id, "m": module, "sid": supervisor_id},
+            )).mappings().first()
+            if member:
+                return
+            raise not_found
+        if target["role"] != "executive" or target["notes"] != marker:
+            raise not_found
+        # Predicates repeated in the UPDATE so a concurrent approve/edit can't
+        # widen the write beyond what we just verified.
         await session.execute(
             text(
                 "UPDATE users SET is_active = true, notes = NULL "
-                "WHERE id = :uid AND tenant_id = :tid"
+                "WHERE id = :uid AND tenant_id = :tid "
+                "  AND is_active = false AND role = 'executive' AND notes = :marker"
             ),
-            {"uid": user_id, "tid": tenant_id},
+            {"uid": user_id, "tid": tenant_id, "marker": marker},
         )
         await session.execute(
             text(

@@ -9,6 +9,7 @@ import {
   saveNsoStageThree,
 } from '../../services/api/nsoApi.js';
 import { ROUTES } from '../../router/routes.js';
+import { safeHref } from '../../lib/safeHref.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 
 const LICENSE_FIELDS = [
@@ -159,10 +160,10 @@ function PropertySnapshotPanel({ snapshot = {} }) {
         <SnapshotItem label="Nearest Starbucks" value={snapshotValue(snapshot.nearestStarbucksM, ' m')} mono />
         <SnapshotItem label="Nearest TWC" value={snapshotValue(snapshot.nearestTwcM, ' m')} mono />
         <SnapshotItem label="Google pin" value={snapshotValue(snapshot.googleMapsPin)} mono wide />
-        {snapshot.googleMapsUrl && (
+        {safeHref(snapshot.googleMapsUrl) && (
           <SnapshotItem
             label="Maps link"
-            value={<a href={snapshot.googleMapsUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--zm-accent)' }}>Open Google Maps</a>}
+            value={<a href={safeHref(snapshot.googleMapsUrl)} target="_blank" rel="noreferrer" style={{ color: 'var(--zm-accent)' }}>Open Google Maps</a>}
             wide
           />
         )}

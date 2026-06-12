@@ -307,9 +307,30 @@ async def upload_deliverable(
     tenant_id: TenantId,
     file: UploadFile = File(...),
 ) -> DesignReviewResponse:
+    # Validate BEFORE writing to storage (#88): kind must be a known
+    # deliverable and the site must exist in the caller's tenant — previously
+    # the object was written first, keyed by raw path params with no tenant
+    # prefix, so any design member could litter/overwrite arbitrary keys.
+    from uuid import uuid4
+
+    from app.services._common import fetch_site_or_404
+    from app.services.design_service import _DELIVERABLE_KINDS
+    from app.services.storage_service import safe_object_name
+
     body_bytes = await read_upload_capped(file)
-    safe_name = (file.filename or "document").replace("/", "_").replace("\\", "_")
-    path = f"design/{site_id}/{kind}/{safe_name}"
+    if kind not in _DELIVERABLE_KINDS:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown deliverable kind '{kind}'. Expected one of {_DELIVERABLE_KINDS}.",
+        )
+    site = await fetch_site_or_404(db, site_id=site_id, tenant_id=tenant_id)
+    site_pk = site.id
+    await db.rollback()  # free the connection for the slow storage call
+
+    # Tenant-prefixed, sanitised key with a random prefix so an upload can
+    # never overwrite an existing object (storage PUTs use x-upsert).
+    safe_name = safe_object_name(file.filename or "document", fallback="document")
+    path = f"design/{tenant_id}/{site_pk}/{kind}/{uuid4().hex[:8]}_{safe_name}"
     await storage_upload(
         path=path, body=body_bytes,
         content_type=file.content_type or "application/octet-stream",
