@@ -5,12 +5,13 @@ import logging
 import re
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, status
+from fastapi import Depends, FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.core.config import settings
+from app.core.ratelimit import rate_limit
 from app.db.session import engine
 from app.routers import audit, auth, bd, business_admin, delegations, design, launch_approval, legal, loi, notifications, nso, project, sites, staging, supervisor_codes, tenancy, users
 
@@ -35,15 +36,18 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
-    docs_url="/api/docs",
-    openapi_url="/api/openapi.json",
+    # Swagger + the machine-readable schema are an attacker's site map (#111).
+    # Off unless explicitly enabled (ENABLE_DOCS=true for local dev).
+    docs_url="/api/docs" if settings.enable_docs else None,
+    redoc_url=None,
+    openapi_url="/api/openapi.json" if settings.enable_docs else None,
     lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
-    allow_origin_regex=settings.cors_origin_regex or None,
+    allow_origin_regex=settings.effective_cors_origin_regex or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -63,8 +67,8 @@ def _cors_headers_for(request: Request) -> dict[str, str]:
     if not origin:
         return {}
     allowed = origin in settings.cors_origin_list
-    if not allowed and settings.cors_origin_regex:
-        allowed = bool(re.fullmatch(settings.cors_origin_regex, origin))
+    if not allowed and settings.effective_cors_origin_regex:
+        allowed = bool(re.fullmatch(settings.effective_cors_origin_regex, origin))
     if not allowed:
         return {}
     return {
@@ -96,9 +100,10 @@ async def health() -> dict:
     return {"status": "ok", "version": "0.1.0"}
 
 
-@app.get("/api/health/db")
+@app.get("/api/health/db", dependencies=[Depends(rate_limit(times=30, seconds=60))])
 async def health_db() -> dict:
-    """Deep health check — round-trips a SELECT 1 against Supabase."""
+    """Deep health check — round-trips a SELECT 1 against Supabase.
+    Rate-limited (#109): each call burns a pgBouncer slot round-trip."""
     async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))
     return {"status": "ok"}

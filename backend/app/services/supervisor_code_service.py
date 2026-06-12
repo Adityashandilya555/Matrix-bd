@@ -167,13 +167,19 @@ async def list_my_team(
 
 
 async def reject_my_pending_exec(
-    session: AsyncSession, tenant_id: str, user_id: str,
+    session: AsyncSession, tenant_id: str, user_id: str, supervisor_id: str,
 ) -> None:
+    # Ownership scope (same class as #86): only THIS supervisor's pending
+    # recruits are deletable — previously any supervisor could delete any
+    # inactive user in the tenant (other supervisors' recruits, pending
+    # workspace joiners).
+    marker_prefix = f"{_PENDING_PREFIX}{supervisor_id}{_MODULE_MARKER}%"
     async with transaction(session):
         await session.execute(
             text(
                 "DELETE FROM users "
-                "WHERE id = :uid AND tenant_id = :tid AND is_active = false"
+                "WHERE id = :uid AND tenant_id = :tid AND is_active = false "
+                "  AND role = 'executive' AND notes LIKE :marker_prefix"
             ),
-            {"uid": user_id, "tid": tenant_id},
+            {"uid": user_id, "tid": tenant_id, "marker_prefix": marker_prefix},
         )

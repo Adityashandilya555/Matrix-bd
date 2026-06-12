@@ -74,4 +74,4 @@ async def reject_my_pending_exec(
     current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    await svc.reject_my_pending_exec(db, current_user["tenant_id"], user_id)
+    await svc.reject_my_pending_exec(db, current_user["tenant_id"], user_id, current_user["sub"])

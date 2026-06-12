@@ -27,7 +27,7 @@ from app.domain.schemas.legal_change_request import (
     ReviewChangeRequestRequest,
 )
 from app.domain.state_machine import SiteStatus, assert_transition
-from app.services._common import fetch_site_or_404, fetch_user_name
+from app.services._common import assert_executive_owns_site, fetch_site_or_404, fetch_user_name
 from app.services.audit_service import write_audit_event
 from app.services.notification_service import (
     enqueue as notify_enqueue,
@@ -157,6 +157,9 @@ async def svc_create_change_request(
 
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=body.site_id, tenant_id=tenant_id)
+        # #104 — executives may only open change requests (and read back the
+        # current legal field value) on their own/assigned sites.
+        assert_executive_owns_site(actor, site)
 
         current = await _read_current_value(
             session, site_id=site.id, target_table=body.target_table, field_name=body.field_name,

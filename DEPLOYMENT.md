@@ -107,7 +107,19 @@ The backend rejects requests from origins not in `CORS_ORIGINS`. Add the Vercel 
    ```
    https://<your-vercel-app>.vercel.app
    ```
-   (Comma-separated if you want multiple, e.g. preview deployments. Vercel preview URLs have unpredictable hostnames, so for those add `https://<vercel-project>-*.vercel.app` style entries or just use `*` for non-prod test environments.)
+   (Comma-separated for multiple **exact** origins. Starlette matches these by
+   exact string compare — glob entries like `https://project-*.vercel.app`
+   silently never match, and `*` is **refused at boot**: this app sends
+   credentials, and wildcard-with-credentials would let any website on the
+   internet make credentialed calls against the API.)
+
+   For Vercel **preview** deployments (unpredictable hostnames), set the regex
+   variable instead:
+   ```
+   CORS_ORIGIN_REGEX=^https://<vercel-project>-[a-z0-9-]+\.vercel\.app$
+   ```
+   Local Vite ports (5100–5199) are no longer allowed by default in
+   production; set `CORS_ALLOW_LOCALHOST=true` only on dev machines.
 2. Railway will redeploy automatically. Wait ~30s.
 3. Refresh the Vercel app → try a real action. Network tab should show no CORS errors.
 

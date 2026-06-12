@@ -7,8 +7,15 @@ must be set in the deployment environment.
 """
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+# Repo-committed placeholder values. Booting with either of these outside an
+# explicit insecure-dev mode is a takeover waiting to happen (#80): the JWT
+# secret makes every token forgeable; the admin password is public history.
+_PLACEHOLDER_JWT_SECRET = "change-me-in-production"  # noqa: S105 # nosec B105 — sentinel, rejected at boot
+_RETIRED_ADMIN_PASSWORD = "BlueTokai-Matrix-2026"  # noqa: S105 # nosec B105 — old default, rejected at boot
 
 
 class Settings(BaseSettings):
@@ -25,17 +32,40 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
 
+    # Explicit opt-in for local development with placeholder secrets and other
+    # insecure conveniences. NEVER set in production — the startup guard below
+    # is the only thing standing between a missing env var and forgeable JWTs.
+    allow_insecure_defaults: bool = False
+    # Serve /api/docs + /api/openapi.json. Off by default: the schema hands an
+    # attacker the full endpoint map, auth header names, and signup-code
+    # semantics (#111). Enable locally via ENABLE_DOCS=true.
+    enable_docs: bool = False
+
     # CORS_ORIGINS comes in as a comma-separated string in .env; split below.
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
     # Optional regex applied in addition to cors_origins — lets us whitelist a
-    # whole pattern of preview URLs (e.g. Vercel's per-commit previews) without
-    # listing each one. By default, keep local Vite preview ports usable even
-    # when production CORS_ORIGINS is narrowed to the deployed Vercel domain.
-    cors_origin_regex: str = r"^http://(localhost|127\.0\.0\.1):51[0-9]{2}$"
+    # whole pattern of preview URLs (e.g. Vercel's per-commit previews:
+    # CORS_ORIGIN_REGEX=^https://<project>-[a-z0-9-]+\.vercel\.app$).
+    # Starlette matches allow_origins by EXACT string compare, so glob entries
+    # in CORS_ORIGINS silently never match — the regex is the only correct way
+    # to allow preview URLs (#110).
+    cors_origin_regex: str = ""
+    # Opt-in for local Vite ports (5100-5199). Previously this regex was baked
+    # in unconditionally, leaving http://localhost:51xx a permanently allowed
+    # origin against the production API (#110).
+    cors_allow_localhost: bool = False
 
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def effective_cors_origin_regex(self) -> str:
+        if self.cors_origin_regex:
+            return self.cors_origin_regex
+        if self.cors_allow_localhost:
+            return r"^http://(localhost|127\.0\.0\.1):51[0-9]{2}$"
+        return ""
 
     # ── Database ────────────────────────────────────────────────────────────
     database_url: str = Field(
@@ -52,9 +82,18 @@ class Settings(BaseSettings):
     db_connect_timeout_seconds: float = 10.0
 
     # ── Auth ────────────────────────────────────────────────────────────────
-    supabase_jwt_secret: str = "change-me-in-production"
+    supabase_jwt_secret: str = _PLACEHOLDER_JWT_SECRET
     supabase_jwt_audience: str = "authenticated"
     allow_anon_demo_user: bool = False
+    # Comma-separated workspace codes whose users may sign in WITHOUT a
+    # password (demo/sample tenants only, e.g. SAMPLE-8513). Everyone else:
+    # an account with no password_hash can no longer log in (#83) — it must
+    # set one through the admin-approved, token-bound reset flow (#85).
+    passwordless_demo_codes: str = ""
+
+    @property
+    def passwordless_demo_code_list(self) -> list[str]:
+        return [c.strip().upper() for c in self.passwordless_demo_codes.split(",") if c.strip()]
 
     # ── Storage ─────────────────────────────────────────────────────────────
     supabase_project_url: str = ""
@@ -67,16 +106,14 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 25 * 1024 * 1024
 
     # ── Platform admin (workspace-request approval) ─────────────────────────
-    # The portal at /admin uses a baked-in email + password pair (overridable
-    # via env). On successful login the backend hands back `platform_admin_token`
-    # and the SPA puts it in the X-Platform-Admin-Key header on every subsequent
-    # request. So one set of env vars covers both the human-typed credentials
-    # and the machine-checked secret behind the routes.
-    #
-    # Defaults are stable but easily rotatable — set PLATFORM_ADMIN_PASSWORD in
-    # production env to anything else.
+    # The portal at /admin uses an email + password pair set via env. On
+    # successful login the backend hands back `platform_admin_token` and the
+    # SPA puts it in the X-Platform-Admin-Key header on every subsequent
+    # request. There is NO default password (#80): if PLATFORM_ADMIN_PASSWORD
+    # is unset the portal returns 503 instead of accepting a repo-committed
+    # string anyone can read.
     platform_admin_email:    str = "admin@matrix.bluetokai.com"
-    platform_admin_password: str = "BlueTokai-Matrix-2026"
+    platform_admin_password: str = ""
     # If left blank, the runtime falls back to platform_admin_password so the
     # whole flow works out of the box. Set explicitly only if you want the
     # human-typed password to differ from the per-request header token.
@@ -85,6 +122,36 @@ class Settings(BaseSettings):
     @property
     def effective_platform_admin_token(self) -> str:
         return self.platform_admin_token or self.platform_admin_password
+
+    # ── Startup guard (#80, #110) ────────────────────────────────────────────
+    @model_validator(mode="after")
+    def _refuse_insecure_production_config(self) -> "Settings":
+        if not self.allow_insecure_defaults:
+            problems = []
+            if self.supabase_jwt_secret == _PLACEHOLDER_JWT_SECRET:
+                problems.append(
+                    "SUPABASE_JWT_SECRET is the repo-committed placeholder — every "
+                    "JWT would be forgeable with a public key. Set the real secret "
+                    "(or ALLOW_INSECURE_DEFAULTS=true for local dev)."
+                )
+            if self.platform_admin_password == _RETIRED_ADMIN_PASSWORD or (
+                self.platform_admin_token == _RETIRED_ADMIN_PASSWORD and self.platform_admin_token
+            ):
+                problems.append(
+                    "PLATFORM_ADMIN_PASSWORD is the retired repo-committed default — "
+                    "it is public git history. Rotate it."
+                )
+            if problems:
+                raise RuntimeError("Refusing to start with insecure config:\n- " + "\n- ".join(problems))
+        # Wildcard origins + allow_credentials reflects ANY Origin with
+        # credentials allowed — every site on the internet could drive a
+        # logged-in operator's browser against the API (#110). Never valid.
+        if any(o == "*" for o in self.cors_origin_list):
+            raise RuntimeError(
+                "CORS_ORIGINS must not contain '*' (this app sends credentials). "
+                "List exact origins, or use CORS_ORIGIN_REGEX for preview URLs."
+            )
+        return self
 
 
 settings = Settings()

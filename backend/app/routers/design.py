@@ -213,6 +213,17 @@ async def list_design_delegations(
     _module: InDesignModule,
     tenant_id: TenantId,
 ) -> dict:
+    # #104 — executives only see allocations (names/emails) for sites
+    # allocated to them, mirroring the get-review gate below.
+    if _is_executive(current_user):
+        ok = await svc_is_delegated(
+            db, tenant_id=tenant_id, site_id=site_id,
+            user_id=current_user["sub"], module="design",
+        )
+        if not ok:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND, detail="Site not found",
+            )
     return await svc_list_design_delegations_for_site(db, tenant_id=tenant_id, site_id=site_id)
 
 
@@ -324,6 +335,18 @@ async def upload_deliverable(
             detail=f"Unknown deliverable kind '{kind}'. Expected one of {_DELIVERABLE_KINDS}.",
         )
     site = await fetch_site_or_404(db, site_id=site_id, tenant_id=tenant_id)
+    # Executives must be allocated to the site BEFORE the storage write —
+    # otherwise an unallocated member could still litter orphan objects and
+    # only fail at the submit step.
+    if _is_executive(current_user):
+        ok = await svc_is_delegated(
+            db, tenant_id=tenant_id, site_id=site_id,
+            user_id=current_user["sub"], module="design",
+        )
+        if not ok:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND, detail="Site not found",
+            )
     site_pk = site.id
     await db.rollback()  # free the connection for the slow storage call
 

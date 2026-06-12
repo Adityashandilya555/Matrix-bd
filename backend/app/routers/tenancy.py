@@ -10,6 +10,7 @@ Surfaces:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -24,6 +25,7 @@ from sqlalchemy import func, select, text
 from app.core.config import settings
 from app.core.deps import CurrentUser, DbDep, TenantId
 from app.core.passwords import hash_password
+from app.core.ratelimit import rate_limit
 from app.core.uploads import read_upload_capped
 from app.db import models
 from app.rbac.guards import require_role
@@ -63,15 +65,18 @@ def _parse_seat_limit(team_size: Optional[str]) -> int:
 
 
 def _generate_workspace_code(slug_hint: Optional[str] = None) -> str:
-    """Generate a short, human-shareable workspace code.
+    """Generate a human-shareable workspace code.
 
-    Format: <SLUGFRAG>-<RAND4>. e.g. "BTOKAI-7X9F". Collisions are improbable
-    but the insert path will retry on a unique-violation just in case.
+    Format: <SLUGFRAG>-<RAND16>. The prefix is derived from the company name
+    (guessable for a targeted org), so the random suffix carries ALL the
+    secret material — token_hex(8) = 64 bits (#84; the old token_hex(2) gave
+    only 65,536 possibilities). Collisions are improbable but the insert path
+    retries on a unique-violation just in case.
     """
     base = re.sub(r"[^A-Za-z0-9]", "", (slug_hint or ""))[:6].upper()
     if not base:
         base = secrets.token_hex(3).upper()
-    return f"{base}-{secrets.token_hex(2).upper()}"
+    return f"{base}-{secrets.token_hex(8).upper()}"
 
 
 def _json_string(s: Optional[str]) -> str:
@@ -112,6 +117,7 @@ class AdminLoginOut(BaseModel):
     "/admin/login",
     response_model=AdminLoginOut,
     summary="Platform admin login — exchange email+password for the portal token",
+    dependencies=[Depends(rate_limit(times=10, seconds=300))],
 )
 async def admin_login(payload: AdminLoginIn) -> AdminLoginOut:
     expected_email    = (settings.platform_admin_email or "").strip().lower()
@@ -226,6 +232,7 @@ class WorkspaceRequestOut(BaseModel):
     response_model=WorkspaceRequestOut,
     status_code=status.HTTP_201_CREATED,
     summary="Public: capture a workspace-creation request for admin approval",
+    dependencies=[Depends(rate_limit(times=3, seconds=300))],
 )
 async def request_workspace(
     payload: WorkspaceRequestIn,
@@ -323,22 +330,21 @@ async def list_workspace_requests(
     approved/rejected for audit views."""
     _require_platform_admin(x_platform_admin_key)
     limit = max(1, min(limit, 500))
-    where = ""
-    params: dict = {"lim": limit}
+    # Two static statements instead of an f-string {where} splice (#82/F6):
+    # the old pattern was safe today (fixed literal + bound param) but invited
+    # a future edit to interpolate user input into established f-string SQL.
+    base_select = """
+        SELECT id, company, admin_email, team_size, seat_limit, status,
+               created_at, decided_at, source_ip::text AS source_ip
+          FROM workspace_requests
+    """
     if status_filter and status_filter != "all":
-        where = "WHERE status = :status"
-        params["status"] = status_filter
-    rows = (await db.execute(
-        text(f"""
-            SELECT id, company, admin_email, team_size, seat_limit, status,
-                   created_at, decided_at, source_ip::text AS source_ip
-              FROM workspace_requests
-              {where}
-             ORDER BY created_at DESC
-             LIMIT :lim
-        """),
-        params,
-    )).mappings().all()
+        stmt = text(base_select + " WHERE status = :status ORDER BY created_at DESC LIMIT :lim")
+        params: dict = {"lim": limit, "status": status_filter}
+    else:
+        stmt = text(base_select + " ORDER BY created_at DESC LIMIT :lim")
+        params = {"lim": limit}
+    rows = (await db.execute(stmt, params)).mappings().all()
     items = [
         WorkspaceRequestRow(
             id=str(r["id"]),
@@ -428,6 +434,10 @@ class ApproveOut(BaseModel):
     business_admin_id: str
     # Legacy alias: older clients still read `supervisor_id`. Mirrors business_admin_id.
     supervisor_id:     str
+    # One-time password-setup code for the provisioned admin (#83): accounts
+    # ship with no password and cannot log in until one is set via
+    # /auth/password-reset/complete with this token.
+    admin_setup_token: str
     message:           str
 
 
@@ -545,6 +555,29 @@ async def approve_workspace_request(
         },
     )
 
+    # 3b. The admin ships with NO password and cannot log in until one is set
+    #     (#83 closed the passwordless fall-through). Seed a pre-approved,
+    #     token-bound reset request so they can set their first password via
+    #     /auth/password-reset/complete; the platform admin relays the token
+    #     out-of-band together with the workspace code.
+    admin_setup_token = secrets.token_urlsafe(24)
+    await db.execute(
+        text("""
+            INSERT INTO password_reset_requests
+                (tenant_id, user_id, email, status, approved_at,
+                 reset_token_hash, token_expires_at)
+            VALUES
+                (:tid, :uid, :email, 'approved', now(),
+                 :th, now() + interval '30 days')
+        """),
+        {
+            "tid": tenant_id,
+            "uid": business_admin_id,
+            "email": req_admin_email,
+            "th": hashlib.sha256(admin_setup_token.encode()).hexdigest(),
+        },
+    )
+
     # 4. Marker row in business_admins. Confers tenant-wide admin scope; no
     #    user_module_memberships are seeded (business_admin is not a module member).
     await db.execute(
@@ -615,9 +648,12 @@ async def approve_workspace_request(
         seat_limit=seat_limit,
         business_admin_id=str(business_admin_id),
         supervisor_id=str(business_admin_id),
+        admin_setup_token=admin_setup_token,
         message=(
-            f"Provisioned {req_company}. Tell {req_admin_email} to sign in at the "
-            f"landing page using their email + workspace code: {workspace_code}"
+            f"Provisioned {req_company}. Share the workspace code {workspace_code} "
+            f"AND the one-time setup code with {req_admin_email} — they set their "
+            f"password on the login page ('Request a reset' → enter the setup code) "
+            f"before first sign-in."
         ),
     )
 
@@ -657,6 +693,7 @@ class JoinOut(BaseModel):
     response_model=JoinOut,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Public: employee self-join via workspace code",
+    dependencies=[Depends(rate_limit(times=10, seconds=60))],
 )
 async def join_workspace(payload: JoinIn, db: DbDep) -> JoinOut:
     # 1. Resolve the workspace_code → tenant. Case-insensitive lookup matches
@@ -741,6 +778,7 @@ async def join_workspace(payload: JoinIn, db: DbDep) -> JoinOut:
 @router.get(
     "/branding",
     summary="Public: company name + logo for a workspace code (drives the branded login page)",
+    dependencies=[Depends(rate_limit(times=30, seconds=60))],
 )
 async def public_branding(code: str, db: DbDep) -> dict:
     row = (await db.execute(
@@ -748,7 +786,10 @@ async def public_branding(code: str, db: DbDep) -> dict:
         {"code": code},
     )).mappings().first()
     if not row:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No workspace matches that code.")
+        # Default branding instead of a 404 — the status-code split made this
+        # endpoint a valid-code enumeration oracle that also leaked company
+        # names/logos for harvested codes (#84).
+        return {"name": None, "logo_url": None}
     logo = row["logo_url"]
     # logo_url stores the storage object path; hand back a fresh signed URL so
     # the link never goes stale in the database.
@@ -862,10 +903,19 @@ async def confirm_password_reset_request(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Request has no matching user in the workspace.",
         )
+    # Bind the approval to a single-use token (#85). The plaintext is returned
+    # ONCE to the platform admin, who relays it to the requester out-of-band
+    # (same trust channel as workspace codes); only its hash is stored.
+    reset_token = secrets.token_urlsafe(24)
+    token_hash = hashlib.sha256(reset_token.encode()).hexdigest()
     await db.execute(
-        text("UPDATE password_reset_requests SET status = 'approved', approved_at = now() WHERE id = :id"),
-        {"id": request_id},
+        text("""UPDATE password_reset_requests
+                   SET status = 'approved', approved_at = now(),
+                       reset_token_hash = :th,
+                       token_expires_at = now() + interval '7 days'
+                 WHERE id = :id"""),
+        {"id": request_id, "th": token_hash},
     )
     await db.commit()
     logger.info("password reset approved request_id=%s", request_id)
-    return {"id": str(request_id), "status": "approved"}
+    return {"id": str(request_id), "status": "approved", "reset_token": reset_token}

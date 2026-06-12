@@ -930,7 +930,8 @@ async def svc_submit_quality_audit_report(
 
     file_id = uuid4()
     safe_name = f"{file_id.hex[:8]}_{safe_object_name(filename, fallback='quality_audit')}"
-    storage_path = f"quality_audit/{site_id}/{safe_name}"
+    # Tenant-prefixed key, matching the canonical photos/loi/design shape.
+    storage_path = f"quality_audit/{tenant_id}/{site_id}/{safe_name}"
     await upload_bytes(
         path=storage_path,
         body=file_bytes,
