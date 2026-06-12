@@ -58,9 +58,12 @@ def test_default_jwt_secret_refuses_to_boot():
         _settings(supabase_jwt_secret="change-me-in-production")
 
 
-def test_default_admin_password_refuses_to_boot():
-    with pytest.raises((RuntimeError, ValidationError)):
-        _settings(platform_admin_password="BlueTokai-Matrix-2026")
+def test_retired_admin_password_is_treated_as_disabled():
+    # Fail-safe (not a boot brick): the retired public default is honored as
+    # "unset", so the admin portal is disabled rather than accepting it.
+    s = _settings(platform_admin_password="BlueTokai-Matrix-2026")
+    assert s.effective_platform_admin_password == ""
+    assert s.effective_platform_admin_token == ""
 
 
 def test_insecure_dev_mode_allows_defaults():
@@ -266,9 +269,12 @@ def test_login_route_declares_rate_limit():
 
 # ── #110 — CORS hardening ───────────────────────────────────────────────────
 
-def test_wildcard_cors_origin_is_rejected():
-    with pytest.raises((RuntimeError, ValidationError)):
-        _settings(cors_origins="*")
+def test_wildcard_cors_origin_is_stripped_not_fatal():
+    # Fail-safe: the dangerous wildcard is dropped (so the API still boots),
+    # leaving only exact origins.
+    s = _settings(cors_origins="*,https://app.example.com")
+    assert "*" not in s.cors_origin_list
+    assert s.cors_origin_list == ["https://app.example.com"]
 
 
 def test_localhost_regex_not_applied_unless_opted_in():

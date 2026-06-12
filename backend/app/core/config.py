@@ -120,36 +120,61 @@ class Settings(BaseSettings):
     platform_admin_token:    str = ""
 
     @property
+    def effective_platform_admin_password(self) -> str:
+        """The admin password actually honored. The retired repo-committed
+        default is treated as UNSET (#80) — it is public git history, so the
+        portal is disabled (503) rather than accepting it. This disables the
+        portal instead of bricking the whole API, so a stale env var can't take
+        the backend down on deploy."""
+        if self.platform_admin_password == _RETIRED_ADMIN_PASSWORD:
+            return ""
+        return self.platform_admin_password
+
+    @property
     def effective_platform_admin_token(self) -> str:
-        return self.platform_admin_token or self.platform_admin_password
+        token = self.platform_admin_token
+        if token == _RETIRED_ADMIN_PASSWORD:
+            token = ""  # nosec B105 — clearing a retired credential, not setting one
+        return token or self.effective_platform_admin_password
 
     # ── Startup guard (#80, #110) ────────────────────────────────────────────
     @model_validator(mode="after")
     def _refuse_insecure_production_config(self) -> "Settings":
-        if not self.allow_insecure_defaults:
-            problems = []
-            if self.supabase_jwt_secret == _PLACEHOLDER_JWT_SECRET:
-                problems.append(
-                    "SUPABASE_JWT_SECRET is the repo-committed placeholder — every "
-                    "JWT would be forgeable with a public key. Set the real secret "
-                    "(or ALLOW_INSECURE_DEFAULTS=true for local dev)."
-                )
-            if self.platform_admin_password == _RETIRED_ADMIN_PASSWORD or (
-                self.platform_admin_token == _RETIRED_ADMIN_PASSWORD and self.platform_admin_token
-            ):
-                problems.append(
-                    "PLATFORM_ADMIN_PASSWORD is the retired repo-committed default — "
-                    "it is public git history. Rotate it."
-                )
-            if problems:
-                raise RuntimeError("Refusing to start with insecure config:\n- " + "\n- ".join(problems))
-        # Wildcard origins + allow_credentials reflects ANY Origin with
-        # credentials allowed — every site on the internet could drive a
-        # logged-in operator's browser against the API (#110). Never valid.
-        if any(o == "*" for o in self.cors_origin_list):
+        import logging
+
+        log = logging.getLogger("matrix.config")
+
+        # JWT secret is the one hard stop: booting with the public placeholder
+        # makes every token forgeable (full auth bypass), which is strictly
+        # worse than refusing to start. Prod sets a real secret, so this never
+        # trips there; local dev opts in via ALLOW_INSECURE_DEFAULTS.
+        if not self.allow_insecure_defaults and self.supabase_jwt_secret == _PLACEHOLDER_JWT_SECRET:
             raise RuntimeError(
-                "CORS_ORIGINS must not contain '*' (this app sends credentials). "
-                "List exact origins, or use CORS_ORIGIN_REGEX for preview URLs."
+                "Refusing to start: SUPABASE_JWT_SECRET is the repo-committed placeholder — "
+                "every JWT would be forgeable with a public key. Set the real secret "
+                "(or ALLOW_INSECURE_DEFAULTS=true for local dev)."
+            )
+
+        # The retired admin password is handled by effective_platform_admin_*
+        # (portal disabled, not a boot failure) — warn loudly so it gets fixed.
+        if self.platform_admin_password == _RETIRED_ADMIN_PASSWORD or self.platform_admin_token == _RETIRED_ADMIN_PASSWORD:
+            log.error(
+                "PLATFORM_ADMIN_PASSWORD/TOKEN is the retired repo-committed default "
+                "(public git history). The admin portal is DISABLED until a real one is set."
+            )
+
+        # Wildcard origin + allow_credentials reflects ANY Origin back with
+        # credentials allowed — every site on the internet could drive a
+        # logged-in operator's browser against the API (#110). Strip it (so the
+        # app still boots) rather than refuse to start, and warn.
+        if any(o == "*" for o in self.cors_origin_list):
+            kept = [o for o in self.cors_origin_list if o != "*"]
+            self.cors_origins = ",".join(kept)
+            log.error(
+                "CORS_ORIGINS contained '*' with credentials enabled — the wildcard was "
+                "DROPPED (it would let any website call the API with credentials). List exact "
+                "origins, or use CORS_ORIGIN_REGEX for preview URLs. Remaining: %s",
+                kept or "(none — the frontend origin must be added)",
             )
         return self
 

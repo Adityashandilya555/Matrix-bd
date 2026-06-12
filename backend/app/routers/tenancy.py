@@ -121,7 +121,7 @@ class AdminLoginOut(BaseModel):
 )
 async def admin_login(payload: AdminLoginIn) -> AdminLoginOut:
     expected_email    = (settings.platform_admin_email or "").strip().lower()
-    expected_password = settings.platform_admin_password or ""
+    expected_password = settings.effective_platform_admin_password or ""
     if not expected_email or not expected_password:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
