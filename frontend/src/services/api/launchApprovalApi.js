@@ -1,8 +1,12 @@
 /**
- * Launch Approval API — post-NSO multi-step sign-off chain.
+ * Launch Approval API — the post-NSO *validation loop*.
  *
- * Flow: pending → admin_approved → bd_confirmed → supervisor_approved
- *       → super_admin_approved → launched (site.is_launched = true)
+ * Flow:  pending_admin_review → under_exec_review → under_supervisor_review
+ *        → pending_admin_final → ready_to_launch → launched
+ *
+ * Until the admin's final confirm, edits live only on the backend staging row
+ * (launch_approvals) — the canonical site_details/sites rent columns are
+ * committed only by finalConfirm().
  */
 import axios from 'axios';
 import { getAuthToken, clearAuthToken } from './authToken.js';
@@ -32,50 +36,50 @@ client.interceptors.response.use(
   },
 );
 
-/** Fetch all launch approval rows (optionally filter by comma-separated status values) */
+/** All launch approval rows (optionally filter by comma-separated status values). */
 export async function getLaunchQueue(statusFilter) {
   const params = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : '';
   const r = await client.get(`/launch-approvals/queue${params}`);
   return r.data; // { items, total }
 }
 
-/** Full detail for a single site's approval record */
+/** Full record for a single site (details + dept statuses + verdicts + timeline). */
 export async function getLaunchApproval(siteId) {
   const r = await client.get(`/launch-approvals/${siteId}`);
   return r.data;
 }
 
-/** Admin saves editable commercial fields (PATCH — partial update) */
-export async function saveLaunchFields(siteId, fields) {
-  const r = await client.patch(`/launch-approvals/${siteId}/fields`, fields);
+/** Save rent-only staging fields (admin first/final touch, supervisor on review). */
+export async function saveLaunchRentFields(siteId, fields) {
+  const r = await client.patch(`/launch-approvals/${siteId}/rent-fields`, fields);
   return r.data;
 }
 
-/** Admin approves after reviewing/editing fields */
-export async function adminApproveLaunch(siteId) {
-  const r = await client.post(`/launch-approvals/${siteId}/admin-approve`);
+/** Admin 1st touch → route to the creating executive. */
+export async function sendForReview(siteId, comment) {
+  const r = await client.post(`/launch-approvals/${siteId}/send-for-review`, { comment: comment || null });
   return r.data;
 }
 
-/** BD (executive / supervisor) confirms the commercial terms */
-export async function bdConfirmLaunch(siteId) {
-  const r = await client.post(`/launch-approvals/${siteId}/bd-confirm`);
+/** Executive verdict — { verdict: 'approved' | 'rejected', comment }. */
+export async function execReview(siteId, { verdict, comment }) {
+  const r = await client.post(`/launch-approvals/${siteId}/exec-review`, { verdict, comment: comment || null });
   return r.data;
 }
 
-/** Supervisor approves after BD confirmation */
-export async function supervisorApproveLaunch(siteId) {
-  const r = await client.post(`/launch-approvals/${siteId}/supervisor-approve`);
+/** Supervisor verdict — { verdict: 'approved' | 'rejected', comment }. */
+export async function supervisorReview(siteId, { verdict, comment }) {
+  const r = await client.post(`/launch-approvals/${siteId}/supervisor-review`, { verdict, comment: comment || null });
   return r.data;
 }
 
-/** Super admin (business_admin) final approval — unlocks Launch button */
-export async function superAdminApproveLaunch(siteId) {
-  const r = await client.post(`/launch-approvals/${siteId}/super-admin-approve`);
+/** Admin final touch → commit agreed rent terms to the DB, unlock Launch. */
+export async function finalConfirm(siteId, comment) {
+  const r = await client.post(`/launch-approvals/${siteId}/final-confirm`, { comment: comment || null });
   return r.data;
 }
 
-/** Final launch — sets site.is_launched = true */
+/** Final go-live — sets site.is_launched = true. */
 export async function launchSite(siteId) {
   const r = await client.post(`/launch-approvals/${siteId}/launch`);
   return r.data;

@@ -22,10 +22,14 @@ describe('alert() removed from error paths (#138/#139/#140)', () => {
     expect(code('../business-admin/approval/SiteApprovalPanel.jsx')).not.toMatch(/alert\(/);
   });
 
-  it('LaunchPage routes errors through showToast, not alert()', () => {
-    const src = code('../launch/LaunchPage.jsx');
-    expect(src).not.toMatch(/alert\(/);
-    expect(src).toContain('showToast(');
+  it('Launch surfaces errors inline (review modal banner), not alert()', () => {
+    // The validation-loop rework moved the exec/supervisor actions out of
+    // LaunchPage into LaunchReviewModal, which surfaces failures via an inline
+    // error banner (setErr) — same non-blocking contract, no window.alert.
+    expect(code('../launch/LaunchPage.jsx')).not.toMatch(/alert\(/);
+    const modal = code('../launch/LaunchReviewModal.jsx');
+    expect(modal).not.toMatch(/alert\(/);
+    expect(modal).toContain('setErr');
   });
 });
 

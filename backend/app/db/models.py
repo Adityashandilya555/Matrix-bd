@@ -885,10 +885,39 @@ class LaunchApproval(Base):
     score: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
-    # Workflow status FSM
-    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    # Workflow status FSM — the admin → exec → supervisor → admin validation loop.
+    #   pending_admin_review → under_exec_review → under_supervisor_review
+    #   → pending_admin_final → ready_to_launch → launched
+    # (migration 202606121 migrated the legacy pending/admin_approved/… set.)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending_admin_review")
 
-    # Approval chain timestamps + actors
+    # ── Validation-loop verdicts / comments / actors (migration 202606121) ──────
+    # Admin · first touch
+    admin_review_comment: Mapped[Optional[str]] = mapped_column(Text)
+    admin_sent_for_review_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    admin_sent_for_review_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    # Executive · review verdict (recorded, flows forward — never bounces back)
+    exec_verdict: Mapped[Optional[str]] = mapped_column(Text)        # approved | rejected
+    exec_comment: Mapped[Optional[str]] = mapped_column(Text)
+    exec_reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    exec_reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    # Supervisor · review verdict (+ may have edited rent terms)
+    supervisor_verdict: Mapped[Optional[str]] = mapped_column(Text)  # approved | rejected
+    supervisor_comment: Mapped[Optional[str]] = mapped_column(Text)
+    supervisor_reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    supervisor_reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    # Admin · final touch (the DB commit into site_details + sites happens here)
+    admin_final_comment: Mapped[Optional[str]] = mapped_column(Text)
+    admin_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    admin_confirmed_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    committed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    # Launch (terminal go-live)
+    launched_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    launched_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+    # ── Legacy approve-only ladder columns (pre-202606121) — kept nullable for
+    # back-compat; the validation loop no longer writes them. ──────────────────
     admin_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     admin_approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     bd_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
@@ -897,8 +926,6 @@ class LaunchApproval(Base):
     supervisor_approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     super_admin_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     super_admin_approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
-    launched_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    launched_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -907,11 +934,55 @@ class LaunchApproval(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending','admin_approved','bd_confirmed',"
-            "'supervisor_approved','super_admin_approved','launched')",
+            "status IN ('pending_admin_review','under_exec_review',"
+            "'under_supervisor_review','pending_admin_final',"
+            "'ready_to_launch','launched')",
             name="chk_launch_approval_status",
         ),
+        CheckConstraint(
+            "exec_verdict IS NULL OR exec_verdict IN ('approved','rejected')",
+            name="chk_launch_exec_verdict",
+        ),
+        CheckConstraint(
+            "supervisor_verdict IS NULL OR supervisor_verdict IN ('approved','rejected')",
+            name="chk_launch_supervisor_verdict",
+        ),
         Index("idx_launch_approvals_tenant_status", "tenant_id", "status"),
+    )
+
+
+class LaunchReviewEvent(Base):
+    """Append-only timeline for the launch validation loop.
+
+    One row per action: the draft `baseline`, each rent `edited` (with a
+    field-level diff in ``changes``), each `approved`/`rejected` verdict +
+    comment, the final `confirmed`/`committed`, and the `launched` go-live.
+    Powers the admin's "all rent changes from draft → end" view and the
+    comment thread shared across admin / executive / supervisor.
+    """
+    __tablename__ = "launch_review_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4())
+    launch_approval_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("launch_approvals.id", ondelete="CASCADE"), nullable=False,
+    )
+    site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+
+    actor_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    actor_name: Mapped[Optional[str]] = mapped_column(Text)
+    actor_role: Mapped[Optional[str]] = mapped_column(Text)  # business_admin | executive | supervisor | system
+
+    stage: Mapped[str] = mapped_column(Text, nullable=False)   # admin_review | exec_review | supervisor_review | admin_final | system
+    action: Mapped[str] = mapped_column(Text, nullable=False)  # baseline | edited | sent_for_review | approved | rejected | confirmed | committed | launched
+    comment: Mapped[Optional[str]] = mapped_column(Text)
+    changes: Mapped[Optional[list]] = mapped_column(JSONB)     # [{field,label,from,to}, …]
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("idx_launch_review_events_approval", "launch_approval_id", "created_at"),
+        Index("idx_launch_review_events_site", "site_id", "created_at"),
     )
 
 

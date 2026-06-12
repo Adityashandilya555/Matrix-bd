@@ -1,151 +1,216 @@
 /**
- * LaunchApprovalTab — Business Admin portal tab for the post-NSO launch chain.
+ * LaunchApprovalTab — Business Admin portal tab for the post-NSO validation loop.
  *
- * Admin flow:
- *   1. Site appears here (status='pending') after NSO final approval.
- *   2. Admin opens the site, edits commercial fields, clicks "Approve".
- *   3. Once BD confirms (status='bd_confirmed'), shows "BD Verified ✓".
- *   4. Supervisor must approve (status='supervisor_approved').
- *   5. Admin does super-admin approval → Launch button unlocks.
- *   6. Admin clicks Launch → site.is_launched = true.
+ * The admin has TWO touches in the loop:
+ *   1. pending_admin_review — review the full filled details + every department
+ *      status; rent shown as "current" with Keep-same / Edit (Edit opens the
+ *      rev-share form); leave a rent comment; "Send for review" → executive.
+ *   2. pending_admin_final  — see every rent change from draft → now and BOTH
+ *      the executive's and supervisor's verdicts (highlighted); make final rent
+ *      edits if needed; "Confirm" ⇒ commits the agreed terms to the DB.
+ *   then ready_to_launch → "🚀 Launch Site".
+ *
+ * Between the two touches the record sits with the executive then the
+ * supervisor; the admin sees it read-only ("With executive / supervisor").
  */
 import React from 'react';
 import {
   T, Icon, Button, Card, SectionHeader, EmptyState, ErrorState, Skeleton,
-  TABULAR, Drawer,
+  TABULAR, Drawer, inr,
 } from '../ui/kit.jsx';
+import RentTermsForm, { AC_TOKENS } from '../../shared/rent/RentTermsForm.jsx';
 import {
-  getLaunchQueue, getLaunchApproval, saveLaunchFields,
-  adminApproveLaunch, superAdminApproveLaunch, launchSite,
+  getLaunchQueue, getLaunchApproval, saveLaunchRentFields,
+  sendForReview, finalConfirm, launchSite,
 } from '../../../services/api/launchApprovalApi.js';
 
 // ── Status display map ─────────────────────────────────────────────────────────
 const STATUS_LABELS = {
-  pending:             { label: 'Pending Admin Review', color: '#E09A3C' },
-  admin_approved:      { label: 'Awaiting BD Confirmation', color: '#6C9FE6' },
-  bd_confirmed:        { label: 'BD Verified ✓', color: '#4CAF82' },
-  supervisor_approved: { label: 'Awaiting Super Admin', color: '#9B8AF2' },
-  super_admin_approved:{ label: 'Ready to Launch', color: '#58E0A4' },
-  launched:            { label: 'LAUNCHED 🚀', color: '#58E0A4' },
+  pending_admin_review:    { label: 'Pending Admin Review',  color: '#E09A3C' },
+  under_exec_review:       { label: 'With Executive',        color: '#6C9FE6' },
+  under_supervisor_review: { label: 'With Supervisor',       color: '#9B8AF2' },
+  pending_admin_final:     { label: 'Final Admin Confirm',   color: '#E0B33C' },
+  ready_to_launch:         { label: 'Ready to Launch',       color: '#58E0A4' },
+  launched:                { label: 'LAUNCHED 🚀',           color: '#58E0A4' },
 };
 
-// ── Number formatter ──────────────────────────────────────────────────────────
-const inr = (n) => n == null ? '—' : `₹${Number(n).toLocaleString('en-IN')}`;
-const num = (n) => n == null ? '—' : Number(n).toLocaleString('en-IN');
+const RENT_TYPE_LABEL = { fixed: 'Fixed + escalation', revshare: 'Revenue share', mg_revshare: 'MG + Revenue share' };
+const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-IN'));
+const pct = (n) => (n == null ? '—' : `${Number(n)}%`);
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN') : '—');
 
-// ── Editable field spec ───────────────────────────────────────────────────────
-const FIELDS = [
-  { key: 'rent_type',               label: 'Rent Type',                  type: 'select', options: ['fixed','revshare','mg_revshare'] },
-  { key: 'fixed_rent_amt',          label: 'Fixed Rent (₹)',             type: 'number' },
-  { key: 'expected_rent',           label: 'Expected Rent (₹)',          type: 'number' },
-  { key: 'rev_share_pct',           label: 'Rev Share %',                type: 'number' },
-  { key: 'escalation_pct',          label: 'Escalation %',               type: 'number' },
-  { key: 'escalation_date',         label: 'Escalation Date',            type: 'date' },
-  { key: 'expected_escalation_years', label: 'Escalation Every (yrs)',   type: 'number' },
-  { key: 'cam_charges',             label: 'CAM Charges (₹)',            type: 'number' },
-  { key: 'security_deposit',        label: 'Security Deposit (₹)',       type: 'number' },
-  { key: 'brokerage',               label: 'Brokerage (₹)',              type: 'number' },
-  { key: 'lock_in_months',          label: 'Lock-in (months)',           type: 'number' },
-  { key: 'tenure_months',           label: 'Tenure (months)',            type: 'number' },
-  { key: 'rent_free_days',          label: 'Rent-free Days',             type: 'number' },
-  { key: 'carpet_area_sqft',        label: 'Carpet Area (sqft)',         type: 'number' },
-  { key: 'estimated_monthly_sales', label: 'Est. Monthly Sales (₹)',     type: 'number' },
-  { key: 'capex',                   label: 'CAPEX (₹)',                  type: 'number' },
-  { key: 'score',                   label: 'Score',                      type: 'number' },
-  { key: 'notes',                   label: 'Notes',                      type: 'textarea' },
-];
+// Map a department status string → a semantic colour.
+function deptTone(value) {
+  const v = String(value || '').toLowerCase();
+  if (['positive', 'approved', 'done', 'active', 'complete', 'ready', 'received', 'verified', 'true'].includes(v)) return T.success;
+  if (['negative', 'rejected', 'false'].includes(v)) return T.danger;
+  if (['pending', '', 'null', 'undefined'].includes(v)) return T.warn;
+  return T.accent; // in_review / in_progress / awaiting_* / allocated / gfc_pending
+}
 
-// ── Field input ───────────────────────────────────────────────────────────────
-function FieldInput({ spec, value, onChange, readOnly }) {
-  const baseStyle = {
-    width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${T.line}`,
-    background: readOnly ? T.bg : T.surface, color: T.text,
-    fontFamily: 'var(--ac-font, system-ui)', fontSize: 13,
-    boxSizing: 'border-box', outline: 'none',
-    cursor: readOnly ? 'default' : 'text',
-  };
-
-  if (spec.type === 'select') {
-    return (
-      <select value={value ?? ''} disabled={readOnly} onChange={(e) => onChange(spec.key, e.target.value || null)}
-        style={{ ...baseStyle }}>
-        <option value="">—</option>
-        {spec.options.map((o) => <option key={o} value={o}>{o}</option>)}
-      </select>
-    );
-  }
-  if (spec.type === 'textarea') {
-    return (
-      <textarea value={value ?? ''} readOnly={readOnly} rows={3}
-        onChange={(e) => onChange(spec.key, e.target.value || null)}
-        style={{ ...baseStyle, resize: 'vertical' }}/>
-    );
-  }
-  if (spec.type === 'date') {
-    return (
-      <input type="date" value={value ?? ''} readOnly={readOnly}
-        onChange={(e) => onChange(spec.key, e.target.value || null)}
-        style={{ ...baseStyle }}/>
-    );
-  }
+// ── Small presentational helpers ────────────────────────────────────────────────
+function Field({ label, children }) {
   return (
-    <input type="number" step="any" value={value ?? ''} readOnly={readOnly}
-      onChange={(e) => onChange(spec.key, e.target.value !== '' ? Number(e.target.value) : null)}
-      style={{ ...baseStyle, ...TABULAR }}/>
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.textFaint, marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 13, color: T.text, wordBreak: 'break-word' }}>{children == null || children === '' ? '—' : children}</div>
+    </div>
   );
 }
 
-// ── Site detail drawer ─────────────────────────────────────────────────────────
+function DeptChip({ label, value }) {
+  const color = deptTone(value);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 11px', borderRadius: 8, background: T.surface, border: `1px solid ${T.line}` }}>
+      <span style={{ fontSize: 12, color: T.textMuted }}>{label}</span>
+      <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color }}>{value == null || value === '' ? '—' : String(value)}</span>
+    </div>
+  );
+}
+
+function SubHead({ children, right }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: T.textMuted }}>{children}</div>
+      <span style={{ flex: 1 }} />
+      {right}
+    </div>
+  );
+}
+
+function VerdictChip({ verdict }) {
+  if (!verdict) return <span style={{ fontSize: 11, color: T.textFaint }}>Not reviewed</span>;
+  const ok = verdict === 'approved';
+  const color = ok ? T.success : T.danger;
+  return (
+    <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color, background: `${color}22`, padding: '2px 9px', borderRadius: 20 }}>
+      {ok ? '✓ Approved' : '✕ Rejected'}
+    </span>
+  );
+}
+
+// A single verdict card (exec / supervisor) — highlighted approve/reject + comment.
+function VerdictCard({ title, verdict, by, at, comment }) {
+  const color = verdict === 'approved' ? T.success : verdict === 'rejected' ? T.danger : T.line;
+  return (
+    <div style={{ padding: '12px 14px', borderRadius: 10, background: T.surface, border: `1px solid ${verdict ? color : T.line}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: comment ? 8 : 0 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.textMuted }}>{title}</span>
+        <span style={{ flex: 1 }} />
+        <VerdictChip verdict={verdict} />
+      </div>
+      {comment && <div style={{ fontSize: 12.5, color: T.text, lineHeight: 1.5, background: T.bg, borderRadius: 8, padding: '8px 10px' }}>“{comment}”</div>}
+      {(by || at) && <div style={{ marginTop: 6, fontSize: 11, color: T.textFaint }}>{[by, at ? fmtDate(at) : null].filter(Boolean).join(' · ')}</div>}
+    </div>
+  );
+}
+
+// Recorded timeline — baseline → edits → verdicts → confirm → launch.
+function Timeline({ events }) {
+  if (!events?.length) return <div style={{ fontSize: 12.5, color: T.textFaint }}>No activity yet.</div>;
+  const actionColor = (a) => (a === 'approved' || a === 'committed' || a === 'launched' || a === 'confirmed') ? T.success : a === 'rejected' ? T.danger : a === 'edited' ? T.accent : T.textMuted;
+  const actionLabel = {
+    baseline: 'Draft baseline', edited: 'Edited rent', sent_for_review: 'Sent for review',
+    approved: 'Approved', rejected: 'Rejected', confirmed: 'Final confirm', committed: 'Committed to DB', launched: 'Launched',
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      {events.map((e, i) => {
+        const color = actionColor(e.action);
+        return (
+          <div key={e.id} style={{ display: 'flex', gap: 12, paddingBottom: i === events.length - 1 ? 0 : 14 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <span style={{ width: 9, height: 9, borderRadius: 999, background: color, flexShrink: 0, marginTop: 4 }} />
+              {i !== events.length - 1 && <span style={{ flex: 1, width: 1.5, background: T.line, marginTop: 2 }} />}
+            </div>
+            <div style={{ flex: 1, minWidth: 0, paddingBottom: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color }}>{actionLabel[e.action] || e.action}</span>
+                <span style={{ fontSize: 11.5, color: T.textMuted }}>{e.actor_name || 'system'}{e.actor_role ? ` · ${e.actor_role}` : ''}</span>
+                <span style={{ flex: 1 }} />
+                <span style={{ fontSize: 11, color: T.textFaint, ...TABULAR }}>{e.created_at ? new Date(e.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+              </div>
+              {e.comment && <div style={{ marginTop: 4, fontSize: 12.5, color: T.text, lineHeight: 1.45 }}>“{e.comment}”</div>}
+              {Array.isArray(e.changes) && e.changes.length > 0 && (
+                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {e.changes.map((c, j) => (
+                    <div key={j} style={{ fontSize: 11.5, color: T.textMuted, ...TABULAR }}>
+                      <span style={{ color: T.textFaint }}>{c.label || c.field}:</span>{' '}
+                      <span style={{ textDecoration: c.from != null ? 'line-through' : 'none', color: T.textFaint }}>{c.from ?? '—'}</span>
+                      {' → '}<span style={{ color: T.text, fontWeight: 600 }}>{c.to ?? '—'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Site detail drawer ───────────────────────────────────────────────────────────
 function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   const [data, setData] = React.useState(null);
   const [form, setForm] = React.useState({});
+  const [rentMode, setRentMode] = React.useState('keep'); // 'keep' | 'edit'
+  const [comment, setComment] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [acting, setActing] = React.useState(false);
+  const [savedFlash, setSavedFlash] = React.useState(false);
   const [err, setErr] = React.useState(null);
+
+  const RENT_KEYS = ['rent_type', 'expected_rent', 'rev_share_pct', 'escalation_pct', 'expected_escalation_years', 'rent_free_days', 'lock_in_months', 'tenure_months'];
+
+  const hydrate = React.useCallback((d) => {
+    setData(d);
+    const f = {};
+    RENT_KEYS.forEach((k) => { f[k] = d[k] ?? null; });
+    setForm(f);
+  }, []);
 
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const d = await getLaunchApproval(siteId);
-      setData(d);
-      // Initialize form with current values
-      const f = {};
-      FIELDS.forEach(({ key }) => { f[key] = d[key] ?? null; });
-      setForm(f);
+      hydrate(await getLaunchApproval(siteId));
     } catch (e) {
       setErr(e?.detail || e?.message || 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, [siteId]);
+  }, [siteId, hydrate]);
 
   React.useEffect(() => { if (siteId) load(); }, [load, siteId]);
 
-  const handleFieldChange = (key, val) => setForm((f) => ({ ...f, [key]: val }));
+  const status = data?.status;
+  const canEdit = status === 'pending_admin_review' || status === 'pending_admin_final';
+  const isFinal = status === 'pending_admin_final';
+  const handleRentChange = (key, val) => setForm((f) => ({ ...f, [key]: val }));
 
-  const handleSave = async () => {
-    setSaving(true);
-    setErr(null);
+  const handleSaveRent = async () => {
+    setSaving(true); setErr(null); setSavedFlash(false);
     try {
-      const d = await saveLaunchFields(siteId, form);
-      setData(d);
+      hydrate(await saveLaunchRentFields(siteId, form));
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 2200);
     } catch (e) {
-      setErr(e?.detail || e?.message || 'Failed to save');
+      setErr(e?.detail || e?.message || 'Failed to save rent changes');
     } finally {
       setSaving(false);
     }
   };
 
   const handleAction = async (action) => {
-    setActing(true);
-    setErr(null);
+    setActing(true); setErr(null);
     try {
       let d;
-      if (action === 'admin_approve') d = await adminApproveLaunch(siteId);
-      else if (action === 'super_admin_approve') d = await superAdminApproveLaunch(siteId);
+      if (action === 'send') d = await sendForReview(siteId, comment);
+      else if (action === 'final') d = await finalConfirm(siteId, comment);
       else if (action === 'launch') d = await launchSite(siteId);
-      setData(d);
+      hydrate(d);
+      setComment('');
       onRefresh();
     } catch (e) {
       setErr(e?.detail || e?.message || 'Action failed');
@@ -154,122 +219,172 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
     }
   };
 
-  const status = data?.status;
-  const canEdit = status === 'pending' || status === 'admin_approved';
-  const canAdminApprove = status === 'pending';
-  const canSuperApprove = status === 'supervisor_approved';
-  const canLaunch = status === 'super_admin_approved';
-
   const statusInfo = STATUS_LABELS[status] || { label: status, color: T.textMuted };
+  const d = data;
+  const det = d?.details || {};
+  const dep = d?.departments || {};
+
+  // Current rent summary line.
+  const rentSummary = () => {
+    if (!d?.rent_type) return 'No rent type set';
+    if (d.rent_type === 'fixed') return `Fixed · ${inr(d.expected_rent)}/mo · ${pct(d.escalation_pct)} every ${d.expected_escalation_years || '—'} yr`;
+    if (d.rent_type === 'revshare') return `Revenue share · ${pct(d.rev_share_pct)} of sales`;
+    if (d.rent_type === 'mg_revshare') return `MG ${inr(d.expected_rent)}/mo + ${pct(d.rev_share_pct)} above MG`;
+    return RENT_TYPE_LABEL[d.rent_type] || d.rent_type;
+  };
 
   return (
     <Drawer
       open={!!siteId}
       onClose={onClose}
-      title={loading ? 'Loading…' : `${data?.site_code || ''} · ${data?.site_name || ''}`}
-      subtitle={loading ? '' : data?.city}
-      headerRight={
-        data && (
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
-            color: statusInfo.color, background: `${statusInfo.color}22`, padding: '3px 10px', borderRadius: 20 }}>
-            {statusInfo.label}
-          </span>
-        )
-      }
-      footer={
-        data && !loading && (
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {canEdit && (
-              <Button variant="subtle" loading={saving} onClick={handleSave}>
-                Save Changes
-              </Button>
-            )}
-            {canAdminApprove && (
-              <Button variant="primary" loading={acting} onClick={() => handleAction('admin_approve')}>
-                Approve & Send to BD
-              </Button>
-            )}
-            {canSuperApprove && (
-              <Button variant="primary" loading={acting} onClick={() => handleAction('super_admin_approve')}>
-                Super Admin Approve
-              </Button>
-            )}
-            {canLaunch && (
-              <Button variant="success" loading={acting} onClick={() => handleAction('launch')}
-                style={{ background: '#2EA86A', color: '#fff' }}>
-                🚀 Launch Site
-              </Button>
-            )}
-          </div>
-        )
-      }
+      title={loading ? 'Loading…' : `${d?.site_code || ''} · ${d?.site_name || ''}`}
+      subtitle={loading ? '' : d?.city}
+      headerRight={d && (
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: statusInfo.color, background: `${statusInfo.color}22`, padding: '3px 10px', borderRadius: 20 }}>
+          {statusInfo.label}
+        </span>
+      )}
+      footer={d && !loading && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          {savedFlash && <span style={{ fontSize: 12, color: T.successText, fontWeight: 600 }}>✓ Rent changes saved</span>}
+          <span style={{ flex: 1 }} />
+          {status === 'pending_admin_review' && (
+            <Button variant="accent" size="md" loading={acting} onClick={() => handleAction('send')}>
+              Send for review →
+            </Button>
+          )}
+          {status === 'pending_admin_final' && (
+            <Button variant="success" size="md" loading={acting} onClick={() => handleAction('final')}>
+              Confirm &amp; commit
+            </Button>
+          )}
+          {status === 'ready_to_launch' && (
+            <Button variant="success" size="md" loading={acting} onClick={() => handleAction('launch')}
+              style={{ background: '#2EA86A', color: '#fff' }}>
+              Launch Site
+            </Button>
+          )}
+          {(status === 'under_exec_review' || status === 'under_supervisor_review') && (
+            <span style={{ fontSize: 12.5, color: T.textMuted }}>Awaiting {status === 'under_exec_review' ? 'executive' : 'supervisor'} review — read-only.</span>
+          )}
+        </div>
+      )}
     >
       {loading && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '10px 0' }}>
-          {[1,2,3,4,5].map((i) => <Skeleton key={i} h={36}/>)}
+          {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} h={36} />)}
         </div>
       )}
 
       {err && (
-        <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(192,65,63,0.12)',
-          border: '1px solid rgba(192,65,63,0.35)', color: '#F4A6A4', fontSize: 13, marginBottom: 12 }}>
+        <div style={{ padding: '10px 14px', borderRadius: 8, background: T.dangerSoft, border: `1px solid ${T.danger}`, color: T.dangerText, fontSize: 13, marginBottom: 16 }}>
           {err}
         </div>
       )}
 
-      {data && !loading && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+      {d && !loading && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-          {/* Approval chain summary */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            {[
-              { label: 'Admin Approved', ts: data.admin_approved_at, by: data.admin_approved_by_name },
-              { label: 'BD Confirmed',   ts: data.bd_confirmed_at,   by: data.bd_confirmed_by_name },
-              { label: 'Supervisor',     ts: data.supervisor_approved_at, by: data.supervisor_approved_by_name },
-              { label: 'Super Admin',    ts: data.super_admin_approved_at, by: data.super_admin_approved_by_name },
-            ].map(({ label, ts, by }) => (
-              <div key={label} style={{ padding: '8px 12px', borderRadius: 8,
-                background: ts ? 'rgba(46,168,106,0.10)' : T.bg,
-                border: `1px solid ${ts ? 'rgba(46,168,106,0.3)' : T.line}` }}>
-                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
-                  color: ts ? '#4CAF82' : T.textFaint, marginBottom: 2 }}>
-                  {ts ? '✓ ' : ''}{label}
+          {/* ── Verdicts (final touch) ─────────────────────────────────────── */}
+          {(isFinal || status === 'ready_to_launch' || status === 'launched') && (d.exec_verdict || d.supervisor_verdict) && (
+            <div>
+              <SubHead>Review verdicts</SubHead>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <VerdictCard title="Executive (creator)" verdict={d.exec_verdict} by={d.exec_reviewed_by_name} at={d.exec_reviewed_at} comment={d.exec_comment} />
+                <VerdictCard title="Supervisor" verdict={d.supervisor_verdict} by={d.supervisor_reviewed_by_name} at={d.supervisor_reviewed_at} comment={d.supervisor_comment} />
+              </div>
+            </div>
+          )}
+
+          {/* ── Rent terms (editable for admin at both touches) ────────────── */}
+          <div>
+            <SubHead right={canEdit && (
+              <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: `1px solid ${T.line}` }}>
+                {['keep', 'edit'].map((m) => (
+                  <button key={m} onClick={() => setRentMode(m)}
+                    style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none',
+                      background: rentMode === m ? T.invBg : 'transparent', color: rentMode === m ? T.invText : T.textMuted }}>
+                    {m === 'keep' ? 'Keep same' : 'Edit'}
+                  </button>
+                ))}
+              </div>
+            )}>Rent terms {canEdit && <span style={{ color: '#E09A3C', fontWeight: 700 }}>· editable</span>}</SubHead>
+
+            <div style={{ padding: '10px 14px', borderRadius: 10, background: T.successSoft, border: `1px solid ${T.line}`, marginBottom: canEdit && rentMode === 'edit' ? 14 : 0 }}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.textFaint }}>Current</span>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: T.text, marginTop: 2 }}>{rentSummary()}</div>
+            </div>
+
+            {canEdit && rentMode === 'edit' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <RentTermsForm value={form} onChange={handleRentChange} tokens={AC_TOKENS} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: T.textFaint }}>Comment on rent (optional)</div>
+                  <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={2}
+                    placeholder="Why these terms…"
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${T.line}`, background: T.surface, color: T.text, fontFamily: 'inherit', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }} />
                 </div>
-                <div style={{ fontSize: 12, color: T.textMuted }}>
-                  {ts ? (by || '—') + ' · ' + new Date(ts).toLocaleDateString('en-IN') : 'Pending'}
+                <div>
+                  <Button variant="subtle" size="sm" loading={saving} onClick={handleSaveRent}>Save rent changes</Button>
                 </div>
               </div>
-            ))}
+            )}
           </div>
 
-          {/* Commercial fields */}
+          {/* ── Department statuses ───────────────────────────────────────── */}
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase',
-              color: T.textMuted, marginBottom: 14 }}>
-              Commercial Fields {canEdit && <span style={{ color: '#E09A3C' }}>· Editable</span>}
+            <SubHead>Department status</SubHead>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <DeptChip label="Legal DD" value={dep.legal_dd_status} />
+              <DeptChip label="Agreement" value={dep.agreement_status} />
+              <DeptChip label="Licensing" value={dep.licensing_status} />
+              <DeptChip label="Design" value={dep.design_status} />
+              <DeptChip label="Project" value={dep.project_status} />
+              <DeptChip label="Finance" value={dep.finance_status} />
+              <DeptChip label="KYC" value={dep.kyc_verified ? 'verified' : 'pending'} />
+              <DeptChip label="CA code" value={dep.ca_code} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              {FIELDS.filter(f => f.type !== 'textarea').map((spec) => (
-                <div key={spec.key}>
-                  <div style={{ fontSize: 11, color: T.textFaint, marginBottom: 4, fontWeight: 600 }}>{spec.label}</div>
-                  <FieldInput spec={spec} value={form[spec.key]} onChange={handleFieldChange} readOnly={!canEdit}/>
-                </div>
-              ))}
+            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.textFaint, margin: '14px 0 8px' }}>NSO licenses</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <DeptChip label="FSSAI" value={dep.fssai_status} />
+              <DeptChip label="Health Trade" value={dep.health_trade_status} />
+              <DeptChip label="Shops & Estab." value={dep.shops_estab_status} />
+              <DeptChip label="Fire NOC" value={dep.fire_noc_status} />
+              <DeptChip label="Storage" value={dep.storage_license_status} />
+              <DeptChip label="Launch date" value={dep.launch_date ? fmtDate(dep.launch_date) : null} />
             </div>
-            {/* Notes spans full width */}
-            {FIELDS.filter(f => f.type === 'textarea').map((spec) => (
-              <div key={spec.key} style={{ marginTop: 12 }}>
-                <div style={{ fontSize: 11, color: T.textFaint, marginBottom: 4, fontWeight: 600 }}>{spec.label}</div>
-                <FieldInput spec={spec} value={form[spec.key]} onChange={handleFieldChange} readOnly={!canEdit}/>
-              </div>
-            ))}
+          </div>
+
+          {/* ── Filled site details (read-only) ───────────────────────────── */}
+          <div>
+            <SubHead>Site details</SubHead>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, padding: '14px 16px', borderRadius: 10, background: T.surface, border: `1px solid ${T.line}` }}>
+              <Field label="Name">{det.name}</Field>
+              <Field label="City">{det.city}</Field>
+              <Field label="Model">{det.model}</Field>
+              <Field label="Visit date">{fmtDate(det.visit_date)}</Field>
+              <Field label="Google pin">{det.google_pin}</Field>
+              <Field label="Score">{det.score}</Field>
+              <Field label="Est. monthly sales">{inr(det.estimated_monthly_sales)}</Field>
+              <Field label="Nearest Starbucks">{num(det.nearest_starbucks)}</Field>
+              <Field label="Nearest TWC">{num(det.nearest_twc)}</Field>
+              <Field label="Carpet area">{det.carpet_area_sqft ? `${num(det.carpet_area_sqft)} sqft` : '—'}</Field>
+              <Field label="CAM">{inr(det.cam_charges)}</Field>
+              <Field label="Capex">{inr(det.capex)}</Field>
+              <Field label="Security deposit">{inr(det.security_deposit)}</Field>
+              <Field label="Brokerage">{inr(det.brokerage)}</Field>
+            </div>
+          </div>
+
+          {/* ── Validation timeline ───────────────────────────────────────── */}
+          <div>
+            <SubHead>Rent change history &amp; activity</SubHead>
+            <Card style={{ padding: 16 }}><Timeline events={d.events} /></Card>
           </div>
 
           {status === 'launched' && (
-            <div style={{ padding: '12px 16px', borderRadius: 10, background: 'rgba(46,168,106,0.12)',
-              border: '1px solid rgba(46,168,106,0.35)', color: '#4CAF82', fontWeight: 700, fontSize: 14,
-              textAlign: 'center' }}>
-              🚀 Site launched on {data.launched_at ? new Date(data.launched_at).toLocaleDateString('en-IN') : '—'}
+            <div style={{ padding: '12px 16px', borderRadius: 10, background: T.successSoft, border: `1px solid ${T.success}`, color: T.successText, fontWeight: 700, fontSize: 14, textAlign: 'center' }}>
+              🚀 Site launched on {fmtDate(d.launched_at)}
             </div>
           )}
         </div>
@@ -283,10 +398,7 @@ function QueueRow({ item, onClick }) {
   const info = STATUS_LABELS[item.status] || { label: item.status, color: T.textMuted };
   return (
     <div onClick={onClick}
-      style={{ display: 'grid', gridTemplateColumns: '0.7fr 1.4fr 0.8fr 1.4fr 1fr',
-        gap: 12, padding: '13px 18px', borderBottom: `1px solid ${T.line}`,
-        cursor: 'pointer', transition: 'background 0.15s',
-      }}
+      style={{ display: 'grid', gridTemplateColumns: '0.7fr 1.4fr 0.8fr 1.4fr 1fr', gap: 12, padding: '13px 18px', borderBottom: `1px solid ${T.line}`, cursor: 'pointer', transition: 'background 0.15s' }}
       onMouseEnter={(e) => { e.currentTarget.style.background = T.hoverBg || 'rgba(255,255,255,0.04)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
     >
@@ -294,9 +406,7 @@ function QueueRow({ item, onClick }) {
       <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{item.site_name}</span>
       <span style={{ fontSize: 13, color: T.textMuted }}>{item.city}</span>
       <span>
-        <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700,
-          textTransform: 'uppercase', letterSpacing: '0.08em', color: info.color,
-          background: `${info.color}22` }}>
+        <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: info.color, background: `${info.color}22` }}>
           {info.label}
         </span>
       </span>
@@ -326,44 +436,37 @@ export default function LaunchApprovalTab() {
   React.useEffect(() => { load(); }, [load]);
 
   const STATUS_TABS = [
-    { key: 'all',                label: 'All' },
-    { key: 'pending',            label: 'Pending Review' },
-    { key: 'admin_approved',     label: 'Awaiting BD' },
-    { key: 'bd_confirmed',       label: 'BD Verified' },
-    { key: 'supervisor_approved',label: 'Awaiting Super Admin' },
-    { key: 'super_admin_approved',label: 'Ready to Launch' },
-    { key: 'launched',           label: 'Launched' },
+    { key: 'all',                     label: 'All' },
+    { key: 'pending_admin_review',    label: 'Pending Review' },
+    { key: 'under_exec_review',       label: 'With Executive' },
+    { key: 'under_supervisor_review', label: 'With Supervisor' },
+    { key: 'pending_admin_final',     label: 'Final Confirm' },
+    { key: 'ready_to_launch',         label: 'Ready to Launch' },
+    { key: 'launched',                label: 'Launched' },
   ];
 
-  const displayedItems = statusFilter === 'all'
-    ? queue.items
-    : queue.items.filter((i) => i.status === statusFilter);
-
-  const pendingCount = queue.items.filter((i) => i.status === 'pending').length;
-  const readyCount = queue.items.filter((i) => i.status === 'super_admin_approved').length;
+  const displayedItems = statusFilter === 'all' ? queue.items : queue.items.filter((i) => i.status === statusFilter);
+  const actionableCount = queue.items.filter((i) => ['pending_admin_review', 'pending_admin_final', 'ready_to_launch'].includes(i.status)).length;
 
   return (
     <div>
       <SectionHeader
         icon={Icon.flag}
         title="Launch Approvals"
-        description="Post-NSO multi-step sign-off for site launches."
-        count={pendingCount + readyCount}
-        tone={readyCount > 0 ? 'success' : 'warn'}
+        description="Post-NSO validation loop: admin → executive → supervisor → admin, then launch."
+        count={actionableCount}
+        tone={actionableCount > 0 ? 'warn' : 'success'}
         onRefresh={() => load(true)}
         refreshing={queue.refreshing}
       />
 
-      {/* Status filter pills */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18, marginTop: 14 }}>
         {STATUS_TABS.map(({ key, label }) => {
-          const count = key === 'all' ? queue.items.length : queue.items.filter(i => i.status === key).length;
+          const count = key === 'all' ? queue.items.length : queue.items.filter((i) => i.status === key).length;
           const active = statusFilter === key;
           return (
             <button key={key} onClick={() => setStatusFilter(key)}
-              style={{ padding: '5px 14px', borderRadius: 20, border: `1px solid ${active ? T.accent : T.line}`,
-                background: active ? `${T.accent}22` : 'transparent', color: active ? T.accent : T.textMuted,
-                fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              style={{ padding: '5px 14px', borderRadius: 20, border: `1px solid ${active ? T.accent : T.line}`, background: active ? `${T.accent}22` : 'transparent', color: active ? T.accent : T.textMuted, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
               {label}{count > 0 ? ` (${count})` : ''}
             </button>
           );
@@ -371,35 +474,29 @@ export default function LaunchApprovalTab() {
       </div>
 
       <Card>
-        {/* Table header */}
-        <div style={{ display: 'grid', gridTemplateColumns: '0.7fr 1.4fr 0.8fr 1.4fr 1fr',
-          gap: 12, padding: '9px 18px', borderBottom: `1px solid ${T.line}`,
-          fontSize: 10.5, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase',
-          color: T.textFaint }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '0.7fr 1.4fr 0.8fr 1.4fr 1fr', gap: 12, padding: '9px 18px', borderBottom: `1px solid ${T.line}`, fontSize: 10.5, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: T.textFaint }}>
           <span>Code</span><span>Site</span><span>City</span><span>Status</span><span>Updated</span>
         </div>
 
         {queue.status === 'loading' && (
           <div style={{ padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {[1,2,3].map(i => <Skeleton key={i} h={40}/>)}
+            {[1, 2, 3].map((i) => <Skeleton key={i} h={40} />)}
           </div>
         )}
 
         {queue.status === 'error' && (
-          <div style={{ padding: 24 }}>
-            <ErrorState message={queue.error} onRetry={() => load(false)}/>
-          </div>
+          <div style={{ padding: 24 }}><ErrorState message={queue.error} onRetry={() => load(false)} /></div>
         )}
 
         {queue.status === 'ready' && displayedItems.length === 0 && (
           <div style={{ padding: '36px 24px' }}>
             <EmptyState icon={Icon.check} title="Nothing to show"
-              hint={statusFilter === 'all' ? 'Sites will appear here after NSO final approval.' : 'No sites in this status.'}/>
+              hint={statusFilter === 'all' ? 'Sites will appear here after NSO final approval.' : 'No sites in this status.'} />
           </div>
         )}
 
         {queue.status === 'ready' && displayedItems.map((item) => (
-          <QueueRow key={item.site_id} item={item} onClick={() => setSelectedSiteId(item.site_id)}/>
+          <QueueRow key={item.site_id} item={item} onClick={() => setSelectedSiteId(item.site_id)} />
         ))}
       </Card>
 

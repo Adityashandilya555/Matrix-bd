@@ -62,9 +62,13 @@ async def test_create_launch_approval_flushes(session):
         session, site=site, tenant_id=site.tenant_id,
     )
     # The fix flushes inside a savepoint so a constraint violation surfaces here
-    # instead of poisoning the parent NSO transaction.
-    assert session.flush_count == 1
+    # instead of poisoning the parent NSO transaction. The validation-loop rework
+    # (202606121) adds a second flush for the draft `baseline` rent-history event
+    # — both live inside the same savepoint.
+    assert session.flush_count == 2
     assert row in session.added
+    assert any(getattr(o, "action", None) == "baseline" for o in session.added), \
+        "svc_create_launch_approval must record a baseline rent event"
 
 
 async def test_create_launch_approval_on_integrity_returns_existing(make_session, fake_result):
