@@ -16,9 +16,14 @@ HTTP status. Each test is written to FAIL on the pre-fix code and PASS after.
 from __future__ import annotations
 
 import contextlib
+import os
 from typing import Any
 
 import pytest
+
+# The settings object refuses to instantiate with the placeholder JWT secret
+# unless dev mode is explicit (#80). Tests are exactly that.
+os.environ.setdefault("ALLOW_INSECURE_DEFAULTS", "true")
 
 
 class FakeResult:

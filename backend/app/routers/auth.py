@@ -21,16 +21,20 @@ Routes:
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
+import secrets
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import text
 
+from app.core.config import settings
 from app.core.deps import CurrentUser, DbDep
+from app.core.ratelimit import rate_limit
 from app.core.security import TOKEN_TTL_SECONDS, issue_token
 from app.core.passwords import hash_password, verify_password
 from app.domain.schemas.common import OkResponse
@@ -66,8 +70,10 @@ class _WorkspaceCred(BaseModel):
 
 
 class LoginIn(_WorkspaceCred):
-    # Optional for back-compat: a legacy user with no password set may still
-    # sign in passwordlessly, and the first password they submit is stored.
+    # Optional only for tenants in PASSWORDLESS_DEMO_CODES (sample/demo
+    # workspaces). For everyone else a password is required once set, and an
+    # account with no password cannot sign in at all (#83) — first-time
+    # passwords are set through the admin-approved, token-bound reset flow.
     password: Optional[str] = Field(default=None, max_length=256)
 
 
@@ -81,11 +87,15 @@ class ResetRequestIn(_WorkspaceCred):
 
 class ResetCompleteIn(_WorkspaceCred):
     new_password: str = Field(min_length=6, max_length=256)
+    # Single-use token issued at admin approval (#85). Without it, anyone who
+    # knew (email, workspace_code) could finalize an approved reset and take
+    # over the account.
+    reset_token: str = Field(min_length=8, max_length=128)
 
 
 class LoginOut(BaseModel):
     access_token: str
-    token_type:   str = "bearer"
+    token_type:   str = "bearer"  # noqa: S105 — OAuth token *type* label, not a secret
     expires_in:   int = TOKEN_TTL_SECONDS
     user: dict
 
@@ -113,10 +123,10 @@ class SignupAcceptedOut(BaseModel):
 @router.post(
     "/login",
     summary="Public: exchange (email, workspace_code) for a JWT",
+    dependencies=[Depends(rate_limit(times=10, seconds=60))],
     responses={
         200: {"description": "Active user — JWT returned"},
         202: {"description": "Pending user — supervisor must assign role"},
-        404: {"description": "Workspace code does not exist"},
         403: {"description": "Workspace seat limit reached"},
     },
 )
@@ -131,11 +141,10 @@ async def login(payload: LoginIn, db: DbDep):
         {"code": payload.workspace_code},
     )).mappings().first()
     if not tenant:
-        # Same response shape as "wrong code" — don't leak which case it is.
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="That workspace code does not match any active workspace.",
-        )
+        # Same soft 202 a valid code + unknown email gets — a 404 here was a
+        # valid-code enumeration oracle (#84). Discriminator logged server-side.
+        logger.info("login: unknown workspace_code=%r", payload.workspace_code)
+        return _pending_response(payload.email)
 
     # 2. Find the user by (tenant, email).
     user = (await db.execute(
@@ -187,23 +196,30 @@ async def login(payload: LoginIn, db: DbDep):
     if not user["is_active"]:
         return _pending_response(payload.email)
 
-    # 3b. Password gate. Legacy users (password_hash IS NULL) may still sign in
-    #     without a password (back-compat). Once a password is set it is
-    #     required; the first password a user submits is stored.
+    # 3b. Password gate (#83). An account with a password must present it. An
+    #     account WITHOUT one can no longer sign in (previously it fell through
+    #     to a full JWT, and the first password anyone submitted was silently
+    #     stored — an account-claim race on every freshly provisioned user).
+    #     First-time passwords are set via the admin-approved, token-bound
+    #     reset flow (#85). Sample/demo tenants can be exempted explicitly.
     stored_hash = user["password_hash"]
     provided = (payload.password or "").strip()
+    is_demo_tenant = payload.workspace_code.strip().upper() in settings.passwordless_demo_code_list
     if stored_hash:
         if not verify_password(provided, stored_hash):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect email or password.",
             )
-    elif provided:
-        await db.execute(
-            text("UPDATE users SET password_hash = :h WHERE id = :uid"),
-            {"h": hash_password(provided), "uid": user["id"]},
+    elif not is_demo_tenant:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=(
+                "This account does not have a password yet. Use 'Request a reset' "
+                "on the login page — once the platform admin approves it you'll "
+                "receive a reset code to set your password."
+            ),
         )
-        await db.commit()
 
     # 4. Active user → mint a JWT. Optionally enrich with module membership.
     # A user may belong to multiple modules (the table only enforces
@@ -250,6 +266,7 @@ async def login(payload: LoginIn, db: DbDep):
 @router.post(
     "/login/check",
     summary="Public: report whether this (email, workspace_code) already has a password set",
+    dependencies=[Depends(rate_limit(times=20, seconds=60))],
 )
 async def login_check(payload: LoginCheckIn, db: DbDep) -> dict:
     """Lets the branded login page choose between 'set a password' (with a
@@ -260,7 +277,7 @@ async def login_check(payload: LoginCheckIn, db: DbDep) -> dict:
         {"code": payload.workspace_code},
     )).mappings().first()
     if not tenant:
-        return {"password_set": False}
+        return {"password_set": False}  # nosec B105 — boolean flag, not a credential
     user = (await db.execute(
         text("""SELECT password_hash FROM users
                  WHERE tenant_id = :tid AND lower(email) = lower(:email)"""),
@@ -272,6 +289,7 @@ async def login_check(payload: LoginCheckIn, db: DbDep) -> dict:
 @router.post(
     "/password-reset/request",
     summary="Public: request a password reset (routed to the platform admin)",
+    dependencies=[Depends(rate_limit(times=5, seconds=300))],
 )
 async def password_reset_request(payload: ResetRequestIn, db: DbDep) -> dict:
     # Soft ack regardless of existence, so this does not leak which emails are
@@ -304,13 +322,15 @@ async def password_reset_request(payload: ResetRequestIn, db: DbDep) -> dict:
             {"tid": tenant["id"], "uid": user["id"], "email": payload.email},
         )
         await db.commit()
-        logger.info("password reset requested tenant_id=%s email=%s", tenant["id"], payload.email)
+        # PII hygiene (#82): log the user id, not the email.
+        logger.info("password reset requested tenant_id=%s user_id=%s", tenant["id"], user["id"])
     return soft
 
 
 @router.post(
     "/password-reset/complete",
-    summary="Public: set a new password once the platform admin has approved the request",
+    summary="Public: set a new password using the reset code issued at admin approval",
+    dependencies=[Depends(rate_limit(times=5, seconds=300))],
 )
 async def password_reset_complete(payload: ResetCompleteIn, db: DbDep) -> dict:
     tenant = (await db.execute(
@@ -326,8 +346,9 @@ async def password_reset_complete(payload: ResetCompleteIn, db: DbDep) -> dict:
     if not user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset request.")
     req = (await db.execute(
-        text("""SELECT id FROM password_reset_requests
+        text("""SELECT id, reset_token_hash FROM password_reset_requests
                  WHERE tenant_id = :tid AND user_id = :uid AND status = 'approved'
+                   AND (token_expires_at IS NULL OR token_expires_at > now())
                  ORDER BY created_at DESC LIMIT 1"""),
         {"tid": tenant["id"], "uid": user["id"]},
     )).mappings().first()
@@ -335,6 +356,16 @@ async def password_reset_complete(payload: ResetCompleteIn, db: DbDep) -> dict:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No approved reset request found. Ask the platform admin to approve your reset first.",
+        )
+    # Bind completion to the requester (#85): the caller must present the
+    # single-use token the admin relayed out-of-band. (email, workspace_code)
+    # alone is a shared, non-secret pair and must never finalize a reset.
+    provided_hash = hashlib.sha256(payload.reset_token.strip().encode()).hexdigest()
+    stored_hash = req["reset_token_hash"] or ""
+    if not stored_hash or not secrets.compare_digest(provided_hash, stored_hash):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid or expired reset code. Ask the platform admin for the code issued with the approval.",
         )
     await db.execute(
         text("UPDATE users SET password_hash = :h WHERE id = :uid"),
@@ -352,6 +383,7 @@ async def password_reset_complete(payload: ResetCompleteIn, db: DbDep) -> dict:
 @router.post(
     "/signup/supervisor",
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(rate_limit(times=5, seconds=300))],
     summary="Public: sign up as a supervisor candidate using a dept_code",
     responses={
         202: {"description": "Pending — business_admin must approve"},
@@ -387,6 +419,7 @@ async def signup_supervisor(
 @router.post(
     "/signup/executive",
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(rate_limit(times=5, seconds=300))],
     summary="Public: sign up as an executive candidate using a supervisor_code",
     responses={
         202: {"description": "Pending — supervisor must approve"},

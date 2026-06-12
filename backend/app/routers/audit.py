@@ -43,4 +43,12 @@ async def get_site_audit(
     tenant_id: TenantId,
     module: str | None = Query(None, description="Optional module-scoped audit slice: legal, design, project, or nso"),
 ) -> AuditListResponse:
+    from app.services._common import assert_executive_owns_site, fetch_site_or_404
+
+    # #104 — BD executives only read the audit trail of their own/assigned
+    # sites; non-BD module members keep access (their modules govern
+    # visibility through delegation). Mirrors GET /sites/{id}/activity.
+    site = await fetch_site_or_404(db, site_id=site_id, tenant_id=tenant_id)
+    if (current_user.get("module") or "bd").lower() in ("", "bd"):
+        assert_executive_owns_site(current_user, site)
     return await list_site_activity(db, tenant_id=tenant_id, site_id=site_id, module=module)

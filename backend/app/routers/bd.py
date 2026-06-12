@@ -207,6 +207,12 @@ async def bd_site_legal_status(
     current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))],
     tenant_id: TenantId,
 ) -> BdSiteStatusResponse:
+    from app.services._common import assert_executive_owns_site, fetch_site_or_404
+
+    # #104 — executives only view the legal-status projection of their own/
+    # assigned sites (mirrors GET /sites/{id} and the tracker).
+    site = await fetch_site_or_404(db, site_id=site_id, tenant_id=tenant_id)
+    assert_executive_owns_site(current_user, site)
     return await svc_bd_site_status(db, site_id=site_id, tenant_id=tenant_id)
 
 

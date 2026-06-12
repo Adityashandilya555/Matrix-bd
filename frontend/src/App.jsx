@@ -7,6 +7,7 @@ import TopBar from './modules/shared/chrome/TopBar.jsx';
 import Sidebar from './modules/shared/chrome/Sidebar.jsx';
 import SiteDrawer from './modules/shared/site-drawer/SiteDrawer.jsx';
 import { buildDrawerSite } from './lib/buildDrawerSite.js';
+import { safeHref } from './lib/safeHref.js';
 import Icon from './modules/shared/primitives/Icon.jsx';
 import { filterByScope } from './rbac/scope.js';
 import { extractGoogleMapsCoords, looksLikeMapsUrl } from './lib/googleMaps.js';
@@ -302,7 +303,11 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
               {form.googleMapsUrl && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>
                   <span>Link saved:</span>
-                  <a href={form.googleMapsUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--zm-accent)', textDecoration: 'underline', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{form.googleMapsUrl}</a>
+                  {safeHref(form.googleMapsUrl) ? (
+                    <a href={safeHref(form.googleMapsUrl)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--zm-accent)', textDecoration: 'underline', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{form.googleMapsUrl}</a>
+                  ) : (
+                    <span style={{ color: 'var(--zm-fg-3)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{form.googleMapsUrl}</span>
+                  )}
                   <button type="button" onClick={clearMapsLink} title="Clear link" style={{ background: 'transparent', border: 'none', color: 'var(--zm-fg-3)', cursor: 'pointer', padding: 0, fontSize: 12 }}>×</button>
                 </span>
               )}

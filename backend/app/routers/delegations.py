@@ -63,7 +63,24 @@ async def list_site_delegations(
     ],
     tenant_id: TenantId,
 ) -> dict:
-    return await svc_list_delegations_for_site(db, tenant_id=tenant_id, site_id=site_id)
+    from fastapi import HTTPException, status
+
+    from app.services._common import fetch_site_or_404
+
+    # #104 — BD executives only see delegations (names/emails) on sites they
+    # own, are assigned to, or are themselves delegated on; supervisors see all.
+    site = await fetch_site_or_404(db, site_id=site_id, tenant_id=tenant_id)
+    result = await svc_list_delegations_for_site(db, tenant_id=tenant_id, site_id=site_id)
+    if (current_user.get("role") or "").lower() == "executive":
+        sub = str(current_user["sub"])
+        is_owner = sub in (str(site.submitted_by), str(site.assigned_to or ""))
+        is_delegate = any(d.get("delegate_user_id") == sub for d in result.get("items", []))
+        if not (is_owner or is_delegate):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This site is not assigned to you.",
+            )
+    return result
 
 
 @router.delete(

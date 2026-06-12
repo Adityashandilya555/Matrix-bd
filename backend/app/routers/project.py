@@ -104,6 +104,17 @@ async def project_history_detail(
     _module: InProjectModule,
     tenant_id: TenantId,
 ) -> ProjectStateResponse:
+    # #104 — executives only read history detail for sites delegated to them,
+    # matching the /history list filter above and the live get_project route.
+    if _is_executive(current_user):
+        allowed = await svc_assigned_sites(
+            db, tenant_id=tenant_id, user_id=current_user["sub"], module="project",
+        )
+        if site_id not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This site is not allocated to you.",
+            )
     return await svc_get_project_history_detail(db, tenant_id=tenant_id, site_id=site_id)
 
 
@@ -158,6 +169,17 @@ async def list_project_delegations(
     _module: InProjectModule,
     tenant_id: TenantId,
 ) -> dict:
+    # #104 — executives only see allocations (names/emails) for sites
+    # allocated to them, mirroring the /history detail gate above.
+    if _is_executive(current_user):
+        allowed = await svc_assigned_sites(
+            db, tenant_id=tenant_id, user_id=current_user["sub"], module="project",
+        )
+        if site_id not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This site is not allocated to you.",
+            )
     return await svc_list_project_delegations_for_site(db, tenant_id=tenant_id, site_id=site_id)
 
 

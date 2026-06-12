@@ -197,10 +197,23 @@ function CredentialsDialog({ result, keyValue, onClose }) {
           <span style={{ opacity: 0.6, fontSize: 12 }}>Workspace code</span>
           <code style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', padding: '6px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.08)', fontSize: 13, fontWeight: 700, letterSpacing: '0.05em' }}>{result.workspace_code}</code>
           <button onClick={() => copy(result.workspace_code)} style={{ height: 28, borderRadius: 6, border: '1px solid rgba(255,255,255,0.18)', background: 'transparent', color: '#fff', fontSize: 11.5, cursor: 'pointer' }}>Copy</button>
+          {result.admin_setup_token && (
+            <>
+              <span style={{ opacity: 0.6, fontSize: 12 }}>Setup code</span>
+              <code style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', padding: '6px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.08)', fontSize: 12, fontWeight: 700, overflowWrap: 'anywhere' }}>{result.admin_setup_token}</code>
+              <button onClick={() => copy(result.admin_setup_token)} style={{ height: 28, borderRadius: 6, border: '1px solid rgba(255,255,255,0.18)', background: 'transparent', color: '#fff', fontSize: 11.5, cursor: 'pointer' }}>Copy</button>
+            </>
+          )}
           <span style={{ opacity: 0.6, fontSize: 12 }}>Seat limit</span>
           <span style={{ fontSize: 13 }}>{result.seat_limit}</span>
           <span/>
         </div>
+        {result.admin_setup_token && (
+          <p style={{ margin: 0, padding: '10px 12px', borderRadius: 8, background: 'rgba(250,204,21,0.10)', color: '#FDE68A', fontSize: 12, lineHeight: 1.5 }}>
+            The admin&#39;s account has no password yet. Share the <b>setup code</b> with them privately —
+            on their login page they enter it (with a new password) to activate sign-in. It is shown only once and expires in 30 days.
+          </p>
+        )}
 
         <div style={{ height: 1, background: 'rgba(255,255,255,0.1)' }}/>
 
@@ -243,6 +256,7 @@ function ResetQueue({ keyValue, onAuthError }) {
   const [items, setItems] = React.useState(null);
   const [error, setError] = React.useState(null);
   const [confirmingId, setConfirmingId] = React.useState(null);
+  const [issued, setIssued] = React.useState(null); // { email, token } from the last confirm
 
   const load = React.useCallback(async () => {
     setError(null);
@@ -257,10 +271,13 @@ function ResetQueue({ keyValue, onAuthError }) {
 
   React.useEffect(() => { setItems(null); load(); }, [load]);
 
-  async function confirm(id) {
+  async function confirm(id, email) {
     setConfirmingId(id); setError(null);
     try {
-      await apiFetch(`/tenancy/password-reset-requests/${id}/confirm`, { key: keyValue, method: 'POST' });
+      const res = await apiFetch(`/tenancy/password-reset-requests/${id}/confirm`, { key: keyValue, method: 'POST' });
+      // The reset code is shown ONCE — the user must present it to complete
+      // the reset (#85). Relay it to them out-of-band.
+      if (res?.reset_token) setIssued({ email, token: res.reset_token });
       await load();
     } catch (err) {
       setError(err.message || 'Confirm failed');
@@ -275,6 +292,18 @@ function ResetQueue({ keyValue, onAuthError }) {
         Users who failed sign-in and asked for a reset appear here. Confirm a request to let that user set a new password on their login page.
       </p>
       {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(220,38,38,0.18)', color: '#FCA5A5', marginBottom: 20, fontSize: 13 }}>{error}</div>}
+      {issued && (
+        <div style={{ padding: '12px 14px', borderRadius: 10, background: 'rgba(250,204,21,0.10)', color: '#FDE68A', marginBottom: 20, fontSize: 12.5, lineHeight: 1.6 }}>
+          Reset approved for <b>{issued.email}</b>. Share this one-time reset code with them privately — they enter it on their login page with their new password. It is shown only once.
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+            <code style={{ fontFamily: 'ui-monospace, monospace', padding: '6px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.08)', fontSize: 12, fontWeight: 700, overflowWrap: 'anywhere' }}>{issued.token}</code>
+            <button onClick={() => { try { navigator.clipboard?.writeText(issued.token); } catch {/* noop */} }}
+              style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.18)', background: 'transparent', color: '#fff', fontSize: 11.5, cursor: 'pointer' }}>Copy</button>
+            <button onClick={() => setIssued(null)}
+              style={{ height: 28, padding: '0 10px', borderRadius: 6, border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: 11.5, cursor: 'pointer' }}>Dismiss</button>
+          </div>
+        </div>
+      )}
       {items === null && !error && <div style={{ opacity: 0.6, fontSize: 13 }}>Loading…</div>}
       {items && items.length === 0 && (
         <div style={{ padding: 48, textAlign: 'center', border: '1px dashed rgba(255,255,255,0.15)', borderRadius: 14, color: 'rgba(255,255,255,0.55)' }}>No pending reset requests.</div>
@@ -291,7 +320,7 @@ function ResetQueue({ keyValue, onAuthError }) {
               <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>{r.workspace_code}</span>
               <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11.5, color: 'rgba(255,255,255,0.6)' }}>{r.created_at ? new Date(r.created_at).toLocaleString() : '—'}</span>
               <span style={{ textAlign: 'right' }}>
-                <button onClick={() => confirm(r.id)} disabled={confirmingId === r.id}
+                <button onClick={() => confirm(r.id, r.email)} disabled={confirmingId === r.id}
                   style={{ height: 30, padding: '0 14px', borderRadius: 7, border: 'none', background: '#34D399', color: '#06251a', fontSize: 12, fontWeight: 800, cursor: confirmingId === r.id ? 'wait' : 'pointer', opacity: confirmingId === r.id ? 0.6 : 1 }}>
                   {confirmingId === r.id ? '…' : 'Confirm'}
                 </button>

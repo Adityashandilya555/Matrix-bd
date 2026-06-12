@@ -28,14 +28,17 @@ export default function WorkspaceCodeDialog({ open, onClose }) {
     }
     setBusy(true); setError('');
     try {
-      // Validates the code exists (and warms the branding for the next page).
+      // Warm branding for the next page. We no longer treat an unknown code as
+      // a hard error here: /tenancy/branding intentionally returns a uniform
+      // response for known vs unknown codes so it can't be used to enumerate
+      // valid workspaces (#84). Whether the code is real is revealed on the
+      // login page (a wrong code lands on the soft "pending" message), not by
+      // this lookup. A thrown error now means a genuine network failure.
       await getWorkspaceBranding(c);
       onClose?.();
       navigate(`/login/${encodeURIComponent(c)}`);
-    } catch (err) {
-      setError(err?.response?.status === 404
-        ? 'No workspace matches that code.'
-        : 'Could not verify that code right now. Please try again.');
+    } catch {
+      setError('Could not reach the server right now. Please try again.');
     } finally {
       setBusy(false);
     }

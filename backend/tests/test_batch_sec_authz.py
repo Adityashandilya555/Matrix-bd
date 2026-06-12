@@ -217,6 +217,18 @@ async def test_approve_pending_exec_rejects_other_supervisors_recruit(session, f
     assert not any("INSERT INTO user_module_memberships" in s for s in session.executed)
 
 
+async def test_reject_pending_exec_scoped_to_own_recruits(session):
+    """Same class as #86 (found by the repo sweep): the reject DELETE must be
+    scoped to the caller's own pending recruits via the notes marker — not
+    'any inactive user in the tenant'."""
+    from app.services.supervisor_code_service import reject_my_pending_exec
+
+    await reject_my_pending_exec(session, TENANT, OTHER_EXEC, SUPERVISOR_ID)
+    delete_sql = next(s for s in session.executed if "DELETE FROM users" in s)
+    assert ":marker_prefix" in delete_sql
+    assert "role = 'executive'" in delete_sql
+
+
 # ── #88 — design upload: validate first, tenant-scoped key ─────────────────
 
 class _FakeUpload:
@@ -269,12 +281,13 @@ async def test_design_upload_key_is_tenant_scoped_and_sanitised(
 
     # site fetch for the pre-upload validation; the downstream submit 404s on
     # the empty session — by then the upload already happened, which is what
-    # we're inspecting.
+    # we're inspecting. Supervisor caller: executives additionally need an
+    # allocation (covered by the kind-validation test path).
     session.queue(fake_result(scalar=_site()))
     with pytest.raises(HTTPException):
         await design_router.upload_deliverable(
             SITE_ID, "recce", session,
-            current_user=_exec_user(OWNER), _module=_exec_user(OWNER), tenant_id=TENANT,
+            current_user=_supervisor(), _module=_supervisor(), tenant_id=TENANT,
             file=_FakeUpload(),
         )
     assert len(calls) == 1

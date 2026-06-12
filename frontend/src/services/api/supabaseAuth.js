@@ -131,11 +131,15 @@ export async function requestPasswordReset(email, workspaceCode) {
 }
 
 // After the platform admin approves, the user sets a new password here.
-export async function completePasswordReset(email, workspaceCode, newPassword) {
+// `resetToken` is the single-use code the admin relays out-of-band at
+// approval — completion is bound to it (#85), (email, workspace_code) alone
+// can no longer overwrite a password.
+export async function completePasswordReset(email, workspaceCode, newPassword, resetToken) {
   let res;
   try {
     res = await axios.post(`${API_BASE}/auth/password-reset/complete`, {
       email, workspace_code: workspaceCode, new_password: newPassword,
+      reset_token: resetToken,
     });
   } catch (err) {
     throw new Error(_detailMessage(err, 'Password reset failed'));

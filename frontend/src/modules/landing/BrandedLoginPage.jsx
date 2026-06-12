@@ -44,17 +44,18 @@ function Banner({ msg }) {
 
 // ── Login (email → set-or-enter password → optional reset) ───────────────────
 function LoginPanel({ code, onAuthed }) {
-  const [step, setStep] = React.useState('email'); // email | enter | set | reset
+  const [step, setStep] = React.useState('email'); // email | enter | reset
   const [email, setEmail] = React.useState('');
   const [pw, setPw] = React.useState('');
   const [pw2, setPw2] = React.useState('');
+  const [tok, setTok] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState(null);
   const [wrong, setWrong] = React.useState(0);
 
   const say = (text, tone = 'error') => setMsg({ text, tone });
   const em = () => email.trim().toLowerCase();
-  const resetFields = () => { setPw(''); setPw2(''); };
+  const resetFields = () => { setPw(''); setPw2(''); setTok(''); };
 
   const continueEmail = async (e) => {
     e.preventDefault();
@@ -63,7 +64,16 @@ function LoginPanel({ code, onAuthed }) {
     try {
       const hasPw = await checkPasswordSet(em(), code);
       resetFields();
-      setStep(hasPw ? 'enter' : 'set');
+      if (hasPw) {
+        setStep('enter');
+      } else {
+        // No password on file. Passwords are set through the admin-approved
+        // reset flow (a first password can't just be claimed — #83): file the
+        // request now and collect the approval code + new password.
+        try { await requestPasswordReset(em(), code); } catch { /* soft-ack either way */ }
+        setStep('reset');
+        say('This account has no password yet. A setup request was sent to your platform admin — once they approve it, enter the reset code they share with you and choose a password.', 'info');
+      }
     } catch {
       say('Could not reach the server. Please try again.');
     } finally { setBusy(false); }
@@ -71,10 +81,7 @@ function LoginPanel({ code, onAuthed }) {
 
   const doLogin = async (e) => {
     e.preventDefault();
-    if (step === 'set') {
-      if (pw.length < 6) { say('Choose a password of at least 6 characters.'); return; }
-      if (pw !== pw2) { say('Passwords do not match.'); return; }
-    } else if (!pw) { say('Enter your password.'); return; }
+    if (!pw) { say('Enter your password.'); return; }
     setBusy(true); setMsg(null);
     try {
       const data = await signInWithWorkspaceCode(em(), code, pw);
@@ -92,7 +99,7 @@ function LoginPanel({ code, onAuthed }) {
       await requestPasswordReset(em(), code);
       resetFields();
       setStep('reset');
-      say('Reset request sent to your platform admin. Once they approve it, set a new password below.', 'info');
+      say('Reset request sent to your platform admin. Once they approve it, enter the reset code they share with you and set a new password below.', 'info');
     } catch {
       say('Could not send the request. Please try again.');
     } finally { setBusy(false); }
@@ -100,11 +107,12 @@ function LoginPanel({ code, onAuthed }) {
 
   const doReset = async (e) => {
     e.preventDefault();
+    if (tok.trim().length < 8) { say('Enter the reset code your platform admin shared with you.'); return; }
     if (pw.length < 6) { say('Choose a password of at least 6 characters.'); return; }
     if (pw !== pw2) { say('Passwords do not match.'); return; }
     setBusy(true); setMsg(null);
     try {
-      await completePasswordReset(em(), code, pw);
+      await completePasswordReset(em(), code, pw, tok.trim());
       const data = await signInWithWorkspaceCode(em(), code, pw);
       onAuthed(data?.access_token);
     } catch (err) {
@@ -130,7 +138,6 @@ function LoginPanel({ code, onAuthed }) {
     );
   }
 
-  const isSet = step === 'set';
   const isReset = step === 'reset';
   const onSubmit = isReset ? doReset : doLogin;
 
@@ -141,13 +148,22 @@ function LoginPanel({ code, onAuthed }) {
         <button type="button" className="bl-link" onClick={changeEmail}>Change</button>
       </div>
 
-      <label className="bl-label" htmlFor="bl-pw">{isSet || isReset ? 'New password' : 'Password'}</label>
+      {isReset && (
+        <>
+          <label className="bl-label" htmlFor="bl-tok">Reset code</label>
+          <input id="bl-tok" className="bl-input" type="text" value={tok}
+            onChange={(e) => { setTok(e.target.value); if (msg) setMsg(null); }}
+            placeholder="Code shared by your platform admin" autoComplete="one-time-code" autoFocus />
+        </>
+      )}
+
+      <label className="bl-label" htmlFor="bl-pw">{isReset ? 'New password' : 'Password'}</label>
       <input id="bl-pw" className="bl-input" type="password" value={pw}
         onChange={(e) => { setPw(e.target.value); if (msg) setMsg(null); }}
-        placeholder={isSet || isReset ? 'Create a password' : 'Enter your password'}
-        autoComplete={isSet || isReset ? 'new-password' : 'current-password'} autoFocus />
+        placeholder={isReset ? 'Create a password' : 'Enter your password'}
+        autoComplete={isReset ? 'new-password' : 'current-password'} autoFocus={!isReset} />
 
-      {(isSet || isReset) && (
+      {isReset && (
         <>
           <label className="bl-label" htmlFor="bl-pw2">Confirm password</label>
           <input id="bl-pw2" className="bl-input" type="password" value={pw2}
@@ -156,12 +172,10 @@ function LoginPanel({ code, onAuthed }) {
         </>
       )}
 
-      {isSet && <p className="bl-hint">First time signing in — choose a password for your account.</p>}
-
       <Banner msg={msg} />
 
       <button type="submit" className="bl-btn" disabled={busy}>
-        {busy ? 'Please wait…' : isReset ? 'Set new password & sign in' : isSet ? 'Set password & sign in' : 'Sign in'}
+        {busy ? 'Please wait…' : isReset ? 'Set new password & sign in' : 'Sign in'}
       </button>
 
       {step === 'enter' && wrong > 0 && (

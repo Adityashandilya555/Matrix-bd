@@ -178,6 +178,17 @@ async def list_legal_delegations_for_site(
     _module: InLegalModule,
     tenant_id: TenantId,
 ) -> dict:
+    # #104 — executives only see delegations (names/emails) for sites
+    # delegated to them, mirroring the get-review gate below.
+    if _is_executive(current_user):
+        ok = await svc_is_delegated(
+            db, tenant_id=tenant_id, site_id=site_id,
+            user_id=current_user["sub"], module="legal",
+        )
+        if not ok:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND, detail="Site not found",
+            )
     return await svc_list_legal_delegations_for_site(db, tenant_id=tenant_id, site_id=site_id)
 
 
