@@ -69,7 +69,10 @@ async def test_approve_supervisor_noop_when_already_active(make_session, fake_re
 
 
 async def test_approve_exec_inserts_with_on_conflict(make_session, fake_result):
-    sess = make_session(fake_result(mappings_rows=[{"is_active": False}]))
+    # Post-#86 the pending row must carry the caller's ownership marker.
+    sess = make_session(fake_result(mappings_rows=[{
+        "is_active": False, "role": "executive", "notes": "pending_supervisor:s|module:legal",
+    }]))
     await supervisor_code_service.approve_my_pending_exec(
         sess, tenant_id="t", supervisor_id="s", user_id="u", module="legal",
     )
@@ -77,11 +80,17 @@ async def test_approve_exec_inserts_with_on_conflict(make_session, fake_result):
 
 
 async def test_approve_exec_noop_when_already_active(make_session, fake_result):
-    sess = make_session(fake_result(mappings_rows=[{"is_active": True}]))
+    # Double-click replay: user already active AND already this supervisor's
+    # member in this module (second queued row) → silent idempotent return.
+    sess = make_session(
+        fake_result(mappings_rows=[{"is_active": True, "role": "executive", "notes": None}]),
+        fake_result(mappings_rows=[{"?column?": 1}]),
+    )
     await supervisor_code_service.approve_my_pending_exec(
         sess, tenant_id="t", supervisor_id="s", user_id="u", module="legal",
     )
     assert "INSERT INTO user_module_memberships" not in sess.sql
+    assert "UPDATE users" not in sess.sql
 
 
 # ── #124 — deterministic module claim at login ─────────────────────────────

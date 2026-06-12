@@ -5,6 +5,7 @@ import StatusPill from '../primitives/StatusPill.jsx';
 import { getSiteActivity, colorForAction, labelForEntry } from '../../../services/api/audit.js';
 import { getSiteDocuments } from '../../../services/api/siteService.js';
 import { SiteStatus } from '../../../lib/stateMachine.js';
+import { safeHref } from '../../../lib/safeHref.js';
 
 // Relative time formatter for the activity tab. Keeps the rendering format from
 // the mock data ("12 min ago", "3 days ago") so the visual identity is preserved.
@@ -178,7 +179,7 @@ function PhotoTile({ photo }) {
 }
 
 function SiteOverviewTab({ site }) {
-  const mapHref = site.googleMapsUrl
+  const mapHref = safeHref(site.googleMapsUrl)
     || (hasValue(site.pin) && site.pin !== '—'
       ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.pin)}`
       : null);

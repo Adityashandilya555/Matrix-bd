@@ -2,8 +2,22 @@
 from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 from app.domain.state_machine import SiteStatus
+
+
+def _validate_http_url(v: Optional[str]) -> Optional[str]:
+    """Scheme allowlist for user-pasted URLs (#87). The value is rendered back
+    as an <a href> in SiteDrawer / NsoReviewPage for OTHER users, so a stored
+    `javascript:` URL is stored XSS. Only http(s) links are plausible Maps URLs."""
+    if v is None:
+        return v
+    v = v.strip()
+    if not v:
+        return None
+    if not v.lower().startswith(("http://", "https://")):
+        raise ValueError("google_maps_url must be an http(s) URL")
+    return v
 
 
 # ── Request models ─────────────────────────────────────────────────────────────
@@ -19,6 +33,11 @@ class CreateDraftRequest(BaseModel):
     spoc_name: Optional[str] = None
     google_pin: Optional[str] = None  # extracted "lat, lng" string
     google_maps_url: Optional[str] = None  # original Maps link the user pasted
+
+    @field_validator("google_maps_url")
+    @classmethod
+    def _maps_url_scheme(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_http_url(v)
     expected_rent: Optional[float] = None
     rent_type: Optional[str] = None  # 'fixed' | 'revshare' | 'mg_revshare'
     # Conditional, depending on rent_type. None for the rest.

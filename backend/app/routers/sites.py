@@ -92,6 +92,10 @@ async def get_site_activity(
     tenant_id: TenantId,
     module: Optional[str] = Query(None),
 ) -> AuditListResponse:
+    from app.services._common import assert_executive_owns_site, fetch_site_or_404
+
+    site = await fetch_site_or_404(db, site_id=site_id, tenant_id=tenant_id)
+    assert_executive_owns_site(current_user, site)
     return await list_site_activity(db, tenant_id=tenant_id, site_id=site_id, module=module)
 
 
@@ -110,10 +114,11 @@ async def get_site_documents(
 ) -> dict:
     from sqlalchemy import desc, select
     from app.db import models
-    from app.services._common import fetch_site_or_404
+    from app.services._common import assert_executive_owns_site, fetch_site_or_404
     from app.services.storage_service import signed_url
 
     site = await fetch_site_or_404(db, site_id=site_id, tenant_id=tenant_id)
+    assert_executive_owns_site(current_user, site)
     stmt = (
         select(models.SiteFile)
         .where(models.SiteFile.site_id == site.id)
@@ -159,7 +164,7 @@ async def get_site_tracker(
     can keep working pre-publish. Wrapped in try/except so a missing column
     in mid-migration doesn't 500.
     """
-    from app.services._common import fetch_site_or_404, fetch_user_name
+    from app.services._common import assert_executive_owns_site, fetch_site_or_404, fetch_user_name
     from sqlalchemy import select
     from app.db import models
     from app.services.legal_service import (
@@ -175,6 +180,12 @@ async def get_site_tracker(
 
     caller_module = (current_user.get("module") or "").lower()
     bd_caller = caller_module in ("", "bd")  # default to BD when module missing
+
+    # #104 — BD executives only see their own/assigned sites. Non-BD module
+    # members (legal/design/...) keep tracker access: their modules govern
+    # visibility through delegation, and this projection is their hand-off view.
+    if bd_caller:
+        assert_executive_owns_site(current_user, site)
 
     def _is_published(row) -> bool:
         # If the staged-checklist column hasn't landed yet, `getattr` falls
@@ -290,11 +301,26 @@ async def patch_site_status(
     site_id: str,
     body: PatchSiteStatusRequest,
     db: DbDep,
-    current_user: CurrentUser,
+    current_user: Annotated[
+        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))
+    ],
     tenant_id: TenantId,
 ):
     new_status = body.status
     payload = body.payload or {}
+
+    # #102 — mirror the dedicated /bd routes: approve/reject/shortlist/archive
+    # (and the two hand-offs below) are supervisor-only. Without this, any
+    # executive could drive the whole approval ladder through this dispatcher.
+    _supervisor_only = {
+        SiteStatus.REJECTED, SiteStatus.ARCHIVED, SiteStatus.SHORTLISTED,
+        SiteStatus.APPROVED, SiteStatus.PUSHED_TO_PAYMENTS, SiteStatus.LEGAL_REVIEW,
+    }
+    if new_status in _supervisor_only and (current_user.get("role") or "").lower() != "supervisor":
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail=f"Only the supervisor can transition a site to {new_status.value}.",
+        )
 
     if new_status == SiteStatus.REJECTED:
         return await svc_reject_site(
