@@ -86,7 +86,7 @@ class Site(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     # Pipeline-stage fields (some exist; expected_rent + rent_type + rent_set_at are added)
-    model: Mapped[Optional[str]] = mapped_column(Text)  # Postgres enum at the DB level
+    model: Mapped[Optional[str]] = mapped_column(Text)  # free text — store_model enum dropped (202606141)
     spoc_name: Mapped[Optional[str]] = mapped_column(Text)
     spoc_email: Mapped[Optional[str]] = mapped_column(Text)
     spoc_phone: Mapped[Optional[str]] = mapped_column(Text)
@@ -289,7 +289,7 @@ class SiteFile(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
     site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id"), nullable=False)
     uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    file_type: Mapped[str] = mapped_column(Text, nullable=False)  # postgres enum file_type
+    file_type: Mapped[str] = mapped_column(Text, nullable=False)  # chk_site_files_file_type: loi | photo | quality_audit
     file_name: Mapped[str] = mapped_column(Text, nullable=False)
     storage_path: Mapped[str] = mapped_column(Text, nullable=False)
     file_size_kb: Mapped[Optional[int]] = mapped_column(Integer)
