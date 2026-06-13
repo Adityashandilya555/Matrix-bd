@@ -153,9 +153,19 @@ export function SitesProvider({ children }) {
   }, [identityKey, role]);
 
   // Refresh helper — re-fetches entire list from service
-  const refresh = useCallback(async () => {
-    const data = await siteService.listSites();
-    setSites(data);
+  const refresh = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
+    try {
+      const data = await siteService.listSites();
+      setSites(data);
+    } catch (err) {
+      if (!silent) setError(err.message);
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, []);
 
   const refreshAndBroadcast = useCallback(async (action) => {
@@ -164,7 +174,7 @@ export function SitesProvider({ children }) {
   }, [refresh]);
 
   useEffect(() => {
-    const run = () => refresh().catch(err => setError(err.message));
+    const run = () => refresh({ silent: true });
     const unsubscribe = subscribeSiteDataChanged((detail) => {
       if (detail?.source !== 'SitesContext') run();
     });
