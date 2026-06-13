@@ -43,6 +43,7 @@ from app.services.bd_service import (
 )
 from app.services.finance_service import (
     svc_finance_approve,
+    svc_finance_reject,
     svc_finance_request_approval,
     svc_save_finance_draft,
 )
@@ -440,6 +441,33 @@ async def finance_approve(
 ) -> dict:
     return await svc_finance_approve(
         db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
+    )
+
+
+class _FinanceRejectBody(BaseModel):
+    reason: Optional[str] = None
+
+
+@router.post(
+    "/{site_id}/finance/reject",
+    summary="Supervisor / admin reject finance — send back for correction",
+    description=(
+        "Resets finance_status back to 'pending' so the executive can fix "
+        "KYC / CA code / amount and re-request approval."
+    ),
+)
+async def finance_reject(
+    site_id: str,
+    db: DbDep,
+    current_user: Annotated[
+        dict, Depends(require_role(Role.SUPERVISOR, Role.BUSINESS_ADMIN))
+    ],
+    tenant_id: TenantId,
+    body: _FinanceRejectBody | None = None,
+) -> dict:
+    return await svc_finance_reject(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
+        reason=(body.reason if body else None),
     )
 
 

@@ -155,3 +155,15 @@ export async function approveFinance(siteId) {
   notifySiteDataChanged({ source: 'siteTrackerApi', action: 'approve_finance', siteId });
   return data;
 }
+
+export async function rejectFinance(siteId, reason) {
+  if (USE_MOCK) {
+    const result = await adapter.rejectFinance?.(siteId, reason);
+    notifySiteDataChanged({ source: 'siteTrackerApi', action: 'reject_finance', siteId });
+    return result;
+  }
+  const body = reason ? { reason } : {};
+  const data = await client.post(`/sites/${siteId}/finance/reject`, body).then((r) => r.data);
+  notifySiteDataChanged({ source: 'siteTrackerApi', action: 'reject_finance', siteId });
+  return data;
+}

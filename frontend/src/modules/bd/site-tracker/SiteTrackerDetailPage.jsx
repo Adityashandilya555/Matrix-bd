@@ -7,6 +7,7 @@ import {
   saveFinanceDraft,
   requestFinanceApproval,
   approveFinance,
+  rejectFinance,
 } from '../../../services/api/siteTrackerApi.js';
 import { bdSiteStatusRoute } from '../../../router/routes.js';
 import { agreementStatusLabel, normalizeAgreementStatus } from '../../../lib/agreementStatus.js';
@@ -340,6 +341,22 @@ function FinancePanel({ data, role, onClose, onUpdate }) {
     }
   };
 
+  const [rejecting, setRejecting] = React.useState(false);
+  const handleReject = async () => {
+    const reason = window.prompt('Reason for rejection (optional):');
+    if (reason === null) return; // user cancelled
+    setRejecting(true);
+    try {
+      await rejectFinance(data.siteId, reason || undefined);
+      showToast('Finance sent back for correction.');
+      await onUpdate();
+    } catch (err) {
+      showToast(err?.detail || err?.message || 'Rejection failed.', 'danger');
+    } finally {
+      setRejecting(false);
+    }
+  };
+
   const canSave    = !isLocked && accessible;
   const canRequest = !isLocked && accessible && kycVerified && caCode.trim() && amount !== '';
   const canApproveSupervisor  = role === 'supervisor'      && financeStatus === 'awaiting_supervisor';
@@ -536,16 +553,30 @@ function FinancePanel({ data, role, onClose, onUpdate }) {
 
             {/* Approve button — supervisor seeing awaiting_supervisor */}
             {canApprove && (
-              <button
-                type="button"
-                onClick={handleApprove}
-                disabled={approving}
-                style={btnStyle(true, approving)}
-              >
-                {approving
-                  ? 'Approving…'
-                  : canApproveSupervisor ? 'Forward to admin' : 'Approve finance'}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleApprove}
+                  disabled={approving || rejecting}
+                  style={btnStyle(true, approving || rejecting)}
+                >
+                  {approving
+                    ? 'Approving…'
+                    : canApproveSupervisor ? 'Forward to admin' : 'Approve finance'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleReject}
+                  disabled={approving || rejecting}
+                  style={{
+                    ...btnStyle(false, approving || rejecting),
+                    color: 'var(--zm-danger, #B91C1C)',
+                    borderColor: 'var(--zm-danger, #B91C1C)',
+                  }}
+                >
+                  {rejecting ? 'Rejecting…' : 'Send back'}
+                </button>
+              </>
             )}
 
             {/* Final approved state */}

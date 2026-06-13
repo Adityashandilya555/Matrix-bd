@@ -320,3 +320,29 @@ def test_create_draft_accepts_https_maps_url():
         google_maps_url="https://maps.app.goo.gl/abc123",
     )
     assert req.google_maps_url == "https://maps.app.goo.gl/abc123"
+
+
+async def test_finance_reject_router_role_guard(session):
+    from app.routers.sites import finance_reject, _FinanceRejectBody
+
+    # 1. Executive user should be rejected with 403 Forbidden
+    with pytest.raises(HTTPException) as exc:
+        await finance_reject(
+            site_id=SITE_ID,
+            db=session,
+            current_user=_exec_user(OWNER),
+            tenant_id=TENANT,
+            body=_FinanceRejectBody(reason="test rejection"),
+        )
+    assert exc.value.status_code == 403
+
+    # 2. Supervisor user should pass role guard and proceed to service (404 on DB)
+    with pytest.raises(HTTPException) as exc:
+        await finance_reject(
+            site_id=SITE_ID,
+            db=session,
+            current_user=_supervisor(),
+            tenant_id=TENANT,
+            body=_FinanceRejectBody(reason="test rejection"),
+        )
+    assert exc.value.status_code == 404
