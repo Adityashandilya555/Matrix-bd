@@ -105,6 +105,15 @@ class Settings(BaseSettings):
     # PDFs, site photos, quality-audit reports, and branding logos.
     max_upload_bytes: int = 25 * 1024 * 1024
 
+    # ── Email (Resend) ──────────────────────────────────────────────────────
+    # Set RESEND_API_KEY to enable the in-process notification drain (#112).
+    # Without it, email rows accumulate in notification_outbox and are never sent.
+    resend_api_key: str = ""
+    resend_from_email: str = "Matrix <noreply@matrix.bluetokai.com>"
+    # How often the drain loop runs (seconds). 30s keeps latency low without
+    # hammering the DB or Resend rate limits.
+    notification_drain_interval_secs: int = 30
+
     # ── Platform admin (workspace-request approval) ─────────────────────────
     # The portal at /admin uses an email + password pair set via env. On
     # successful login the backend hands back `platform_admin_token` and the
