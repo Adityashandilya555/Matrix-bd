@@ -1,24 +1,10 @@
--- Migration 202606142: widen module CHECK constraints to include 'project_excellence'
--- The 134 migration widened site_delegations but missed module_codes,
--- supervisor_invite_codes, and user_module_memberships.
+-- Migration 202606142: widen module CHECK constraint on module_codes to include 'project_excellence'
+-- Real constraint name discovered via pg_constraint: chk_module_codes_module
+-- supervisor_invite_codes and user_module_memberships have no module CHECK constraints.
+-- 'payment' is retained in the list because existing rows in module_codes use it.
 
--- module_codes
 ALTER TABLE public.module_codes
-    DROP CONSTRAINT IF EXISTS module_codes_module_check;
+    DROP CONSTRAINT IF EXISTS chk_module_codes_module;
 ALTER TABLE public.module_codes
-    ADD CONSTRAINT module_codes_module_check
-        CHECK (module IN ('bd','legal','design','project','nso','project_excellence'));
-
--- supervisor_invite_codes
-ALTER TABLE public.supervisor_invite_codes
-    DROP CONSTRAINT IF EXISTS supervisor_invite_codes_module_check;
-ALTER TABLE public.supervisor_invite_codes
-    ADD CONSTRAINT supervisor_invite_codes_module_check
-        CHECK (module IN ('bd','legal','design','project','nso','project_excellence'));
-
--- user_module_memberships
-ALTER TABLE public.user_module_memberships
-    DROP CONSTRAINT IF EXISTS user_module_memberships_module_check;
-ALTER TABLE public.user_module_memberships
-    ADD CONSTRAINT user_module_memberships_module_check
-        CHECK (module IN ('bd','legal','design','project','nso','project_excellence'));
+    ADD CONSTRAINT chk_module_codes_module
+        CHECK (module IN ('bd','legal','design','project','nso','payment','project_excellence'));
