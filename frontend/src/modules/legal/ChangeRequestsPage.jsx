@@ -25,11 +25,73 @@ function StatusPill({ value }) {
   );
 }
 
+const btnStyle = (bg, textCol) => ({
+  height: 32, padding: '0 14px', border: bg === 'transparent' ? '1px solid var(--zm-line)' : 'none', 
+  borderRadius: 7, background: bg === 'transparent' ? 'var(--zm-surface)' : bg, 
+  color: textCol || (bg === 'transparent' ? 'var(--zm-fg)' : '#fff'),
+  cursor: 'pointer', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 500,
+});
+
+function ConfirmModal({ title, message, busy, onConfirm, onClose }) {
+  return (
+    <div role="dialog" aria-modal="true" onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)',
+      zIndex: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 14,
+        width: 'min(460px, 96vw)', padding: 24, display: 'flex', flexDirection: 'column', gap: 14,
+        boxShadow: 'var(--zm-shadow-pop)',
+      }}>
+        <strong style={{ fontSize: 15 }}>{title}</strong>
+        <span style={{ fontSize: 13, color: 'var(--zm-fg-2)' }}>{message}</span>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 10 }}>
+          <button style={btnStyle('transparent')} disabled={busy} onClick={onClose}>Cancel</button>
+          <button style={btnStyle('var(--zm-success)')} disabled={busy} onClick={onConfirm}>Approve</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PromptModal({ title, placeholder, busy, onConfirm, onClose }) {
+  const [text, setText] = React.useState('');
+  return (
+    <div role="dialog" aria-modal="true" onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)',
+      zIndex: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 14,
+        width: 'min(460px, 96vw)', padding: 24, display: 'flex', flexDirection: 'column', gap: 14,
+        boxShadow: 'var(--zm-shadow-pop)',
+      }}>
+        <strong style={{ fontSize: 15 }}>{title}</strong>
+        <textarea
+          value={text} onChange={(e) => setText(e.target.value)} rows={3} autoFocus
+          placeholder={placeholder}
+          style={{
+            width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 8,
+            border: '1px solid var(--zm-line)', background: 'var(--zm-surface-2)', color: 'var(--zm-fg)',
+            fontFamily: 'var(--zm-font-body)', fontSize: 13, resize: 'vertical'
+          }}
+        />
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 10 }}>
+          <button style={btnStyle('transparent')} disabled={busy} onClick={onClose}>Cancel</button>
+          <button style={btnStyle('var(--zm-danger)')} disabled={busy || !text.trim()} onClick={() => onConfirm(text.trim())}>Reject</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ChangeRequestsPage() {
   const { showToast } = usePageContext();
   useFocusSite();
   const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
   const [busy, setBusy] = React.useState(null);
+  const [confirmCr, setConfirmCr] = React.useState(null);
+  const [promptCr, setPromptCr] = React.useState(null);
 
   const load = React.useCallback(() => {
     let cancelled = false;
@@ -52,9 +114,6 @@ export default function ChangeRequestsPage() {
   React.useEffect(() => load(), [load]);
 
   const approve = async (cr) => {
-    if (!window.confirm(
-      `Approve and overwrite ${cr.targetTable}.${cr.fieldName} from "${cr.currentValue}" to "${cr.requestedValue}"?`,
-    )) return;
     setBusy(cr.id);
     try {
       await approveChangeRequest(cr.id, {});
@@ -62,12 +121,13 @@ export default function ChangeRequestsPage() {
       load();
     } catch (err) {
       showToast?.(err?.detail || err?.message || 'Failed to approve');
-    } finally { setBusy(null); }
+    } finally { 
+      setBusy(null); 
+      setConfirmCr(null);
+    }
   };
 
-  const reject = async (cr) => {
-    const note = window.prompt('Reason for rejection? (BD will see this)', '');
-    if (note === null) return;
+  const reject = async (cr, note) => {
     setBusy(cr.id);
     try {
       await rejectChangeRequest(cr.id, { reviewerNote: note });
@@ -75,7 +135,10 @@ export default function ChangeRequestsPage() {
       load();
     } catch (err) {
       showToast?.(err?.detail || err?.message || 'Failed to reject');
-    } finally { setBusy(null); }
+    } finally { 
+      setBusy(null); 
+      setPromptCr(null);
+    }
   };
 
   return (
@@ -149,7 +212,7 @@ export default function ChangeRequestsPage() {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
                 <button
                   type="button"
-                  onClick={() => reject(cr)}
+                  onClick={() => setPromptCr(cr)}
                   disabled={busy === cr.id}
                   style={{
                     height: 32, padding: '0 12px', border: '1px solid var(--zm-line)',
@@ -160,7 +223,7 @@ export default function ChangeRequestsPage() {
                 >Reject</button>
                 <button
                   type="button"
-                  onClick={() => approve(cr)}
+                  onClick={() => setConfirmCr(cr)}
                   disabled={busy === cr.id}
                   style={{
                     height: 32, padding: '0 14px', border: 'none', borderRadius: 7,
@@ -173,6 +236,26 @@ export default function ChangeRequestsPage() {
             </div>
           ))}
         </div>
+      )}
+      
+      {confirmCr && (
+        <ConfirmModal 
+          title="Approve Change Request" 
+          message={`Approve and overwrite ${confirmCr.targetTable}.${confirmCr.fieldName} from "${confirmCr.currentValue}" to "${confirmCr.requestedValue}"?`}
+          busy={busy === confirmCr.id}
+          onConfirm={() => approve(confirmCr)}
+          onClose={() => setConfirmCr(null)}
+        />
+      )}
+      
+      {promptCr && (
+        <PromptModal
+          title="Reject Change Request"
+          placeholder="Reason for rejection? (BD will see this)"
+          busy={busy === promptCr.id}
+          onConfirm={(note) => reject(promptCr, note)}
+          onClose={() => setPromptCr(null)}
+        />
       )}
     </div>
   );
