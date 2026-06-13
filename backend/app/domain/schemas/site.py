@@ -1,9 +1,14 @@
 """Pydantic schemas for site resources."""
 from __future__ import annotations
 from datetime import date, datetime
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import AliasChoices, BaseModel, Field, field_validator
 from app.domain.state_machine import SiteStatus
+
+# Closed vocabulary mirroring the live DB CHECK constraint on sites.rent_type.
+# Using a Literal here converts a latent IntegrityError 500 into a clean 422
+# before any SQL is issued (issue #166).
+RentType = Literal["fixed", "revshare", "mg_revshare"]
 
 
 def _validate_http_url(v: Optional[str]) -> Optional[str]:
@@ -39,7 +44,7 @@ class CreateDraftRequest(BaseModel):
     def _maps_url_scheme(cls, v: Optional[str]) -> Optional[str]:
         return _validate_http_url(v)
     expected_rent: Optional[float] = None
-    rent_type: Optional[str] = None  # 'fixed' | 'revshare' | 'mg_revshare'
+    rent_type: Optional[RentType] = None
     # Conditional, depending on rent_type. None for the rest.
     expected_escalation_pct: Optional[float] = None
     # Cadence in YEARS (1 = yearly, 3 = every 3 yrs …). The live column is a
@@ -85,7 +90,7 @@ class SaveDetailsRequest(BaseModel):
     nearest_twc: Optional[float] = Field(default=None, validation_alias=AliasChoices("nearest_twc", "nearestTWC"))
     carpet: Optional[float] = None
     cam: Optional[float] = None
-    rent_type: Optional[str] = Field(default=None, validation_alias=AliasChoices("rent_type", "rentType"))
+    rent_type: Optional[RentType] = Field(default=None, validation_alias=AliasChoices("rent_type", "rentType"))
     rent: Optional[float] = None
     escalation: Optional[float] = None
     revshare: Optional[float] = None

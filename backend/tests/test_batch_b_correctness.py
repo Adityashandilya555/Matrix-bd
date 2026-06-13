@@ -1,6 +1,7 @@
 """Batch B — backend input / correctness.
 
 Covers:
+  #166 rent_type Literal validation (off-vocab input -> 422, not 500)
   #135 expected_escalation_years bound (smallint overflow -> 422 not 500)
   #123 membership inserts: pending-state guard + ON CONFLICT idempotency
   #124 login module claim ordered deterministically (no arbitrary LIMIT 1)
@@ -15,9 +16,48 @@ import inspect
 import pytest
 from pydantic import ValidationError
 
-from app.domain.schemas.site import CreateDraftRequest
+from app.domain.schemas.launch import LaunchRentFieldsRequest
+from app.domain.schemas.site import CreateDraftRequest, SaveDetailsRequest
 from app.routers import users as users_router
 from app.services import business_admin_service, supervisor_code_service
+
+
+# ── #166 — rent_type Literal validation ────────────────────────────────────
+# The live DB has:  CHECK (rent_type IN ('fixed','revshare','mg_revshare') OR rent_type IS NULL)
+# Without a backend Literal, any string reaches asyncpg and raises an unhandled
+# IntegrityError → 500. With RentType the schema layer rejects it with a 422.
+
+def test_rent_type_accepts_valid_values():
+    for v in ("fixed", "revshare", "mg_revshare"):
+        assert _draft(rent_type=v).rent_type == v
+
+
+def test_rent_type_allows_none():
+    assert _draft(rent_type=None).rent_type is None
+    assert _draft().rent_type is None
+
+
+def test_rent_type_rejects_off_vocab():
+    # These were the old enum values — "revenue_share" and "hybrid" — that live in
+    # the orphaned Postgres enum type but are NOT in the active CHECK constraint.
+    for bad in ("revenue_share", "hybrid", "FIXED", "Fixed", ""):
+        with pytest.raises(ValidationError):
+            _draft(rent_type=bad)
+
+
+def test_save_details_rent_type_validated():
+    # SaveDetailsRequest also feeds sites.rent_type via the patch endpoint.
+    assert SaveDetailsRequest(rent_type="revshare").rent_type == "revshare"
+    with pytest.raises(ValidationError):
+        SaveDetailsRequest(rent_type="revenue_share")
+
+
+def test_launch_rent_fields_rent_type_validated():
+    # LaunchRentFieldsRequest copies rent_type into launch_approvals then into
+    # sites.rent_type on final-confirm — same CHECK constraint applies.
+    assert LaunchRentFieldsRequest(rent_type="mg_revshare").rent_type == "mg_revshare"
+    with pytest.raises(ValidationError):
+        LaunchRentFieldsRequest(rent_type="hybrid")
 
 
 # ── #135 — escalation-years bound ──────────────────────────────────────────

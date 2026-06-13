@@ -29,6 +29,8 @@ from typing import Any, Optional
 
 from pydantic import BaseModel
 
+from app.domain.schemas.site import RentType
+
 
 # ── The editable rent set ───────────────────────────────────────────────────────
 # The ONLY fields any role may change inside the loop: rent terms + lock-in +
@@ -65,7 +67,7 @@ RENT_FIELD_LABELS: dict[str, str] = {
 
 class LaunchRentFieldsRequest(BaseModel):
     """Partial update of the rent-only staging fields (admin / supervisor)."""
-    rent_type: Optional[str] = None
+    rent_type: Optional[RentType] = None
     expected_rent: Optional[float] = None
     fixed_rent_amt: Optional[float] = None
     rev_share_pct: Optional[float] = None
