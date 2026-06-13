@@ -738,9 +738,10 @@ async def join_workspace(payload: JoinIn, db: DbDep) -> JoinOut:
         logger.info("join: already in tenant tenant_id=%s email=%s", tenant["id"], payload.email)
         return soft_ack
 
-    # 3. Seat-limit check.
+    # 3. Seat-limit check — count only ACTIVE users (#125: pending rows must not
+    #    block legitimate onboarding).
     used = (await db.execute(
-        text("SELECT COUNT(*) AS n FROM users WHERE tenant_id=:tid"),
+        text("SELECT COUNT(*) AS n FROM users WHERE tenant_id=:tid AND is_active=true"),
         {"tid": tenant["id"]},
     )).scalar_one()
     if used >= tenant["seat_limit"]:

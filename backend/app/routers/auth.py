@@ -159,8 +159,12 @@ async def login(payload: LoginIn, db: DbDep):
     if user is None:
         # First-time login from this email in this workspace — register them
         # in the queue. The supervisor will assign a role.
+        # Count only ACTIVE users — pending (is_active=false) rows must not
+        # consume seats; otherwise any holder of the workspace_code can fill
+        # the workspace with never-approved registrations, blocking real hires
+        # with a 403 (#125).
         seat_used = (await db.execute(
-            text("SELECT COUNT(*) FROM users WHERE tenant_id=:tid"),
+            text("SELECT COUNT(*) FROM users WHERE tenant_id=:tid AND is_active=true"),
             {"tid": tenant["id"]},
         )).scalar_one()
         if seat_used >= tenant["seat_limit"]:
