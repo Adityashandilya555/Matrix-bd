@@ -112,6 +112,13 @@ def decode_token(token: str) -> dict[str, Any]:
     except jwt.PyJWTError as exc:
         raise AuthError(f"Invalid token: {exc}")
 
+    return _session_from_claims(claims)
+
+
+def _session_from_claims(claims: dict[str, Any]) -> dict[str, Any]:
+    """Project already-verified JWT claims into the canonical session dict
+    consumed by ``app.core.deps.get_current_user``. Raises 403 if the token is
+    structurally valid but missing the app_metadata role/tenant we require."""
     app_md = claims.get("app_metadata") or {}
     user_md = claims.get("user_metadata") or {}
 
@@ -133,3 +140,48 @@ def decode_token(token: str) -> dict[str, Any]:
         "module_role": app_md.get("module_role"),
         "supervisor_id": app_md.get("supervisor_id"),
     }
+
+
+# How long AFTER expiry a token may still be exchanged for a fresh one at
+# POST /auth/refresh. A 24h token that lapsed while a tab was left open can then
+# re-mint silently instead of bouncing the user to re-login — without letting a
+# long-dead (e.g. stolen) token be resurrected indefinitely. Signature,
+# audience and required claims are still fully verified; the refresh handler
+# additionally re-checks users.is_active in SQL, so a deactivated or deleted
+# account still cannot refresh. ONLY /auth/refresh uses the grace path below;
+# every normal request still goes through the strict ``decode_token`` above.
+REFRESH_GRACE_SECONDS = 60 * 60 * 24 * 7  # 7 days
+
+
+def decode_token_for_refresh(token: str) -> dict[str, Any]:
+    """Decode a bearer token for POST /auth/refresh ONLY.
+
+    Identical verification to :func:`decode_token` (signature, audience and the
+    required ``exp``/``sub`` claims) EXCEPT it tolerates a token whose ``exp`` is
+    in the past by up to :data:`REFRESH_GRACE_SECONDS`, so a recently-lapsed
+    session can be silently re-minted. A token expired beyond the grace window —
+    or otherwise invalid — is rejected with 401, exactly like ``decode_token``.
+    """
+    try:
+        claims = jwt.decode(
+            token,
+            settings.supabase_jwt_secret,
+            algorithms=["HS256"],
+            audience=settings.supabase_jwt_audience,
+            # verify_exp is relaxed; we enforce a bounded grace window manually
+            # below. signature + audience + the require list are still checked.
+            options={"require": ["exp", "sub"], "verify_exp": False},
+        )
+    except jwt.InvalidAudienceError:
+        raise AuthError("Token audience mismatch")
+    except jwt.PyJWTError as exc:
+        raise AuthError(f"Invalid token: {exc}")
+
+    exp = claims.get("exp")
+    if exp is None:
+        raise AuthError("Token missing expiry claim")
+    now_ts = int(dt.datetime.now(tz=dt.timezone.utc).timestamp())
+    if now_ts - int(exp) > REFRESH_GRACE_SECONDS:
+        raise AuthError("Session expired. Please sign in again.")
+
+    return _session_from_claims(claims)

@@ -30,6 +30,16 @@ const UPLOAD_TIMEOUT_MS = Number(import.meta.env.VITE_API_UPLOAD_TIMEOUT_MS ?? 1
 const client = axios.create({ baseURL: BASE_URL, timeout: TIMEOUT_MS });
 let refreshPromise = null;
 
+// The bootstrap auth probes — /auth/whoami fired on app mount and /auth/refresh
+// — must NOT themselves pop the session-expired modal. SessionContext owns the
+// first-load decision (drop a dead token silently vs. surface the modal only
+// mid-session). Without this guard the mount-time whoami 401 from a stale token
+// blinks the blocking modal over the public landing page. (#173 regression fix)
+function isBootstrapAuthRequest(config) {
+  const url = config?.url || '';
+  return url.endsWith('/auth/whoami') || url.endsWith('/auth/refresh');
+}
+
 async function refreshBearerToken() {
   const token = getAuthToken();
   if (!token) return null;
@@ -58,7 +68,13 @@ export async function ensureFreshAuthToken() {
     try {
       token = await refreshBearerToken() || getAuthToken();
     } catch (err) {
-      notifySessionExpired({ reason: 'refresh_failed', error: err });
+      // Proactive refresh failed. Do NOT pop the session-expired modal here —
+      // let the actual request proceed with the current token; if it really is
+      // dead the response interceptor (and SessionContext's first-load logic)
+      // decide what to do. Firing here blinked the modal on app boot before any
+      // data even loaded. (#173 regression fix)
+      // eslint-disable-next-line no-console
+      console.warn('[auth] proactive token refresh failed — proceeding with current token', err);
     }
   }
   return token;
@@ -115,10 +131,12 @@ client.interceptors.response.use(
           return client.request(retryConfig);
         }
       } catch (refreshErr) {
-        notifySessionExpired({ reason: 'unauthorized', error: refreshErr });
+        if (!isBootstrapAuthRequest(err.config)) {
+          notifySessionExpired({ reason: 'unauthorized', error: refreshErr });
+        }
       }
     }
-    if (status === 401) {
+    if (status === 401 && !isBootstrapAuthRequest(err.config)) {
       notifySessionExpired({ reason: 'unauthorized', detail });
     }
     throw new ApiError({ status, detail, code: err.response?.data?.code, cause: err });

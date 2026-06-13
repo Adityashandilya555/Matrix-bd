@@ -26,16 +26,20 @@ import logging
 import re
 import secrets
 import uuid
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, DbDep
 from app.core.ratelimit import rate_limit
-from app.core.security import TOKEN_TTL_SECONDS, issue_token
+from app.core.security import (
+    TOKEN_TTL_SECONDS,
+    decode_token_for_refresh,
+    issue_token,
+)
 from app.core.passwords import hash_password_async, verify_password_async
 from app.domain.schemas.common import OkResponse
 
@@ -537,16 +541,36 @@ async def whoami(current_user: CurrentUser) -> dict:
 @router.post(
     "/refresh",
     response_model=LoginOut,
-    summary="Refresh the current JWT before it expires",
+    summary="Refresh the current JWT (tolerates a recently-expired token)",
 )
-async def refresh(current_user: CurrentUser, db: DbDep) -> LoginOut:
-    """Mint a fresh JWT from the still-valid current session.
+async def refresh(
+    db: DbDep,
+    authorization: Annotated[Optional[str], Header()] = None,
+) -> LoginOut:
+    """Mint a fresh JWT from the current session.
 
-    The current_user dependency already verifies the bearer token and reloads
-    the user's active role from the database. This endpoint then rebuilds the
-    token from live tenant/module data so frontend forms can refresh quietly
-    before expiry without losing in-progress edits.
+    Unlike every other authed route this does NOT go through the strict
+    ``get_current_user`` dependency. It decodes the bearer with
+    ``decode_token_for_refresh``, which still verifies the signature, audience
+    and required claims but tolerates a token expired within
+    ``REFRESH_GRACE_SECONDS``. That lets a session that lapsed (e.g. a 24h token
+    that expired while a tab was open) re-mint silently instead of dead-ending
+    into a re-login — the shared root cause behind both the "session paused"
+    popup and "pipeline not created", since the old handler depended on the same
+    strict decode that rejected the token in the first place.
+
+    Security is preserved: an account that has been deactivated or deleted no
+    longer matches the ``is_active = true`` filter below, so it cannot refresh,
+    and a token expired beyond the grace window is rejected by the decode.
     """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing bearer token. Sign in again.",
+        )
+    token = authorization.split(" ", 1)[1].strip()
+    claims = decode_token_for_refresh(token)
+
     row = (await db.execute(
         text("""
             SELECT u.id, u.email, u.name, u.role, u.assigned_city,
@@ -555,7 +579,7 @@ async def refresh(current_user: CurrentUser, db: DbDep) -> LoginOut:
               JOIN tenants t ON t.id = u.tenant_id
              WHERE u.id = :uid AND u.is_active = true
         """),
-        {"uid": current_user["sub"]},
+        {"uid": claims["sub"]},
     )).mappings().first()
     if not row:
         raise HTTPException(

@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { DEFAULT_SESSION, me as fetchMe, logout as logoutApi } from '../services/api/authService.js';
 import { can, PERMISSIONS } from '../rbac/permissions.js';
 import { ROLE } from '../rbac/roles.js';
@@ -45,6 +46,14 @@ export function SessionProvider({ children }) {
   // Mock mode is ready immediately — the session is the static default.
   const [authReady, setAuthReady] = useState(USE_MOCK);
   const [sessionExpired, setSessionExpired] = useState(null);
+  // True once a /auth/whoami has SUCCEEDED this page-load. It lets us tell a
+  // token that was dead on arrival (a stale token left over from a deploy that
+  // invalidated it — there was never a live session to "pause", so drop it
+  // silently and let the router show /welcome or /login) apart from a genuine
+  // mid-session expiry (the token was live, then lapsed — show the modal so an
+  // in-progress form isn't wiped). Without this, every returning visitor with a
+  // stale token got a blocking "SESSION PAUSED" modal over the public landing.
+  const hadLiveSessionRef = useRef(false);
   // Hydrate dark from localStorage so the choice survives refresh and any
   // provider re-mount (e.g. StrictMode double-invoke, route-driven unmount).
   const [dark, setDark] = useState(() => {
@@ -107,14 +116,27 @@ export function SessionProvider({ children }) {
           userId:    claims.sub || INITIAL_SESSION.userId || null,
         });
         setSessionExpired(null);
+        hadLiveSessionRef.current = true;
       } catch (err) {
         if (isAuthRejection(err)) {
-          // Stale token / missing app_metadata. Keep the token and mounted
-          // route until the user chooses to sign in again so in-progress forms
-          // are not wiped by an automatic redirect. (#130)
-          // eslint-disable-next-line no-console
-          console.warn('[session] /auth/whoami unauthorized — preserving route', err);
-          notifySessionExpired({ reason: 'whoami_unauthorized', error: err });
+          if (!hadLiveSessionRef.current) {
+            // First-load auth rejection: the token was dead on arrival, so the
+            // user never had a live session this page-load. Drop it silently and
+            // let the router fall through to /welcome or /login — popping a
+            // blocking "session expired" modal over a public page is wrong,
+            // there is no session to pause. (Restores pre-#173 #130 behavior for
+            // the stale-token case.)
+            // eslint-disable-next-line no-console
+            console.warn('[session] /auth/whoami unauthorized on first load — clearing stale token', err);
+            clearAuthToken();
+          } else {
+            // A session WAS live this page-load and just expired mid-use. Keep
+            // the token + mounted route and surface the modal so in-progress
+            // forms are preserved. (#130 / #173 intent)
+            // eslint-disable-next-line no-console
+            console.warn('[session] /auth/whoami unauthorized mid-session — preserving route', err);
+            notifySessionExpired({ reason: 'whoami_unauthorized', error: err });
+          }
         } else {
           // Transient (timeout / network / 5xx). Keep the token so the user
           // isn't logged out by a slow backend; a refresh re-hydrates. (#128)
@@ -187,61 +209,85 @@ export function SessionProvider({ children }) {
   return (
     <SessionContext.Provider value={value}>
       {children}
-      {sessionExpired && !USE_MOCK && (
-        <div
-          role="alertdialog"
-          aria-modal="true"
-          aria-labelledby="session-expired-title"
+      <SessionExpiredModal sessionExpired={sessionExpired} onSignInAgain={signInAgain} />
+    </SessionContext.Provider>
+  );
+}
+
+// Routes where the workspace session-expired modal must NEVER appear: the
+// public marketing landing, the branded login, and the two admin portals
+// (which authenticate with their own X-Platform-Admin-Key, not the workspace
+// JWT). A dead/expired token on these routes should route to sign-in, not block
+// the page with "session paused". Exported for tests.
+const PUBLIC_SESSION_ROUTE_PREFIXES = ['/welcome', '/login', '/admin', '/business-admin'];
+
+export function isPublicSessionRoute(pathname) {
+  const path = pathname || '/';
+  return PUBLIC_SESSION_ROUTE_PREFIXES.some(
+    (prefix) => path === prefix || path.startsWith(prefix + '/'),
+  );
+}
+
+// Rendered as a child of the provider so it can read the current route via
+// useLocation WITHOUT re-rendering every context consumer on navigation. The
+// modal only shows for a genuine in-app session expiry — never in mock mode and
+// never on a public/unauthenticated route. (Fixes the #173 route-blind modal.)
+function SessionExpiredModal({ sessionExpired, onSignInAgain }) {
+  const { pathname } = useLocation();
+  if (!sessionExpired || USE_MOCK || isPublicSessionRoute(pathname)) return null;
+  return (
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="session-expired-title"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        display: 'grid',
+        placeItems: 'center',
+        background: 'rgba(7, 12, 10, 0.45)',
+        padding: 24,
+      }}
+    >
+      <div
+        style={{
+          width: 'min(440px, calc(100vw - 32px))',
+          borderRadius: 18,
+          border: '1px solid rgba(24, 84, 75, 0.22)',
+          background: '#fffaf1',
+          boxShadow: '0 24px 80px rgba(0,0,0,0.22)',
+          padding: 24,
+          color: '#181a20',
+        }}
+      >
+        <p style={{ margin: '0 0 8px', color: '#0f6b5f', fontSize: 12, fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase' }}>
+          Session paused
+        </p>
+        <h2 id="session-expired-title" style={{ margin: 0, fontSize: 28, lineHeight: 1.05 }}>
+          Sign in again to continue
+        </h2>
+        <p style={{ margin: '14px 0 22px', color: '#5f626d', lineHeight: 1.45 }}>
+          Your workspace session expired. This page is still open so your in-progress form stays visible.
+        </p>
+        <button
+          type="button"
+          onClick={onSignInAgain}
           style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 9999,
-            display: 'grid',
-            placeItems: 'center',
-            background: 'rgba(7, 12, 10, 0.45)',
-            padding: 24,
+            width: '100%',
+            minHeight: 48,
+            border: 0,
+            borderRadius: 14,
+            background: '#0f6b5f',
+            color: '#fff',
+            fontWeight: 800,
+            cursor: 'pointer',
           }}
         >
-          <div
-            style={{
-              width: 'min(440px, calc(100vw - 32px))',
-              borderRadius: 18,
-              border: '1px solid rgba(24, 84, 75, 0.22)',
-              background: '#fffaf1',
-              boxShadow: '0 24px 80px rgba(0,0,0,0.22)',
-              padding: 24,
-              color: '#181a20',
-            }}
-          >
-            <p style={{ margin: '0 0 8px', color: '#0f6b5f', fontSize: 12, fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase' }}>
-              Session paused
-            </p>
-            <h2 id="session-expired-title" style={{ margin: 0, fontSize: 28, lineHeight: 1.05 }}>
-              Sign in again to continue
-            </h2>
-            <p style={{ margin: '14px 0 22px', color: '#5f626d', lineHeight: 1.45 }}>
-              Your workspace session expired. This page is still open so your in-progress form stays visible.
-            </p>
-            <button
-              type="button"
-              onClick={signInAgain}
-              style={{
-                width: '100%',
-                minHeight: 48,
-                border: 0,
-                borderRadius: 14,
-                background: '#0f6b5f',
-                color: '#fff',
-                fontWeight: 800,
-                cursor: 'pointer',
-              }}
-            >
-              Go to sign in
-            </button>
-          </div>
-        </div>
-      )}
-    </SessionContext.Provider>
+          Go to sign in
+        </button>
+      </div>
+    </div>
   );
 }
 
