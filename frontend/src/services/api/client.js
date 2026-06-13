@@ -1,10 +1,11 @@
 // API client — fetch wrapper with base URL and auth header.
+import { getAuthToken } from './authToken.js';
+
 // TODO(db): set BASE_URL from env once backend is deployed.
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 
 function authHeader() {
-  // TODO(auth): read JWT from session storage / cookie.
-  const token = typeof window !== 'undefined' ? window.__zm_token : null;
+  const token = getAuthToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
