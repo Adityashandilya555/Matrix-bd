@@ -15,6 +15,19 @@ from app.core.config import settings
 # (plus one chunk) in memory before rejecting an oversized upload.
 _CHUNK_BYTES = 1024 * 1024
 
+# ── Content-type allowlist (#177) ─────────────────────────────────────────
+ALLOWED_MIME = {
+    "image/jpeg", "image/png", "image/webp", "image/gif",
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",   # .xlsx
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # .docx
+}
+
+def _unsupported(ct: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        detail=f"File type '{ct}' not allowed.",
+    )
 
 def _too_large(limit: int) -> HTTPException:
     return HTTPException(
@@ -30,6 +43,17 @@ async def read_upload_capped(file: UploadFile, *, max_bytes: int | None = None) 
     streamed body grows past it (defensive — a lying/absent Content-Length).
     """
     limit = max_bytes if max_bytes is not None else settings.max_upload_bytes
+
+    # Restrict allowed content-types (#177)
+    content_type = getattr(file, "content_type", None)
+    if isinstance(file, UploadFile):
+        if not content_type or not content_type.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing or empty Content-Type header."
+            )
+    if content_type and content_type not in ALLOWED_MIME:
+        raise _unsupported(content_type)
 
     # Fast reject when the multipart part already declares an oversized body.
     declared = getattr(file, "size", None)

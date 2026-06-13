@@ -77,6 +77,61 @@ async def test_read_capped_stream_overflow_413():
     assert ei.value.status_code == 413
 
 
+class _FakeUploadWithMime:
+    def __init__(self, data: bytes, content_type: str | None = None, size=None):
+        self._data = data
+        self.content_type = content_type
+        self.size = size
+        self._pos = 0
+
+    async def read(self, n: int = -1) -> bytes:
+        if n is None or n < 0:
+            chunk = self._data[self._pos:]
+            self._pos = len(self._data)
+            return chunk
+        chunk = self._data[self._pos:self._pos + n]
+        self._pos += len(chunk)
+        return chunk
+
+
+async def test_read_capped_allowed_mime():
+    file = _FakeUploadWithMime(b"hello", content_type="image/png")
+    out = await read_upload_capped(file, max_bytes=100)
+    assert out == b"hello"
+
+
+async def test_read_capped_disallowed_mime_415():
+    file = _FakeUploadWithMime(b"hello", content_type="application/x-msdownload")
+    with pytest.raises(HTTPException) as ei:
+        await read_upload_capped(file, max_bytes=100)
+    assert ei.value.status_code == 415
+
+
+async def test_read_capped_upload_file_missing_mime():
+    from fastapi import UploadFile
+    import io
+    # UploadFile without Content-Type header should raise 400
+    file = UploadFile(io.BytesIO(b"hello"), filename="test.png")
+    with pytest.raises(HTTPException) as ei:
+        await read_upload_capped(file, max_bytes=100)
+    assert ei.value.status_code == 400
+    assert "Missing or empty Content-Type header" in ei.value.detail
+
+
+async def test_read_capped_upload_file_valid_mime():
+    from fastapi import UploadFile
+    from starlette.datastructures import Headers
+    import io
+    # UploadFile with valid Content-Type header should pass
+    file = UploadFile(
+        io.BytesIO(b"hello"),
+        filename="test.png",
+        headers=Headers({"content-type": "image/png"})
+    )
+    out = await read_upload_capped(file, max_bytes=100)
+    assert out == b"hello"
+
+
 # ── #92 — storage error handling ───────────────────────────────────────────
 
 def _configure_storage(monkeypatch):
