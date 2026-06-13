@@ -265,3 +265,36 @@ async def test_design_unlock_rechecks_under_row_lock(make_session, fake_result, 
     assert "FOR UPDATE" in sess.sql
     assert site.design_status == "pending"
     assert site.status == "pushed_to_payments"
+
+
+def test_ca_code_validation():
+    from pydantic import ValidationError
+    from app.routers.sites import _FinanceDraftBody
+
+    # 1. Valid codes should pass
+    req = _FinanceDraftBody(ca_code="CA-12345")
+    assert req.ca_code == "CA-12345"
+
+    req_none = _FinanceDraftBody(ca_code=None)
+    assert req_none.ca_code is None
+
+    # 2. Invalid characters should raise ValidationError
+    with pytest.raises(ValidationError):
+        _FinanceDraftBody(ca_code="ca-12345")  # lowercase not allowed
+
+    with pytest.raises(ValidationError):
+        _FinanceDraftBody(ca_code="CA 12345")  # spaces not allowed
+
+    with pytest.raises(ValidationError):
+        _FinanceDraftBody(ca_code="CA-123\nBcc:victim@example.com")  # newline not allowed
+
+    with pytest.raises(ValidationError):
+        _FinanceDraftBody(ca_code="A" * 51)  # max_length is 50
+
+
+async def test_ca_code_sanitization():
+    import re
+    # Test that the regex used inside finance_service.py correctly strips special characters
+    ca_code_injected = "CA-123\r\nBcc: victim@example.com"
+    safe_ca = re.sub(r"[^\w\-]", "", ca_code_injected)
+    assert safe_ca == "CA-123Bccvictimexamplecom"  # Newlines and special characters completely stripped

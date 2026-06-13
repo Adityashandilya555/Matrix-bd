@@ -10,6 +10,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
+import re
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import transaction
@@ -149,15 +150,16 @@ async def svc_finance_request_approval(
             detail=f"ca_code={site.ca_code} amount={site.finance_amount}",
         )
         supervisors = await recipients_for_supervisors(session, tenant_id=tenant_id)
+        safe_ca = re.sub(r"[^\w\-]", "", site.ca_code or "")
         await notify_enqueue(
             session, tenant_id=tenant_id, event="finance_submitted",
             recipient_ids=supervisors, site_id=site.id,
             channels=("in_app",),
             payload={"site_id": str(site.id), "site_name": site.name, "ca_code": site.ca_code},
-            subject=f"Finance approval requested: {site.ca_code or site.name}",
+            subject=f"Finance approval requested: {safe_ca or site.name}",
             body=(
                 f"Executive has requested finance approval for site "
-                f"'{site.name}' ({site.ca_code or site.code}).\n"
+                f"'{site.name}' ({safe_ca or site.code}).\n"
                 f"Amount: ₹{site.finance_amount:,.2f}"
             ),
         )
@@ -210,6 +212,7 @@ async def svc_finance_reject(
         owners = await recipients_for_site_owner(session, site=site)
         supervisors = await recipients_for_supervisors(session, tenant_id=tenant_id)
         all_recipients = list({*owners, *supervisors})
+        safe_ca = re.sub(r"[^\w\-]", "", site.ca_code or "")
         await notify_enqueue(
             session, tenant_id=tenant_id, event="finance_rejected",
             recipient_ids=all_recipients, site_id=site.id,
@@ -218,10 +221,10 @@ async def svc_finance_reject(
                 "site_id": str(site.id), "site_name": site.name,
                 "ca_code": site.ca_code, "reason": reason,
             },
-            subject=f"Finance sent back: {site.ca_code or site.name}",
+            subject=f"Finance sent back: {safe_ca or site.name}",
             body=(
-                f"The admin has sent the finance request for '{site.name}' "
-                f"({site.ca_code or site.code}) back for correction."
+                f"The {actor_role.replace('_', ' ')} has sent the finance request for '{site.name}' "
+                f"({safe_ca or site.code}) back for correction."
                 + (f"\nReason: {reason}" if reason else "")
                 + "\nUpdate the details and re-request approval."
             ),
@@ -247,6 +250,7 @@ async def svc_finance_approve(
 
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        safe_ca = re.sub(r"[^\w\-]", "", site.ca_code or "")
 
         if actor_role == "supervisor":
             if site.finance_status != "awaiting_supervisor":
@@ -273,7 +277,7 @@ async def svc_finance_approve(
                 recipient_ids=list(admin_ids), site_id=site.id,
                 channels=("in_app",),
                 payload={"site_id": str(site.id), "site_name": site.name},
-                subject=f"Finance approval needed: {site.ca_code or site.name}",
+                subject=f"Finance approval needed: {safe_ca or site.name}",
                 body=(
                     f"Supervisor approved finance for '{site.name}'. "
                     f"Awaiting your final approval. Amount: ₹{site.finance_amount:,.2f}"
@@ -323,9 +327,9 @@ async def svc_finance_approve(
                 recipient_ids=all_recipients, site_id=site.id,
                 channels=("in_app", "email"),
                 payload={"site_id": str(site.id), "site_name": site.name, "ca_code": site.ca_code},
-                subject=f"Finance approved: {site.ca_code or site.name}",
+                subject=f"Finance approved: {safe_ca or site.name}",
                 body=(
-                    f"Finance for site '{site.name}' ({site.ca_code or site.code}) "
+                    f"Finance for site '{site.name}' ({safe_ca or site.code}) "
                     f"has been approved by the admin and pushed to the next handoff.\n"
                     f"Amount: ₹{site.finance_amount:,.2f}"
                 ),

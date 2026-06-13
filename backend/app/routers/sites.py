@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status as http_status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.deps import CurrentUser, DbDep, TenantId
 from app.core.uploads import read_upload_capped
@@ -512,7 +512,7 @@ async def upload_site_photo(
 
 class _FinanceDraftBody(BaseModel):
     kyc_verified:   Optional[bool] = None
-    ca_code:        Optional[str] = None
+    ca_code:        Optional[str] = Field(None, max_length=50, pattern=r"^[A-Z0-9\-]*$")
     finance_amount: Optional[float] = None
 
 
