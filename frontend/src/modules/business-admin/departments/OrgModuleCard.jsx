@@ -6,11 +6,12 @@ import { T, Icon, Card, Button, Avatar, Disclosure, Skeleton } from '../ui/kit.j
 // under "Unassigned".
 
 export const MODULE_META = {
-  bd:      { label: 'BD',      icon: Icon.flag },
-  legal:   { label: 'Legal',   icon: Icon.scale },
-  design:  { label: 'Design',  icon: Icon.layers },
-  project: { label: 'Project', icon: Icon.wrench },
-  nso:     { label: 'NSO',     icon: Icon.flag },
+  bd:                  { label: 'BD',                  icon: Icon.flag },
+  legal:               { label: 'Legal',               icon: Icon.scale },
+  design:              { label: 'Design',               icon: Icon.layers },
+  project:             { label: 'Project',             icon: Icon.wrench },
+  nso:                 { label: 'NSO',                 icon: Icon.flag },
+  project_excellence:  { label: 'Project Excellence',  icon: Icon.shield },
 };
 
 const fmtDate = (d) => { try { return new Date(d).toLocaleDateString(); } catch { return ''; } };
