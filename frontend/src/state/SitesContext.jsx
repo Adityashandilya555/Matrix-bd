@@ -154,8 +154,16 @@ export function SitesProvider({ children }) {
 
   // Refresh helper — re-fetches entire list from service
   const refresh = useCallback(async () => {
-    const data = await siteService.listSites();
-    setSites(data);
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await siteService.listSites();
+      setSites(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const refreshAndBroadcast = useCallback(async (action) => {
