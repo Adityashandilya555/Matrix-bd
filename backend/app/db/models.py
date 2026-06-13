@@ -275,7 +275,12 @@ class Approval(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (
-        Index("idx_approvals_site_id", "site_id"),
+        # Composite covers the two common query shapes:
+        #   WHERE site_id = X ORDER BY created_at DESC (LIMIT 1)
+        #   WHERE site_id IN (...) ORDER BY created_at DESC
+        # This replaces the old bare idx_approvals_site_id (subsumed) and
+        # drops the duplicate idx_approvals_site / idx_approvals_approver.
+        Index("idx_approvals_site_created", "site_id", "created_at"),
         Index("idx_approvals_approver_id", "approver_id"),
     )
 
