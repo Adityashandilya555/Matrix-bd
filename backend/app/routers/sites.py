@@ -113,46 +113,8 @@ async def get_site_documents(
     tenant_id: TenantId,
     limit: int = Query(100, le=500),
 ) -> dict:
-    import asyncio
-
-    from sqlalchemy import desc, select
-    from app.db import models
-    from app.services._common import assert_executive_owns_site, fetch_site_or_404
-    from app.services.storage_service import signed_url
-
-    site = await fetch_site_or_404(db, site_id=site_id, tenant_id=tenant_id)
-    assert_executive_owns_site(current_user, site)
-    stmt = (
-        select(models.SiteFile)
-        .where(models.SiteFile.site_id == site.id)
-        .order_by(desc(models.SiteFile.uploaded_at))
-        .limit(limit)  # bound the fan-out + JSON size (#94)
-    )
-    rows = (await db.execute(stmt)).scalars().all()
-
-    # Sign all URLs concurrently (bounded), instead of one sequential storage
-    # round trip per file — a 30-doc site was ~30 serial TLS+request cycles (#94).
-    _sem = asyncio.Semaphore(8)
-
-    async def _sign(path: str):
-        async with _sem:
-            return await signed_url(path)
-
-    urls = await asyncio.gather(*[_sign(r.storage_path) for r in rows])
-    items = [
-        {
-            "id": str(r.id),
-            "file_name": r.file_name,
-            "file_type": r.file_type,
-            "file_size_kb": r.file_size_kb,
-            "mime_type": r.mime_type,
-            "uploaded_at": r.uploaded_at.isoformat(),
-            "uploaded_by": str(r.uploaded_by),
-            "url": url,
-        }
-        for r, url in zip(rows, urls)
-    ]
-    return {"site_id": site_id, "documents": items}
+    from app.services.site_documents_service import get_site_documents as svc_get_docs
+    return await svc_get_docs(db, site_id=site_id, tenant_id=tenant_id, current_user=current_user, limit=limit)
 
 
 # ── Site Tracker (BD-safe cross-module projection) ─────────────────────────
@@ -170,116 +132,9 @@ async def get_site_tracker(
     ],
     tenant_id: TenantId,
 ) -> SiteTrackerResponse:
-    """Return the site mirror columns + DD/agreement/licensing payloads.
-
-    Defensive: a future staged-checklist migration (slice U3) is expected to
-    add a `stage` column on the child rows. Until that lands we treat every
-    row as published; once it lands we filter to `stage == 'published'` for
-    BD callers only. Legal staff (module=='legal') always see drafts so they
-    can keep working pre-publish. Wrapped in try/except so a missing column
-    in mid-migration doesn't 500.
-    """
-    from app.services._common import assert_executive_owns_site, fetch_site_or_404, fetch_user_name
-    from sqlalchemy import select
-    from app.db import models
-    from app.services.legal_service import (
-        _agreement_to_response,
-        _dd_to_response,
-        _fetch_agreement_or_none,
-        _fetch_dd_or_none,
-        _fetch_licensing_or_none,
-        _licensing_to_response,
-    )
-
-    site = await fetch_site_or_404(db, site_id=site_id, tenant_id=tenant_id)
-
-    caller_module = (current_user.get("module") or "").lower()
-    bd_caller = caller_module in ("", "bd")  # default to BD when module missing
-
-    # #104 — BD executives only see their own/assigned sites. Non-BD module
-    # members (legal/design/...) keep tracker access: their modules govern
-    # visibility through delegation, and this projection is their hand-off view.
-    if bd_caller:
-        assert_executive_owns_site(current_user, site)
-
-    def _is_published(row) -> bool:
-        # If the staged-checklist column hasn't landed yet, `getattr` falls
-        # back to 'published'. If U3 adds it later this filter starts working
-        # without any change to the tracker code.
-        try:
-            stage = getattr(row, "stage", "published")
-        except Exception:  # pragma: no cover - defensive guard
-            stage = "published"
-        return stage in (None, "", "published")
-
-    def _visible(row) -> bool:
-        # Non-BD callers always see the row (drafts included). BD only sees
-        # published rows.
-        return row is not None and (not bd_caller or _is_published(row))
-
-    dd  = await _fetch_dd_or_none(db, site_id=site.id)
-    ag  = await _fetch_agreement_or_none(db, site_id=site.id)
-    lic = await _fetch_licensing_or_none(db, site_id=site.id)
-
-    dd_resp        = _dd_to_response(dd)         if _visible(dd)  else None
-    agreement_resp = _agreement_to_response(ag)  if _visible(ag)  else None
-    licensing_resp = _licensing_to_response(lic) if _visible(lic) else None
-
-    submitted_by_name = await fetch_user_name(db, site.submitted_by)
-    project = (
-        await db.execute(select(models.ProjectReview).where(models.ProjectReview.site_id == site.id))
-    ).scalar_one_or_none()
-    nso = (
-        await db.execute(select(models.NsoReview).where(models.NsoReview.site_id == site.id))
-    ).scalar_one_or_none()
-    launch = (
-        await db.execute(select(models.LaunchApproval).where(models.LaunchApproval.site_id == site.id))
-    ).scalar_one_or_none()
-
-    return SiteTrackerResponse(
-        site_id=str(site.id),
-        site_code=site.code or "",
-        site_name=site.name,
-        city=site.city,
-        site_status=site.status,
-        legal_dd_status=site.legal_dd_status,
-        agreement_status=site.agreement_status,
-        licensing_status=site.licensing_status,
-        design_status=getattr(site, "design_status", "pending") or "pending",
-        project_status=(
-            project.project_status
-            if project
-            else ("pending" if getattr(site, "design_status", None) == "approved" else None)
-        ),
-        project_current_stage=(
-            project.current_stage
-            if project
-            else ("budget" if getattr(site, "design_status", None) == "approved" else None)
-        ),
-        project_budget_status=(
-            project.budget_status
-            if project
-            else ("draft" if getattr(site, "design_status", None) == "approved" else None)
-        ),
-        nso_status=nso.nso_status if nso else None,
-        nso_current_stage=nso.current_stage if nso else None,
-        launch_status=launch.status if launch else None,
-        is_launched=bool(getattr(site, "is_launched", False)),
-        launched_at=getattr(site, "launched_at", None),
-        dd=dd_resp,
-        agreement=agreement_resp,
-        licensing=licensing_resp,
-        submitted_by=str(site.submitted_by),
-        submitted_by_name=submitted_by_name,
-        kyc_verified=bool(getattr(site, "kyc_verified", False)),
-        ca_code=getattr(site, "ca_code", None),
-        finance_amount=(
-            float(site.finance_amount)
-            if getattr(site, "finance_amount", None) is not None
-            else None
-        ),
-        finance_status=getattr(site, "finance_status", "pending") or "pending",
-    )
+    """Return the site mirror columns + DD/agreement/licensing payloads."""
+    from app.services.site_tracker_service import build_tracker_response
+    return await build_tracker_response(db, site_id=site_id, tenant_id=tenant_id, current_user=current_user)
 
 
 # ── Action aliases ─────────────────────────────────────────────────────────
