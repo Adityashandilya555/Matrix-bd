@@ -1,0 +1,31 @@
+-- 202606131 — Drop redundant duplicate indexes on public.approvals (#133).
+--
+-- CONTEXT:
+--   Live pg_indexes showed seven indexes on public.approvals, including two
+--   exact-duplicate pairs that were created out-of-band (never declared in
+--   app/db/models.py, never in a migration):
+--     idx_approvals_approver   == idx_approvals_approver_id  (both btree(approver_id))
+--     idx_approvals_site       == idx_approvals_site_id      (both btree(site_id))
+--   The Supabase performance advisor flags both pairs as duplicate_index WARN.
+--   Every approval insert/update maintains all of these redundant btrees — pure
+--   write amplification and dead storage.
+--
+-- FIX:
+--   Drop the two out-of-band bare duplicates. The model-declared
+--   idx_approvals_site_id + idx_approvals_approver_id remain, so the DB stays in
+--   sync with app/db/models.py.
+--
+-- DELIBERATELY KEPT:
+--   - idx_approvals_site_id: model-declared. The composite
+--     idx_approvals_site_id_created_at (site_id, created_at DESC) left-prefix-
+--     covers it, but dropping it would drift the DB from the model for a 34-row
+--     table — not worth it. Documented as a possible future tightening.
+--   - idx_approvals_tenant: a legitimate single-column index on tenant_id, not a
+--     duplicate; left in place.
+--
+-- SAFE:
+--   DROP INDEX IF EXISTS is idempotent. Both names are exact duplicates of an
+--   index that survives, so no query loses its access path.
+
+DROP INDEX IF EXISTS public.idx_approvals_approver;
+DROP INDEX IF EXISTS public.idx_approvals_site;

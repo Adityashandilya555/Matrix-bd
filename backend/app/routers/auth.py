@@ -36,7 +36,7 @@ from app.core.config import settings
 from app.core.deps import CurrentUser, DbDep
 from app.core.ratelimit import rate_limit
 from app.core.security import TOKEN_TTL_SECONDS, issue_token
-from app.core.passwords import hash_password, verify_password
+from app.core.passwords import hash_password_async, verify_password_async
 from app.domain.schemas.common import OkResponse
 
 logger = logging.getLogger("matrix.auth")
@@ -182,7 +182,7 @@ async def login(payload: LoginIn, db: DbDep):
                 "tid":   tenant["id"],
                 "email": payload.email,
                 "name":  payload.email.split("@")[0],
-                "pwd":   hash_password(payload.password) if payload.password else None,
+                "pwd":   (await hash_password_async(payload.password)) if payload.password else None,
             },
         )
         await db.commit()
@@ -206,7 +206,7 @@ async def login(payload: LoginIn, db: DbDep):
     provided = (payload.password or "").strip()
     is_demo_tenant = payload.workspace_code.strip().upper() in settings.passwordless_demo_code_list
     if stored_hash:
-        if not verify_password(provided, stored_hash):
+        if not await verify_password_async(provided, stored_hash):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect email or password.",
@@ -369,7 +369,7 @@ async def password_reset_complete(payload: ResetCompleteIn, db: DbDep) -> dict:
         )
     await db.execute(
         text("UPDATE users SET password_hash = :h WHERE id = :uid"),
-        {"h": hash_password(payload.new_password), "uid": user["id"]},
+        {"h": await hash_password_async(payload.new_password), "uid": user["id"]},
     )
     await db.execute(
         text("UPDATE password_reset_requests SET status = 'completed', completed_at = now() WHERE id = :id"),

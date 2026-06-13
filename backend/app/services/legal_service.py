@@ -45,7 +45,7 @@ from app.domain.schemas.legal import (
     SaveVerificationRequest,
 )
 from app.domain.state_machine import SiteStatus, assert_transition
-from app.services._common import fetch_site_or_404, fetch_user_name
+from app.services._common import fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.notification_service import (
     enqueue as notify_enqueue,
@@ -77,6 +77,18 @@ async def _fetch_dd_or_404(
             detail=f"No DD checklist found for site {site_id}. Push the site to Legal Review first.",
         )
     return row
+
+
+async def _batch_dd_by_site(session: AsyncSession, site_ids) -> dict:
+    """Batch DD checklists into a ``site_id -> checklist`` map in one query, vs
+    ``_fetch_dd_or_none`` per row (an N+1 round trip each through the pooler) (#91).
+    Mirrors the batching ``svc_legal_queue`` already uses."""
+    ids = [sid for sid in site_ids if sid]
+    if not ids:
+        return {}
+    return {d.site_id: d for d in (await session.execute(
+        select(models.LegalDdChecklist).where(models.LegalDdChecklist.site_id.in_(ids))
+    )).scalars()}
 
 
 async def _fetch_agreement_or_none(
@@ -384,10 +396,14 @@ async def svc_legal_rejected_sites(
         stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
     sites = (await session.execute(stmt)).scalars().all()
 
+    # Batch DD checklists + submitter names (2 queries total) instead of 2 per
+    # site (#91).
+    dd_by_site = await _batch_dd_by_site(session, [s.id for s in sites])
+    names = await fetch_user_names(session, [s.submitted_by for s in sites])
     items: list[LegalRejectedSiteItem] = []
     for site in sites:
-        dd = await _fetch_dd_or_none(session, site_id=site.id)
-        submitted_by_name = await fetch_user_name(session, site.submitted_by)
+        dd = dd_by_site.get(site.id)
+        submitted_by_name = names.get(site.submitted_by)
         items.append(LegalRejectedSiteItem(
             site_id=str(site.id),
             site_code=site.code or "",
@@ -473,10 +489,14 @@ async def svc_legal_history(
     )
     sites = (await session.execute(stmt)).scalars().all()
 
+    # Batch DD checklists + submitter names (2 queries total) instead of 2 per
+    # site (#91).
+    dd_by_site = await _batch_dd_by_site(session, [s.id for s in sites])
+    names = await fetch_user_names(session, [s.submitted_by for s in sites])
     items: list[LegalHistoryItem] = []
     for site in sites:
-        dd = await _fetch_dd_or_none(session, site_id=site.id)
-        submitted_by_name = await fetch_user_name(session, site.submitted_by)
+        dd = dd_by_site.get(site.id)
+        submitted_by_name = names.get(site.submitted_by)
         items.append(LegalHistoryItem(
             site_id=str(site.id),
             site_code=site.code or "",

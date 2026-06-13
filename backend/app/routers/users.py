@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, text
 
@@ -69,11 +69,17 @@ async def list_users(
     db: DbDep,
     current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
     tenant_id: TenantId,
+    limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
 ) -> dict:
+    # Bounded like notifications.py/audit.py — an unbounded scan + multi-MB JSON
+    # per request degrades as a tenant accumulates users (#95).
     stmt = (
         select(models.User)
         .where(models.User.tenant_id == tenant_id, models.User.is_active.is_(True))
         .order_by(models.User.name)
+        .limit(limit)
+        .offset(offset)
     )
     rows = (await db.execute(stmt)).scalars().all()
     return {
@@ -122,11 +128,15 @@ async def list_pending_users(
     db: DbDep,
     current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
     tenant_id: TenantId,
+    limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
 ) -> dict:
     stmt = (
         select(models.User)
         .where(models.User.tenant_id == tenant_id, models.User.is_active.is_(False))
         .order_by(models.User.email)
+        .limit(limit)
+        .offset(offset)
     )
     rows = (await db.execute(stmt)).scalars().all()
     return {

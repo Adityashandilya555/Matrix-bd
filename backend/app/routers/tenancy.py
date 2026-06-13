@@ -18,13 +18,13 @@ import secrets
 import uuid
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select, text
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, DbDep, TenantId
-from app.core.passwords import hash_password
+from app.core.passwords import hash_password_async
 from app.core.ratelimit import rate_limit
 from app.core.uploads import read_upload_capped
 from app.db import models
@@ -161,12 +161,16 @@ async def list_cities(
     db: DbDep,
     current_user: CurrentUser,
     tenant_id: TenantId,
+    limit: int = Query(200, le=500),
 ) -> dict:
+    # Naturally bounded (distinct city names), but cap it so the response can't
+    # grow without bound as a tenant's footprint expands (#95).
     stmt = (
         select(models.Site.city)
         .where(models.Site.tenant_id == tenant_id)
         .distinct()
         .order_by(models.Site.city)
+        .limit(limit)
     )
     rows = [r for (r,) in (await db.execute(stmt)).all()]
     return {"cities": rows}
@@ -761,7 +765,7 @@ async def join_workspace(payload: JoinIn, db: DbDep) -> JoinOut:
             "tenant_id": tenant["id"],
             "email":     payload.email,
             "name":      payload.email.split("@")[0],
-            "pwd":       hash_password(payload.password) if payload.password else None,
+            "pwd":       (await hash_password_async(payload.password)) if payload.password else None,
         },
     )
 

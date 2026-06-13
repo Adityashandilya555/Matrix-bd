@@ -518,6 +518,8 @@ async def _list_with_status(
     status_filter: Optional[str] = None,
     site_id: Optional[str | UUID] = None,
     requested_by: Optional[str | UUID] = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> ChangeRequestListResponse:
     stmt = select(models.LegalChangeRequest).where(
         models.LegalChangeRequest.tenant_id == tenant_id,
@@ -528,7 +530,9 @@ async def _list_with_status(
         stmt = stmt.where(models.LegalChangeRequest.site_id == site_id)
     if requested_by:
         stmt = stmt.where(models.LegalChangeRequest.requested_by == requested_by)
-    stmt = stmt.order_by(models.LegalChangeRequest.created_at.desc())
+    # Bounded so the change-request backlog can't grow into an unbounded scan +
+    # multi-MB response as requests accumulate (#95).
+    stmt = stmt.order_by(models.LegalChangeRequest.created_at.desc()).limit(limit).offset(offset)
 
     rows = (await session.execute(stmt)).scalars().all()
 
@@ -564,9 +568,11 @@ async def _list_with_status(
 
 
 async def svc_list_pending_for_legal(
-    session: AsyncSession, *, tenant_id: str | UUID,
+    session: AsyncSession, *, tenant_id: str | UUID, limit: int = 50, offset: int = 0,
 ) -> ChangeRequestListResponse:
-    return await _list_with_status(session, tenant_id=tenant_id, status_filter="pending")
+    return await _list_with_status(
+        session, tenant_id=tenant_id, status_filter="pending", limit=limit, offset=offset,
+    )
 
 
 async def svc_list_for_site(

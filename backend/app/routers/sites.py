@@ -111,7 +111,10 @@ async def get_site_documents(
         dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))
     ],
     tenant_id: TenantId,
+    limit: int = Query(100, le=500),
 ) -> dict:
+    import asyncio
+
     from sqlalchemy import desc, select
     from app.db import models
     from app.services._common import assert_executive_owns_site, fetch_site_or_404
@@ -123,11 +126,21 @@ async def get_site_documents(
         select(models.SiteFile)
         .where(models.SiteFile.site_id == site.id)
         .order_by(desc(models.SiteFile.uploaded_at))
+        .limit(limit)  # bound the fan-out + JSON size (#94)
     )
     rows = (await db.execute(stmt)).scalars().all()
-    items = []
-    for r in rows:
-        items.append({
+
+    # Sign all URLs concurrently (bounded), instead of one sequential storage
+    # round trip per file — a 30-doc site was ~30 serial TLS+request cycles (#94).
+    _sem = asyncio.Semaphore(8)
+
+    async def _sign(path: str):
+        async with _sem:
+            return await signed_url(path)
+
+    urls = await asyncio.gather(*[_sign(r.storage_path) for r in rows])
+    items = [
+        {
             "id": str(r.id),
             "file_name": r.file_name,
             "file_type": r.file_type,
@@ -135,8 +148,10 @@ async def get_site_documents(
             "mime_type": r.mime_type,
             "uploaded_at": r.uploaded_at.isoformat(),
             "uploaded_by": str(r.uploaded_by),
-            "url": await signed_url(r.storage_path),
-        })
+            "url": url,
+        }
+        for r, url in zip(rows, urls)
+    ]
     return {"site_id": site_id, "documents": items}
 
 

@@ -56,7 +56,7 @@ from app.domain.schemas.design import (
     SubmitDeliverableRequest,
 )
 from app.services.storage_service import signed_url as storage_signed_url
-from app.services._common import fetch_site_or_404, fetch_user_name
+from app.services._common import fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_is_delegated
 from app.services.notification_service import (
@@ -121,6 +121,20 @@ async def _fetch_deliverable_or_none(
             models.DesignDeliverable.kind == kind,
         )
     )).scalar_one_or_none()
+
+
+async def _batch_deliverable_by_site(session: AsyncSession, site_ids, *, kind: str) -> dict:
+    """Batch design deliverables of one ``kind`` into a ``site_id -> deliverable``
+    map in a single query, vs ``_fetch_deliverable_or_none`` per row (N+1) (#91)."""
+    ids = [sid for sid in site_ids if sid]
+    if not ids:
+        return {}
+    return {d.site_id: d for d in (await session.execute(
+        select(models.DesignDeliverable).where(
+            models.DesignDeliverable.site_id.in_(ids),
+            models.DesignDeliverable.kind == kind,
+        )
+    )).scalars()}
 
 
 async def _active_design_delegate(
@@ -372,9 +386,12 @@ async def svc_design_history(
         )
     )).all()
 
+    # Batch submitter names (1 query) instead of one per row (#91, swept sibling
+    # of svc_design_gfc_queue).
+    names = await fetch_user_names(session, [site.submitted_by for site, _r in rows])
     items: list[DesignHistoryItem] = []
     for site, review in rows:
-        submitted_by_name = await fetch_user_name(session, site.submitted_by)
+        submitted_by_name = names.get(site.submitted_by)
         items.append(DesignHistoryItem(
             site_id=str(site.id),
             site_code=site.ca_code or site.code or "",
@@ -978,6 +995,17 @@ async def svc_design_admin_queue(
         .order_by(models.Site.name, models.DesignDeliverable.kind)
     )).all()
 
+    # Sign all deliverable download URLs concurrently (bounded) instead of one
+    # sequential storage round trip per row — same fan-out fix as the documents
+    # endpoint and _build_design_response (#94, swept sibling).
+    _sem = asyncio.Semaphore(8)
+
+    async def _sign(d: models.DesignDeliverable) -> tuple[str, Optional[str]]:
+        async with _sem:
+            return str(d.id), await _deliverable_download_url(d)
+
+    url_by_id = dict(await asyncio.gather(*[_sign(d) for (d, *_rest) in rows]))
+
     by_site: dict[str, DesignAdminQueueSite] = {}
     order: list[str] = []
     for (d, code, name, city) in rows:
@@ -989,7 +1017,7 @@ async def svc_design_admin_queue(
             order.append(sid)
         by_site[sid].deliverables.append(AdminQueueDeliverable(
             id=str(d.id), kind=d.kind, status=d.status, file_name=d.file_name,
-            download_url=await _deliverable_download_url(d), submitted_at=d.submitted_at,
+            download_url=url_by_id.get(str(d.id)), submitted_at=d.submitted_at,
             estimated_amount=float(d.estimated_amount) if d.estimated_amount is not None else None,
             supervisor_comments=d.supervisor_comments, reviewed_at=d.reviewed_at,
             admin_status=d.admin_status or "pending",
@@ -1116,10 +1144,14 @@ async def svc_design_gfc_queue(
     )
     sites = (await session.execute(stmt)).scalars().all()
 
+    # Batch BOQ deliverables + submitter names (2 queries total) instead of 2
+    # per site (#91).
+    boq_by_site = await _batch_deliverable_by_site(session, [s.id for s in sites], kind="boq")
+    names = await fetch_user_names(session, [s.submitted_by for s in sites])
     items: list[DesignGfcQueueItem] = []
     for site in sites:
-        boq = await _fetch_deliverable_or_none(session, site_id=site.id, kind="boq")
-        submitted_by_name = await fetch_user_name(session, site.submitted_by)
+        boq = boq_by_site.get(site.id)
+        submitted_by_name = names.get(site.submitted_by)
         items.append(DesignGfcQueueItem(
             site_id=str(site.id),
             site_code=site.code or "",
