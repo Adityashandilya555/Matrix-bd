@@ -88,8 +88,10 @@ If both queries return rows, you're good.
    | `VITE_API_BASE_URL` | `https://<your-railway-domain>/api` (note the trailing `/api`) |
    | `VITE_USE_MOCK` | `false` |
    | `VITE_API_TIMEOUT_MS` | `20000` |
+   | `VITE_SUPABASE_URL` | *Same Supabase URL used in the backend (e.g., `https://xybgldzpvzkkrxrbhzit.supabase.co`)* |
+   | `VITE_SUPABASE_ANON_KEY` | *Supabase project anon key* |
 
-   *Do NOT set `VITE_SUPABASE_URL` or `VITE_SUPABASE_ANON_KEY` — the frontend no longer uses the Supabase JS SDK.*
+   *(Note: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are required only for Google Maps short-link resolution via edge functions. The frontend no longer uses the Supabase JS SDK for authentication.)*
 
 7. Click **Deploy**. Wait for the build (~2 min). Note the URL (e.g. `https://matrix-bd.vercel.app`).
 8. **Smoke test** the frontend:

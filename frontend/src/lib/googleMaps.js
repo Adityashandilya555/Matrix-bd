@@ -30,7 +30,12 @@ export function looksLikeMapsUrl(s) {
 async function resolveViaEdge(rawUrl) {
   const base = import.meta.env?.VITE_SUPABASE_URL;
   const anon = import.meta.env?.VITE_SUPABASE_ANON_KEY;
-  if (!base) return { coords: null, error: 'Supabase URL not configured.' };
+  if (!base || !anon) {
+    const missing = [];
+    if (!base) missing.push('VITE_SUPABASE_URL');
+    if (!anon) missing.push('VITE_SUPABASE_ANON_KEY');
+    return { coords: null, error: `Missing env variables for maps resolver: ${missing.join(', ')}` };
+  }
   const endpoint = `${base.replace(/\/$/, '')}/functions/v1/resolve-maps-url?url=${encodeURIComponent(rawUrl)}`;
   const res = await fetch(endpoint, {
     method: 'GET',
