@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-Module = Literal["bd", "legal", "payment", "design", "project", "nso"]
+Module = Literal["bd", "legal", "design", "project", "nso"]  # 'payment' retired (202606132)
 
 
 class InviteCodeOut(BaseModel):

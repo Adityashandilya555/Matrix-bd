@@ -371,7 +371,7 @@ class SiteDelegation(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     __table_args__ = (
-        CheckConstraint("module IN ('bd','legal','payment','design','project','nso')", name="chk_site_delegations_module"),
+        CheckConstraint("module IN ('bd','legal','design','project','nso')", name="chk_site_delegations_module"),  # 'payment' retired (202606132)
     )
 
 

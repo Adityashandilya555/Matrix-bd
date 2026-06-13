@@ -1,6 +1,10 @@
 """Audit service — inserts a row in `audit_logs` on every state transition
-or field edit. Reads `Matrix_dev/02_Data_&_State/Proposed_Schema_Additions.md`
-for the column set we depend on (site_id + field_name + from_value/to_value).
+or field edit, and co-writes a `stage_events` row whenever a status
+transition is present (from_status / to_status).
+
+`stage_events` is the immutable event ledger that SLA / analytics queries
+read.  Previously it was declared in the schema but never written — fixed
+here (issue #119).
 """
 from __future__ import annotations
 
@@ -27,10 +31,14 @@ async def write_audit_event(
     to_value: str | None = None,
     entity_id: str | UUID | None = None,
     entity_type: str | None = None,
+    actor_role: str | None = None,
 ) -> models.AuditLog:
-    """Persist an audit row. The caller's transaction is reused.
+    """Persist an audit row *and* (when a status transition is present) a
+    stage_events row.  The caller's transaction is reused.
 
     `actor_name` is denormalised so the activity tab can render without a join.
+    `actor_role` is stored in stage_events for SLA/analytics attribution; it is
+    silently ignored by the audit_logs row (which identifies actors via actor_id).
     """
     row = models.AuditLog(
         tenant_id=tenant_id,
@@ -49,6 +57,24 @@ async def write_audit_event(
     )
     session.add(row)
     await session.flush()  # ensure id is populated
+
+    # ── Co-write stage_events whenever a status transition is recorded ────────
+    # stage_events is the immutable ledger for SLA / analytics pipelines.
+    # We only emit it for transitions (at least one of from/to_status set) and
+    # only when the event is scoped to a site (site_id required by the FK).
+    if site_id is not None and (from_status is not None or to_status is not None):
+        stage = models.StageEvent(
+            tenant_id=tenant_id,
+            site_id=site_id,
+            actor_id=actor_id,
+            event_type=action,
+            from_status=from_status,
+            to_status=to_status,
+            actor_role=actor_role,
+        )
+        session.add(stage)
+        await session.flush()
+
     return row
 
 

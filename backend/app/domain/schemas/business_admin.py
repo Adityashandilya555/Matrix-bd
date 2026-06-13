@@ -7,7 +7,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict, EmailStr
 
 
-Module = Literal["bd", "legal", "payment", "design", "project", "nso"]
+Module = Literal["bd", "legal", "design", "project", "nso"]  # 'payment' retired (202606132)
 
 
 class ModuleCodeOut(BaseModel):
