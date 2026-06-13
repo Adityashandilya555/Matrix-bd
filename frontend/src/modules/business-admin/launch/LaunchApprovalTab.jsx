@@ -19,6 +19,7 @@ import {
   TABULAR, Drawer, inr,
 } from '../ui/kit.jsx';
 import RentTermsForm, { AC_TOKENS } from '../../shared/rent/RentTermsForm.jsx';
+import { usePageContext } from '../../../App.jsx';
 import {
   getLaunchQueue, getLaunchApproval, saveLaunchRentFields,
   sendForReview, finalConfirm, launchSite,
@@ -152,6 +153,7 @@ function Timeline({ events }) {
 
 // ── Site detail drawer ───────────────────────────────────────────────────────────
 function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
+  const { showToast } = usePageContext();
   const [data, setData] = React.useState(null);
   const [form, setForm] = React.useState({});
   const [rentMode, setRentMode] = React.useState('keep'); // 'keep' | 'edit'
@@ -206,11 +208,13 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
     setActing(true); setErr(null);
     try {
       let d;
-      if (action === 'send') d = await sendForReview(siteId, comment);
-      else if (action === 'final') d = await finalConfirm(siteId, comment);
-      else if (action === 'launch') d = await launchSite(siteId);
+      let msg = '';
+      if (action === 'send') { d = await sendForReview(siteId, comment); msg = 'Sent for review'; }
+      else if (action === 'final') { d = await finalConfirm(siteId, comment); msg = 'Rent terms confirmed'; }
+      else if (action === 'launch') { d = await launchSite(siteId); msg = 'Site launched successfully!'; }
       hydrate(d);
       setComment('');
+      showToast(msg);
       onRefresh();
     } catch (e) {
       setErr(e?.detail || e?.message || 'Action failed');

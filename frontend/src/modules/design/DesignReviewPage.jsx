@@ -10,6 +10,7 @@ import {
   listDesignDelegationsForSite, submitDeliverable, uploadDeliverable, reviewDeliverable,
 } from '../../services/api/designApi.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
+import { usePageContext } from '../../App.jsx';
 
 // Stage order: recce → 2d → 3d → GFC gate → boq
 // GFC is rendered as a card between 3D and BOQ, so we split into two groups.
@@ -276,6 +277,7 @@ export default function DesignReviewPage() {
   const { siteId } = useParams();
   const navigate = useNavigate();
   const { role } = useSession();
+  const { showToast } = usePageContext();
   const isSupervisor = role === 'supervisor';
   const isExecutive = role === 'executive' || role === 'exec';
 
@@ -385,7 +387,11 @@ export default function DesignReviewPage() {
     }
     setActionError(null);
     setBusy(true);
-    try { const r = await reviewDeliverable(siteId, kind, payload); setReview(r); }
+    try { 
+      const r = await reviewDeliverable(siteId, kind, payload); 
+      setReview(r); 
+      showToast(payload.decision === 'approve' ? 'Design approved' : 'Design sent back for changes');
+    }
     catch (err) { setActionError(err?.detail || err?.message || 'Review failed'); }
     finally { setBusy(false); }
   };
