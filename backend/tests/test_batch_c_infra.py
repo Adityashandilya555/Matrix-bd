@@ -107,6 +107,19 @@ async def test_read_capped_disallowed_mime_415():
     assert ei.value.status_code == 415
 
 
+async def test_read_capped_allows_legacy_office_and_csv():
+    # Regression for #177's allowlist being too narrow: the LOI input accepts
+    # .doc, and project/design deliverables include legacy .xls and CSV exports.
+    for ct in (
+        "application/msword",                # .doc
+        "application/vnd.ms-excel",          # .xls
+        "text/csv",                          # .csv
+        "image/heic",                        # iPhone photo via image/* input
+    ):
+        file = _FakeUploadWithMime(b"hello", content_type=ct)
+        assert await read_upload_capped(file, max_bytes=100) == b"hello"
+
+
 async def test_read_capped_upload_file_missing_mime():
     from fastapi import UploadFile
     import io

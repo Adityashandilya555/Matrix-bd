@@ -16,11 +16,22 @@ from app.core.config import settings
 _CHUNK_BYTES = 1024 * 1024
 
 # ── Content-type allowlist (#177) ─────────────────────────────────────────
+# Covers every type the UI actually accepts: LOI inputs accept .pdf/.doc/.docx,
+# photo/logo inputs accept image/* (incl. iPhone HEIC and the non-standard
+# image/jpg alias some clients send), and project/design deliverables include
+# legacy Office (.doc/.xls) and CSV exports. Deliberately excludes risky types
+# like image/svg+xml (script-bearing) and application/zip (opaque archive).
 ALLOWED_MIME = {
-    "image/jpeg", "image/png", "image/webp", "image/gif",
+    # Images
+    "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif",
+    "image/heic", "image/heif",
+    # Documents
     "application/pdf",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",   # .xlsx
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # .docx
+    "application/msword",                                                        # .doc
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",   # .docx
+    "application/vnd.ms-excel",                                                  # .xls
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",         # .xlsx
+    "text/csv",                                                                  # .csv
 }
 
 def _unsupported(ct: str) -> HTTPException:

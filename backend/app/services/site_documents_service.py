@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import desc, select
 from app.db import models
 from app.services._common import assert_executive_owns_site, fetch_site_or_404
-from app.services.storage_service import signed_url
+from app.services import storage_service
 
 async def get_site_documents(
     db: AsyncSession,
@@ -33,7 +33,10 @@ async def get_site_documents(
 
     async def _sign(path: str):
         async with _sem:
-            return await signed_url(path)
+            # Late-bind via the module so test monkeypatches of
+            # storage_service.signed_url are always observed regardless of
+            # import order (a by-value import bound at module-load time is not).
+            return await storage_service.signed_url(path)
 
     urls = await asyncio.gather(*[_sign(r.storage_path) for r in rows])
     items = [
