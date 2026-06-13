@@ -1094,3 +1094,28 @@ async def svc_submit_licensing_for_review(
             )
 
     return await _build_review_response(session, site)
+
+
+# ── Public wrappers/aliases for external service callers ──────────────────
+async def fetch_dd_or_none(session: AsyncSession, *, site_id: str | UUID) -> Optional[models.LegalDdChecklist]:
+    return await _fetch_dd_or_none(session, site_id=site_id)
+
+
+async def fetch_agreement_or_none(session: AsyncSession, *, site_id: str | UUID) -> Optional[models.SiteAgreement]:
+    return await _fetch_agreement_or_none(session, site_id=site_id)
+
+
+async def fetch_licensing_or_none(session: AsyncSession, *, site_id: str | UUID) -> Optional[models.SiteLicensing]:
+    return await _fetch_licensing_or_none(session, site_id=site_id)
+
+
+def dd_to_response(dd: models.LegalDdChecklist) -> DdChecklistResponse:
+    return _dd_to_response(dd)
+
+
+def agreement_to_response(ag: models.SiteAgreement) -> AgreementResponse:
+    return _agreement_to_response(ag)
+
+
+def licensing_to_response(lic: models.SiteLicensing) -> LicensingResponse:
+    return _licensing_to_response(lic)
