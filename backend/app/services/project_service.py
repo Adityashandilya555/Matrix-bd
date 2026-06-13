@@ -34,7 +34,7 @@ from app.domain.schemas.project import (
     ReviewRequest,
     SaveBudgetRequest,
 )
-from app.services._common import fetch_site_or_404, fetch_user_name
+from app.services._common import fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_assigned_sites, svc_is_delegated
 from app.services.storage_service import safe_object_name, signed_url, upload_bytes
@@ -167,6 +167,48 @@ async def _queue_item(
     )
 
 
+async def _batch_project_prefetch(
+    session: AsyncSession, sites: list[models.Site],
+) -> tuple[dict, dict]:
+    """Batch the per-site project-delegate + submitter-name lookups into two
+    queries total, instead of two per site.
+
+    `_queue_item` otherwise issues `_active_project_delegate` + `fetch_user_name`
+    per row — an N+1 that costs a full connection round trip each through the
+    pgBouncer/NullPool transaction pooler (#81). Returns
+    `(delegates_by_site_id, names_by_user_id)`; pass the slices into
+    `_queue_item(..., prefetched=...)`.
+    """
+    delegates: dict = {}
+    names: dict = {}
+    site_ids = [s.id for s in sites]
+    if not site_ids:
+        return delegates, names
+    delegate_rows = (await session.execute(
+        select(
+            models.SiteDelegation.site_id,
+            models.SiteDelegation.delegate_user_id,
+            models.User.name,
+            models.User.email,
+        )
+        .join(models.User, models.User.id == models.SiteDelegation.delegate_user_id)
+        .where(
+            models.SiteDelegation.site_id.in_(site_ids),
+            models.SiteDelegation.module == "project",
+            models.SiteDelegation.revoked_at.is_(None),
+        )
+        .order_by(models.SiteDelegation.granted_at.desc())
+    )).all()
+    for sid, uid, uname, uemail in delegate_rows:
+        delegates.setdefault(sid, (uid, uname, uemail))
+    submitter_ids = {s.submitted_by for s in sites if s.submitted_by}
+    if submitter_ids:
+        names = dict((await session.execute(
+            select(models.User.id, models.User.name).where(models.User.id.in_(submitter_ids))
+        )).all())
+    return delegates, names
+
+
 async def _quality_audit_download_url(
     session: AsyncSession, *, site_id: str | UUID,
 ) -> Optional[str]:
@@ -286,32 +328,7 @@ async def svc_project_queue(
             stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
         rows = (await session.execute(stmt)).all()
 
-        site_ids = [site.id for site, _review in rows]
-        delegates: dict = {}
-        names: dict = {}
-        if site_ids:
-            delegate_rows = (await session.execute(
-                select(
-                    models.SiteDelegation.site_id,
-                    models.SiteDelegation.delegate_user_id,
-                    models.User.name,
-                    models.User.email,
-                )
-                .join(models.User, models.User.id == models.SiteDelegation.delegate_user_id)
-                .where(
-                    models.SiteDelegation.site_id.in_(site_ids),
-                    models.SiteDelegation.module == "project",
-                    models.SiteDelegation.revoked_at.is_(None),
-                )
-                .order_by(models.SiteDelegation.granted_at.desc())
-            )).all()
-            for sid, uid, uname, uemail in delegate_rows:
-                delegates.setdefault(sid, (uid, uname, uemail))
-            submitter_ids = {site.submitted_by for site, _review in rows if site.submitted_by}
-            if submitter_ids:
-                names = dict((await session.execute(
-                    select(models.User.id, models.User.name).where(models.User.id.in_(submitter_ids))
-                )).all())
+        delegates, names = await _batch_project_prefetch(session, [site for site, _r in rows])
 
         items: list[ProjectQueueItem] = []
         for site, review in rows:
@@ -373,6 +390,8 @@ async def svc_project_history(
         )
     )).all()
 
+    # Batch submitter names (1 query) instead of one per row (#91).
+    names = await fetch_user_names(session, [site.submitted_by for site, _r in rows])
     items: list[ProjectHistoryItem] = []
     for site, review in rows:
         items.append(ProjectHistoryItem(
@@ -380,7 +399,7 @@ async def svc_project_history(
             site_code=site.ca_code or site.code or "",
             site_name=site.name,
             city=site.city,
-            submitted_by_name=await fetch_user_name(session, site.submitted_by),
+            submitted_by_name=names.get(site.submitted_by),
             design_status=site.design_status or "pending",
             project_status=(review.project_status if review else "pending"),
             current_stage=(review.current_stage if review else "budget"),
@@ -687,7 +706,16 @@ async def svc_budget_admin_queue(
         )
         .order_by(models.ProjectReview.updated_at.asc())
     )).all()
-    items = [await _queue_item(session, site, review) for (site, review) in rows]
+    # Batch the delegate/name lookups (2 queries total) instead of 2 per site —
+    # the same N+1 svc_project_queue already avoids (#81).
+    delegates, names = await _batch_project_prefetch(session, [site for site, _r in rows])
+    items = [
+        await _queue_item(session, site, review, prefetched={
+            "delegate": delegates.get(site.id),
+            "submitted_by_name": names.get(site.submitted_by, ""),
+        })
+        for (site, review) in rows
+    ]
     return ProjectBudgetAdminQueueResponse(items=items, total=len(items))
 
 
@@ -1036,5 +1064,13 @@ async def svc_nso_queue(
         )
         .order_by(models.ProjectReview.pushed_to_nso_at.desc())
     )).all()
-    items = [await _queue_item(session, site, review) for (site, review) in rows]
+    # Batch the delegate/name lookups (2 queries total) instead of 2 per site (#81).
+    delegates, names = await _batch_project_prefetch(session, [site for site, _r in rows])
+    items = [
+        await _queue_item(session, site, review, prefetched={
+            "delegate": delegates.get(site.id),
+            "submitted_by_name": names.get(site.submitted_by, ""),
+        })
+        for (site, review) in rows
+    ]
     return ProjectQueueResponse(items=items, total=len(items))

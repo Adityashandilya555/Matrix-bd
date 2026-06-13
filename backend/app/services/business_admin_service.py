@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import models
 from app.db.session import transaction
 from app.domain.schemas.business_admin import Module
-from app.services._common import fetch_user_name
+from app.services._common import fetch_user_names
 from app.services.finance_service import svc_finance_approve, svc_finance_reject
 
 
@@ -193,6 +193,8 @@ async def list_finance_approvals(
         .order_by(models.Site.updated_at.asc())
     )).scalars().all()
 
+    # Batch submitter names (1 query) instead of one per row (#91).
+    names = await fetch_user_names(session, [site.submitted_by for site in rows])
     items: list[dict] = []
     now = datetime.now(timezone.utc)
     for site in rows:
@@ -211,7 +213,7 @@ async def list_finance_approvals(
             "site_name": site.name or "Unnamed site",
             "city": site.city or "Unknown city",
             "site_status": site.status or "pending",
-            "submitted_by_name": await fetch_user_name(session, site.submitted_by),
+            "submitted_by_name": names.get(site.submitted_by),
             "ca_code": site.ca_code,
             "finance_amount": finance_amount,
             "kyc_verified": bool(site.kyc_verified),

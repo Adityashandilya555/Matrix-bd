@@ -72,6 +72,24 @@ async def fetch_user_name(session: AsyncSession, user_id: str | UUID | None) -> 
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
+async def fetch_user_names(session: AsyncSession, user_ids) -> dict:
+    """Batch-resolve ``user_id -> name`` for many ids in a single query.
+
+    Calling ``fetch_user_name`` per row in a list endpoint is an N+1 — one
+    connection round trip per row through the pgBouncer/NullPool transaction
+    pooler (#91). Build the map once and ``.get(uid)`` in the loop. Falsy ids are
+    dropped; missing ids are simply absent from the map (``.get`` → None, same as
+    the single-row helper).
+    """
+    ids = {uid for uid in user_ids if uid}
+    if not ids:
+        return {}
+    rows = (await session.execute(
+        select(models.User.id, models.User.name).where(models.User.id.in_(ids))
+    )).all()
+    return {uid: name for uid, name in rows}
+
+
 # ── Scope filter for list queries ─────────────────────────────────────────
 
 def apply_role_scope(stmt, *, model, user: dict):

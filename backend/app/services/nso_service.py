@@ -419,7 +419,9 @@ async def _state_response(
     )
 
 
-async def svc_nso_queue(session: AsyncSession, *, tenant_id: str | UUID) -> NsoQueueResponse:
+async def svc_nso_queue(
+    session: AsyncSession, *, tenant_id: str | UUID, limit: int = 50, offset: int = 0,
+) -> NsoQueueResponse:
     async with transaction(session):
         sites = (await session.execute(
             select(models.Site)
@@ -429,6 +431,8 @@ async def svc_nso_queue(session: AsyncSession, *, tenant_id: str | UUID) -> NsoQ
                 models.Site.ca_code.is_not(None),
             )
             .order_by(models.Site.updated_at.asc())
+            .limit(limit)
+            .offset(offset)
         )).scalars().all()
         # Batch the child lookups (2 queries regardless of N) and never create
         # rows on a GET — `_queue_item` handles row=None, and the write paths

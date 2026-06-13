@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status as http_status
+from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 from pydantic import BaseModel
 
 from app.core.deps import DbDep, TenantId
@@ -396,8 +396,10 @@ async def list_pending_change_requests(
     current_user: LegalMember,
     _module: InLegalModule,
     tenant_id: TenantId,
+    limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
 ) -> ChangeRequestListResponse:
-    return await svc_list_pending_for_legal(db, tenant_id=tenant_id)
+    return await svc_list_pending_for_legal(db, tenant_id=tenant_id, limit=limit, offset=offset)
 
 
 @router.post(

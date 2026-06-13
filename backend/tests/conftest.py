@@ -80,6 +80,11 @@ class FakeScalars:
     def first(self) -> Any:
         return self._items[0] if self._items else None
 
+    def __iter__(self):
+        # Real SQLAlchemy ScalarResult is iterable; services use
+        # ``{x.id: x for x in result.scalars()}`` directly.
+        return iter(self._items)
+
 
 class RecordingSession:
     """A minimal stand-in for ``AsyncSession`` — records, never touches a DB."""
@@ -179,3 +184,17 @@ def make_session():
 def fake_result():
     """The ``FakeResult`` class, so tests can queue canned query results."""
     return FakeResult
+
+
+@pytest.fixture(autouse=True)
+def _reset_storage_client():
+    """Reset the process-wide storage httpx client between tests.
+
+    storage_service now reuses one module-level client (#94); resetting it keeps
+    per-test monkeypatching of ``httpx.AsyncClient`` honoured and isolated.
+    """
+    from app.services import storage_service
+
+    storage_service._client = None
+    yield
+    storage_service._client = None

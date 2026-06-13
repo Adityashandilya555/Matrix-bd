@@ -30,6 +30,9 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         log.exception("Database connection failed at startup: %s", exc)
     yield
+    # Close the shared storage HTTP client's pooled connections (#94) and the DB pool.
+    from app.services.storage_service import aclose_storage_client
+    await aclose_storage_client()
     await engine.dispose()
 
 

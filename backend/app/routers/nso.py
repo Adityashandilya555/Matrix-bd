@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.core.deps import DbDep, TenantId
 from app.domain.schemas.nso import (
@@ -38,8 +38,10 @@ async def nso_queue(
     current_user: NsoMember,
     _module: InNsoModule,
     tenant_id: TenantId,
+    limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
 ) -> NsoQueueResponse:
-    return await svc_nso_queue(db, tenant_id=tenant_id)
+    return await svc_nso_queue(db, tenant_id=tenant_id, limit=limit, offset=offset)
 
 
 @router.get("/history", response_model=NsoHistoryResponse)

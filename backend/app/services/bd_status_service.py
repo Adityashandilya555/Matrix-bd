@@ -21,9 +21,10 @@ from app.domain.schemas.bd_status import (
 )
 from app.domain.schemas.legal_change_request import ChangeRequestResponse
 from app.domain.state_machine import SiteStatus
-from app.services._common import apply_role_scope, fetch_site_or_404, fetch_user_name
+from app.services._common import apply_role_scope, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.change_request_service import svc_list_for_site
 from app.services.legal_service import (
+    _batch_dd_by_site,
     _fetch_agreement_or_none,
     _fetch_dd_or_none,
     _fetch_licensing_or_none,
@@ -89,10 +90,14 @@ async def svc_bd_dd_failed_queue(
         stmt = apply_role_scope(stmt, model=models.Site, user=user)
     sites = (await session.execute(stmt)).scalars().all()
 
+    # Batch DD checklists + submitter names (2 queries total) instead of 2 per
+    # site (#91).
+    dd_by_site = await _batch_dd_by_site(session, [s.id for s in sites])
+    names = await fetch_user_names(session, [s.submitted_by for s in sites])
     items: list[DdFailedSiteItem] = []
     for site in sites:
-        dd = await _fetch_dd_or_none(session, site_id=site.id)
-        submitted_by_name = await fetch_user_name(session, site.submitted_by)
+        dd = dd_by_site.get(site.id)
+        submitted_by_name = names.get(site.submitted_by)
         items.append(DdFailedSiteItem(
             site_id=str(site.id),
             site_code=site.code or "",

@@ -115,7 +115,7 @@ async def test_documents_endpoint_allows_owner_executive(session, fake_result):
 
     session.queue(fake_result(scalar=_site()), fake_result(scalars_list=[]))
     out = await get_site_documents(
-        SITE_ID, session, current_user=_exec_user(OWNER), tenant_id=TENANT,
+        SITE_ID, session, current_user=_exec_user(OWNER), tenant_id=TENANT, limit=100,
     )
     assert out["documents"] == []
 
