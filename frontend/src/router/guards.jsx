@@ -58,11 +58,12 @@ export function RequireModule({ modules, children }) {
   return children;
 }
 
-// RequireScope: gates a route by scope kind.
-// `kind` is 'own' | 'city' | 'department' | 'tenant'
-// For the current MVP with a mock session this always passes — wire real logic
-// once the identity service is integrated.
 export function RequireScope({ kind, children }) {
-  // TODO(auth): enforce scope from session claims
+  // TODO(auth): enforce scope from session claims — currently logs a warning
+  // and passes through. When the identity service ships JWT scope claims,
+  // replace the console.warn with a Navigate to UNAUTHORIZED.
+  if (import.meta.env.DEV) {
+    console.warn(`[RequireScope] kind="${kind}" — not yet enforced`);
+  }
   return children;
 }

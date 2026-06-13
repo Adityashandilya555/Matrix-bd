@@ -58,13 +58,8 @@ def require_module(module_name: str) -> Callable:
 
 
 def require_scope(kind: str) -> Callable:
-    """Dependency factory: validates scope access.
-
-    TODO(auth): implement real scope checks from JWT claims.
-    Currently a pass-through.
-    """
-    async def guard(current_user: dict = Depends(get_current_user)) -> dict:
-        # TODO(auth): enforce scope from session claims
-        return current_user
-
-    return guard
+    """Dependency factory: validates scope access."""
+    raise NotImplementedError(
+        f"require_scope('{kind}') is not implemented — "
+        "do not use in production endpoints until JWT scope claims are wired"
+    )
