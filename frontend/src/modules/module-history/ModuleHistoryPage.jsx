@@ -142,7 +142,7 @@ function StageRail({ stages }) {
             : state === 'pending' ? 'var(--zm-fg-3)' : 'var(--zm-copper)';
         return (
           <div
-            key={`${stage.label}-${index}`}
+            key={stage.id || stage.key || `${stage.label}-${index}`}
             className="zm-glass"
             style={{
               display: 'grid',

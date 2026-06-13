@@ -7,6 +7,5 @@ export async function listNotifications() {
 
 // TODO(mcp): implement real send via notification_service
 export async function sendNotification(event) {
-  // TODO(db): return api.post('/notifications/send', event);
-  console.warn('sendNotification: stub — not yet implemented', event);
+  throw new Error('sendNotification: not yet implemented — use notification_service on backend');
 }

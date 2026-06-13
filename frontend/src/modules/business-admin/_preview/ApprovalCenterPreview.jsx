@@ -12,7 +12,7 @@ export default function ApprovalCenterPreview() {
     <TeamDashboard
       workspaceName="Blue Tokai Coffee"
       fetchers={live ? REAL_FETCHERS : mockFetchers}
-      onLogout={() => window.alert('(preview) sign out')}
+      onLogout={() => console.log('[preview] sign out triggered')}
     />
   );
 }

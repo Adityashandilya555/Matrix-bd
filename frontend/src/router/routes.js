@@ -45,21 +45,12 @@ export const ROUTES = {
   NSO_HISTORY_SITE:       '/nso/history/:siteId',
   NSO_PROCESS_FLOW:       '/nso/process-flow',
   NSO_PROCESS_FLOW_SITE:  '/nso/process-flow/:siteId',
-  SITE:                   '/sites/:id',
   ADD_DETAILS:            '/shortlist/:code/details',
   LOI_TIMELINE:           '/shortlist/:code/timeline',
   SITE_TRACKER:           '/staging-flow',
   SITE_TRACKER_DETAIL:    '/staging-flow/:siteId',
   DASHBOARD_MINIMAL_PREVIEW: '/dashboard-minimal-preview',
 };
-
-export function siteRoute(id) {
-  return ROUTES.SITE.replace(':id', id);
-}
-
-export function addDetailsRoute(code) {
-  return ROUTES.ADD_DETAILS.replace(':code', code);
-}
 
 export function loiTimelineRoute(code) {
   return ROUTES.LOI_TIMELINE.replace(':code', code);
