@@ -46,7 +46,7 @@ function isBootstrapAuthRequest(config) {
 // the "session paused" modal for it is wrong and pops the modal on the authed
 // route right after login. The request interceptor only sets Authorization when
 // a token exists, so its absence means "not logged in". (popup-on-login fix)
-function requestCarriedToken(config) {
+export function requestCarriedToken(config) {
   const h = config?.headers || {};
   return Boolean(h.Authorization || h.authorization);
 }

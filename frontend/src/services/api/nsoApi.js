@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { getAuthToken, notifySessionExpired } from './authToken.js';
-import { ApiError, ensureFreshAuthToken } from './adapters/httpAdapter.js';
+import { ApiError, ensureFreshAuthToken, requestCarriedToken } from './adapters/httpAdapter.js';
 import { notifySiteDataChanged } from './siteEvents.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
@@ -25,7 +25,7 @@ client.interceptors.response.use(
     const detail = status === 0 && raw === 'Network Error'
       ? `Network Error contacting API at ${BASE_URL}. Check backend deployment, CORS, and migration status.`
       : raw;
-    if (status === 401) notifySessionExpired({ reason: 'unauthorized', detail });
+    if (status === 401 && requestCarriedToken(err.config)) notifySessionExpired({ reason: 'unauthorized', detail });
     throw new ApiError({ status, detail, code: err.response?.data?.code, cause: err });
   },
 );

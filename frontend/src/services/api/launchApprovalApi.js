@@ -10,7 +10,7 @@
  */
 import axios from 'axios';
 import { getAuthToken, notifySessionExpired } from './authToken.js';
-import { ApiError, ensureFreshAuthToken } from './adapters/httpAdapter.js';
+import { ApiError, ensureFreshAuthToken, requestCarriedToken } from './adapters/httpAdapter.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
 const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
@@ -31,7 +31,7 @@ client.interceptors.response.use(
     }
     const status = err.response?.status ?? 0;
     const raw = err.response?.data?.detail || err.message || 'Request failed';
-    if (status === 401) notifySessionExpired({ reason: 'unauthorized', detail: raw });
+    if (status === 401 && requestCarriedToken(err.config)) notifySessionExpired({ reason: 'unauthorized', detail: raw });
     throw new ApiError({ status, detail: raw, code: err.response?.data?.code, cause: err });
   },
 );
