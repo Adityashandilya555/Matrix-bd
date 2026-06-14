@@ -95,6 +95,29 @@ async def _fetch_review_or_create(
     return review
 
 
+async def seed_initialization_from_pe(
+    session: AsyncSession, *, site: models.Site, initialization_date,
+) -> models.ProjectReview:
+    """Seed the Project module's initialization when a PE budget is approved.
+
+    The Project Excellence admin approval is the handover point into the Project
+    module: it proposes the initialization date the executive then accepts or
+    rejects (svc_respond_initialization). Without this the review was created
+    with initialization_status='pending' and the exchange could never start.
+
+    Idempotent and non-destructive: only seeds while still pending, so a
+    re-run never clobbers an in-flight proposed/approved/rejected exchange.
+    (A freshly-created review carries None in-memory — the 'pending'
+    server_default only materializes on a DB read — so None counts as pending.)
+    Caller owns the transaction.
+    """
+    review = await _fetch_review_or_create(session, site=site)
+    if review.initialization_status in (None, "pending"):
+        review.initialization_date = initialization_date
+        review.initialization_status = "proposed"
+    return review
+
+
 async def _queue_item(
     session: AsyncSession, site: models.Site, review: Optional[models.ProjectReview],
     *, prefetched: Optional[dict] = None,

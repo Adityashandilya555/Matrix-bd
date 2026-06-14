@@ -1,7 +1,7 @@
 """Schemas for the Project Excellence module (budget tracking after project completion)."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -99,7 +99,10 @@ class ReviewRequest(BaseModel):
 
 
 class AdminBudgetReviewRequest(ReviewRequest):
-    pass
+    # On approval the admin sets the project initialization date; it seeds the
+    # Project module's initialization (status → 'proposed') so the executive can
+    # accept/reject it. Required when approving (enforced in the service).
+    initialization_date: Optional[date] = None
 
 
 class PEBudgetAdminQueueResponse(BaseModel):

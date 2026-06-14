@@ -96,11 +96,14 @@ export async function getBudgetQueue() {
   };
 }
 
-export async function reviewBudget(siteId, { decision, comments } = {}) {
+export async function reviewBudget(siteId, { decision, comments, initializationDate } = {}) {
   // The 11-field budget now lives in Project Excellence (post-GFC); the admin
-  // tier-2 review targets that module.
+  // tier-2 review targets that module. On approval the admin also sets the
+  // project initialization date, which seeds the Project module's
+  // initialization (proposed → exec accepts) — forward it so it isn't dropped.
   const body = { decision };
   if (comments) body.comments = comments;
+  if (initializationDate) body.initialization_date = initializationDate;
   const result = await client.post(`/project-excellence/${siteId}/budget/admin-review`, body).then((r) => r.data);
   notifySiteDataChanged({ source: 'businessAdmin', action: `budget_${decision}`, siteId });
   return result;

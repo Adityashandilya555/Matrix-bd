@@ -24,6 +24,13 @@ const STATUS_FILTERS = [
   { key: 'approved',  label: 'Approved',  color: 'var(--zm-success)' },
 ];
 
+// History tab shows the closed-out tail of the flow: budget approved or done.
+const HISTORY_STATUSES = ['approved', 'done'];
+const HISTORY_FILTERS = [
+  { key: 'approved', label: 'Approved', color: 'var(--zm-success)' },
+  { key: 'done',     label: 'Done',     color: 'var(--zm-info)' },
+];
+
 const BUDGET_LABELS = {
   draft: 'Draft',
   pending_supervisor: 'Supervisor review',
@@ -45,7 +52,9 @@ function StatusPill({ value, tone = 'var(--zm-accent)' }) {
   );
 }
 
-export default function ProjectExcellenceQueuePage() {
+export default function ProjectExcellenceQueuePage({ mode = 'pipeline' }) {
+  const isHistory = mode === 'history';
+  const filters = isHistory ? HISTORY_FILTERS : STATUS_FILTERS;
   const navigate = useNavigate();
   const { role } = useSession();
   const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
@@ -78,21 +87,25 @@ export default function ProjectExcellenceQueuePage() {
   const open = (row) => navigate(projectExcellenceSiteRoute(row.siteId));
   const COLS = '120px minmax(220px, 1fr) 130px 160px 160px 120px';
 
-  const statusCounts = STATUS_FILTERS.reduce((acc, f) => {
-    acc[f.key] = state.items.filter((row) => row.excellenceStatus === f.key).length;
+  // History only lists the closed-out tail; Pipeline lists everything.
+  const scopedItems = isHistory
+    ? state.items.filter((row) => HISTORY_STATUSES.includes(row.excellenceStatus))
+    : state.items;
+  const statusCounts = filters.reduce((acc, f) => {
+    acc[f.key] = scopedItems.filter((row) => row.excellenceStatus === f.key).length;
     return acc;
   }, {});
   const visibleItems = statusFilter === 'all'
-    ? state.items
-    : state.items.filter((row) => row.excellenceStatus === statusFilter);
+    ? scopedItems
+    : scopedItems.filter((row) => row.excellenceStatus === statusFilter);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <PageHeader
         file="No. 10"
         eyebrow="Project Excellence module"
-        title="Pipeline"
-        right={<HeaderTag icon="box" label="DESIGN GFC-APPROVED"/>}
+        title={isHistory ? 'History' : 'Pipeline'}
+        right={<HeaderTag icon="box" label={isHistory ? 'APPROVED · DONE' : 'DESIGN GFC-APPROVED'}/>}
       />
 
       {state.status === 'loading' && (
@@ -105,9 +118,9 @@ export default function ProjectExcellenceQueuePage() {
         <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{state.error}</div>
       )}
 
-      {state.status === 'ready' && state.items.length > 0 && (
+      {state.status === 'ready' && scopedItems.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {STATUS_FILTERS.filter((f) => statusCounts[f.key] > 0 || f.key === statusFilter).map((f) => (
+          {filters.filter((f) => statusCounts[f.key] > 0 || f.key === statusFilter).map((f) => (
             <SubFilterPill
               key={f.key}
               label={f.label}
@@ -124,9 +137,11 @@ export default function ProjectExcellenceQueuePage() {
         <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
           <Icon name="box" size={20}/>
           <p style={{ margin: '12px 0 0' }}>
-            {statusFilter !== 'all' && state.items.length > 0
+            {statusFilter !== 'all' && scopedItems.length > 0
               ? 'No sites match the current status filter.'
-              : 'No design-GFC-approved sites are waiting for Project Excellence right now.'}
+              : isHistory
+                ? 'No project-excellence sites have been approved or completed yet.'
+                : 'No design-GFC-approved sites are waiting for Project Excellence right now.'}
           </p>
         </div>
       )}

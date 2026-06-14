@@ -54,6 +54,7 @@ import NsoQueuePage             from '../modules/nso/NsoQueuePage.jsx';
 import NsoReviewPage            from '../modules/nso/NsoReviewPage.jsx';
 import ProjectExcellenceQueuePage  from '../modules/project_excellence/ProjectExcellenceQueuePage.jsx';
 import ProjectExcellenceReviewPage from '../modules/project_excellence/ProjectExcellenceReviewPage.jsx';
+import ProjectExcellenceOverviewPage from '../modules/project_excellence/ProjectExcellenceOverviewPage.jsx';
 import NsoHandoverPage             from '../modules/project/NsoHandoverPage.jsx';
 import FinancialClosureQueuePage   from '../modules/financial_closure/FinancialClosureQueuePage.jsx';
 import FinancialClosureReviewPage  from '../modules/financial_closure/FinancialClosureReviewPage.jsx';
@@ -456,6 +457,20 @@ export default function AppRouter() {
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <RequireModule modules={['project_excellence']}>
               <ProjectExcellenceQueuePage/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.PROJECT_EXCELLENCE_OVERVIEW} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['project_excellence']}>
+              <ProjectExcellenceOverviewPage/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.PROJECT_EXCELLENCE_HISTORY} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['project_excellence']}>
+              <ProjectExcellenceQueuePage mode="history"/>
             </RequireModule>
           </RequireRole>
         }/>

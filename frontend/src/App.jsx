@@ -12,6 +12,7 @@ import Icon from './modules/shared/primitives/Icon.jsx';
 import { filterByScope } from './rbac/scope.js';
 import { extractGoogleMapsCoords, looksLikeMapsUrl } from './lib/googleMaps.js';
 import { GRID_LAYERS, GRID_ATTACH, stageVignette, canvasBase } from './lib/surfaces.js';
+import { INDIAN_CITIES } from './constants/indianCities.js';
 
 // App.jsx is now the chrome shell only.
 // Routing is handled by AppRouter / <Outlet/>.
@@ -285,7 +286,7 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label style={labelBase}>Site</label><input value={form.name} onChange={set('name')} placeholder="e.g. Powai · Lake Homes" style={inputBase}/></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label style={labelBase}>Visit date</label><input type="date" value={form.visitDate} onChange={set('visitDate')} style={{ ...inputBase, fontFamily: 'var(--zm-font-mono)', fontSize: 13 }}/></div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label style={labelBase}>City</label><select value={form.city} onChange={set('city')} style={inputBase}><option value="">Select city…</option><option>Mumbai</option><option>Bengaluru</option><option>New Delhi</option><option>Hyderabad</option><option>Pune</option><option>Chennai</option><option>Ahmedabad</option></select></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label style={labelBase}>City</label><select value={form.city} onChange={set('city')} style={inputBase}><option value="">Select city…</option>{INDIAN_CITIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label style={labelBase}>Model</label><select value={form.model} onChange={set('model')} style={inputBase}><option value="">Select model…</option>{PIPELINE_MODELS.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
