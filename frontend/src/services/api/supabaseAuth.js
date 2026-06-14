@@ -122,6 +122,36 @@ export async function checkPasswordSet(email, workspaceCode) {
   return Boolean(res.data?.password_set);
 }
 
+// Account state for (email, workspace_code), used to route the email step:
+//   'unknown'        → not a member of this workspace (show an error)
+//   'pending'        → approved-by-admin not granted yet
+//   'needs_password' → approved but no password → self-service setup
+//   'active'         → has a password → ask for it
+// Falls back to deriving from `password_set` for older backends.
+export async function checkAccountState(email, workspaceCode) {
+  const res = await axios.post(`${API_BASE}/auth/login/check`, {
+    email, workspace_code: workspaceCode,
+  });
+  return res.data?.account_state
+    || (res.data?.password_set ? 'active' : 'needs_password');
+}
+
+// First-time, self-service password for an approved account that has none yet
+// (post-approval onboarding). No reset code — the account was already approved
+// by an admin. Surfaces the server's `detail` on error (e.g. "already has a
+// password", "pending approval", "not registered in this workspace").
+export async function setupPassword(email, workspaceCode, newPassword) {
+  let res;
+  try {
+    res = await axios.post(`${API_BASE}/auth/password-setup`, {
+      email, workspace_code: workspaceCode, new_password: newPassword,
+    });
+  } catch (err) {
+    throw new Error(_detailMessage(err, 'Could not set your password'));
+  }
+  return res.data;
+}
+
 // First wrong attempt → route a reset request to the platform admin.
 export async function requestPasswordReset(email, workspaceCode) {
   const res = await axios.post(`${API_BASE}/auth/password-reset/request`, {
