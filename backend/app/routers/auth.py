@@ -97,6 +97,16 @@ class ResetCompleteIn(_WorkspaceCred):
     reset_token: str = Field(min_length=8, max_length=128)
 
 
+class PasswordSetupIn(_WorkspaceCred):
+    # First-time, self-service password for an already-approved account that
+    # has none yet. No token: an approved user sets their own password directly
+    # after admin approval, removing the deadstate where a freshly approved
+    # supervisor/executive could never log in. Only ever fires once per account
+    # (the setup handler's UPDATE is guarded on `password_hash IS NULL`); an
+    # account that already has a password must use the token-bound reset flow.
+    new_password: str = Field(min_length=6, max_length=256)
+
+
 class LoginOut(BaseModel):
     access_token: str
     token_type:   str = "bearer"  # noqa: S105 — OAuth token *type* label, not a secret
@@ -161,44 +171,22 @@ async def login(payload: LoginIn, db: DbDep):
     )).mappings().first()
 
     if user is None:
-        # First-time login from this email in this workspace — register them
-        # in the queue. The supervisor will assign a role.
-        # Count only ACTIVE users — pending (is_active=false) rows must not
-        # consume seats; otherwise any holder of the workspace_code can fill
-        # the workspace with never-approved registrations, blocking real hires
-        # with a 403 (#125).
-        seat_used = (await db.execute(
-            text("SELECT COUNT(*) FROM users WHERE tenant_id=:tid AND is_active=true"),
-            {"tid": tenant["id"]},
-        )).scalar_one()
-        if seat_used >= tenant["seat_limit"]:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    f"Workspace '{tenant['name']}' is full ({tenant['seat_limit']} seats). "
-                    "Ask your supervisor to free a seat or upgrade."
-                ),
-            )
-        new_id = uuid.uuid4()
-        await db.execute(
-            text("""
-                INSERT INTO users (id, tenant_id, role, email, name, is_active, password_hash)
-                VALUES (:id, :tid, 'executive', :email, :name, false, :pwd)
-            """),
-            {
-                "id":    new_id,
-                "tid":   tenant["id"],
-                "email": payload.email,
-                "name":  payload.email.split("@")[0],
-                "pwd":   (await hash_password_async(payload.password)) if payload.password else None,
-            },
+        # The email is not a member of this workspace. We no longer silently
+        # auto-register it as a pending "ghost" user (that let any holder of the
+        # workspace_code seed never-approved rows, and made a stranger's email
+        # indistinguishable from a real member in the UI). Tell the caller
+        # plainly instead. Joining is an explicit action via the signup codes
+        # (the "Join" tab) — the workspace_code alone is not an invitation.
+        # NOTE: this reveals in-workspace email membership by design (the
+        # unknown-workspace_code branch above stays a soft 202, so the
+        # workspace_code itself remains a non-oracle, #84).
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "This email isn't registered in this workspace. "
+                "Ask your admin for an invite, or use the Join tab to request access."
+            ),
         )
-        await db.commit()
-        logger.info(
-            "login: queued new user tenant_id=%s email=%s",
-            tenant["id"], payload.email,
-        )
-        return _pending_response(payload.email)
 
     # 3. Known user. If still inactive (no role assigned), keep them pending.
     if not user["is_active"]:
@@ -277,21 +265,35 @@ async def login(payload: LoginIn, db: DbDep):
     dependencies=[Depends(rate_limit(times=20, seconds=60))],
 )
 async def login_check(payload: LoginCheckIn, db: DbDep) -> dict:
-    """Lets the branded login page choose between 'set a password' (with a
-    confirm field) and 'enter your password'. Returns False for unknown
-    accounts too, so it does not enumerate users."""
+    """Lets the branded login page route the email to the right next step:
+    'unknown' (not a member → show an error), 'pending' (approval not granted
+    yet), 'needs_password' (approved but no password → self-service setup), or
+    'active' (has a password → ask for it).
+
+    `account_state` reveals in-workspace email membership by design (the
+    onboarding deadstate fix needs the UI to tell members and strangers apart).
+    Tenant-missing is folded into 'unknown' so the workspace_code itself stays a
+    non-oracle (#84). `password_set` is retained for backward-compatible callers.
+    """
+    unknown = {"account_state": "unknown", "password_set": False}  # nosec B105 — flags, not a credential
     tenant = (await db.execute(
         text("SELECT id FROM tenants WHERE upper(workspace_code) = upper(:code)"),
         {"code": payload.workspace_code},
     )).mappings().first()
     if not tenant:
-        return {"password_set": False}  # nosec B105 — boolean flag, not a credential
+        return unknown
     user = (await db.execute(
-        text("""SELECT password_hash FROM users
+        text("""SELECT is_active, password_hash FROM users
                  WHERE tenant_id = :tid AND lower(email) = lower(:email)"""),
         {"tid": tenant["id"], "email": payload.email},
     )).mappings().first()
-    return {"password_set": bool(user and user["password_hash"])}
+    if not user:
+        return unknown
+    if not user["is_active"]:
+        return {"account_state": "pending", "password_set": False}
+    if user["password_hash"]:
+        return {"account_state": "active", "password_set": True}
+    return {"account_state": "needs_password", "password_set": False}
 
 
 @router.post(
@@ -386,6 +388,76 @@ async def password_reset_complete(payload: ResetCompleteIn, db: DbDep) -> dict:
     await db.commit()
     logger.info("password reset completed tenant_id=%s user_id=%s", tenant["id"], user["id"])
     return {"status": "reset", "message": "Password updated. You can now sign in with your new password."}
+
+
+@router.post(
+    "/password-setup",
+    summary="Public: set a first password for an approved account that has none yet",
+    dependencies=[Depends(rate_limit(times=5, seconds=300))],
+    responses={
+        200: {"description": "Password created — user can now sign in"},
+        403: {"description": "Account not approved yet"},
+        404: {"description": "Email is not a member of this workspace"},
+        409: {"description": "Account already has a password — use the reset flow"},
+    },
+)
+async def password_setup(payload: PasswordSetupIn, db: DbDep) -> dict:
+    """Self-service first password (fixes the post-approval deadstate).
+
+    An admin approval flips the user to ``is_active=true`` but leaves
+    ``password_hash=NULL``; this lets that user set their own password directly
+    instead of waiting on the platform-admin-relayed reset token. It is the only
+    writer of a first password and can fire exactly once: the UPDATE is guarded
+    on ``password_hash IS NULL``, so a double-submit (or anyone racing for the
+    account) finds the row already set and gets a 409, never an overwrite.
+    """
+    tenant = (await db.execute(
+        text("SELECT id FROM tenants WHERE upper(workspace_code) = upper(:code)"),
+        {"code": payload.workspace_code},
+    )).mappings().first()
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid request.")
+    user = (await db.execute(
+        text("""SELECT id, is_active, password_hash FROM users
+                 WHERE tenant_id = :tid AND lower(email) = lower(:email)"""),
+        {"tid": tenant["id"], "email": payload.email},
+    )).mappings().first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "This email isn't registered in this workspace. "
+                "Ask your admin for an invite, or use the Join tab to request access."
+            ),
+        )
+    if not user["is_active"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your access is still pending approval. You can set a password once an admin approves you.",
+        )
+    if user["password_hash"]:
+        # Fast path for the common case; the guarded UPDATE below is the real
+        # race-safe gate.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This account already has a password. Use 'Forgot your password?' to reset it.",
+        )
+    result = await db.execute(
+        text("""UPDATE users SET password_hash = :h
+                 WHERE id = :uid AND password_hash IS NULL"""),
+        {"h": await hash_password_async(payload.new_password), "uid": user["id"]},
+    )
+    if result.rowcount == 0:
+        # Lost the race: another setup call set the password between our SELECT
+        # and UPDATE. Never overwrite an existing password here.
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This account already has a password. Use 'Forgot your password?' to reset it.",
+        )
+    await db.commit()
+    logger.info("password setup completed tenant_id=%s user_id=%s", tenant["id"], user["id"])
+    return {"status": "set", "message": "Password created. You can now sign in."}
 
 
 @router.post(

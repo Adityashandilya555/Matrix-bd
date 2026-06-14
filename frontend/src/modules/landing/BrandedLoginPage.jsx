@@ -2,7 +2,8 @@ import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   signInWithWorkspaceCode,
-  checkPasswordSet,
+  checkAccountState,
+  setupPassword,
   requestPasswordReset,
   completePasswordReset,
   getWorkspaceBranding,
@@ -44,7 +45,7 @@ function Banner({ msg }) {
 
 // ── Login (email → set-or-enter password → optional reset) ───────────────────
 function LoginPanel({ code, onAuthed }) {
-  const [step, setStep] = React.useState('email'); // email | enter | reset
+  const [step, setStep] = React.useState('email'); // email | enter | setup | reset
   const [email, setEmail] = React.useState('');
   const [pw, setPw] = React.useState('');
   const [pw2, setPw2] = React.useState('');
@@ -62,17 +63,20 @@ function LoginPanel({ code, onAuthed }) {
     if (!EMAIL_RE.test(em())) { say('Enter a valid work email.'); return; }
     setBusy(true); setMsg(null);
     try {
-      const hasPw = await checkPasswordSet(em(), code);
+      const state = await checkAccountState(em(), code);
       resetFields();
-      if (hasPw) {
-        setStep('enter');
+      if (state === 'unknown') {
+        // Not a member of this workspace. Don't push strangers into the reset
+        // flow — tell them plainly and point at the Join tab.
+        say("This email isn't part of this workspace. If you're joining, switch to the Join tab or ask your admin for an invite.", 'error');
+      } else if (state === 'pending') {
+        say('Your request is still pending admin approval. You can sign in once an admin approves you.', 'info');
+      } else if (state === 'needs_password') {
+        // Approved but no password yet → set one directly (no admin code).
+        setStep('setup');
+        say('Welcome! Create a password to finish setting up your account.', 'info');
       } else {
-        // No password on file. Passwords are set through the admin-approved
-        // reset flow (a first password can't just be claimed — #83): file the
-        // request now and collect the approval code + new password.
-        try { await requestPasswordReset(em(), code); } catch { /* soft-ack either way */ }
-        setStep('reset');
-        say('This account has no password yet. A setup request was sent to your platform admin — once they approve it, enter the reset code they share with you and choose a password.', 'info');
+        setStep('enter');
       }
     } catch {
       say('Could not reach the server. Please try again.');
@@ -90,6 +94,21 @@ function LoginPanel({ code, onAuthed }) {
       if (err instanceof PendingApprovalError || err?.isPending) say(err.message || 'Your access is pending approval.', 'info');
       else if (err instanceof InvalidCredentialsError || err?.isInvalidCredentials) { setWrong((w) => w + 1); say('Incorrect password. Try again, or request a reset.'); }
       else say(err?.message || 'Sign-in failed.');
+    } finally { setBusy(false); }
+  };
+
+  const doSetup = async (e) => {
+    e.preventDefault();
+    if (pw.length < 6) { say('Choose a password of at least 6 characters.'); return; }
+    if (pw !== pw2) { say('Passwords do not match.'); return; }
+    setBusy(true); setMsg(null);
+    try {
+      await setupPassword(em(), code, pw);
+      const data = await signInWithWorkspaceCode(em(), code, pw);
+      onAuthed(data?.access_token);
+    } catch (err) {
+      if (err?.isPending) say(err.message, 'info');
+      else say(err?.message || 'Could not set your password.');
     } finally { setBusy(false); }
   };
 
@@ -139,7 +158,9 @@ function LoginPanel({ code, onAuthed }) {
   }
 
   const isReset = step === 'reset';
-  const onSubmit = isReset ? doReset : doLogin;
+  const isSetup = step === 'setup';
+  const isNewPw = isReset || isSetup; // both collect + confirm a new password
+  const onSubmit = isReset ? doReset : isSetup ? doSetup : doLogin;
 
   return (
     <form className="bl-form" onSubmit={onSubmit}>
@@ -157,13 +178,13 @@ function LoginPanel({ code, onAuthed }) {
         </>
       )}
 
-      <label className="bl-label" htmlFor="bl-pw">{isReset ? 'New password' : 'Password'}</label>
+      <label className="bl-label" htmlFor="bl-pw">{isNewPw ? 'New password' : 'Password'}</label>
       <input id="bl-pw" className="bl-input" type="password" value={pw}
         onChange={(e) => { setPw(e.target.value); if (msg) setMsg(null); }}
-        placeholder={isReset ? 'Create a password' : 'Enter your password'}
-        autoComplete={isReset ? 'new-password' : 'current-password'} autoFocus={!isReset} />
+        placeholder={isNewPw ? 'Create a password' : 'Enter your password'}
+        autoComplete={isNewPw ? 'new-password' : 'current-password'} autoFocus={isSetup || !isNewPw} />
 
-      {isReset && (
+      {isNewPw && (
         <>
           <label className="bl-label" htmlFor="bl-pw2">Confirm password</label>
           <input id="bl-pw2" className="bl-input" type="password" value={pw2}
@@ -175,7 +196,10 @@ function LoginPanel({ code, onAuthed }) {
       <Banner msg={msg} />
 
       <button type="submit" className="bl-btn" disabled={busy}>
-        {busy ? 'Please wait…' : isReset ? 'Set new password & sign in' : 'Sign in'}
+        {busy ? 'Please wait…'
+          : isSetup ? 'Create password & sign in'
+          : isReset ? 'Set new password & sign in'
+          : 'Sign in'}
       </button>
 
       {step === 'enter' && wrong > 0 && (

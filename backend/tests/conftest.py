@@ -40,11 +40,14 @@ class FakeResult:
         scalars_list: list[Any] | None = None,
         all_rows: list[Any] | None = None,
         mappings_rows: list[Any] | None = None,
+        rowcount: int = 1,
     ) -> None:
         self._scalar = scalar
         self._scalars_list = scalars_list if scalars_list is not None else []
         self._all_rows = all_rows if all_rows is not None else []
         self._mappings_rows = mappings_rows if mappings_rows is not None else []
+        # Mirrors CursorResult.rowcount for guarded UPDATE/DELETE handlers.
+        self.rowcount = rowcount
 
     def scalar_one_or_none(self) -> Any:
         return self._scalar

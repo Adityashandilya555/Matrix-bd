@@ -303,3 +303,145 @@ def test_app_does_not_publish_docs_by_default():
 
     assert app.docs_url is None
     assert app.openapi_url is None
+
+
+# ── Onboarding: account_state + self-service first password + no ghost users ──
+# Fixes the post-approval deadstate (an approved supervisor/executive sets their
+# own first password) and the wrong "reset" prompt for non-member emails.
+
+async def test_login_unknown_email_in_known_workspace_is_404(make_session, fake_result):
+    """A valid workspace_code + an email that isn't a member must NOT be
+    auto-registered as a pending ghost user — it returns a clear 404 and writes
+    nothing."""
+    from app.routers.auth import LoginIn, login
+
+    sess = make_session(
+        fake_result(mappings_rows=[TENANT_ROW]),
+        fake_result(mappings_rows=[]),  # no such user in this tenant
+    )
+    payload = LoginIn(email="stranger@b.co", workspace_code="ACME-CODE1")
+    with pytest.raises(HTTPException) as exc:
+        await login(payload, sess)
+    assert exc.value.status_code == 404
+    assert not any("INSERT INTO users" in s for s in sess.executed)
+
+
+async def test_login_check_reports_account_state(make_session, fake_result):
+    from app.routers.auth import LoginCheckIn, login_check
+
+    async def _state(*results):
+        out = await login_check(
+            LoginCheckIn(email="a@b.co", workspace_code="ACME-CODE1"),
+            make_session(*results),
+        )
+        return out
+
+    # unknown workspace → unknown (workspace_code stays a non-oracle)
+    assert (await _state(fake_result(mappings_rows=[])))["account_state"] == "unknown"
+    # known workspace, unknown email → unknown
+    assert (await _state(
+        fake_result(mappings_rows=[TENANT_ROW]),
+        fake_result(mappings_rows=[]),
+    ))["account_state"] == "unknown"
+    # approval not granted yet → pending
+    assert (await _state(
+        fake_result(mappings_rows=[TENANT_ROW]),
+        fake_result(mappings_rows=[{"is_active": False, "password_hash": None}]),
+    ))["account_state"] == "pending"
+    # approved, no password → self-service setup
+    assert (await _state(
+        fake_result(mappings_rows=[TENANT_ROW]),
+        fake_result(mappings_rows=[{"is_active": True, "password_hash": None}]),
+    ))["account_state"] == "needs_password"
+    # has a password → active (+ legacy flag stays true)
+    active = await _state(
+        fake_result(mappings_rows=[TENANT_ROW]),
+        fake_result(mappings_rows=[{"is_active": True, "password_hash": "bcrypt$"}]),
+    )
+    assert active["account_state"] == "active"
+    assert active["password_set"] is True
+
+
+async def test_password_setup_sets_first_password(make_session, fake_result):
+    from app.routers.auth import PasswordSetupIn, password_setup
+
+    sess = make_session(
+        fake_result(mappings_rows=[TENANT_ROW]),
+        fake_result(mappings_rows=[{"id": USER_ID, "is_active": True, "password_hash": None}]),
+        fake_result(rowcount=1),  # guarded UPDATE changed the row
+    )
+    out = await password_setup(
+        PasswordSetupIn(email="a@b.co", workspace_code="ACME-CODE1", new_password="hunter22"),
+        sess,
+    )
+    assert out["status"] == "set"
+    assert any("UPDATE users" in s for s in sess.executed)
+    assert sess.commit_count == 1
+
+
+async def test_password_setup_conflicts_when_password_exists(make_session, fake_result):
+    from app.routers.auth import PasswordSetupIn, password_setup
+
+    sess = make_session(
+        fake_result(mappings_rows=[TENANT_ROW]),
+        fake_result(mappings_rows=[{"id": USER_ID, "is_active": True, "password_hash": "already"}]),
+    )
+    with pytest.raises(HTTPException) as exc:
+        await password_setup(
+            PasswordSetupIn(email="a@b.co", workspace_code="ACME-CODE1", new_password="hunter22"),
+            sess,
+        )
+    assert exc.value.status_code == 409
+    assert not any("UPDATE users" in s for s in sess.executed)
+
+
+async def test_password_setup_race_lost_does_not_overwrite(make_session, fake_result):
+    """SELECT saw NULL, but a concurrent setup set the password first — the
+    guarded UPDATE affects 0 rows, so we 409 and roll back rather than overwrite
+    (the #83 claim race stays closed)."""
+    from app.routers.auth import PasswordSetupIn, password_setup
+
+    sess = make_session(
+        fake_result(mappings_rows=[TENANT_ROW]),
+        fake_result(mappings_rows=[{"id": USER_ID, "is_active": True, "password_hash": None}]),
+        fake_result(rowcount=0),  # lost the race
+    )
+    with pytest.raises(HTTPException) as exc:
+        await password_setup(
+            PasswordSetupIn(email="a@b.co", workspace_code="ACME-CODE1", new_password="hunter22"),
+            sess,
+        )
+    assert exc.value.status_code == 409
+    assert sess.rollback_count == 1
+    assert sess.commit_count == 0
+
+
+async def test_password_setup_rejects_pending_account(make_session, fake_result):
+    from app.routers.auth import PasswordSetupIn, password_setup
+
+    sess = make_session(
+        fake_result(mappings_rows=[TENANT_ROW]),
+        fake_result(mappings_rows=[{"id": USER_ID, "is_active": False, "password_hash": None}]),
+    )
+    with pytest.raises(HTTPException) as exc:
+        await password_setup(
+            PasswordSetupIn(email="a@b.co", workspace_code="ACME-CODE1", new_password="hunter22"),
+            sess,
+        )
+    assert exc.value.status_code == 403
+    assert not any("UPDATE users" in s for s in sess.executed)
+
+
+async def test_password_setup_unknown_email_is_404(make_session, fake_result):
+    from app.routers.auth import PasswordSetupIn, password_setup
+
+    sess = make_session(
+        fake_result(mappings_rows=[TENANT_ROW]),
+        fake_result(mappings_rows=[]),
+    )
+    with pytest.raises(HTTPException) as exc:
+        await password_setup(
+            PasswordSetupIn(email="a@b.co", workspace_code="ACME-CODE1", new_password="hunter22"),
+            sess,
+        )
+    assert exc.value.status_code == 404
