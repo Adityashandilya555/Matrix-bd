@@ -200,7 +200,9 @@ def site_to_response(
         design_status=site.design_status,
         project_status=project.project_status if project else None,
         project_current_stage=project.current_stage if project else None,
-        project_budget_status=project.budget_status if project else None,
+        # The 11-field budget moved to Project Excellence (shared site_budgets);
+        # project_reviews no longer carries budget_status.
+        project_budget_status=None,
         nso_status=nso.nso_status if nso else None,
         nso_current_stage=nso.current_stage if nso else None,
         launch_status=launch.status if launch else None,

@@ -83,11 +83,8 @@ async def build_tracker_response(
             if project
             else ("budget" if getattr(site, "design_status", None) == "approved" else None)
         ),
-        project_budget_status=(
-            project.budget_status
-            if project
-            else ("draft" if getattr(site, "design_status", None) == "approved" else None)
-        ),
+        # Budget moved to Project Excellence (site_budgets); not on project_reviews.
+        project_budget_status=None,
         nso_status=nso.nso_status if nso else None,
         nso_current_stage=nso.current_stage if nso else None,
         launch_status=launch.status if launch else None,
