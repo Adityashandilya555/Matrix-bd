@@ -4,12 +4,12 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.deps import DbDep, TenantId
-from app.core.uploads import read_upload_capped
 from app.domain.schemas.common import OkResponse
 from app.domain.schemas.project import (
+    AdminConfirmQualityAuditRequest,
     AllocateProjectRequest,
     InitializationFinalizeRequest,
     InitializationRespondRequest,
@@ -30,22 +30,27 @@ from app.services.project_service import (
     svc_get_project,
     svc_get_project_history_detail,
     svc_list_project_delegations_for_site,
+    svc_nso_handover_queue,
     svc_nso_queue,
     svc_project_queue,
     svc_project_history,
+    svc_push_to_nso,
     svc_respond_initialization,
     svc_review_milestone,
-    svc_review_quality_audit,
     svc_revoke_project_delegation,
     svc_set_mid_visit,
+    svc_submit_inspection_date,
     svc_submit_milestone,
-    svc_submit_quality_audit_report,
+    svc_supervisor_approve_quality_audit,
+    svc_admin_confirm_quality_audit,
+    svc_quality_audit_admin_queue,
 )
 
 router = APIRouter(prefix="/project", tags=["Project"])
 
 ProjectMember = Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.EXECUTIVE))]
 ProjectSupervisor = Annotated[dict, Depends(require_role(Role.SUPERVISOR))]
+ProjectAdmin = Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))]
 InProjectModule = Annotated[dict, Depends(require_module("project"))]
 
 
@@ -66,6 +71,27 @@ async def project_queue(
             db, tenant_id=tenant_id, user_id=current_user["sub"], module="project",
         )
     return await svc_project_queue(db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to)
+
+
+@router.get("/nso-handover", response_model=ProjectQueueResponse)
+async def nso_handover_queue(
+    db: DbDep,
+    current_user: ProjectMember,
+    _module: InProjectModule,
+    tenant_id: TenantId,
+) -> ProjectQueueResponse:
+    """NSO Handover tab — project-completed sites awaiting the push to NSO."""
+    return await svc_nso_handover_queue(db, tenant_id=tenant_id)
+
+
+@router.get("/quality-audit/admin-queue", response_model=ProjectQueueResponse)
+async def quality_audit_admin_queue(
+    db: DbDep,
+    current_user: ProjectAdmin,
+    tenant_id: TenantId,
+) -> ProjectQueueResponse:
+    """Business-admin queue: sites awaiting quality-audit confirmation."""
+    return await svc_quality_audit_admin_queue(db, tenant_id=tenant_id)
 
 
 @router.get("/history", response_model=ProjectHistoryResponse)
@@ -254,39 +280,23 @@ async def set_project_mid_visit(
     )
 
 
-@router.post("/{site_id}/quality-audit/upload", response_model=ProjectStateResponse)
-async def upload_project_quality_audit(
+@router.post("/{site_id}/quality-audit/inspection-date", response_model=ProjectStateResponse)
+async def submit_quality_audit_inspection_date(
     site_id: str,
+    body: MilestoneRequest,
     db: DbDep,
     current_user: ProjectMember,
     _module: InProjectModule,
     tenant_id: TenantId,
-    file: UploadFile = File(...),
-    inspection_date: Optional[str] = Form(None),
 ) -> ProjectStateResponse:
-    """Executive uploads the quality-audit report + inspection date, then submits."""
-    body_bytes = await read_upload_capped(file)
-    safe_name = (file.filename or "quality_audit").replace("/", "_").replace("\\", "_")
-    parsed_date: Optional[date] = None
-    if inspection_date:
-        try:
-            parsed_date = date.fromisoformat(inspection_date)
-        except ValueError:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid inspection date.")
-    return await svc_submit_quality_audit_report(
-        db,
-        tenant_id=tenant_id,
-        actor=current_user,
-        site_id=site_id,
-        filename=safe_name,
-        content_type=file.content_type,
-        file_bytes=body_bytes,
-        inspection_date=parsed_date,
+    """Executive records the quality-audit inspection DATE (no document upload)."""
+    return await svc_submit_inspection_date(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id, body=body,
     )
 
 
-@router.post("/{site_id}/quality-audit/review", response_model=ProjectStateResponse)
-async def review_project_quality_audit(
+@router.post("/{site_id}/quality-audit/supervisor-approve", response_model=ProjectStateResponse)
+async def supervisor_approve_quality_audit(
     site_id: str,
     body: ReviewRequest,
     db: DbDep,
@@ -294,8 +304,38 @@ async def review_project_quality_audit(
     _module: InProjectModule,
     tenant_id: TenantId,
 ) -> ProjectStateResponse:
-    return await svc_review_quality_audit(
+    """First tier: project supervisor approves the inspection date."""
+    return await svc_supervisor_approve_quality_audit(
         db, tenant_id=tenant_id, actor=current_user, site_id=site_id, body=body,
+    )
+
+
+@router.post("/{site_id}/quality-audit/admin-confirm", response_model=ProjectStateResponse)
+async def admin_confirm_quality_audit(
+    site_id: str,
+    body: AdminConfirmQualityAuditRequest,
+    db: DbDep,
+    current_user: ProjectAdmin,
+    tenant_id: TenantId,
+) -> ProjectStateResponse:
+    """Second tier: business_admin confirms → project completes."""
+    return await svc_admin_confirm_quality_audit(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id, body=body,
+    )
+
+
+@router.post("/{site_id}/push-to-nso", response_model=ProjectStateResponse)
+async def push_to_nso(
+    site_id: str,
+    db: DbDep,
+    current_user: ProjectSupervisor,
+    _module: InProjectModule,
+    tenant_id: TenantId,
+) -> ProjectStateResponse:
+    """Supervisor pushes a project-completed site from the NSO Handover tab into
+    NSO (opens the NSO record at stage three)."""
+    return await svc_push_to_nso(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
     )
 
 

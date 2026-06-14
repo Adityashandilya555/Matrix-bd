@@ -28,8 +28,8 @@ def test_project_service_mirrors_status_to_sites():
 
     src = inspect.getsource(ps)
     # Each project_status transition must also write the sites mirror.
+    # ('budgeting' was removed when the budget moved to Project Excellence — #206.)
     assert 'site.project_status = "allocated"' in src
-    assert 'site.project_status = "budgeting"' in src
     assert 'site.project_status = "in_progress"' in src
     assert 'site.project_status = "done"' in src
     assert "site.project_completed_at" in src

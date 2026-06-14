@@ -144,6 +144,8 @@ class Site(Base):
     project_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     # Project Excellence module mirror — written by project_excellence_service.
     project_excellence_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    # Financial Closure (closure-phase budget) mirror — written post-launch.
+    financial_closure_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
 
     # Finance / CA code flow (managed from the Site Tracker Finance tab).
     # Once ca_code is set it replaces site.code as the display identifier.
@@ -373,7 +375,7 @@ class SiteDelegation(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     __table_args__ = (
-        CheckConstraint("module IN ('bd','legal','design','project','nso','project_excellence')", name="chk_site_delegations_module"),  # 'payment' retired (202606132); 'project_excellence' added (202606134)
+        CheckConstraint("module IN ('bd','legal','design','project','nso','project_excellence','financial_closure')", name="chk_site_delegations_module"),  # 'payment' retired (202606132); 'project_excellence' (202606134) + 'financial_closure' (202606147)
     )
 
 
@@ -696,6 +698,13 @@ class ProjectReview(Base):
     inspection_date: Mapped[Optional[date]] = mapped_column(Date)
     quality_audit_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     quality_audit_comments: Mapped[Optional[str]] = mapped_column(Text)
+    # Quality audit is a calendar date + two-tier sign-off (no document upload):
+    # executive submits inspection_date -> supervisor approves -> business_admin confirms.
+    quality_audit_supervisor_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    quality_audit_supervisor_approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    quality_audit_admin_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    quality_audit_admin_confirmed_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    quality_audit_admin_notes: Mapped[Optional[str]] = mapped_column(Text)
     final_completion_date: Mapped[Optional[date]] = mapped_column(Date)
     project_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     # NSO handoff: set on quality-audit approval; the (parallel) NSO module
@@ -730,7 +739,7 @@ class ProjectReview(Base):
             name="chk_project_expected_completion_status",
         ),
         CheckConstraint(
-            "quality_audit_status IN ('pending','submitted','approved','rejected')",
+            "quality_audit_status IN ('pending','submitted','supervisor_approved','approved','rejected')",
             name="chk_project_quality_status",
         ),
         Index("idx_project_reviews_tenant_status", "tenant_id", "project_status"),
@@ -738,32 +747,30 @@ class ProjectReview(Base):
 
 
 
-# ── Project Excellence workflow ───────────────────────────────────────────────
-# Opens after the Project module marks project_status='done'.
-# Owns the 11-item budget review flow that was moved out of project_reviews.
+# ── Shared site budget (gfc + closure phases) ─────────────────────────────────
+# Module-agnostic budget owned by no single department. Project Excellence fills
+# the 'gfc' phase (post-GFC, pre-project); Financial Closure fills the 'closure'
+# phase (post-launch) with per-line variation vs gfc. Replaces the PE-private
+# project_excellence_reviews / project_excellence_items tables.
 
-class ProjectExcellenceReview(Base):
-    """One row per site for the Project Excellence module."""
-    __tablename__ = "project_excellence_reviews"
+class SiteBudget(Base):
+    """One row per (site, phase). phase ∈ {gfc, closure}."""
+    __tablename__ = "site_budgets"
     __mapper_args__ = {"eager_defaults": True}
 
-    site_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True,
-    )
-    tenant_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False,
-    )
-    excellence_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
-    current_stage: Mapped[str] = mapped_column(Text, nullable=False, server_default="budget")
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), nullable=False)
+    phase: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="draft")
     allocated_to: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
-
-    budget_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="draft")
     budget_total: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
     total_indoor_area_sqft: Mapped[Optional[float]] = mapped_column(Numeric(12, 2))
     total_area_sqft: Mapped[Optional[float]] = mapped_column(Numeric(12, 2))
     covers: Mapped[Optional[int]] = mapped_column(Integer)
-    budget_supervisor_comments: Mapped[Optional[str]] = mapped_column(Text)
-    budget_admin_comments: Mapped[Optional[str]] = mapped_column(Text)
+    supervisor_comments: Mapped[Optional[str]] = mapped_column(Text)
+    admin_comments: Mapped[Optional[str]] = mapped_column(Text)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -771,30 +778,26 @@ class ProjectExcellenceReview(Base):
     )
 
     __table_args__ = (
+        CheckConstraint("phase IN ('gfc','closure')", name="chk_site_budget_phase"),
         CheckConstraint(
-            "excellence_status IN ('pending','allocated','budgeting','approved','done')",
-            name="chk_pe_excellence_status",
+            "status IN ('draft','pending_supervisor','pending_admin','approved','rejected')",
+            name="chk_site_budget_status",
         ),
-        CheckConstraint(
-            "current_stage IN ('budget','done')",
-            name="chk_pe_current_stage",
-        ),
-        CheckConstraint(
-            "budget_status IN ('draft','pending_supervisor','pending_admin','approved','rejected')",
-            name="chk_pe_budget_status",
-        ),
-        Index("idx_pe_reviews_tenant_status", "tenant_id", "excellence_status"),
-        Index("idx_pe_reviews_budget_status", "tenant_id", "budget_status"),
+        UniqueConstraint("site_id", "phase", name="uq_site_budget_site_phase"),
+        Index("idx_site_budgets_tenant_phase_status", "tenant_id", "phase", "status"),
+        Index("idx_site_budgets_site", "site_id"),
     )
 
 
-class ProjectExcellenceItem(Base):
-    """Budget line items for a project excellence review (11 items, moved from project_budget_items)."""
-    __tablename__ = "project_excellence_items"
+class SiteBudgetItem(Base):
+    """11 budget line items per (site, phase)."""
+    __tablename__ = "site_budget_items"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), nullable=False)
+    budget_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("site_budgets.id", ondelete="CASCADE"), nullable=False)
+    phase: Mapped[str] = mapped_column(Text, nullable=False)
     idx: Mapped[int] = mapped_column(Integer, nullable=False)
     label: Mapped[Optional[str]] = mapped_column(Text)
     amount: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
@@ -804,9 +807,11 @@ class ProjectExcellenceItem(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("site_id", "idx", name="uq_pe_item_site_idx"),
-        CheckConstraint("idx BETWEEN 1 AND 11", name="chk_pe_item_idx"),
-        Index("idx_pe_items_site", "site_id"),
+        CheckConstraint("phase IN ('gfc','closure')", name="chk_site_budget_item_phase"),
+        CheckConstraint("idx BETWEEN 1 AND 11", name="chk_site_budget_item_idx"),
+        UniqueConstraint("budget_id", "idx", name="uq_site_budget_item_budget_idx"),
+        Index("idx_site_budget_items_site_phase", "site_id", "phase"),
+        Index("idx_site_budget_items_budget", "budget_id"),
     )
 
 
@@ -848,6 +853,9 @@ class NsoReview(Base):
     stage_two_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     stage_three_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     final_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # Set when the Project module's NSO-Handover tab pushes the site in — opens
+    # the record directly at stage three (stages 1 & 2 satisfied upstream).
+    handover_pushed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

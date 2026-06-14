@@ -59,23 +59,27 @@ from app.services.storage_service import signed_url as storage_signed_url
 from app.services._common import fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_is_delegated
+from app.services import budget_service
 from app.services.notification_service import (
     enqueue as notify_enqueue,
     recipients_for_business_admins,
     recipients_for_design_supervisors,
+    recipients_for_module_supervisors,
 )
 
 logger = logging.getLogger(__name__)
 
 # Deliverable order + the supervisor-approval advance map.
 # Approving 3D advances current_stage to 'gfc' (the business_admin GFC gate).
-# Approving the BOQ (which comes AFTER GFC) completes the design ('done').
-_KIND_ORDER = {"recce": 0, "2d": 1, "3d": 2, "boq": 3}
-_NEXT_STAGE = {"recce": "2d", "2d": "3d", "3d": "gfc", "boq": "done"}
-_DELIVERABLE_KINDS = ("recce", "2d", "3d", "boq")
+# GFC approval now COMPLETES the design (BOQ + estimate were removed from the
+# flow — the 11-item budget lives in Project Excellence). 'boq' remains a valid
+# historical deliverable kind in the DB but is no longer produced or required.
+_KIND_ORDER = {"recce": 0, "2d": 1, "3d": 2}
+_NEXT_STAGE = {"recce": "2d", "2d": "3d", "3d": "gfc"}
+_DELIVERABLE_KINDS = ("recce", "2d", "3d")
 # Deliverables that require a SECOND-tier business_admin approval (on top of the
-# supervisor's) before the stage advances. BOQ is the final design-completion gate.
-_NEEDS_ADMIN = frozenset({"2d", "3d", "boq"})
+# supervisor's) before the stage advances.
+_NEEDS_ADMIN = frozenset({"2d", "3d"})
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -1176,8 +1180,9 @@ async def svc_gfc_decision(
 ) -> DesignReviewResponse:
     """Business admin's Good-For-Construction decision (the admin gate).
 
-    approve → advance to BOQ stage: design_status='in_progress', stage='boq'.
-              Notifies the executive (and supervisors) to upload the BOQ + estimate.
+    approve → design COMPLETE: design_status='approved', stage='done'. Opens the
+              shared post-GFC budget and hands off to Project Excellence (the 11
+              budget items now live there, not in a design BOQ).
     reject  → bounce to 3D revision: design_status='in_progress', stage='3d',
               admin comments surfaced to the supervisor (and onto the 3D row).
     """
@@ -1207,40 +1212,46 @@ async def svc_gfc_decision(
         supervisors = await recipients_for_design_supervisors(session, tenant_id=tenant_id)
 
         if body.decision == "approve":
-            # GFC approved → advance to BOQ stage (design not yet complete).
+            # GFC approved → design is COMPLETE (BOQ + estimate removed from the
+            # flow). Open the shared post-GFC budget so Project Excellence unlocks.
             review.gfc_status = "approved"
-            review.current_stage = "boq"
-            site.design_status = "in_progress"
+            review.current_stage = "done"
+            site.design_status = "approved"
+            site.design_approved_at = now
+            await budget_service.fetch_or_create_budget(
+                session, site=site, phase=budget_service.GFC,
+            )
             await write_audit_event(
                 session, tenant_id=tenant_id, site_id=site.id,
                 actor_id=actor["sub"], actor_name=actor.get("name"),
                 action="design_gfc_approved",
-                detail="GFC approved — advancing to BOQ + estimate stage",
+                detail="GFC approved — design complete; Project Excellence budget opened",
             )
-            # Notify the design executive (if any) and supervisors to upload the BOQ.
-            delegate = await _active_design_delegate(session, site_id=site.id)
-            if delegate:
-                await notify_enqueue(
-                    session, tenant_id=tenant_id, event="design_gfc_approved",
-                    recipient_ids=[delegate[0]], site_id=site.id,
-                    channels=("in_app", "email"),
-                    payload={"site_id": str(site.id), "site_name": site.name},
-                    subject=f"GFC approved — upload BOQ: {site.name}",
-                    body=(
-                        f"Good-For-Construction was approved for '{site.name}'. "
-                        f"Please upload the BOQ + estimate to complete the design."
-                    ),
-                )
             if supervisors:
                 await notify_enqueue(
-                    session, tenant_id=tenant_id, event="design_gfc_approved",
+                    session, tenant_id=tenant_id, event="design_complete",
                     recipient_ids=supervisors, site_id=site.id,
-                    channels=("in_app",),
+                    channels=("in_app", "email"),
                     payload={"site_id": str(site.id), "site_name": site.name},
-                    subject=f"GFC approved: {site.name}",
+                    subject=f"Design complete (GFC approved): {site.name}",
                     body=(
-                        f"'{site.name}' ({site.code}) received GFC approval. "
-                        f"BOQ + estimate upload is next."
+                        f"'{site.name}' ({site.code}) received GFC approval and the design is "
+                        f"now complete. The Project Excellence budget is open for this site."
+                    ),
+                )
+            pe_supervisors = await recipients_for_module_supervisors(
+                session, tenant_id=tenant_id, module="project_excellence",
+            )
+            if pe_supervisors:
+                await notify_enqueue(
+                    session, tenant_id=tenant_id, event="pe_budget_opened",
+                    recipient_ids=pe_supervisors, site_id=site.id,
+                    channels=("in_app", "email"),
+                    payload={"site_id": str(site.id), "site_name": site.name},
+                    subject=f"Project Excellence budget ready: {site.name}",
+                    body=(
+                        f"GFC was approved for '{site.name}' ({site.code}). Open Project "
+                        f"Excellence to allocate and fill the 11-item budget."
                     ),
                 )
         else:

@@ -18,10 +18,12 @@ from app.db import models
 from app.db.session import transaction
 from app.domain.schemas.common import OkResponse
 from app.domain.schemas.project import (
+    AdminConfirmQualityAuditRequest,
     InitializationFinalizeRequest,
     InitializationRespondRequest,
     MidVisitRequest,
     MilestoneRequest,
+    ProjectBudgetLine,
     ProjectHistoryItem,
     ProjectHistoryResponse,
     ProjectQueueItem,
@@ -29,15 +31,18 @@ from app.domain.schemas.project import (
     ProjectStateResponse,
     ReviewRequest,
 )
+from app.services import budget_service
 from app.services._common import fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_assigned_sites, svc_is_delegated
-from app.services.storage_service import safe_object_name, signed_url, upload_bytes
 
 
 def _is_supervisor(actor: dict) -> bool:
     return (actor.get("role") or "").lower() == "supervisor"
 
+
+def _is_business_admin(actor: dict) -> bool:
+    return (actor.get("role") or "").lower() == "business_admin"
 
 
 def _assert_project_unlocked(site: models.Site) -> None:
@@ -111,6 +116,7 @@ async def _queue_item(
         project_status=(review.project_status if review else "pending"),
         current_stage=(review.current_stage if review else "execution"),
         quality_audit_status=(review.quality_audit_status if review else "pending"),
+        inspection_date=(review.inspection_date if review else None),
         allocated_to_name=(delegate[1] if delegate else None),
         submitted_by_name=submitted_by_name,
     )
@@ -158,28 +164,30 @@ async def _batch_project_prefetch(
     return delegates, names
 
 
-async def _quality_audit_download_url(
-    session: AsyncSession, *, site_id: str | UUID,
-) -> Optional[str]:
-    """Short-lived signed URL for the most recent quality-audit report file."""
-    row = (await session.execute(
-        select(models.SiteFile)
-        .where(
-            models.SiteFile.site_id == site_id,
-            models.SiteFile.file_type == "quality_audit",
+async def _gfc_budget_lines(
+    session: AsyncSession, *, site_id: str | UUID, tenant_id: str | UUID,
+) -> tuple[Optional[models.SiteBudget], list[ProjectBudgetLine]]:
+    """The approved post-GFC budget (read-only) shown inside the Project module."""
+    budget = await budget_service.fetch_budget(session, site_id=site_id, phase=budget_service.GFC, tenant_id=tenant_id)
+    if budget is None:
+        return None, []
+    items = await budget_service.budget_items(session, budget_id=budget.id, tenant_id=tenant_id)
+    lines = [
+        ProjectBudgetLine(
+            idx=i.idx,
+            label=i.label,
+            amount=float(i.amount) if i.amount is not None else None,
         )
-        .order_by(models.SiteFile.uploaded_at.desc())
-        .limit(1)
-    )).scalar_one_or_none()
-    if row is None:
-        return None
-    return await signed_url(row.storage_path)
+        for i in items
+    ]
+    return budget, lines
 
 
 async def _build_response(
     session: AsyncSession, site: models.Site, review: models.ProjectReview,
 ) -> ProjectStateResponse:
     delegate = await _active_project_delegate(session, site_id=site.id)
+    budget, budget_lines = await _gfc_budget_lines(session, site_id=site.id, tenant_id=site.tenant_id)
     return ProjectStateResponse(
         site_id=str(site.id),
         site_code=site.ca_code or site.code or "",
@@ -203,11 +211,17 @@ async def _build_response(
         inspection_date=review.inspection_date,
         quality_audit_status=review.quality_audit_status,
         quality_audit_comments=review.quality_audit_comments,
-        quality_audit_download_url=await _quality_audit_download_url(session, site_id=site.id),
+        quality_audit_supervisor_approved_at=review.quality_audit_supervisor_approved_at,
+        quality_audit_admin_confirmed_at=review.quality_audit_admin_confirmed_at,
+        quality_audit_admin_notes=review.quality_audit_admin_notes,
         final_completion_date=review.final_completion_date,
         project_completed_at=review.project_completed_at,
         nso_status=review.nso_status,
         pushed_to_nso_at=review.pushed_to_nso_at,
+        # Read-only post-GFC budget (lives in Project Excellence / site_budgets).
+        budget_status=(budget.status if budget else "draft"),
+        budget_total=float(budget.budget_total) if budget and budget.budget_total is not None else None,
+        budget_items=budget_lines,
         updated_at=review.updated_at,
     )
 
@@ -690,61 +704,23 @@ async def svc_set_mid_visit(
         return await _build_response(session, site, review)
 
 
-async def svc_submit_quality_audit_report(
+async def svc_submit_inspection_date(
     session: AsyncSession,
     *,
     tenant_id: str | UUID,
     actor: dict,
     site_id: str | UUID,
-    filename: str,
-    content_type: Optional[str],
-    file_bytes: bytes,
-    inspection_date: Optional[date],
+    body: MilestoneRequest,
 ) -> ProjectStateResponse:
-    """Executive uploads the quality-audit report + inspection date, then submits for review."""
-    # Pure param check — fail before any DB/Storage work.
-    if inspection_date is None:
-        raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Inspection date is required.")
-
-    # Validate read-only first, then release the connection BEFORE the slow
-    # Supabase Storage upload. Running upload_bytes inside the transaction (the
-    # old shape) pinned a pgBouncer slot for the whole 30s HTTP budget and
-    # exhausted the pool under load (#89).
-    site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-    await _assert_can_work_project(session, tenant_id=tenant_id, actor=actor, site_id=site.id)
-    review = await _fetch_review_or_create(session, site=site)
-    if review.mid_project_visit_date is None:
-        raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Mid-project visit date must be set before the quality audit.")
-    await session.rollback()  # end the implicit read txn → free the slot for the upload
-
-    file_id = uuid4()
-    safe_name = f"{file_id.hex[:8]}_{safe_object_name(filename, fallback='quality_audit')}"
-    # Tenant-prefixed key, matching the canonical photos/loi/design shape.
-    storage_path = f"quality_audit/{tenant_id}/{site_id}/{safe_name}"
-    await upload_bytes(
-        path=storage_path,
-        body=file_bytes,
-        content_type=content_type or "application/pdf",
-    )
-
+    """Executive records the quality-audit inspection DATE (no document upload),
+    then submits it for the supervisor → business_admin two-tier sign-off."""
     async with transaction(session):
-        # Re-load inside the write txn (the read above was rolled back).
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        await _assert_can_work_project(session, tenant_id=tenant_id, actor=actor, site_id=site.id)
         review = await _fetch_review_or_create(session, site=site)
-        session.add(models.SiteFile(
-            id=file_id,
-            tenant_id=tenant_id,
-            site_id=site.id,
-            uploaded_by=actor["sub"],
-            file_type="quality_audit",
-            file_name=filename,
-            storage_path=storage_path,
-            file_size_kb=max(1, len(file_bytes) // 1024),
-            mime_type=content_type,
-            is_primary=True,
-            source="manual_upload",
-        ))
-        review.inspection_date = inspection_date
+        if review.mid_project_visit_date is None:
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Mid-project visit date must be set before the quality audit.")
+        review.inspection_date = body.value
         review.quality_audit_status = "submitted"
         await write_audit_event(
             session,
@@ -752,13 +728,13 @@ async def svc_submit_quality_audit_report(
             site_id=site.id,
             actor_id=actor["sub"],
             actor_name=actor.get("name"),
-            action="project_quality_audit_uploaded",
-            detail=f"file={filename} inspection_date={inspection_date}",
+            action="project_quality_audit_date_submitted",
+            detail=f"inspection_date={body.value}",
         )
         return await _build_response(session, site, review)
 
 
-async def svc_review_quality_audit(
+async def svc_supervisor_approve_quality_audit(
     session: AsyncSession,
     *,
     tenant_id: str | UUID,
@@ -766,24 +742,18 @@ async def svc_review_quality_audit(
     site_id: str | UUID,
     body: ReviewRequest,
 ) -> ProjectStateResponse:
+    """First tier: the project supervisor approves the inspection date (or rejects)."""
     if not _is_supervisor(actor):
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can review quality audit.")
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can approve the quality audit.")
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_create(session, site=site)
         if review.quality_audit_status != "submitted":
-            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Quality audit is not awaiting review.")
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Quality audit is not awaiting supervisor approval.")
         if body.decision == "approve":
-            # Audit approved → complete the project and push the site to NSO.
-            now = datetime.now(timezone.utc)
-            review.quality_audit_status = "approved"
-            review.project_status = "done"
-            review.current_stage = "done"
-            review.project_completed_at = now
-            site.project_status = "done"  # keep the sites mirror in sync (#134)
-            site.project_completed_at = now
-            review.nso_status = "pushed"
-            review.pushed_to_nso_at = now
+            review.quality_audit_status = "supervisor_approved"
+            review.quality_audit_supervisor_approved_at = datetime.now(timezone.utc)
+            review.quality_audit_supervisor_approved_by = actor["sub"]
         else:
             review.quality_audit_status = "rejected"
             review.quality_audit_comments = (body.comments or "").strip() or "Rejected by supervisor."
@@ -793,18 +763,53 @@ async def svc_review_quality_audit(
             site_id=site.id,
             actor_id=actor["sub"],
             actor_name=actor.get("name"),
-            action="project_quality_audit_reviewed",
+            action="project_quality_audit_supervisor_reviewed",
             detail=f"decision={body.decision}",
         )
+        return await _build_response(session, site, review)
+
+
+async def svc_admin_confirm_quality_audit(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    actor: dict,
+    site_id: str | UUID,
+    body: AdminConfirmQualityAuditRequest,
+) -> ProjectStateResponse:
+    """Second tier: the business_admin confirms. On confirm the project COMPLETES.
+    The site does NOT auto-push to NSO — the supervisor pushes it from the
+    Project module's 'NSO Handover' tab (see svc_push_to_nso)."""
+    if not _is_business_admin(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a business admin can confirm the quality audit.")
+    async with transaction(session):
+        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        review = await _fetch_review_or_create(session, site=site)
+        if review.quality_audit_status != "supervisor_approved":
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Quality audit is not awaiting admin confirmation.")
         if body.decision == "approve":
-            await write_audit_event(
-                session,
-                tenant_id=tenant_id,
-                site_id=site.id,
-                actor_id=actor["sub"],
-                actor_name=actor.get("name"),
-                action="project_pushed_to_nso",
-            )
+            now = datetime.now(timezone.utc)
+            review.quality_audit_status = "approved"
+            review.quality_audit_admin_confirmed_at = now
+            review.quality_audit_admin_confirmed_by = actor["sub"]
+            review.quality_audit_admin_notes = (body.admin_notes or "").strip() or None
+            review.project_status = "done"
+            review.current_stage = "done"
+            review.project_completed_at = now
+            site.project_status = "done"  # keep the sites mirror in sync (#134)
+            site.project_completed_at = now
+        else:
+            review.quality_audit_status = "rejected"
+            review.quality_audit_comments = (body.comments or "").strip() or "Rejected by business admin."
+        await write_audit_event(
+            session,
+            tenant_id=tenant_id,
+            site_id=site.id,
+            actor_id=actor["sub"],
+            actor_name=actor.get("name"),
+            action="project_quality_audit_admin_confirmed",
+            detail=f"decision={body.decision}",
+        )
         return await _build_response(session, site, review)
 
 
@@ -826,6 +831,86 @@ async def svc_nso_queue(
         .order_by(models.ProjectReview.pushed_to_nso_at.desc())
     )).all()
     # Batch the delegate/name lookups (2 queries total) instead of 2 per site (#81).
+    delegates, names = await _batch_project_prefetch(session, [site for site, _r in rows])
+    items = [
+        await _queue_item(session, site, review, prefetched={
+            "delegate": delegates.get(site.id),
+            "submitted_by_name": names.get(site.submitted_by, ""),
+        })
+        for (site, review) in rows
+    ]
+    return ProjectQueueResponse(items=items, total=len(items))
+
+
+async def svc_nso_handover_queue(
+    session: AsyncSession, *, tenant_id: str | UUID,
+) -> ProjectQueueResponse:
+    """NSO Handover tab — project-completed sites awaiting the supervisor's push
+    to NSO (admin-confirmed → project done, not yet pushed)."""
+    rows = (await session.execute(
+        select(models.Site, models.ProjectReview)
+        .join(models.ProjectReview, models.ProjectReview.site_id == models.Site.id)
+        .where(
+            models.Site.tenant_id == tenant_id,
+            models.ProjectReview.project_status == "done",
+            models.ProjectReview.nso_status == "pending",
+        )
+        .order_by(models.ProjectReview.project_completed_at.desc())
+    )).all()
+    delegates, names = await _batch_project_prefetch(session, [site for site, _r in rows])
+    items = [
+        await _queue_item(session, site, review, prefetched={
+            "delegate": delegates.get(site.id),
+            "submitted_by_name": names.get(site.submitted_by, ""),
+        })
+        for (site, review) in rows
+    ]
+    return ProjectQueueResponse(items=items, total=len(items))
+
+
+async def svc_push_to_nso(
+    session: AsyncSession, *, tenant_id: str | UUID, actor: dict, site_id: str | UUID,
+) -> ProjectStateResponse:
+    """Supervisor pushes a project-completed site from the NSO Handover tab into
+    NSO, opening the NSO record directly at stage three."""
+    from app.services import nso_service  # local import avoids an import cycle
+    if not _is_supervisor(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can push to NSO.")
+    async with transaction(session):
+        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        review = await _fetch_review_or_create(session, site=site)
+        if review.project_status != "done":
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Project is not complete yet.")
+        if review.nso_status == "pushed":
+            raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail="Site is already pushed to NSO.")
+        await nso_service.svc_open_nso_at_stage_three(session, site=site, project=review)
+        review.nso_status = "pushed"
+        review.pushed_to_nso_at = datetime.now(timezone.utc)
+        await write_audit_event(
+            session,
+            tenant_id=tenant_id,
+            site_id=site.id,
+            actor_id=actor["sub"],
+            actor_name=actor.get("name"),
+            action="project_pushed_to_nso",
+            detail="Pushed from NSO Handover tab — NSO opened at stage three",
+        )
+        return await _build_response(session, site, review)
+
+
+async def svc_quality_audit_admin_queue(
+    session: AsyncSession, *, tenant_id: str | UUID,
+) -> ProjectQueueResponse:
+    """Sites awaiting business_admin quality-audit confirmation (supervisor-approved)."""
+    rows = (await session.execute(
+        select(models.Site, models.ProjectReview)
+        .join(models.ProjectReview, models.ProjectReview.site_id == models.Site.id)
+        .where(
+            models.Site.tenant_id == tenant_id,
+            models.ProjectReview.quality_audit_status == "supervisor_approved",
+        )
+        .order_by(models.ProjectReview.quality_audit_supervisor_approved_at.asc())
+    )).all()
     delegates, names = await _batch_project_prefetch(session, [site for site, _r in rows])
     items = [
         await _queue_item(session, site, review, prefetched={

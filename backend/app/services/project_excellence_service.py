@@ -1,15 +1,20 @@
-"""Project Excellence service — budget tracking module that opens after project completion.
+"""Project Excellence service — the post-GFC budget phase.
 
-The module owns the 11-item budget review flow (moved from the project module).
-It unlocks when sites.project_status = 'done'.
+Project Excellence owns the ``gfc`` phase of the SHARED site budget
+(``site_budgets`` / ``site_budget_items`` via :mod:`app.services.budget_service`).
+It unlocks the moment Design GFC is approved (``sites.design_status='approved'``),
+*before* project execution — the approved budget is then shown read-only inside
+the Project module. Flow: supervisor delegates (or self) → executive fills the 11
+items → supervisor review → business_admin review → approved.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -19,31 +24,18 @@ from app.domain.schemas.project_excellence import (
     AdminBudgetReviewRequest,
     PEBudgetAdminQueueResponse,
     PEBudgetItemOut,
-    PEDelegationsResponse,
     PEQueueItem,
     PEQueueResponse,
     PEStateResponse,
     ReviewRequest,
     SavePEBudgetRequest,
 )
-from app.services._common import fetch_site_or_404, fetch_user_name, fetch_user_names
+from app.services import budget_service
+from app.services._common import fetch_site_or_404, fetch_user_name
 from app.services.audit_service import write_audit_event
-from app.services.delegation_service import svc_assigned_sites, svc_is_delegated
+from app.services.delegation_service import svc_is_delegated
 
-
-_BUDGET_LABELS = (
-    "Professional Fees",
-    "HVAC",
-    "Furniture, Light & Planters",
-    "Civil & Interiors",
-    "Kitchen Equipment",
-    "Branding",
-    "Crockery & Small Equipments",
-    "Utilities",
-    "Licencing",
-    "BD Cost",
-    "Misc",
-)
+_PHASE = budget_service.GFC
 
 
 def _is_supervisor(actor: dict) -> bool:
@@ -55,11 +47,25 @@ def _is_business_admin(actor: dict) -> bool:
 
 
 def _assert_pe_unlocked(site: models.Site) -> None:
-    if (site.project_status or "pending") != "done":
+    if (site.design_status or "pending") != "approved":
         raise HTTPException(
             status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Project Excellence is locked until the Project module is completed.",
+            detail="Project Excellence is locked until Design GFC is approved.",
         )
+
+
+def _excellence_status(budget: Optional[models.SiteBudget], *, has_delegate: bool) -> str:
+    """Derive the dashboard 'excellence' chip from the shared budget state."""
+    status = budget.status if budget else "draft"
+    if status == "approved":
+        return "approved"
+    if status in {"pending_supervisor", "pending_admin"}:
+        return "budgeting"
+    if budget is not None and budget.budget_total is not None:
+        return "budgeting"
+    if has_delegate or (budget is not None and budget.allocated_to is not None):
+        return "allocated"
+    return "pending"
 
 
 async def _active_pe_delegate(
@@ -79,52 +85,21 @@ async def _active_pe_delegate(
     return (row[0], row[1], row[2]) if row else None
 
 
-async def _fetch_review_or_none(
-    session: AsyncSession, *, site_id: str | UUID,
-) -> Optional[models.ProjectExcellenceReview]:
-    return (await session.execute(
-        select(models.ProjectExcellenceReview).where(
-            models.ProjectExcellenceReview.site_id == site_id
+async def _budget_item_out(
+    session: AsyncSession, *, budget: Optional[models.SiteBudget],
+) -> list[PEBudgetItemOut]:
+    if budget is None:
+        return []
+    items = await budget_service.budget_items(session, budget_id=budget.id, tenant_id=budget.tenant_id)
+    return [
+        PEBudgetItemOut(
+            id=str(row.id),
+            idx=row.idx,
+            label=row.label,
+            amount=float(row.amount) if row.amount is not None else None,
         )
-    )).scalar_one_or_none()
-
-
-async def _fetch_review_or_create(
-    session: AsyncSession, *, site: models.Site,
-) -> models.ProjectExcellenceReview:
-    review = await _fetch_review_or_none(session, site_id=site.id)
-    if review is not None:
-        return review
-    review = models.ProjectExcellenceReview(
-        tenant_id=site.tenant_id,
-        site_id=site.id,
-        excellence_status="pending",
-        current_stage="budget",
-        budget_status="draft",
-    )
-    session.add(review)
-    await session.flush()
-    return review
-
-
-async def _budget_items(
-    session: AsyncSession, *, site_id: str | UUID,
-) -> list[models.ProjectExcellenceItem]:
-    rows = (await session.execute(
-        select(models.ProjectExcellenceItem)
-        .where(models.ProjectExcellenceItem.site_id == site_id)
-        .order_by(models.ProjectExcellenceItem.idx.asc())
-    )).scalars().all()
-    return list(rows)
-
-
-def _budget_item_out(row: models.ProjectExcellenceItem) -> PEBudgetItemOut:
-    return PEBudgetItemOut(
-        id=str(row.id),
-        idx=row.idx,
-        label=row.label,
-        amount=float(row.amount) if row.amount is not None else None,
-    )
+        for row in items
+    ]
 
 
 async def _batch_pe_prefetch(
@@ -160,38 +135,31 @@ async def _batch_pe_prefetch(
     return delegates, names
 
 
-async def _queue_item(
-    session: AsyncSession,
+def _queue_item(
     site: models.Site,
-    review: Optional[models.ProjectExcellenceReview],
+    budget: Optional[models.SiteBudget],
     *,
-    prefetched: Optional[dict] = None,
+    delegate: Optional[tuple],
+    submitted_by_name: Optional[str],
 ) -> PEQueueItem:
-    if prefetched is None:
-        delegate = await _active_pe_delegate(session, site_id=site.id)
-        submitted_by_name = await fetch_user_name(session, site.submitted_by)
-    else:
-        delegate = prefetched.get("delegate")
-        submitted_by_name = prefetched.get("submitted_by_name")
     return PEQueueItem(
         site_id=str(site.id),
         site_code=site.ca_code or site.code or "",
         site_name=site.name,
         city=site.city,
-        project_status=site.project_status or "done",
-        excellence_status=(review.excellence_status if review else "pending"),
-        budget_status=(review.budget_status if review else "draft"),
+        project_status=site.project_status or "pending",
+        excellence_status=_excellence_status(budget, has_delegate=delegate is not None),
+        budget_status=(budget.status if budget else "draft"),
         allocated_to_name=(delegate[1] if delegate else None),
         submitted_by_name=submitted_by_name,
-        budget_total=float(review.budget_total) if review and review.budget_total is not None else None,
+        budget_total=float(budget.budget_total) if budget and budget.budget_total is not None else None,
     )
 
 
 async def _build_response(
-    session: AsyncSession, site: models.Site, review: models.ProjectExcellenceReview,
+    session: AsyncSession, site: models.Site, budget: models.SiteBudget,
 ) -> PEStateResponse:
     delegate = await _active_pe_delegate(session, site_id=site.id)
-    items = await _budget_items(session, site_id=site.id)
     return PEStateResponse(
         site_id=str(site.id),
         site_code=site.ca_code or site.code or "",
@@ -200,20 +168,20 @@ async def _build_response(
         tenant_id=str(site.tenant_id),
         submitted_by_name=await fetch_user_name(session, site.submitted_by),
         site_status=site.status,
-        project_status=site.project_status or "done",
-        excellence_status=review.excellence_status,
-        current_stage=review.current_stage,
-        allocated_to=str(review.allocated_to) if review.allocated_to else None,
+        project_status=site.project_status or "pending",
+        excellence_status=_excellence_status(budget, has_delegate=delegate is not None),
+        current_stage="done" if budget.status == "approved" else "budget",
+        allocated_to=str(budget.allocated_to) if budget.allocated_to else None,
         allocated_to_name=(delegate[1] if delegate else None),
-        budget_status=review.budget_status,
-        budget_total=float(review.budget_total) if review.budget_total is not None else None,
-        total_indoor_area_sqft=float(review.total_indoor_area_sqft) if review.total_indoor_area_sqft is not None else None,
-        total_area_sqft=float(review.total_area_sqft) if review.total_area_sqft is not None else None,
-        covers=int(review.covers) if review.covers is not None else None,
-        budget_items=[_budget_item_out(item) for item in items],
-        budget_supervisor_comments=review.budget_supervisor_comments,
-        budget_admin_comments=review.budget_admin_comments,
-        updated_at=review.updated_at,
+        budget_status=budget.status,
+        budget_total=float(budget.budget_total) if budget.budget_total is not None else None,
+        total_indoor_area_sqft=float(budget.total_indoor_area_sqft) if budget.total_indoor_area_sqft is not None else None,
+        total_area_sqft=float(budget.total_area_sqft) if budget.total_area_sqft is not None else None,
+        covers=int(budget.covers) if budget.covers is not None else None,
+        budget_items=await _budget_item_out(session, budget=budget),
+        budget_supervisor_comments=budget.supervisor_comments,
+        budget_admin_comments=budget.admin_comments,
+        updated_at=budget.updated_at,
     )
 
 
@@ -250,14 +218,15 @@ async def svc_pe_queue(
 ) -> PEQueueResponse:
     async with transaction(session):
         stmt = (
-            select(models.Site, models.ProjectExcellenceReview)
+            select(models.Site, models.SiteBudget)
             .outerjoin(
-                models.ProjectExcellenceReview,
-                models.ProjectExcellenceReview.site_id == models.Site.id,
+                models.SiteBudget,
+                (models.SiteBudget.site_id == models.Site.id)
+                & (models.SiteBudget.phase == _PHASE),
             )
             .where(
                 models.Site.tenant_id == tenant_id,
-                models.Site.project_status == "done",
+                models.Site.design_status == "approved",
             )
         )
         if restrict_to_site_ids is not None:
@@ -266,16 +235,15 @@ async def svc_pe_queue(
             stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
         rows = (await session.execute(stmt.order_by(models.Site.updated_at.asc()))).all()
 
-        delegates, names = await _batch_pe_prefetch(session, [site for site, _r in rows])
-        items: list[PEQueueItem] = []
-        for site, review in rows:
-            items.append(await _queue_item(
-                session, site, review,
-                prefetched={
-                    "delegate": delegates.get(site.id),
-                    "submitted_by_name": names.get(site.submitted_by, ""),
-                },
-            ))
+        delegates, names = await _batch_pe_prefetch(session, [site for site, _b in rows])
+        items = [
+            _queue_item(
+                site, budget,
+                delegate=delegates.get(site.id),
+                submitted_by_name=names.get(site.submitted_by, ""),
+            )
+            for site, budget in rows
+        ]
         return PEQueueResponse(items=items, total=len(items))
 
 
@@ -285,8 +253,8 @@ async def svc_get_pe(
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_pe_unlocked(site)
-        review = await _fetch_review_or_create(session, site=site)
-        return await _build_response(session, site, review)
+        budget = await budget_service.fetch_or_create_budget(session, site=site, phase=_PHASE)
+        return await _build_response(session, site, budget)
 
 
 async def svc_list_pe_delegations_for_site(
@@ -369,10 +337,8 @@ async def svc_allocate_pe(
             notes=(notes or "").strip() or None,
         )
         session.add(row)
-        review = await _fetch_review_or_create(session, site=site)
-        review.allocated_to = delegate.id
-        review.excellence_status = "allocated"
-        review.current_stage = "budget"
+        budget = await budget_service.fetch_or_create_budget(session, site=site, phase=_PHASE)
+        budget.allocated_to = delegate.id
         site.project_excellence_status = "allocated"
         await write_audit_event(
             session,
@@ -383,7 +349,7 @@ async def svc_allocate_pe(
             action="pe_allocated",
             detail=f"delegate={delegate.email}",
         )
-        return await _build_response(session, site, review)
+        return await _build_response(session, site, budget)
 
 
 async def svc_revoke_pe_delegation(
@@ -396,7 +362,6 @@ async def svc_revoke_pe_delegation(
 ) -> OkResponse:
     if not _is_supervisor(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project excellence supervisor can revoke.")
-    from datetime import datetime, timezone
     async with transaction(session):
         row = (await session.execute(
             select(models.SiteDelegation).where(
@@ -434,40 +399,26 @@ async def svc_save_pe_budget(
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_pe_unlocked(site)
         await _assert_can_work_pe(session, tenant_id=tenant_id, actor=actor, site_id=site.id)
-        review = await _fetch_review_or_create(session, site=site)
-        if review.budget_status not in {"draft", "rejected"}:
+        budget = await budget_service.fetch_or_create_budget(session, site=site, phase=_PHASE)
+        if budget.status not in {"draft", "rejected"}:
             raise HTTPException(
                 status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Budget is already {review.budget_status}.",
+                detail=f"Budget is already {budget.status}.",
             )
 
-        labels = {item.idx: (item.label or _BUDGET_LABELS[item.idx - 1]) for item in body.items}
+        labels = {item.idx: item.label for item in body.items if item.label}
         amounts = {item.idx: item.amount for item in body.items}
-        await session.execute(
-            delete(models.ProjectExcellenceItem).where(models.ProjectExcellenceItem.site_id == site.id)
+        total = await budget_service.replace_budget_items(
+            session, budget=budget, amounts=amounts, labels=labels,
         )
-        total = 0.0
-        for idx in range(1, len(_BUDGET_LABELS) + 1):
-            amount = amounts.get(idx)
-            if amount is not None:
-                total += float(amount)
-            session.add(models.ProjectExcellenceItem(
-                tenant_id=tenant_id,
-                site_id=site.id,
-                idx=idx,
-                label=labels.get(idx, _BUDGET_LABELS[idx - 1]),
-                amount=amount,
-            ))
-        review.budget_total = total
-        review.total_indoor_area_sqft = body.total_indoor_area_sqft
-        review.total_area_sqft = body.total_area_sqft
-        review.covers = body.covers
-        review.excellence_status = "budgeting"
+        budget.total_indoor_area_sqft = body.total_indoor_area_sqft
+        budget.total_area_sqft = body.total_area_sqft
+        budget.covers = body.covers
         site.project_excellence_status = "budgeting"
         if body.action == "submit":
-            review.budget_status = "pending_admin" if _is_supervisor(actor) else "pending_supervisor"
+            budget.status = "pending_admin" if _is_supervisor(actor) else "pending_supervisor"
         else:
-            review.budget_status = "draft"
+            budget.status = "draft"
         await write_audit_event(
             session,
             tenant_id=tenant_id,
@@ -475,10 +426,10 @@ async def svc_save_pe_budget(
             actor_id=actor["sub"],
             actor_name=actor.get("name"),
             action="pe_budget_saved" if body.action == "save" else "pe_budget_submitted",
-            detail=f"total={total} status={review.budget_status}",
+            detail=f"total={total} status={budget.status}",
         )
         await session.flush()
-        return await _build_response(session, site, review)
+        return await _build_response(session, site, budget)
 
 
 async def svc_review_pe_budget(
@@ -493,14 +444,14 @@ async def svc_review_pe_budget(
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project excellence supervisor can review budgets.")
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        review = await _fetch_review_or_create(session, site=site)
-        if review.budget_status != "pending_supervisor":
+        budget = await budget_service.fetch_or_create_budget(session, site=site, phase=_PHASE)
+        if budget.status != "pending_supervisor":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Budget is not awaiting supervisor.")
         if body.decision == "approve":
-            review.budget_status = "pending_admin"
+            budget.status = "pending_admin"
         else:
-            review.budget_status = "rejected"
-            review.budget_supervisor_comments = (body.comments or "").strip() or "Rejected by supervisor."
+            budget.status = "rejected"
+            budget.supervisor_comments = (body.comments or "").strip() or "Rejected by supervisor."
         await write_audit_event(
             session,
             tenant_id=tenant_id,
@@ -510,28 +461,33 @@ async def svc_review_pe_budget(
             action="pe_budget_supervisor_reviewed",
             detail=f"decision={body.decision}",
         )
-        return await _build_response(session, site, review)
+        return await _build_response(session, site, budget)
 
 
 async def svc_pe_budget_admin_queue(
     session: AsyncSession, *, tenant_id: str | UUID,
 ) -> PEBudgetAdminQueueResponse:
     rows = (await session.execute(
-        select(models.Site, models.ProjectExcellenceReview)
-        .join(models.ProjectExcellenceReview, models.ProjectExcellenceReview.site_id == models.Site.id)
+        select(models.Site, models.SiteBudget)
+        .join(
+            models.SiteBudget,
+            (models.SiteBudget.site_id == models.Site.id)
+            & (models.SiteBudget.phase == _PHASE),
+        )
         .where(
             models.Site.tenant_id == tenant_id,
-            models.ProjectExcellenceReview.budget_status == "pending_admin",
+            models.SiteBudget.status == "pending_admin",
         )
-        .order_by(models.ProjectExcellenceReview.updated_at.asc())
+        .order_by(models.SiteBudget.updated_at.asc())
     )).all()
-    delegates, names = await _batch_pe_prefetch(session, [site for site, _r in rows])
+    delegates, names = await _batch_pe_prefetch(session, [site for site, _b in rows])
     items = [
-        await _queue_item(session, site, review, prefetched={
-            "delegate": delegates.get(site.id),
-            "submitted_by_name": names.get(site.submitted_by, ""),
-        })
-        for (site, review) in rows
+        _queue_item(
+            site, budget,
+            delegate=delegates.get(site.id),
+            submitted_by_name=names.get(site.submitted_by, ""),
+        )
+        for (site, budget) in rows
     ]
     return PEBudgetAdminQueueResponse(items=items, total=len(items))
 
@@ -548,17 +504,16 @@ async def svc_admin_review_pe_budget(
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a business admin can review project excellence budgets.")
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        review = await _fetch_review_or_create(session, site=site)
-        if review.budget_status != "pending_admin":
+        budget = await budget_service.fetch_or_create_budget(session, site=site, phase=_PHASE)
+        if budget.status != "pending_admin":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Budget is not awaiting admin.")
         if body.decision == "approve":
-            review.budget_status = "approved"
-            review.excellence_status = "approved"
-            review.current_stage = "done"
+            budget.status = "approved"
+            budget.approved_at = datetime.now(timezone.utc)
             site.project_excellence_status = "approved"
         else:
-            review.budget_status = "rejected"
-            review.budget_admin_comments = (body.comments or "").strip() or "Rejected by business admin."
+            budget.status = "rejected"
+            budget.admin_comments = (body.comments or "").strip() or "Rejected by business admin."
         await write_audit_event(
             session,
             tenant_id=tenant_id,
@@ -568,17 +523,17 @@ async def svc_admin_review_pe_budget(
             action="pe_budget_admin_reviewed",
             detail=f"decision={body.decision}",
         )
-        return await _build_response(session, site, review)
+        return await _build_response(session, site, budget)
 
 
 async def svc_get_pe_budget_admin_detail(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
 ) -> PEStateResponse:
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-    review = await _fetch_review_or_none(session, site_id=site.id)
-    if review is None:
+    budget = await budget_service.fetch_budget(session, site_id=site.id, phase=_PHASE, tenant_id=tenant_id)
+    if budget is None:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,
             detail="Project Excellence budget details are not available for this site.",
         )
-    return await _build_response(session, site, review)
+    return await _build_response(session, site, budget)

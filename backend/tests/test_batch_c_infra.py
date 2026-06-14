@@ -242,11 +242,11 @@ async def test_loi_upload_runs_outside_transaction(make_session, fake_result, mo
     assert captured["in_txn"] is False
 
 
-async def test_quality_audit_upload_runs_outside_transaction(make_session, fake_result, monkeypatch):
-    captured = {}
-
-    async def fake_upload(*, path, body, content_type):
-        captured["in_txn"] = sess.in_transaction()
+async def test_submit_inspection_date_sets_submitted(make_session, monkeypatch):
+    # Quality audit is now a calendar DATE (no document upload): the executive
+    # records the inspection date, which moves the QA to 'submitted' for the
+    # supervisor -> business_admin two-tier sign-off.
+    from app.domain.schemas.project import MilestoneRequest
 
     async def _noop(*a, **k):
         return None
@@ -254,6 +254,10 @@ async def test_quality_audit_upload_runs_outside_transaction(make_session, fake_
     review = SimpleNamespace(
         mid_project_visit_date=date(2026, 6, 1), inspection_date=None, quality_audit_status=None,
     )
+    site = SimpleNamespace(id=uuid4(), tenant_id=uuid4())
+
+    async def _fetch_site(*a, **k):
+        return site
 
     async def _fetch_review(*a, **k):
         return review
@@ -261,19 +265,17 @@ async def test_quality_audit_upload_runs_outside_transaction(make_session, fake_
     async def _build(*a, **k):
         return "OK"
 
-    monkeypatch.setattr(project_service, "upload_bytes", fake_upload)
+    monkeypatch.setattr(project_service, "fetch_site_or_404", _fetch_site)
     monkeypatch.setattr(project_service, "write_audit_event", _noop)
     monkeypatch.setattr(project_service, "_assert_can_work_project", _noop)
     monkeypatch.setattr(project_service, "_fetch_review_or_create", _fetch_review)
     monkeypatch.setattr(project_service, "_build_response", _build)
 
-    site = SimpleNamespace(id=uuid4(), tenant_id=uuid4())
-    sess = make_session(fake_result(scalar=site), fake_result(scalar=site))
-
-    out = await project_service.svc_submit_quality_audit_report(
+    sess = make_session()
+    out = await project_service.svc_submit_inspection_date(
         sess, tenant_id=site.tenant_id, actor={"sub": "u", "name": "U"}, site_id=site.id,
-        filename="qa.pdf", content_type="application/pdf", file_bytes=b"x",
-        inspection_date=date(2026, 6, 2),
+        body=MilestoneRequest(value=date(2026, 6, 2)),
     )
-    assert captured["in_txn"] is False
     assert out == "OK"
+    assert review.inspection_date == date(2026, 6, 2)
+    assert review.quality_audit_status == "submitted"

@@ -145,6 +145,38 @@ async def _fetch_nso_or_create(
     return row
 
 
+async def svc_open_nso_at_stage_three(
+    session: AsyncSession,
+    *,
+    site: models.Site,
+    project: Optional[models.ProjectReview] = None,
+) -> models.NsoReview:
+    """Open (or advance) the NSO record at stage three — called by the Project
+    module when its NSO-Handover tab pushes a project-completed site in. The
+    rest of the NSO flow (stage-three fill → final approval → launch → BD review
+    loop) is unchanged."""
+    row = await _fetch_nso_or_create(session, site=site)
+    if row.handover_pushed_at is None:
+        now = datetime.now(timezone.utc)
+        row.handover_pushed_at = now
+        # The project handover implicitly satisfies stage 1 (CA/token approval) and
+        # stage 2 (project-initiation approval) — stamp their completion so the NSO
+        # audit trail is consistent (the record opens directly at stage three).
+        if row.stage_one_completed_at is None:
+            row.stage_one_completed_at = now
+        if row.stage_two_completed_at is None:
+            row.stage_two_completed_at = now
+    if project is None:
+        project = (await session.execute(
+            select(models.ProjectReview).where(models.ProjectReview.site_id == site.id)
+        )).scalar_one_or_none()
+    licensing = (await session.execute(
+        select(models.SiteLicensing).where(models.SiteLicensing.site_id == site.id)
+    )).scalar_one_or_none()
+    _sync_rollups(site, row, project, licensing)
+    return row
+
+
 def _trigger_one_unlocked(site: models.Site) -> bool:
     return (site.finance_status or "pending") == "approved" and bool(site.ca_code)
 
@@ -233,6 +265,11 @@ def _compute_stage(
 ) -> str:
     if row.nso_status == "complete":
         return "done"
+    # Handed over from the Project module's NSO-Handover tab → opens directly at
+    # stage three. Stage 1 (CA/token approval) and stage 2 (project-initiation
+    # approval) are already satisfied for a project-completed site.
+    if row.handover_pushed_at is not None:
+        return "final" if _stage_three_complete(row) else "stage_three"
     if not _stage_one_complete(row):
         return "stage_one"
     if not _stage_two_unlocked(row, project) or not _legal_licensing_complete(site, licensing):

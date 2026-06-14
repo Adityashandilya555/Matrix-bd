@@ -71,6 +71,7 @@ class AdminSiteOut(BaseModel):
     nso_status: Optional[str] = None
     nso_current_stage: Optional[str] = None
     launch_status: Optional[str] = None
+    financial_closure_status: Optional[str] = None
     is_launched: bool = False
     launched_at: Optional[datetime] = None
     ca_code: Optional[str] = None

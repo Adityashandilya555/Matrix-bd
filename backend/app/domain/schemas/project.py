@@ -19,6 +19,13 @@ MilestoneField = Literal[
 ]
 
 
+class ProjectBudgetLine(BaseModel):
+    """A read-only line from the approved post-GFC budget (Project Excellence)."""
+    idx: int
+    label: Optional[str] = None
+    amount: Optional[float] = None
+
+
 class ProjectQueueItem(BaseModel):
     site_id: str
     site_code: str
@@ -30,6 +37,7 @@ class ProjectQueueItem(BaseModel):
     # Drives the Pipeline vs Sites split: a site moves to the "Sites" tab once
     # the executive has uploaded the quality-audit doc (status leaves 'pending').
     quality_audit_status: str = "pending"
+    inspection_date: Optional[date] = None
     allocated_to_name: Optional[str] = None
     submitted_by_name: Optional[str] = None
 
@@ -62,11 +70,19 @@ class ProjectStateResponse(BaseModel):
     inspection_date: Optional[date] = None
     quality_audit_status: str
     quality_audit_comments: Optional[str] = None
-    quality_audit_download_url: Optional[str] = None
+    # Quality audit two-tier sign-off (calendar date, no document upload):
+    # executive submits inspection_date → supervisor approves → business_admin confirms.
+    quality_audit_supervisor_approved_at: Optional[datetime] = None
+    quality_audit_admin_confirmed_at: Optional[datetime] = None
+    quality_audit_admin_notes: Optional[str] = None
     final_completion_date: Optional[date] = None
     project_completed_at: Optional[datetime] = None
     nso_status: str = "pending"
     pushed_to_nso_at: Optional[datetime] = None
+    # Read-only post-GFC budget (owned by Project Excellence / site_budgets).
+    budget_status: str = "draft"
+    budget_total: Optional[float] = None
+    budget_items: list["ProjectBudgetLine"] = Field(default_factory=list)
     updated_at: datetime
 
 
@@ -95,6 +111,11 @@ class AllocateProjectRequest(BaseModel):
 class ReviewRequest(BaseModel):
     decision: Decision
     comments: Optional[str] = None
+
+
+class AdminConfirmQualityAuditRequest(ReviewRequest):
+    # business_admin's quality-audit confirmation (with optional notes).
+    admin_notes: Optional[str] = None
 
 
 class MilestoneRequest(BaseModel):

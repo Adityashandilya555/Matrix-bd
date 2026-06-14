@@ -103,6 +103,32 @@ async def recipients_for_design_supervisors(
     return [row[0] for row in rows]
 
 
+async def recipients_for_module_supervisors(
+    session: AsyncSession, *, tenant_id: str | UUID, module: str,
+) -> list[UUID]:
+    """Supervisors whose module membership is `module` in this tenant.
+
+    Generic form of recipients_for_legal/design_supervisors — used to notify the
+    next module's supervisors on a cross-module hand-off (e.g. Design GFC →
+    Project Excellence).
+    """
+    rows = await session.execute(
+        text(
+            """
+            SELECT u.id
+              FROM user_module_memberships m
+              JOIN users u ON u.id = m.user_id
+             WHERE m.tenant_id  = :tenant_id
+               AND m.module     = :module
+               AND m.role_in_module = 'supervisor'
+               AND u.is_active  = true
+            """
+        ),
+        {"tenant_id": str(tenant_id), "module": module},
+    )
+    return [row[0] for row in rows]
+
+
 async def recipients_for_business_admins(
     session: AsyncSession, *, tenant_id: str | UUID,
 ) -> list[UUID]:

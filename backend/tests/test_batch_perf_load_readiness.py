@@ -39,6 +39,7 @@ def _fake_site(i: int) -> SimpleNamespace:
         assigned_to=None,
         status="legal_rejected",
         design_status="pending",
+        project_status="pending",
         legal_dd_status="negative",
         agreement_status="pending",
         licensing_status="pending",
@@ -90,15 +91,17 @@ async def test_verify_password_async_runs_off_the_event_loop_thread(monkeypatch)
 # ── #81 — project budget-admin + NSO queues are not N+1 ────────────────────
 
 async def test_budget_admin_queue_batches_lookups(make_session, fake_result):
-    from app.services import project_service
+    # The budget admin queue moved from Project → Project Excellence (#206); the
+    # no-N+1 batching contract still holds in its new home.
+    from app.services import project_excellence_service
 
     rows = [(_fake_site(i), None) for i in range(3)]
     sess = make_session(
-        fake_result(all_rows=rows),      # outer sites+reviews
+        fake_result(all_rows=rows),      # outer sites+budgets
         fake_result(all_rows=[]),        # batched delegates
         fake_result(all_rows=[]),        # batched names
     )
-    out = await project_service.svc_budget_admin_queue(sess, tenant_id="t1")
+    out = await project_excellence_service.svc_pe_budget_admin_queue(sess, tenant_id="t1")
     assert out.total == 3
     # 1 outer + 1 delegate-batch + 1 name-batch = 3, regardless of N (was 1+2N=7).
     assert len(sess.executed) == 3

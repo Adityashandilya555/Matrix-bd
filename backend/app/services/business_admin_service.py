@@ -263,6 +263,7 @@ async def list_admin_sites(
             "licensing_status": site.licensing_status,
             "finance_status": site.finance_status,
             "design_status": site.design_status,
+            "financial_closure_status": site.financial_closure_status,
             "is_launched": site.is_launched,
             "launched_at": site.launched_at,
             "finance_amount": site.finance_amount,
@@ -290,6 +291,7 @@ async def list_admin_sites(
     project_by_site = {}
     nso_by_site = {}
     launch_by_site = {}
+    budget_by_site = {}
     if site_ids:
         try:
             project_rows = (await session.execute(
@@ -299,7 +301,6 @@ async def list_admin_sites(
                 row.site_id: {
                     "project_status": row.project_status,
                     "current_stage": row.current_stage,
-                    "budget_status": row.budget_status,
                     "project_completed_at": row.project_completed_at,
                 }
                 for row in project_rows
@@ -335,6 +336,23 @@ async def list_admin_sites(
         except SQLAlchemyError:
             await session.rollback()
             launch_by_site = {}
+        try:
+            budget_rows = (await session.execute(
+                select(models.SiteBudget).where(
+                    models.SiteBudget.site_id.in_(site_ids),
+                    models.SiteBudget.phase == "gfc",
+                )
+            )).scalars().all()
+            budget_by_site = {
+                row.site_id: {
+                    "status": row.status,
+                    "total": float(row.budget_total) if row.budget_total is not None else None,
+                }
+                for row in budget_rows
+            }
+        except SQLAlchemyError:
+            await session.rollback()
+            budget_by_site = {}
 
     names: dict = {}
     if user_ids:
@@ -349,6 +367,7 @@ async def list_admin_sites(
         project = project_by_site.get(site["id"], {})
         nso = nso_by_site.get(site["id"], {})
         launch = launch_by_site.get(site["id"], {})
+        budget = budget_by_site.get(site["id"], {})
         created_at = site["created_at"] or site["updated_at"] or now
         updated_at = site["updated_at"] or site["created_at"] or now
         try:
@@ -373,9 +392,10 @@ async def list_admin_sites(
             "licensing_status": site["licensing_status"],
             "finance_status": site["finance_status"] or "pending",
             "design_status": site["design_status"] or "pending",
+            "financial_closure_status": site["financial_closure_status"] or "pending",
             "project_status": project.get("project_status", "pending"),
             "project_current_stage": project.get("current_stage"),
-            "project_budget_status": project.get("budget_status"),
+            "project_budget_status": budget.get("status"),
             "project_completed_at": project.get("project_completed_at"),
             "nso_status": nso.get("nso_status"),
             "nso_current_stage": nso.get("current_stage"),
