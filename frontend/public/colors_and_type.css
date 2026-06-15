@@ -13,95 +13,102 @@
    ------------------------------------------------------------- */
 :root {
   /* Background plane — cool airy off-white (Peach skyline) */
-  --zm-bg:            #F4F6FA;   /* cool light canvas */
-  --zm-bg-2:          #EDF1F7;
-  --zm-surface:       #FFFFFF;   /* clean white card */
-  --zm-surface-2:     #EFF3F9;
+  --zm-bg: #F4F6FA;
+  /* cool light canvas */
+  --zm-bg-2: #EDF1F7;
+  --zm-surface: #FFFFFF;
+  /* clean white card */
+  --zm-surface-2: #EFF3F9;
   --zm-surface-hover: #EAEFF6;
-  --zm-surface-sunken:#E4EAF2;
+  --zm-surface-sunken: #E4EAF2;
 
   /* Linework — slate-tinted */
-  --zm-line:          #E2E8F0;
-  --zm-line-strong:   #CBD5E1;
-  --zm-line-faint:    #EEF2F7;
+  --zm-line: #E2E8F0;
+  --zm-line-strong: #CBD5E1;
+  --zm-line-faint: #EEF2F7;
   /* Background grid — cool slate. Fine lines + a stronger coarse rhythm so
      the plane reads with depth and content surfaces float above it. */
-  --zm-grid:          rgba(30, 41, 59, 0.04);
-  --zm-grid-strong:   rgba(30, 41, 59, 0.06);
+  --zm-grid: rgba(30, 41, 59, 0.04);
+  --zm-grid-strong: rgba(30, 41, 59, 0.06);
 
   /* Text — slate ink */
-  --zm-fg:            #1E2A36;   /* slate ink */
-  --zm-fg-2:          #3B4855;
-  --zm-fg-3:          #6B7785;
-  --zm-fg-4:          #9AA6B2;
-  --zm-fg-inv:        #FFFFFF;
+  --zm-fg: #1E2A36;
+  /* slate ink */
+  --zm-fg-2: #3B4855;
+  --zm-fg-3: #6B7785;
+  --zm-fg-4: #9AA6B2;
+  --zm-fg-inv: #FFFFFF;
 
   /* Brand accent — Slate (primary action) */
-  --zm-accent:        #496580;
-  --zm-accent-hover:  #3B5269;
-  --zm-accent-press:  #2F4458;
-  --zm-accent-soft:   #E7EEF5;
-  --zm-accent-line:   #C3D1E0;
-  --zm-accent-on:     #FFFFFF;   /* foreground on accent surface */
+  --zm-accent: #496580;
+  --zm-accent-hover: #3B5269;
+  --zm-accent-press: #2F4458;
+  --zm-accent-soft: #E7EEF5;
+  --zm-accent-line: #C3D1E0;
+  --zm-accent-on: #FFFFFF;
+  /* foreground on accent surface */
   /* CTA button tokens — light mode mirrors --zm-accent. */
-  --zm-cta-bg:        #496580;
-  --zm-cta-bg-hover:  #3B5269;
-  --zm-cta-fg:        #FFFFFF;
+  --zm-cta-bg: #496580;
+  --zm-cta-bg-hover: #3B5269;
+  --zm-cta-fg: #FFFFFF;
 
   /* Brand palette — Peach skyline (categorical KPI fills / decoration) */
-  --zm-brand-peach:     #FFDBBB;
-  --zm-brand-blue:      #BADDFF;
-  --zm-brand-mint:      #BAFFF5;
-  --zm-brand-slate:     #496580;
-  --zm-brand-on-pastel: #1E2A36;   /* ink on peach/blue/mint fills */
-  --zm-brand-on-slate:  #FFFFFF;   /* text on the slate card */
+  --zm-brand-peach: #FFDBBB;
+  --zm-brand-blue: #BADDFF;
+  --zm-brand-mint: #BAFFF5;
+  --zm-brand-slate: #496580;
+  --zm-brand-on-pastel: #1E2A36;
+  /* ink on peach/blue/mint fills */
+  --zm-brand-on-slate: #FFFFFF;
+  /* text on the slate card */
 
   /* Data highlight — warm amber (peach family, AA-readable) */
-  --zm-copper:        #9A6321;
-  --zm-copper-hover:  #82531B;
-  --zm-copper-soft:   #FBEAD6;
-  --zm-copper-line:   #E8C49A;
+  --zm-copper: #9A6321;
+  --zm-copper-hover: #82531B;
+  --zm-copper-soft: #FBEAD6;
+  --zm-copper-line: #E8C49A;
 
   /* Secondary accent — Plum for state */
-  --zm-plum:          #6B4789;
-  --zm-plum-soft:     #ECE3F2;
+  --zm-plum: #6B4789;
+  --zm-plum-soft: #ECE3F2;
 
   /* Semantic */
-  --zm-success:       #15876B;
-  --zm-success-soft:  #DBF6EE;
-  --zm-warning:       #9A6321;
-  --zm-warning-soft:  #FBEAD6;
-  --zm-danger:        #C23B3B;
-  --zm-danger-soft:   #FBE1E0;
-  --zm-info:          #2D63B8;
-  --zm-info-soft:     #E3EEFB;
+  --zm-success: #15876B;
+  --zm-success-soft: #DBF6EE;
+  --zm-warning: #9A6321;
+  --zm-warning-soft: #FBEAD6;
+  --zm-danger: #C23B3B;
+  --zm-danger-soft: #FBE1E0;
+  --zm-info: #2D63B8;
+  --zm-info-soft: #E3EEFB;
 
   /* Stage colors — retuned to the palette, kept mutually distinct */
-  --zm-stage-draft:        #6B7785;
-  --zm-stage-shortlist:    #2D63B8;
-  --zm-stage-bd:           #496580;
-  --zm-stage-loi:          #9A6321;
-  --zm-stage-payment:      #15876B;
-  --zm-stage-legal:        #6B4789;
-  --zm-stage-handover:     #A2407C;
+  --zm-stage-draft: #6B7785;
+  --zm-stage-shortlist: #2D63B8;
+  --zm-stage-bd: #496580;
+  --zm-stage-loi: #9A6321;
+  --zm-stage-payment: #15876B;
+  --zm-stage-legal: #6B4789;
+  --zm-stage-handover: #A2407C;
 
   /* Layered glass shadows — cool slate */
-  --zm-shadow-1: 0 1px 0 rgba(30,41,59,0.03), 0 2px 6px rgba(30,41,59,0.06);
-  --zm-shadow-2: 0 1px 0 rgba(30,41,59,0.03), 0 8px 18px rgba(30,41,59,0.07), 0 1px 4px rgba(30,41,59,0.05);
-  --zm-shadow-3: 0 18px 42px rgba(30,41,59,0.12), 0 4px 12px rgba(30,41,59,0.06);
-  --zm-shadow-pop: 0 24px 60px rgba(30,41,59,0.20), 0 6px 18px rgba(30,41,59,0.10);
-  --zm-glass: 0 1px 0 rgba(255,255,255,0.7) inset, 0 1px 2px rgba(30,41,59,0.04), 0 8px 24px rgba(30,41,59,0.07);
-  --zm-ring-focus: 0 0 0 3px rgba(73,101,128,0.22);
+  --zm-shadow-1: 0 1px 0 rgba(30, 41, 59, 0.03), 0 2px 6px rgba(30, 41, 59, 0.06);
+  --zm-shadow-2: 0 1px 0 rgba(30, 41, 59, 0.03), 0 8px 18px rgba(30, 41, 59, 0.07), 0 1px 4px rgba(30, 41, 59, 0.05);
+  --zm-shadow-3: 0 18px 42px rgba(30, 41, 59, 0.12), 0 4px 12px rgba(30, 41, 59, 0.06);
+  --zm-shadow-pop: 0 24px 60px rgba(30, 41, 59, 0.20), 0 6px 18px rgba(30, 41, 59, 0.10);
+  --zm-glass: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 1px 2px rgba(30, 41, 59, 0.04), 0 8px 24px rgba(30, 41, 59, 0.07);
+  --zm-ring-focus: 0 0 0 3px rgba(73, 101, 128, 0.22);
 
   /* Glass token — used by frosted surfaces */
-  --zm-glass-bg: rgba(255,255,255,0.72);
-  --zm-glass-border: rgba(255,255,255,0.6);
+  --zm-glass-bg: rgba(255, 255, 255, 0.72);
+  --zm-glass-border: rgba(255, 255, 255, 0.6);
   --zm-glass-blur: blur(16px);
 
   /* Radii */
   --zm-r-1: 4px;
   --zm-r-2: 6px;
-  --zm-r-3: 10px;   /* default card / button */
+  --zm-r-3: 10px;
+  /* default card / button */
   --zm-r-4: 14px;
   --zm-r-5: 20px;
   --zm-r-pill: 999px;
@@ -118,105 +125,123 @@
   --zm-s-9: 96px;
 
   /* Motion */
-  --zm-ease:    cubic-bezier(0.2, 0.7, 0.2, 1);    /* default — soft, confident */
-  --zm-ease-out:cubic-bezier(0.16, 1, 0.3, 1);     /* gentle out */
-  --zm-ease-emp:cubic-bezier(0.32, 0.72, 0.18, 1); /* emphasis */
-  --zm-dur-1: 120ms;   /* hover */
-  --zm-dur-2: 200ms;   /* press / panel */
-  --zm-dur-3: 360ms;   /* layout shift */
-  --zm-dur-4: 520ms;   /* hero entry */
+  --zm-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  /* default — soft, confident */
+  --zm-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* gentle out */
+  --zm-ease-emp: cubic-bezier(0.32, 0.72, 0.18, 1);
+  /* emphasis */
+  --zm-dur-1: 120ms;
+  /* hover */
+  --zm-dur-2: 200ms;
+  /* press / panel */
+  --zm-dur-3: 360ms;
+  /* layout shift */
+  --zm-dur-4: 520ms;
+  /* hero entry */
 
-  /* Left rail — fixed deep-teal command rail. Intentionally the SAME in light
-     and dark themes (the brand plate already behaves this way), so the rail
-     reads as one continuous branded surface and never clashes with the canvas. */
-  --zm-sidebar-bg:        #0E3A3A;                    /* deep teal */
-  --zm-sidebar-fg:        #F5F2EC;                    /* active / brand text (cream) */
-  --zm-sidebar-fg-muted:  #B4CDC7;                    /* inactive item text */
-  --zm-sidebar-fg-faint:  #6E8C86;                    /* section labels */
-  --zm-sidebar-icon:      #7FA59E;                    /* inactive icon */
-  --zm-sidebar-accent:    #E0A659;                    /* copper active accent */
-  --zm-sidebar-active-bg: rgba(245,242,236,0.10);
-  --zm-sidebar-hover-bg:  rgba(245,242,236,0.06);
-  --zm-sidebar-line:      rgba(245,242,236,0.10);
+  /* Left rail — now matches the CTA new pipeline button color. */
+  --zm-sidebar-bg: #496580;
+  /* slate blue */
+  --zm-sidebar-fg: #F5F2EC;
+  /* active / brand text (cream) */
+  --zm-sidebar-fg-muted: #B9CADB;
+  /* inactive item text (slate-blue tinted) */
+  --zm-sidebar-fg-faint: #8BA3BA;
+  /* section labels (slate-blue tinted) */
+  --zm-sidebar-icon: #9EB7CD;
+  /* inactive icon (slate-blue tinted) */
+  --zm-sidebar-accent: #E0A659;
+  /* copper active accent */
+  --zm-sidebar-active-bg: rgba(245, 242, 236, 0.12);
+  --zm-sidebar-hover-bg: rgba(245, 242, 236, 0.07);
+  --zm-sidebar-line: rgba(245, 242, 236, 0.12);
 }
 
 /* -------------------------------------------------------------
    2. Color tokens — Deep Obsidian (dark, "command center")
    ------------------------------------------------------------- */
 [data-theme="dark"] {
-  --zm-bg:            #0B0B12;   /* deep ink, warm-tinted */
-  --zm-bg-2:          #11111A;
-  --zm-surface:       #16161F;   /* paper card on ink */
-  --zm-surface-2:     #1B1B28;
-  --zm-surface-hover: #1F1F2D;
-  --zm-surface-sunken:#0F0F18;
+  --zm-bg: #0B0B12;
+  /* deep ink, warm-tinted */
+  --zm-bg-2: #11111A;
+  --zm-surface: #16161F;
+  /* paper card on ink */
+  --zm-surface-2: #1B1B28;
+  --zm-surface-hover: #383869;
+  --zm-surface-sunken: #0F0F18;
 
-  --zm-line:          #28283A;
-  --zm-line-strong:   #3A3A50;
-  --zm-line-faint:    #1E1E2C;
-  --zm-grid:          rgba(238, 232, 220, 0.05);
-  --zm-grid-strong:   rgba(238, 232, 220, 0.085);
+  --zm-line: #28283A;
+  --zm-line-strong: #3A3A50;
+  --zm-line-faint: #1E1E2C;
+  --zm-grid: rgba(238, 232, 220, 0.05);
+  --zm-grid-strong: rgba(238, 232, 220, 0.085);
 
-  --zm-fg:            #EDE6D8;   /* warm platinum */
-  --zm-fg-2:          #C8C0B0;   /* lifted: ~10:1 on bg */
-  --zm-fg-3:          #9E9684;   /* lifted from #807868 → ~5.4:1 AA on bg */
-  --zm-fg-4:          #6E6757;   /* lifted from #524C40 → ~3.2:1 (non-text UI only) */
-  --zm-fg-inv:        #0B0B12;
+  --zm-fg: #EDE6D8;
+  /* warm platinum */
+  --zm-fg-2: #C8C0B0;
+  /* lifted: ~10:1 on bg */
+  --zm-fg-3: #9E9684;
+  /* lifted from #807868 → ~5.4:1 AA on bg */
+  --zm-fg-4: #6E6757;
+  /* lifted from #524C40 → ~3.2:1 (non-text UI only) */
+  --zm-fg-inv: #0B0B12;
 
   /* Brand accent — slate-blue (brand-consistent with the light Peach skyline) */
-  --zm-accent:        #8FB6DE;
-  --zm-accent-hover:  #A6C7E8;
-  --zm-accent-press:  #6F9CC9;
-  --zm-accent-soft:   rgba(143,182,222,0.14);
-  --zm-accent-line:   rgba(143,182,222,0.34);
-  --zm-accent-on:     #0B0B12;   /* dark ink on light slate-blue accent */
+  --zm-accent: #8FB6DE;
+  --zm-accent-hover: #A6C7E8;
+  --zm-accent-press: #6F9CC9;
+  --zm-accent-soft: rgba(143, 182, 222, 0.14);
+  --zm-accent-line: rgba(143, 182, 222, 0.34);
+  --zm-accent-on: #0B0B12;
+  /* dark ink on light slate-blue accent */
   /* CTA: slate-blue surface + dark ink text, distinctly "dark theme". */
-  --zm-cta-bg:        #8FB6DE;
-  --zm-cta-bg-hover:  #A6C7E8;
-  --zm-cta-fg:        #0B0B12;
+  --zm-cta-bg: #8FB6DE;
+  --zm-cta-bg-hover: #A6C7E8;
+  --zm-cta-fg: #0B0B12;
 
   /* Brand palette (dark) — tinted fills that read on dark surfaces */
-  --zm-brand-peach:     rgba(255,219,187,0.16);
-  --zm-brand-blue:      rgba(186,221,255,0.16);
-  --zm-brand-mint:      rgba(186,255,245,0.16);
-  --zm-brand-slate:     #2A3A4D;
+  --zm-brand-peach: rgba(255, 219, 187, 0.16);
+  --zm-brand-blue: rgba(186, 221, 255, 0.16);
+  --zm-brand-mint: rgba(186, 255, 245, 0.16);
+  --zm-brand-slate: #2A3A4D;
   --zm-brand-on-pastel: var(--zm-fg);
-  --zm-brand-on-slate:  #EDE6D8;
+  --zm-brand-on-slate: #EDE6D8;
 
-  --zm-copper:        #E0A659;
-  --zm-copper-hover:  #ECBA77;
-  --zm-copper-soft:   rgba(224,166,89,0.12);
-  --zm-copper-line:   rgba(224,166,89,0.32);
+  --zm-copper: #E0A659;
+  --zm-copper-hover: #ECBA77;
+  --zm-copper-soft: rgba(224, 166, 89, 0.12);
+  --zm-copper-line: rgba(224, 166, 89, 0.32);
 
-  --zm-plum:          #B197D2;
-  --zm-plum-soft:     rgba(177,151,210,0.14);
+  --zm-plum: #B197D2;
+  --zm-plum-soft: rgba(177, 151, 210, 0.14);
 
-  --zm-success:       #5BCB8C;
-  --zm-success-soft:  rgba(91,203,140,0.12);
-  --zm-warning:       #E0A659;
-  --zm-warning-soft:  rgba(224,166,89,0.12);
-  --zm-danger:        #ED7B7B;
-  --zm-danger-soft:   rgba(237,123,123,0.14);
-  --zm-info:          #7BA5F0;
-  --zm-info-soft:     rgba(123,165,240,0.14);
+  --zm-success: #5BCB8C;
+  --zm-success-soft: rgba(91, 203, 140, 0.12);
+  --zm-warning: #E0A659;
+  --zm-warning-soft: rgba(224, 166, 89, 0.12);
+  --zm-danger: #ED7B7B;
+  --zm-danger-soft: rgba(237, 123, 123, 0.14);
+  --zm-info: #7BA5F0;
+  --zm-info-soft: rgba(123, 165, 240, 0.14);
 
-  --zm-stage-draft:        #807868;
-  --zm-stage-shortlist:    #7BA5F0;
-  --zm-stage-bd:           #8FB6DE;
-  --zm-stage-loi:          #E0A659;
-  --zm-stage-payment:      #5BCB8C;
-  --zm-stage-legal:        #B197D2;
-  --zm-stage-handover:     #E090BC;
+  --zm-stage-draft: #807868;
+  --zm-stage-shortlist: #7BA5F0;
+  --zm-stage-bd: #8FB6DE;
+  --zm-stage-loi: #E0A659;
+  --zm-stage-payment: #5BCB8C;
+  --zm-stage-legal: #B197D2;
+  --zm-stage-handover: #E090BC;
 
-  --zm-shadow-1: 0 1px 0 rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.5);
-  --zm-shadow-2: 0 1px 0 rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.5);
-  --zm-shadow-3: 0 12px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(238,230,216,0.04);
-  --zm-shadow-pop: 0 24px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(238,230,216,0.06);
-  --zm-glass: 0 1px 0 rgba(255,255,255,0.04) inset, 0 12px 32px rgba(0,0,0,0.5);
-  --zm-ring-focus: 0 0 0 3px rgba(143,182,222,0.25);
+  --zm-shadow-1: 0 1px 0 rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.5);
+  --zm-shadow-2: 0 1px 0 rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.5);
+  --zm-shadow-3: 0 12px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(238, 230, 216, 0.04);
+  --zm-shadow-pop: 0 24px 60px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(238, 230, 216, 0.06);
+  --zm-glass: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 12px 32px rgba(0, 0, 0, 0.5);
+  --zm-ring-focus: 0 0 0 3px rgba(143, 182, 222, 0.25);
 
-  --zm-glass-bg: rgba(22,22,31,0.66);
-  --zm-glass-border: rgba(255,255,255,0.08);
+  --zm-glass-bg: rgba(22, 22, 31, 0.66);
+  --zm-glass-border: rgba(255, 255, 255, 0.08);
   --zm-glass-blur: blur(18px);
 }
 
@@ -225,46 +250,55 @@
    ------------------------------------------------------------- */
 :root {
   --zm-font-display: 'Plus Jakarta Sans', 'Space Grotesk', system-ui, sans-serif;
-  --zm-font-serif:   'Instrument Serif', 'Newsreader', Georgia, serif;
-  --zm-font-body:    'Inter', system-ui, -apple-system, sans-serif;
-  --zm-font-mono:    'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
+  --zm-font-serif: 'Instrument Serif', 'Newsreader', Georgia, serif;
+  --zm-font-body: 'Inter', system-ui, -apple-system, sans-serif;
+  --zm-font-mono: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
 
   /* Display sizes — for hero numbers, page titles */
-  --zm-fs-hero:    56px;
-  --zm-fs-h1:      40px;
-  --zm-fs-h2:      28px;
-  --zm-fs-h3:      20px;
-  --zm-fs-h4:      16px;
+  --zm-fs-hero: 56px;
+  --zm-fs-h1: 40px;
+  --zm-fs-h2: 28px;
+  --zm-fs-h3: 20px;
+  --zm-fs-h4: 16px;
 
   /* Body sizes */
-  --zm-fs-body:    14px;   /* default UI */
-  --zm-fs-lg:      16px;   /* paragraph */
-  --zm-fs-sm:      13px;   /* meta / dense table */
-  --zm-fs-xs:      12px;   /* eyebrow / label */
-  --zm-fs-2xs:     11px;   /* tag / micro */
+  --zm-fs-body: 14px;
+  /* default UI */
+  --zm-fs-lg: 16px;
+  /* paragraph */
+  --zm-fs-sm: 13px;
+  /* meta / dense table */
+  --zm-fs-xs: 12px;
+  /* eyebrow / label */
+  --zm-fs-2xs: 11px;
+  /* tag / micro */
 
   /* Mono sizes — for numeric data, ids, code */
-  --zm-fs-num-hero:48px;
-  --zm-fs-num-lg:  22px;
-  --zm-fs-num:     14px;
-  --zm-fs-num-sm:  12px;
+  --zm-fs-num-hero: 48px;
+  --zm-fs-num-lg: 22px;
+  --zm-fs-num: 14px;
+  --zm-fs-num-sm: 12px;
 
-  --zm-lh-tight:   1.12;
-  --zm-lh-snug:    1.28;
-  --zm-lh-normal:  1.5;
+  --zm-lh-tight: 1.12;
+  --zm-lh-snug: 1.28;
+  --zm-lh-normal: 1.5;
   --zm-lh-relaxed: 1.65;
 
   /* Display headlines get slight negative tracking; tags get wide tracking */
   --zm-tracking-tight: -0.02em;
-  --zm-tracking-snug:  -0.01em;
-  --zm-tracking-wide:   0.08em;
-  --zm-tracking-eyebrow:0.14em;
+  --zm-tracking-snug: -0.01em;
+  --zm-tracking-wide: 0.08em;
+  --zm-tracking-eyebrow: 0.14em;
 }
 
 /* -------------------------------------------------------------
    4. Semantic helpers (use as classes OR copy as inline styles)
    ------------------------------------------------------------- */
-.zm-hero, .zm-h1, .zm-h2, .zm-h3, .zm-h4 {
+.zm-hero,
+.zm-h1,
+.zm-h2,
+.zm-h3,
+.zm-h4 {
   font-family: var(--zm-font-display);
   color: var(--zm-fg);
   letter-spacing: var(--zm-tracking-tight);
@@ -272,20 +306,55 @@
   font-weight: 700;
   margin: 0;
 }
-.zm-hero { font-size: var(--zm-fs-hero); font-weight: 800; }
-.zm-h1   { font-size: var(--zm-fs-h1); }
-.zm-h2   { font-size: var(--zm-fs-h2); font-weight: 600; letter-spacing: var(--zm-tracking-snug); }
-.zm-h3   { font-size: var(--zm-fs-h3); font-weight: 600; letter-spacing: var(--zm-tracking-snug); line-height: var(--zm-lh-snug); }
-.zm-h4   { font-size: var(--zm-fs-h4); font-weight: 600; letter-spacing: 0;            line-height: var(--zm-lh-snug); }
 
-.zm-body, .zm-p {
-  font-family: var(--zm-font-body);
-  font-size:   var(--zm-fs-body);
-  line-height: var(--zm-lh-normal);
-  color:       var(--zm-fg-2);
+.zm-hero {
+  font-size: var(--zm-fs-hero);
+  font-weight: 800;
 }
-.zm-p-lg { font-size: var(--zm-fs-lg); line-height: var(--zm-lh-relaxed); }
-.zm-meta { font-family: var(--zm-font-body); font-size: var(--zm-fs-sm); color: var(--zm-fg-3); line-height: var(--zm-lh-normal); }
+
+.zm-h1 {
+  font-size: var(--zm-fs-h1);
+}
+
+.zm-h2 {
+  font-size: var(--zm-fs-h2);
+  font-weight: 600;
+  letter-spacing: var(--zm-tracking-snug);
+}
+
+.zm-h3 {
+  font-size: var(--zm-fs-h3);
+  font-weight: 600;
+  letter-spacing: var(--zm-tracking-snug);
+  line-height: var(--zm-lh-snug);
+}
+
+.zm-h4 {
+  font-size: var(--zm-fs-h4);
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: var(--zm-lh-snug);
+}
+
+.zm-body,
+.zm-p {
+  font-family: var(--zm-font-body);
+  font-size: var(--zm-fs-body);
+  line-height: var(--zm-lh-normal);
+  color: var(--zm-fg-2);
+}
+
+.zm-p-lg {
+  font-size: var(--zm-fs-lg);
+  line-height: var(--zm-lh-relaxed);
+}
+
+.zm-meta {
+  font-family: var(--zm-font-body);
+  font-size: var(--zm-fs-sm);
+  color: var(--zm-fg-3);
+  line-height: var(--zm-lh-normal);
+}
 
 .zm-eyebrow {
   font-family: var(--zm-font-body);
@@ -296,15 +365,36 @@
   color: var(--zm-fg-3);
 }
 
-.zm-mono, code, kbd {
+.zm-mono,
+code,
+kbd {
   font-family: var(--zm-font-mono);
   font-size: var(--zm-fs-num);
   font-feature-settings: 'tnum' 1, 'ss01' 1;
   letter-spacing: 0;
 }
-.zm-num         { font-family: var(--zm-font-mono); font-feature-settings: 'tnum' 1; }
-.zm-num-hero    { font-family: var(--zm-font-mono); font-feature-settings: 'tnum' 1; font-size: var(--zm-fs-num-hero); font-weight: 600; letter-spacing: -0.02em; color: var(--zm-fg); }
-.zm-num-lg      { font-family: var(--zm-font-mono); font-feature-settings: 'tnum' 1; font-size: var(--zm-fs-num-lg);   font-weight: 600; color: var(--zm-fg); }
+
+.zm-num {
+  font-family: var(--zm-font-mono);
+  font-feature-settings: 'tnum' 1;
+}
+
+.zm-num-hero {
+  font-family: var(--zm-font-mono);
+  font-feature-settings: 'tnum' 1;
+  font-size: var(--zm-fs-num-hero);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--zm-fg);
+}
+
+.zm-num-lg {
+  font-family: var(--zm-font-mono);
+  font-feature-settings: 'tnum' 1;
+  font-size: var(--zm-fs-num-lg);
+  font-weight: 600;
+  color: var(--zm-fg);
+}
 
 .zm-page-title,
 .zm-page-title em {
@@ -315,8 +405,36 @@
 /* -------------------------------------------------------------
    5. Element-level defaults — opt in by adding .zm-prose
    ------------------------------------------------------------- */
-.zm-prose h1 { font: 700 var(--zm-fs-h1)/var(--zm-lh-tight) var(--zm-font-display); letter-spacing: var(--zm-tracking-tight); margin: 0 0 var(--zm-s-4); color: var(--zm-fg); }
-.zm-prose h2 { font: 600 var(--zm-fs-h2)/var(--zm-lh-snug)  var(--zm-font-display); letter-spacing: var(--zm-tracking-snug); margin: var(--zm-s-6) 0 var(--zm-s-3); color: var(--zm-fg); }
-.zm-prose h3 { font: 600 var(--zm-fs-h3)/var(--zm-lh-snug)  var(--zm-font-display); margin: var(--zm-s-5) 0 var(--zm-s-2); color: var(--zm-fg); }
-.zm-prose p  { font: 400 var(--zm-fs-lg)/var(--zm-lh-relaxed) var(--zm-font-body);  margin: 0 0 var(--zm-s-4); color: var(--zm-fg-2); }
-.zm-prose code { font-family: var(--zm-font-mono); font-size: 0.92em; background: var(--zm-surface-sunken); padding: 1px 6px; border-radius: var(--zm-r-1); }
+.zm-prose h1 {
+  font: 700 var(--zm-fs-h1)/var(--zm-lh-tight) var(--zm-font-display);
+  letter-spacing: var(--zm-tracking-tight);
+  margin: 0 0 var(--zm-s-4);
+  color: var(--zm-fg);
+}
+
+.zm-prose h2 {
+  font: 600 var(--zm-fs-h2)/var(--zm-lh-snug) var(--zm-font-display);
+  letter-spacing: var(--zm-tracking-snug);
+  margin: var(--zm-s-6) 0 var(--zm-s-3);
+  color: var(--zm-fg);
+}
+
+.zm-prose h3 {
+  font: 600 var(--zm-fs-h3)/var(--zm-lh-snug) var(--zm-font-display);
+  margin: var(--zm-s-5) 0 var(--zm-s-2);
+  color: var(--zm-fg);
+}
+
+.zm-prose p {
+  font: 400 var(--zm-fs-lg)/var(--zm-lh-relaxed) var(--zm-font-body);
+  margin: 0 0 var(--zm-s-4);
+  color: var(--zm-fg-2);
+}
+
+.zm-prose code {
+  font-family: var(--zm-font-mono);
+  font-size: 0.92em;
+  background: var(--zm-surface-sunken);
+  padding: 1px 6px;
+  border-radius: var(--zm-r-1);
+}

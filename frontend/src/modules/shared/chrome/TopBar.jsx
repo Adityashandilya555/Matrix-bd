@@ -40,25 +40,25 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
         width: sidebarCollapsed ? 72 : 232, flex: `0 0 ${sidebarCollapsed ? 72 : 232}px`,
         display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
         gap: 10, padding: sidebarCollapsed ? '0 8px 0 12px' : '0 12px',
-        color: '#F5F2EC',
+        color: 'var(--zm-sidebar-fg)',
         borderRight: '1px solid var(--zm-line)',
         position: 'relative',
         transition: 'width 220ms var(--zm-ease), flex-basis 220ms var(--zm-ease), padding 220ms var(--zm-ease)',
       }}>
         <svg className="zm-brand-cube" width={sidebarCollapsed ? 28 : 34} height={sidebarCollapsed ? 28 : 34} viewBox="0 0 64 64" fill="none" style={{ display: 'block', flex: '0 0 auto', position: 'relative', zIndex: 1 }}>
-          <g stroke="#7AE7DA" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.55">
+          <g stroke="var(--zm-sidebar-icon)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.55">
             <path d="M22 10 L58 10 L58 46 L22 46 Z"/>
             <path d="M6 22 L22 10"/><path d="M42 22 L58 10"/>
             <path d="M6 58 L22 46"/><path d="M42 58 L58 46"/>
             <path d="M6 22 L42 22 L42 58 L6 58 Z"/>
           </g>
-          <g stroke="#E0A659" strokeWidth="3.8" strokeLinecap="round" strokeLinejoin="round">
+          <g stroke="var(--zm-sidebar-accent)" strokeWidth="3.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M6 22 L58 10"/><path d="M58 10 L6 58"/><path d="M6 58 L58 46"/>
           </g>
         </svg>
         <span className="zm-brand-word" style={{
           fontFamily: 'var(--zm-font-display)', fontStyle: 'normal', fontWeight: 800,
-          fontSize: 24, color: '#F5F2EC', letterSpacing: '-0.03em', lineHeight: 1,
+          fontSize: 24, color: 'var(--zm-sidebar-fg)', letterSpacing: '-0.03em', lineHeight: 1,
           whiteSpace: 'nowrap', position: 'relative', zIndex: 1,
           display: sidebarCollapsed ? 'none' : 'inline',
           textShadow: '0 1px 0 rgba(0,0,0,0.35), 0 0 24px rgba(122,231,218,0.15)',
@@ -66,7 +66,7 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
         <span style={{
           position: 'absolute', top: 12, right: 12,
           width: 5, height: 5, borderRadius: 999,
-          background: '#E0A659', boxShadow: '0 0 8px rgba(224,166,89,0.7)',
+          background: 'var(--zm-sidebar-accent)', boxShadow: '0 0 8px var(--zm-sidebar-accent)',
           zIndex: 1,
         }}/>
         {onToggleSidebar && (
@@ -83,9 +83,9 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
               width: sidebarCollapsed ? 22 : 24,
               height: sidebarCollapsed ? 22 : 24,
               borderRadius: 8,
-              border: '1px solid rgba(245,242,236,0.28)',
-              background: 'rgba(9, 20, 20, 0.62)',
-              color: '#F5F2EC',
+              border: '1px solid var(--zm-sidebar-line)',
+              background: 'var(--zm-sidebar-hover-bg)',
+              color: 'var(--zm-sidebar-fg)',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -94,8 +94,8 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
               boxShadow: '0 8px 18px rgba(0,0,0,0.18)',
               transition: 'right 220ms var(--zm-ease), transform 160ms var(--zm-ease), background 160ms var(--zm-ease)',
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(9, 20, 20, 0.78)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(9, 20, 20, 0.62)'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zm-sidebar-active-bg)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--zm-sidebar-hover-bg)'; }}
           >
             <Icon name="chevron" size={14} style={{ transform: sidebarCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}/>
           </button>
