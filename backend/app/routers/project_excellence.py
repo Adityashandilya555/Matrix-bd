@@ -73,7 +73,14 @@ async def pe_quality_audit_queue(
     tenant_id: TenantId,
 ) -> ProjectQueueResponse:
     """Sites awaiting the PE supervisor's quality-audit completion (+ recently done)."""
-    return await svc_pe_quality_audit_queue(db, tenant_id=tenant_id)
+    # Scope executives to their allocated sites (supervisors see all) — same
+    # pattern as pe_queue, so the QA tab can't leak unallocated sites.
+    restrict_to: Optional[list[str]] = None
+    if _is_executive(current_user):
+        restrict_to = await svc_assigned_sites(
+            db, tenant_id=tenant_id, user_id=current_user["sub"], module="project_excellence",
+        )
+    return await svc_pe_quality_audit_queue(db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to)
 
 
 @router.post("/{site_id}/quality-audit/complete", response_model=ProjectStateResponse)

@@ -991,19 +991,33 @@ async def svc_quality_audit_admin_queue(
 
 
 async def svc_pe_quality_audit_queue(
-    session: AsyncSession, *, tenant_id: str | UUID,
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    restrict_to_site_ids: Optional[list[str]] = None,
 ) -> ProjectQueueResponse:
     """Project-Excellence 'Quality Audit' tab — sites whose quality audit the
     project supervisor has approved (awaiting the PE supervisor's 'Completed'),
-    plus the recently-completed ones so the tab doubles as a status view."""
-    rows = (await session.execute(
+    plus the recently-completed ones so the tab doubles as a status view.
+
+    `restrict_to_site_ids` scopes the queue to an executive's allocated sites
+    (None = unrestricted, for supervisors) — mirrors svc_pe_queue so executives
+    can't see sites outside their Project-Excellence allocations.
+    """
+    if restrict_to_site_ids is not None and not restrict_to_site_ids:
+        return ProjectQueueResponse(items=[], total=0)
+    stmt = (
         select(models.Site, models.ProjectReview)
         .join(models.ProjectReview, models.ProjectReview.site_id == models.Site.id)
         .where(
             models.Site.tenant_id == tenant_id,
             models.ProjectReview.quality_audit_status.in_(("supervisor_approved", "approved")),
         )
-        .order_by(models.ProjectReview.quality_audit_supervisor_approved_at.asc())
+    )
+    if restrict_to_site_ids is not None:
+        stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
+    rows = (await session.execute(
+        stmt.order_by(models.ProjectReview.quality_audit_supervisor_approved_at.asc())
     )).all()
     delegates, names = await _batch_project_prefetch(session, [site for site, _r in rows])
     items = [

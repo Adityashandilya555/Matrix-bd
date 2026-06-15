@@ -210,3 +210,13 @@ async def test_pe_complete_quality_audit_requires_supervisor_approved(make_sessi
         )
     assert ei.value.status_code == 422
     assert review.project_status == "pending"             # untouched
+
+
+async def test_pe_quality_audit_queue_scopes_executive_to_allocations(make_session):
+    """An executive restricted to no allocated PE sites sees an empty queue —
+    never the whole tenant (the queue must apply the same scoping as pe_queue)."""
+    resp = await project_service.svc_pe_quality_audit_queue(
+        make_session(), tenant_id=uuid.uuid4(), restrict_to_site_ids=[],
+    )
+    assert resp.total == 0
+    assert resp.items == []
