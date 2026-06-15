@@ -141,6 +141,7 @@ async def _queue_item(
         current_stage=(review.current_stage if review else "execution"),
         quality_audit_status=(review.quality_audit_status if review else "pending"),
         inspection_date=(review.inspection_date if review else None),
+        project_completed_at=(review.project_completed_at if review else None),
         allocated_to_name=(delegate[1] if delegate else None),
         submitted_by_name=submitted_by_name,
     )
@@ -987,3 +988,68 @@ async def svc_quality_audit_admin_queue(
         for (site, review) in rows
     ]
     return ProjectQueueResponse(items=items, total=len(items))
+
+
+async def svc_pe_quality_audit_queue(
+    session: AsyncSession, *, tenant_id: str | UUID,
+) -> ProjectQueueResponse:
+    """Project-Excellence 'Quality Audit' tab — sites whose quality audit the
+    project supervisor has approved (awaiting the PE supervisor's 'Completed'),
+    plus the recently-completed ones so the tab doubles as a status view."""
+    rows = (await session.execute(
+        select(models.Site, models.ProjectReview)
+        .join(models.ProjectReview, models.ProjectReview.site_id == models.Site.id)
+        .where(
+            models.Site.tenant_id == tenant_id,
+            models.ProjectReview.quality_audit_status.in_(("supervisor_approved", "approved")),
+        )
+        .order_by(models.ProjectReview.quality_audit_supervisor_approved_at.asc())
+    )).all()
+    delegates, names = await _batch_project_prefetch(session, [site for site, _r in rows])
+    items = [
+        await _queue_item(session, site, review, prefetched={
+            "delegate": delegates.get(site.id),
+            "submitted_by_name": names.get(site.submitted_by, ""),
+        })
+        for (site, review) in rows
+    ]
+    return ProjectQueueResponse(items=items, total=len(items))
+
+
+async def svc_pe_complete_quality_audit(
+    session: AsyncSession, *, tenant_id: str | UUID, actor: dict, site_id: str | UUID,
+) -> ProjectStateResponse:
+    """Project-Excellence supervisor marks the quality audit Completed.
+
+    This is the final quality-audit sign-off (it replaced the business-admin
+    confirmation): supervisor-approved → the project COMPLETES, recording the
+    completion timestamp. The site does NOT auto-push to NSO — the project
+    supervisor still pushes it from the Project module's 'NSO Handover' tab,
+    which is the only thing that opens NSO stage three (see svc_push_to_nso).
+    """
+    if not _is_supervisor(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project excellence supervisor can complete the quality audit.")
+    async with transaction(session):
+        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        review = await _fetch_review_or_create(session, site=site)
+        if review.quality_audit_status != "supervisor_approved":
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Quality audit is not awaiting completion.")
+        now = datetime.now(timezone.utc)
+        review.quality_audit_status = "approved"
+        review.quality_audit_admin_confirmed_at = now
+        review.quality_audit_admin_confirmed_by = actor["sub"]
+        review.project_status = "done"
+        review.current_stage = "done"
+        review.project_completed_at = now
+        site.project_status = "done"          # keep the sites mirror in sync (#134)
+        site.project_completed_at = now
+        await write_audit_event(
+            session,
+            tenant_id=tenant_id,
+            site_id=site.id,
+            actor_id=actor["sub"],
+            actor_name=actor.get("name"),
+            action="pe_quality_audit_completed",
+            detail="Project Excellence supervisor marked the quality audit completed",
+        )
+        return await _build_response(session, site, review)

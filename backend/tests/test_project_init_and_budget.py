@@ -166,3 +166,47 @@ async def test_propose_initialization_does_not_clobber_inflight(make_session, fa
     assert ei.value.status_code == 422
     assert review.initialization_status == "approved"            # unchanged
     assert review.initialization_date == _dt.date(2026, 1, 1)    # unchanged
+
+
+# ── 3. PE supervisor marks quality audit Completed (final sign-off) ──────────────
+
+async def test_pe_complete_quality_audit_is_supervisor_only(make_session):
+    with pytest.raises(HTTPException) as ei:
+        await project_service.svc_pe_complete_quality_audit(
+            make_session(), tenant_id=uuid.uuid4(), actor=_exec(), site_id=uuid.uuid4(),
+        )
+    assert ei.value.status_code == 403
+
+
+async def test_pe_complete_quality_audit_marks_project_done(make_session, fake_result, monkeypatch):
+    site = _site()
+    review = _review(site, quality_audit_status="supervisor_approved")
+    sess = make_session(fake_result(scalar=site), fake_result(scalar=review))
+
+    async def _resp(session, s, r):
+        return "OK"
+
+    monkeypatch.setattr(project_service, "_build_response", _resp)
+
+    out = await project_service.svc_pe_complete_quality_audit(
+        sess, tenant_id=site.tenant_id, actor=_supervisor(), site_id=site.id,
+    )
+    assert out == "OK"
+    assert review.quality_audit_status == "approved"
+    assert review.project_status == "done"
+    assert review.current_stage == "done"
+    assert review.project_completed_at is not None        # the recorded completion date
+    assert site.project_status == "done"                  # sites mirror kept in sync
+
+
+async def test_pe_complete_quality_audit_requires_supervisor_approved(make_session, fake_result):
+    site = _site()
+    review = _review(site, quality_audit_status="submitted")   # not yet supervisor-approved
+    sess = make_session(fake_result(scalar=site), fake_result(scalar=review))
+
+    with pytest.raises(HTTPException) as ei:
+        await project_service.svc_pe_complete_quality_audit(
+            sess, tenant_id=site.tenant_id, actor=_supervisor(), site_id=site.id,
+        )
+    assert ei.value.status_code == 422
+    assert review.project_status == "pending"             # untouched

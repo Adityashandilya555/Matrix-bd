@@ -254,7 +254,15 @@ def _stage_three_unlocked(
     licensing: Optional[models.SiteLicensing],
     project: Optional[models.ProjectReview],
 ) -> bool:
-    return _stage_one_complete(row) and _legal_licensing_complete(site, licensing) and _project_done(project)
+    # The project supervisor's push (handover_pushed_at) is the gate: stage three
+    # never opens until a completed project is pushed in from the NSO-Handover
+    # tab, even if the project is already done and legal licensing is complete.
+    return (
+        row.handover_pushed_at is not None
+        and _stage_one_complete(row)
+        and _legal_licensing_complete(site, licensing)
+        and _project_done(project)
+    )
 
 
 def _compute_stage(
@@ -270,13 +278,12 @@ def _compute_stage(
     # approval) are already satisfied for a project-completed site.
     if row.handover_pushed_at is not None:
         return "final" if _stage_three_complete(row) else "stage_three"
+    # Not handed over from Project yet → stage three must NOT open. Even a
+    # project-done, legal-complete site stays at stage two until the project
+    # supervisor pushes it in (svc_push_to_nso sets handover_pushed_at).
     if not _stage_one_complete(row):
         return "stage_one"
-    if not _stage_two_unlocked(row, project) or not _legal_licensing_complete(site, licensing):
-        return "stage_two"
-    if not _stage_three_unlocked(row, site, licensing, project) or not _stage_three_complete(row):
-        return "stage_three"
-    return "final"
+    return "stage_two"
 
 
 def _display_rollups(

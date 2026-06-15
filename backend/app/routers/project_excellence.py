@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.deps import DbDep, TenantId
 from app.domain.schemas.common import OkResponse
+from app.domain.schemas.project import ProjectQueueResponse, ProjectStateResponse
 from app.domain.schemas.project_excellence import (
     AdminBudgetReviewRequest,
     AllocatePERequest,
@@ -20,6 +21,10 @@ from app.domain.schemas.project_excellence import (
 from app.rbac.guards import require_module, require_role
 from app.rbac.roles import Role
 from app.services.delegation_service import svc_assigned_sites, svc_is_delegated
+from app.services.project_service import (
+    svc_pe_complete_quality_audit,
+    svc_pe_quality_audit_queue,
+)
 from app.services.project_excellence_service import (
     svc_admin_review_pe_budget,
     svc_allocate_pe,
@@ -58,6 +63,31 @@ async def pe_queue(
             db, tenant_id=tenant_id, user_id=current_user["sub"], module="project_excellence",
         )
     return await svc_pe_queue(db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to)
+
+
+@router.get("/quality-audit/queue", response_model=ProjectQueueResponse)
+async def pe_quality_audit_queue(
+    db: DbDep,
+    current_user: PEMember,
+    _module: InPEModule,
+    tenant_id: TenantId,
+) -> ProjectQueueResponse:
+    """Sites awaiting the PE supervisor's quality-audit completion (+ recently done)."""
+    return await svc_pe_quality_audit_queue(db, tenant_id=tenant_id)
+
+
+@router.post("/{site_id}/quality-audit/complete", response_model=ProjectStateResponse)
+async def pe_complete_quality_audit(
+    site_id: str,
+    db: DbDep,
+    current_user: PESupervisor,
+    _module: InPEModule,
+    tenant_id: TenantId,
+) -> ProjectStateResponse:
+    """PE supervisor marks the quality audit Completed → project completes (records the date)."""
+    return await svc_pe_complete_quality_audit(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
+    )
 
 
 @router.get("/budget-admin-queue", response_model=PEBudgetAdminQueueResponse)

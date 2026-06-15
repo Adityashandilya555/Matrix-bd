@@ -6,6 +6,14 @@ import { useSession } from '../../state/SessionContext.jsx';
 import { getNsoHandoverQueue, pushToNso } from '../../services/api/projectApi.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 
+// Render an ISO datetime as a short calendar date ("15 Jun 2026"), or "—".
+function fmtDate(d) {
+  if (!d) return '—';
+  const parsed = new Date(d);
+  if (Number.isNaN(parsed.getTime())) return '—';
+  return parsed.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 // NSO Handover tab — project-COMPLETED sites awaiting the supervisor's push to
 // NSO. The supervisor's push opens the NSO record at stage three; executives see
 // the queue read-only and wait for that push.
@@ -59,7 +67,7 @@ export default function NsoHandoverPage() {
       });
   }, [load]);
 
-  const COLS = '120px minmax(220px, 1fr) 160px 200px';
+  const COLS = '120px minmax(220px, 1fr) 140px 140px 180px';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -126,6 +134,7 @@ export default function NsoHandoverPage() {
             <span>Code</span>
             <span>Site</span>
             <span>City</span>
+            <span>Completed</span>
             <span style={{ textAlign: 'right' }}>Action</span>
           </div>
 
@@ -152,6 +161,9 @@ export default function NsoHandoverPage() {
                   {row.siteName}
                 </span>
                 <span style={{ color: 'var(--zm-fg-2)' }}>{row.city}</span>
+                <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>
+                  {fmtDate(row.projectCompletedAt)}
+                </span>
                 {isSupervisor ? (
                   <button
                     type="button"

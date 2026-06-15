@@ -609,30 +609,15 @@ function BudgetBlock({ site, fetchDetail, onDecide }) {
 }
 
 // ── Quality-audit confirmation (tier-2 business-admin) ───────────────────────
-function QualityAuditBlock({ site, onConfirm }) {
-  const [busy, setBusy] = React.useState(false);
-  const [err, setErr] = React.useState(null);
+// Read-only in the admin portal: the final quality-audit sign-off moved to the
+// Project Excellence supervisor ("Completed" button). The admin only sees status.
+function QualityAuditBlock({ site }) {
   const qa = site.qualityAudit || {};
-  const decide = async (decision) => {
-    setBusy(true); setErr(null);
-    try { await onConfirm(site.siteId, { decision }); }
-    catch (e) { setErr(e?.detail || e?.message || 'Action failed'); }
-    finally { setBusy(false); }
-  };
   return (
-    <>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 8 }}>
-        <RequestMeta label="Inspection date" value={qa.inspectionDate || '—'} />
-        <RequestMeta label="Supervisor" value="Approved — awaiting confirmation" />
-      </div>
-      {err && <div role="alert" style={{ color: T.dangerText, fontSize: 12, margin: '6px 0' }}>{err}</div>}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-        <Button variant="success" size="md" loading={busy} icon={!busy && <Icon.check size={15} />}
-          onClick={() => decide('approve')}>Confirm audit</Button>
-        <Button variant="danger" size="md" disabled={busy} icon={<Icon.x size={15} />}
-          onClick={() => decide('reject')}>Send back</Button>
-      </div>
-    </>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      <RequestMeta label="Inspection date" value={qa.inspectionDate || '—'} />
+      <RequestMeta label="Status" value="Supervisor approved — awaiting Project Excellence completion" />
+    </div>
   );
 }
 
@@ -703,8 +688,8 @@ export default function SiteApprovalPanel({ site, handlers }) {
         </BlockShell>
       )}
       {site.qualityAudit && (
-        <BlockShell icon={Icon.check} tone="project" title="Quality audit confirmation">
-          <QualityAuditBlock site={site} onConfirm={handlers.onQualityConfirm} />
+        <BlockShell icon={Icon.check} tone="project" title="Quality audit status">
+          <QualityAuditBlock site={site} />
         </BlockShell>
       )}
       {site.financialClosure && (

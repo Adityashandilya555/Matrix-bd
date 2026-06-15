@@ -152,3 +152,33 @@ export async function adminReviewPEBudget(siteId, { decision, comments }) {
   notifySiteDataChanged({ source: 'project_excellence', action: 'budget_admin_review', siteId });
   return stateFromServer(data);
 }
+
+// ── Quality-audit completion (PE supervisor is the final sign-off) ────────────
+// The queue returns Project-module queue items (quality_audit_status + completion
+// date), so map those field names rather than the PE budget shape.
+function qaItemFromServer(row) {
+  return {
+    siteId: row.site_id,
+    siteCode: row.site_code,
+    siteName: row.site_name,
+    city: row.city,
+    qualityAuditStatus: row.quality_audit_status,
+    inspectionDate: row.inspection_date,
+    projectCompletedAt: row.project_completed_at,
+    allocatedToName: row.allocated_to_name,
+    submittedByName: row.submitted_by_name,
+  };
+}
+
+export async function getPEQualityAuditQueue() {
+  const data = await client.get('/project-excellence/quality-audit/queue').then((r) => r.data);
+  return { items: (data.items || []).map(qaItemFromServer), total: data.total ?? 0 };
+}
+
+export async function completePEQualityAudit(siteId) {
+  const data = await client.post(`/project-excellence/${siteId}/quality-audit/complete`).then((r) => r.data);
+  // 'project' so the Project module's NSO Handover tab refreshes too.
+  notifySiteDataChanged({ source: 'project_excellence', action: 'quality_audit_completed', siteId });
+  notifySiteDataChanged({ source: 'project', action: 'quality_audit_completed', siteId });
+  return data;
+}

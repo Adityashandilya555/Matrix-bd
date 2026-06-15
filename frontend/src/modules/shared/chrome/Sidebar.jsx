@@ -124,6 +124,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
     path.startsWith('/design')                           ? 'design' :
     path === ROUTES.PROJECT_EXCELLENCE_OVERVIEW           ? 'pe-overview' :
     path === ROUTES.PROJECT_EXCELLENCE_HISTORY            ? 'pe-history' :
+    path === ROUTES.PROJECT_EXCELLENCE_QUALITY_AUDIT      ? 'pe-quality-audit' :
     path.startsWith('/project-excellence')               ? 'pe-queue' :
     path.startsWith('/project/process-flow')             ? 'project-process-flow' :
     path.startsWith('/project/history')                  ? 'project-history' :
@@ -350,6 +351,13 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
             label="Pipeline"
             active={activeView === 'pe-queue'}
             onClick={() => go(ROUTES.PROJECT_EXCELLENCE)}
+            collapsed={collapsed}
+          />
+          <SidebarItem
+            icon="check"
+            label="Quality Audit"
+            active={activeView === 'pe-quality-audit'}
+            onClick={() => go(ROUTES.PROJECT_EXCELLENCE_QUALITY_AUDIT)}
             collapsed={collapsed}
           />
           <SidebarItem

@@ -38,6 +38,9 @@ class ProjectQueueItem(BaseModel):
     # the executive has uploaded the quality-audit doc (status leaves 'pending').
     quality_audit_status: str = "pending"
     inspection_date: Optional[date] = None
+    # Completion timestamp (set when the PE supervisor marks the quality audit
+    # Completed). Surfaced in the PE Quality-Audit tab and the NSO Handover tab.
+    project_completed_at: Optional[datetime] = None
     allocated_to_name: Optional[str] = None
     submitted_by_name: Optional[str] = None
 
