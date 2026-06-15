@@ -8,6 +8,17 @@ import { T, Icon, Card, Button, StatusPill, Skeleton, inr, TABULAR } from '../ui
 const KIND_LABEL = { recce: 'Recce', '2d': '2D design', '3d': '3D design', boq: 'BOQ + estimate' };
 const DESIGN_CONTEXT_KINDS = ['recce', '2d', '3d'];
 
+// Legal due-diligence status → human label for the finance sign-off card.
+// Mirrors the sites.legal_dd_status domain (pending | in_review | positive |
+// negative); by the time a site reaches finance it is normally 'positive'.
+const LEGAL_DD_LABEL = {
+  positive: 'Cleared',
+  negative: 'Failed',
+  in_review: 'In review',
+  pending: 'Pending',
+};
+const legalDdLabel = (value) => LEGAL_DD_LABEL[value] || (value ? pretty(value) : 'Pending');
+
 const pretty = (value) => {
   if (value == null || value === '') return 'Pending';
   return String(value).replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
@@ -175,6 +186,7 @@ function PaymentBlock({ site, onApprove, onReject }) {
       <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 12, fontSize: 12.5 }}>
         <RequestMeta label="Submitted by" value={site.payment.submittedByName || site.createdByName} />
         <RequestMeta label="KYC status" value={site.payment.kycVerified ? 'Verified' : 'Pending'} />
+        <RequestMeta label="Legal DD" value={legalDdLabel(site.payment.legalDdStatus)} />
         <div><div style={{ color: T.textFaint, fontSize: 11 }}>CA code</div>
           <div style={{ fontFamily: T.mono, color: T.text }}>{site.payment.caCode || '—'}</div></div>
         <div><div style={{ color: T.textFaint, fontSize: 11 }}>Finance amount</div>

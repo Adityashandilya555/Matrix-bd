@@ -95,6 +95,7 @@ export default function ProjectExcellenceReviewPage() {
   const [budgetItems, setBudgetItems] = React.useState(DEFAULT_BUDGET);
   const [areaFields, setAreaFields] = React.useState({ total_indoor_area_sqft: '', total_area_sqft: '', covers: '' });
   const [execList, setExecList] = React.useState([]);
+  const [teamError, setTeamError] = React.useState(null);
   const [allocExec, setAllocExec] = React.useState('');
   const [reviewComments, setReviewComments] = React.useState('');
 
@@ -102,10 +103,15 @@ export default function ProjectExcellenceReviewPage() {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setTeamError(null);
     Promise.all([
       getPE(siteId),
-      !isBusinessAdmin ? listMyTeam('project_excellence').catch(() => ({ users: [] })) : Promise.resolve({ users: [] }),
-    ]).then(([data, team]) => {
+      // Wrap (don't swallow): a failed team fetch must surface as a visible
+      // warning, not a silently-empty allocation list that looks healthy.
+      !isBusinessAdmin
+        ? listMyTeam('project_excellence').then((t) => ({ ok: true, team: t })).catch((e) => ({ ok: false, error: e }))
+        : Promise.resolve({ ok: true, team: [] }),
+    ]).then(([data, teamRes]) => {
       if (cancelled) return;
       setState(data);
       setBudgetItems(budgetFromState(data));
@@ -115,7 +121,17 @@ export default function ProjectExcellenceReviewPage() {
         covers: data.covers ?? '',
       });
       if (!isBusinessAdmin) {
-        setExecList((team.users || []).filter((u) => u.role === 'executive'));
+        if (teamRes.ok) {
+          // listMyTeam returns a bare array of executives already scoped to this
+          // supervisor's project_excellence team (role_in_module='executive');
+          // it carries no `role` field, so don't re-filter on one — that emptied
+          // the list and left "Allocate" with no executives to pick.
+          setExecList(Array.isArray(teamRes.team) ? teamRes.team : []);
+          setTeamError(null);
+        } else {
+          setExecList([]);
+          setTeamError(teamRes.error?.detail || teamRes.error?.message || 'Could not load executives to allocate. Try refreshing.');
+        }
       }
     }).catch((err) => {
       if (!cancelled) setError(err?.detail || err?.message || 'Failed to load site');
@@ -260,6 +276,11 @@ export default function ProjectExcellenceReviewPage() {
       {/* Allocation (supervisor only, unallocated sites) */}
       {isSupervisor && !state?.allocatedTo && state?.excellenceStatus === 'pending' && (
         <SectionCard title="Allocate site">
+          {teamError && (
+            <div role="alert" style={{ marginBottom: 10, color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5 }}>
+              {teamError}
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <select
               value={allocExec}
