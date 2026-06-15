@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import { useSession } from '../../state/SessionContext.jsx';
+import { usePageContext } from '../../App.jsx';
 import { listMyTeam } from '../../services/api/adapters/httpAdapter.js';
 import {
   allocateProject,
@@ -179,6 +180,7 @@ function ActionButton({ children, onClick, disabled, variant = 'primary' }) {
 export default function ProjectReviewPage() {
   const { siteId } = useParams();
   const navigate = useNavigate();
+  const { showToast } = usePageContext();
   const { role, dark } = useSession();
   const isSupervisor = role === 'supervisor';
   const [state, setState] = React.useState({ status: 'loading', review: null, error: null });
@@ -239,6 +241,10 @@ export default function ProjectReviewPage() {
     try {
       const next = await fn();
       rehydrateReview(next);
+      // The project flow is a guided in-place chain (each stage unlocks the
+      // next on this same page), so confirm the step rather than navigating
+      // away — bouncing to the queue mid-chain would break the flow.
+      showToast?.('Update saved.', 'success');
     } catch (err) {
       setState((prev) => ({ ...prev, error: err?.detail || err?.message || 'Action failed' }));
     } finally {

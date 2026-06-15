@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import { useSession } from '../../state/SessionContext.jsx';
+import { usePageContext } from '../../App.jsx';
 import { getNsoHandoverQueue, pushToNso } from '../../services/api/projectApi.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 
@@ -19,6 +20,7 @@ function fmtDate(d) {
 // the queue read-only and wait for that push.
 export default function NsoHandoverPage() {
   const navigate = useNavigate(); // eslint-disable-line no-unused-vars -- kept for parity with sibling queue pages
+  const { showToast } = usePageContext();
   const { role } = useSession();
   const isSupervisor = role === 'supervisor';
   const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
@@ -56,6 +58,7 @@ export default function NsoHandoverPage() {
     setPushingId(row.siteId);
     pushToNso(row.siteId)
       .then(() => {
+        showToast?.('Pushed to NSO.', 'success');
         // Re-fetch so the pushed row drops off the queue.
         load();
       })

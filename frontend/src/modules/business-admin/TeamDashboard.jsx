@@ -12,7 +12,7 @@ import {
   getOrg, getAllSites, getSiteHistory,
 } from '../../services/api/businessAdminApi.js';
 import {
-  rotateDeptCode, listPendingSupervisors, approveSupervisor, rejectSupervisor,
+  rotateDeptCode, listPendingSupervisors, approveSupervisor, rejectSupervisor, removeOrgUser,
 } from '../../services/api/adapters/httpAdapter.js';
 
 import { T, Icon, IconButton, StatTile, TABULAR, getInitialTheme, persistTheme } from './ui/kit.jsx';
@@ -43,6 +43,7 @@ export const REAL_FETCHERS = {
   listSupervisors:   listPendingSupervisors,
   approveSupervisor,
   rejectSupervisor,
+  removeOrgUser,
   rotateDeptCode,
   listOrg:           getOrg,
   listSites:         getAllSites,
@@ -187,6 +188,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     onApproveSupervisor: async (u) => { await fetchers.approveSupervisor(u.id, u.module); await loadSupervisors(true); await loadOrg(true); },
     onRejectSupervisor: async (u) => { await fetchers.rejectSupervisor(u.id); await loadSupervisors(true); },
     onRotate: async (moduleKey) => { await fetchers.rotateDeptCode(moduleKey); await loadOrg(true); },
+    onRemoveUser: async (u) => { await fetchers.removeOrgUser(u.id); await loadOrg(true); },
     reloadPendingSupervisors: loadSupervisors,
     reloadOrg: loadOrg,
   };

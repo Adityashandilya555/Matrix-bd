@@ -551,6 +551,8 @@ export default function NsoReviewPage() {
       setState({ status: 'ready', review: next, error: null });
       hydrate(next);
       setNotice('NSO final approval complete.');
+      // End of the NSO chain → back to the queue for the next site.
+      navigate(ROUTES.NSO);
     } catch (err) {
       setNotice(err?.detail || err?.message || 'Could not finalize NSO.');
     } finally {

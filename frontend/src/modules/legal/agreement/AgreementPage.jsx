@@ -209,6 +209,11 @@ export default function AgreementPage() {
       setReview(next);
       setSelected(normalizeAgreementStatus(next));
       showToast?.(`Agreement marked ${agreementStatusLabel(selected).toLowerCase()}.`, 'success');
+      // Terminal agreement (executed/registered) → continue the guided chain to
+      // licensing; 'pending' is not terminal, so it stays put with the toast.
+      if (selected === 'executed' || selected === 'registered') {
+        navigate(legalSiteLicensingRoute(siteId));
+      }
     } catch (err) {
       showToast?.(err?.detail || err?.message || 'Agreement save failed', 'danger');
     } finally {

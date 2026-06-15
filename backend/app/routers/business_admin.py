@@ -86,6 +86,20 @@ async def reject_supervisor(
     await svc.reject_supervisor(db, tenant_id, user_id)
 
 
+@router.post(
+    "/org/{user_id}/remove",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remove_org_user(
+    user_id: str,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> None:
+    """Deactivate an org user (supervisor/executive) — revokes their access."""
+    await svc.deactivate_org_user(db, tenant_id, user_id, current_user)
+
+
 @router.get("/sites", response_model=AdminSitesResponse)
 async def list_admin_sites(
     db: DbDep,

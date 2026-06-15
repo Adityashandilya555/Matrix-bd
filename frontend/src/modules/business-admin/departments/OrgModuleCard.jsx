@@ -16,7 +16,26 @@ export const MODULE_META = {
 
 const fmtDate = (d) => { try { return new Date(d).toLocaleDateString(); } catch { return ''; } };
 
-function Person({ p, role }) {
+function Person({ p, role, onRemove }) {
+  const [confirming, setConfirming] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState(null);
+  const roleLabel = role === 'supervisor' ? 'supervisor' : 'executive';
+
+  // Two-step remove: trash → "Remove this {role}?" → confirm. On success the
+  // parent reloads the org and this row unmounts, so we don't reset state.
+  const doRemove = async (e) => {
+    e?.stopPropagation?.();
+    setBusy(true); setErr(null);
+    try {
+      await onRemove(p);
+    } catch (ex) {
+      setErr(ex?.detail || ex?.message || 'Could not remove this user.');
+      setBusy(false);
+      setConfirming(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0' }}>
       <Avatar name={p.name} email={p.email} size={28} />
@@ -24,17 +43,35 @@ function Person({ p, role }) {
         <div style={{ fontSize: 12.5, fontWeight: 600, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name || p.email}</div>
         <div style={{ fontSize: 11.5, color: T.textFaint, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {p.email}{p.joinedAt ? ` · joined ${fmtDate(p.joinedAt)}` : ''}
+          {err ? <span style={{ color: T.dangerText }}> · {err}</span> : ''}
         </div>
       </div>
-      {role && (
+      {role && !confirming && (
         <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.textMuted,
           padding: '2px 8px', borderRadius: 999, background: T.chip, border: `1px solid ${T.line}` }}>{role}</span>
+      )}
+      {onRemove && !confirming && (
+        <button
+          type="button" title={`Remove ${roleLabel}`} aria-label={`Remove ${roleLabel}`}
+          onClick={(e) => { e.stopPropagation(); setErr(null); setConfirming(true); }}
+          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28,
+            borderRadius: 8, border: `1px solid ${T.line}`, background: 'transparent', color: T.textFaint, cursor: 'pointer', flex: '0 0 auto' }}
+        >
+          <Icon.trash size={14} />
+        </button>
+      )}
+      {onRemove && confirming && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }} onClick={(e) => e.stopPropagation()}>
+          <span style={{ fontSize: 11.5, color: T.textMuted, whiteSpace: 'nowrap' }}>Remove this {roleLabel}?</span>
+          <Button variant="danger" size="sm" loading={busy} onClick={doRemove}>Remove</Button>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={(e) => { e.stopPropagation(); setConfirming(false); setErr(null); }}>Cancel</Button>
+        </span>
       )}
     </div>
   );
 }
 
-export default function OrgModuleCard({ mod, onRotate, loading }) {
+export default function OrgModuleCard({ mod, onRotate, onRemove, loading }) {
   const meta = MODULE_META[mod.module] || { label: mod.module, icon: Icon.key };
   const MetaIcon = meta.icon;
   const [rotating, setRotating] = React.useState(false);
@@ -79,10 +116,10 @@ export default function OrgModuleCard({ mod, onRotate, loading }) {
         )}
         {!loading && (mod.supervisors || []).map((s) => (
           <Disclosure key={s.id} count={s.executives?.length || 0}
-            header={<Person p={s} role="supervisor" />}>
+            header={<Person p={s} role="supervisor" onRemove={onRemove} />}>
             {(s.executives || []).length === 0
               ? <div style={{ fontSize: 12, color: T.textFaint, padding: '6px 0' }}>No executives under this supervisor yet.</div>
-              : (s.executives || []).map((e) => <Person key={e.id} p={e} role="executive" />)}
+              : (s.executives || []).map((e) => <Person key={e.id} p={e} role="executive" onRemove={onRemove} />)}
           </Disclosure>
         ))}
         {!loading && (mod.unassignedExecutives || []).length > 0 && (
@@ -90,7 +127,7 @@ export default function OrgModuleCard({ mod, onRotate, loading }) {
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.textFaint, margin: '4px 0 2px' }}>
               Unassigned executives
             </div>
-            {mod.unassignedExecutives.map((e) => <Person key={e.id} p={e} role="executive" />)}
+            {mod.unassignedExecutives.map((e) => <Person key={e.id} p={e} role="executive" onRemove={onRemove} />)}
           </div>
         )}
       </div>
