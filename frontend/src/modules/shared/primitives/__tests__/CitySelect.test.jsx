@@ -53,4 +53,17 @@ describe('CitySelect', () => {
     expect(screen.queryByRole('option')).toBeNull();
     expect(screen.getByText(/No cities match/)).toBeTruthy();
   });
+
+  it('clears the search filter on close so it does not reopen stale', () => {
+    render(<CitySelect value="" onChange={vi.fn()} options={OPTIONS} />);
+    // open, type a non-matching query, then close without selecting (Escape)
+    fireEvent.click(screen.getByRole('button'));
+    fireEvent.change(screen.getByPlaceholderText('Search city…'), { target: { value: 'zzz' } });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).toBeNull();
+    // reopen → full list is back, search box is empty (not the stale empty-state)
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.getAllByRole('option')).toHaveLength(OPTIONS.length);
+    expect(screen.getByPlaceholderText('Search city…').value).toBe('');
+  });
 });

@@ -15,7 +15,9 @@ export default function CitySelect({ value, onChange, options, placeholder = 'Se
   const wrapRef = React.useRef(null);
 
   React.useEffect(() => {
-    if (!open) return undefined;
+    // Reset the filter on every close (outside-click / Escape / toggle /
+    // selection) so the menu never reopens in a stale, filtered-empty state.
+    if (!open) { setQuery(''); return undefined; }
     const onDocMouseDown = (e) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
     };
