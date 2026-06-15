@@ -29,33 +29,33 @@ function SidebarItem({ icon, label, count, active, onClick, collapsed = false })
       display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', gap: collapsed ? 0 : 10,
       minHeight: collapsed ? 40 : 'auto',
       padding: collapsed ? '8px 0' : '7px 10px', borderRadius: collapsed ? 14 : 7, cursor: 'pointer',
-      background: active ? 'var(--zm-accent-soft)' : 'transparent',
-      color: active ? 'var(--zm-fg)' : 'var(--zm-fg-2)',
+      background: active ? 'var(--zm-sidebar-active-bg)' : 'transparent',
+      color: active ? 'var(--zm-sidebar-fg)' : 'var(--zm-sidebar-fg-muted)',
       fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: active ? 600 : 500,
       position: 'relative',
       transition: 'background 160ms var(--zm-ease), color 160ms var(--zm-ease), border-radius 160ms var(--zm-ease)',
     }}
-    onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--zm-surface-hover)'; }}
+    onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--zm-sidebar-hover-bg)'; }}
     onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
     >
-      {active && <span style={{ position: 'absolute', left: collapsed ? 5 : 0, top: 8, bottom: 8, width: 2, background: 'var(--zm-accent)', borderRadius: 2 }}/>}
-      <span style={{ color: active ? 'var(--zm-accent)' : 'var(--zm-fg-3)', display: 'inline-flex' }}>
+      {active && <span style={{ position: 'absolute', left: collapsed ? 5 : 0, top: 8, bottom: 8, width: 2, background: 'var(--zm-sidebar-accent)', borderRadius: 2 }}/>}
+      <span style={{ color: active ? 'var(--zm-sidebar-accent)' : 'var(--zm-sidebar-icon)', display: 'inline-flex' }}>
         <Icon name={icon} size={collapsed ? 19 : 16} stroke={collapsed ? 1.8 : 1.5}/>
       </span>
       {!collapsed && label}
       {count != null && !collapsed && (
         <span style={{
           marginLeft: 'auto', fontFamily: 'var(--zm-font-mono)', fontSize: 11,
-          color: active ? 'var(--zm-accent)' : 'var(--zm-fg-3)', fontWeight: 500,
+          color: active ? 'var(--zm-sidebar-accent)' : 'var(--zm-sidebar-fg-muted)', fontWeight: 500,
         }}>{count}</span>
       )}
       {count != null && collapsed && (
         <span style={{
           position: 'absolute', top: 4, right: 5,
           minWidth: 15, height: 15, padding: '0 3px', borderRadius: 999,
-          background: active ? 'var(--zm-accent)' : 'var(--zm-surface-2)',
-          border: '1px solid var(--zm-line)',
-          color: active ? '#fff' : 'var(--zm-fg-3)',
+          background: active ? 'var(--zm-sidebar-accent)' : 'var(--zm-sidebar-active-bg)',
+          border: '1px solid var(--zm-sidebar-line)',
+          color: active ? '#1A1A1F' : 'var(--zm-sidebar-fg-muted)',
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           fontFamily: 'var(--zm-font-mono)', fontSize: 9, fontWeight: 700,
           lineHeight: 1,
@@ -74,7 +74,7 @@ const ROLE_LABELS = {
 
 const SECTION_HEADING_STYLE = {
   fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10,
-  letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-fg-4)',
+  letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-sidebar-fg-faint)',
   padding: '14px 10px 6px',
 };
 
@@ -147,7 +147,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
   return (
     <aside className="zm-sidebar" style={{
       width: collapsed ? 72 : 232, flex: `0 0 ${collapsed ? 72 : 232}px`, padding: collapsed ? '14px 10px' : '14px 12px',
-      background: 'var(--zm-surface)', borderRight: '1px solid var(--zm-line)',
+      background: 'var(--zm-sidebar-bg)', borderRight: '1px solid var(--zm-sidebar-line)',
       display: 'flex', flexDirection: 'column', gap: 2,
       overflowY: 'auto',
       transition: 'width 220ms var(--zm-ease), flex-basis 220ms var(--zm-ease), padding 220ms var(--zm-ease)',
@@ -258,7 +258,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
             collapsed={collapsed}
           />
           <SidebarItem
-            icon="route"
+            icon="document"
             label="Pipeline"
             active={activeView === 'project-home'}
             onClick={() => go(ROUTES.PROJECT)}
@@ -272,14 +272,14 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
             collapsed={collapsed}
           />
           <SidebarItem
-            icon="route"
+            icon="flag"
             label="NSO Handover"
             active={activeView === 'project-nso-handover'}
             onClick={() => go(ROUTES.PROJECT_NSO_HANDOVER)}
             collapsed={collapsed}
           />
           <SidebarItem
-            icon="wallet"
+            icon="rupee"
             label="Financial Closure"
             active={activeView === 'project-financial-closure'}
             onClick={() => go(ROUTES.PROJECT_FINANCIAL_CLOSURE)}
@@ -390,11 +390,11 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
       {onRole && !collapsed && (
         <div style={{
           padding: 10, margin: '0 4px 8px',
-          border: '1px solid var(--zm-line)', borderRadius: 10,
-          background: 'var(--zm-surface-2)',
+          border: '1px solid var(--zm-sidebar-line)', borderRadius: 10,
+          background: 'var(--zm-sidebar-hover-bg)',
           display: 'flex', flexDirection: 'column', gap: 8,
         }}>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>View as</span>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-sidebar-fg-faint)' }}>View as</span>
           <select
             value={role}
             onChange={(e) => onRole(e.target.value)}
@@ -419,10 +419,10 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
           style={{
             height: 42,
             margin: '0 2px',
-            border: '1px solid var(--zm-line)',
+            border: '1px solid var(--zm-sidebar-line)',
             borderRadius: 14,
-            background: 'var(--zm-surface-2)',
-            color: 'var(--zm-accent)',
+            background: 'var(--zm-sidebar-hover-bg)',
+            color: 'var(--zm-sidebar-accent)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -433,15 +433,15 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
       ) : (
         <div style={{
         padding: 12, margin: '0 4px',
-        border: '1px solid var(--zm-line)', borderRadius: 10,
-        background: 'var(--zm-surface-2)',
+        border: '1px solid var(--zm-sidebar-line)', borderRadius: 10,
+        background: 'var(--zm-sidebar-hover-bg)',
         display: 'flex', flexDirection: 'column', gap: 6,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--zm-accent)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--zm-sidebar-accent)' }}>
           <Icon name="chat" size={14}/>
           <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Ask Scale</span>
         </div>
-        <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-fg-2)', lineHeight: 1.45 }}>
+        <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-sidebar-fg-muted)', lineHeight: 1.45 }}>
           "Sites in process overdue &gt; 14 days" — Answer in the desktop workspace.
         </p>
         </div>

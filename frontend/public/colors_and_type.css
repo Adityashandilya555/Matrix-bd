@@ -125,6 +125,19 @@
   --zm-dur-2: 200ms;   /* press / panel */
   --zm-dur-3: 360ms;   /* layout shift */
   --zm-dur-4: 520ms;   /* hero entry */
+
+  /* Left rail — fixed deep-teal command rail. Intentionally the SAME in light
+     and dark themes (the brand plate already behaves this way), so the rail
+     reads as one continuous branded surface and never clashes with the canvas. */
+  --zm-sidebar-bg:        #0E3A3A;                    /* deep teal */
+  --zm-sidebar-fg:        #F5F2EC;                    /* active / brand text (cream) */
+  --zm-sidebar-fg-muted:  #B4CDC7;                    /* inactive item text */
+  --zm-sidebar-fg-faint:  #6E8C86;                    /* section labels */
+  --zm-sidebar-icon:      #7FA59E;                    /* inactive icon */
+  --zm-sidebar-accent:    #E0A659;                    /* copper active accent */
+  --zm-sidebar-active-bg: rgba(245,242,236,0.10);
+  --zm-sidebar-hover-bg:  rgba(245,242,236,0.06);
+  --zm-sidebar-line:      rgba(245,242,236,0.10);
 }
 
 /* -------------------------------------------------------------
