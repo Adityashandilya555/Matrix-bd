@@ -13,16 +13,21 @@ import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 export default function ProjectExcellenceOverviewPage() {
   const navigate = useNavigate();
   const [state, setState] = React.useState({ status: 'loading', items: [], error: null });
+  // Monotonic request id: useSiteDataRefresh calls load() directly (not via the
+  // effect's cleanup), so a per-call `cancelled` flag can't stop an older,
+  // slower getPEQueue() response from clobbering a newer one. Only the latest
+  // request's result is allowed to write state.
+  const reqIdRef = React.useRef(0);
 
   const load = React.useCallback(() => {
-    let cancelled = false;
+    const reqId = ++reqIdRef.current;
     setState((prev) => ({ ...prev, status: prev.items.length ? prev.status : 'loading', error: null }));
     getPEQueue()
       .then((data) => {
-        if (!cancelled) setState({ status: 'ready', items: data.items, error: null });
+        if (reqId === reqIdRef.current) setState({ status: 'ready', items: data.items, error: null });
       })
       .catch((err) => {
-        if (!cancelled) {
+        if (reqId === reqIdRef.current) {
           setState((prev) => ({
             ...prev,
             status: prev.items.length ? 'ready' : 'error',
@@ -30,7 +35,7 @@ export default function ProjectExcellenceOverviewPage() {
           }));
         }
       });
-    return () => { cancelled = true; };
+    return undefined;
   }, []);
 
   React.useEffect(() => load(), [load]);
