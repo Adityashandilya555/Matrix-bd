@@ -125,7 +125,7 @@ export default function FinancialClosureQueuePage() {
       )}
 
       {state.status === 'ready' && visibleItems.length > 0 && (
-        <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
+        <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', overflowX: 'auto' }}>
           <div style={{
             display: 'grid', gridTemplateColumns: COLS, gap: 12, padding: '12px 16px',
             background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)',

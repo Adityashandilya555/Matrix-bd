@@ -299,7 +299,7 @@ CREATE TABLE public.site_delegations (
   id               uuid NOT NULL DEFAULT uuid_generate_v4(),
   tenant_id        uuid NOT NULL,
   site_id          uuid NOT NULL,
-  module           text NOT NULL CHECK (module IN ('bd','legal','design','project','nso','project_excellence')),
+  module           text NOT NULL CHECK (module IN ('bd','legal','design','project','nso','project_excellence','financial_closure')),
   delegate_user_id uuid NOT NULL,
   granted_by       uuid NOT NULL,
   granted_at       timestamp with time zone NOT NULL DEFAULT now(),

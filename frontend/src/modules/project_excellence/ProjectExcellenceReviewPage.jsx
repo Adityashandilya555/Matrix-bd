@@ -104,7 +104,7 @@ export default function ProjectExcellenceReviewPage() {
     setError(null);
     Promise.all([
       getPE(siteId),
-      !isBusinessAdmin ? listMyTeam('project_excellence').catch(() => ({ users: [] })) : Promise.resolve({ users: [] }),
+      !isBusinessAdmin ? listMyTeam('project_excellence').catch(() => []) : Promise.resolve([]),
     ]).then(([data, team]) => {
       if (cancelled) return;
       setState(data);
@@ -115,7 +115,11 @@ export default function ProjectExcellenceReviewPage() {
         covers: data.covers ?? '',
       });
       if (!isBusinessAdmin) {
-        setExecList((team.users || []).filter((u) => u.role === 'executive'));
+        // listMyTeam returns a bare array of executives already scoped to this
+        // supervisor's project_excellence team (role_in_module='executive');
+        // it carries no `role` field, so don't re-filter on one — that emptied
+        // the list and left "Allocate" with no executives to pick.
+        setExecList(Array.isArray(team) ? team : []);
       }
     }).catch((err) => {
       if (!cancelled) setError(err?.detail || err?.message || 'Failed to load site');

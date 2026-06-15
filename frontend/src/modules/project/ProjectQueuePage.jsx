@@ -167,7 +167,7 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
       )}
 
       {state.status === 'ready' && visibleItems.length > 0 && (
-        <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
+        <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', overflowX: 'auto' }}>
           <div style={{
             display: 'grid',
             gridTemplateColumns: COLS,

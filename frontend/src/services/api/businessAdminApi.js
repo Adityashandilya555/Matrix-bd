@@ -58,6 +58,9 @@ export async function getFinanceQueue() {
         kycVerified: Boolean(r.kyc_verified),
         financeAmount: num(r.finance_amount),
         submittedByName: r.submitted_by_name,
+        legalDdStatus: r.legal_dd_status,
+        agreementStatus: r.agreement_status,
+        licensingStatus: r.licensing_status,
       })),
     total: arr.length,
   };

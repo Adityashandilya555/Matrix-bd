@@ -218,6 +218,9 @@ async def list_finance_approvals(
             "finance_amount": finance_amount,
             "kyc_verified": bool(site.kyc_verified),
             "finance_status": site.finance_status or "awaiting_admin",
+            "legal_dd_status": site.legal_dd_status,
+            "agreement_status": site.agreement_status,
+            "licensing_status": site.licensing_status,
             "updated_at": updated_at,
         })
     return items

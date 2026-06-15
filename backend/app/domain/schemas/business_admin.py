@@ -47,6 +47,11 @@ class FinanceApprovalOut(BaseModel):
     finance_amount: Optional[float] = None
     kyc_verified: bool = False
     finance_status: str
+    # Upstream legal/agreement/licensing state, so the admin's finance sign-off
+    # shows the real legal status instead of a default "pending".
+    legal_dd_status: Optional[str] = None
+    agreement_status: Optional[str] = None
+    licensing_status: Optional[str] = None
     updated_at: datetime
 
 

@@ -128,6 +128,9 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     kycVerified: s.kycVerified,
     financeAmount: s.financeAmount,
     submittedByName: s.submittedByName,
+    legalDdStatus: s.legalDdStatus,
+    agreementStatus: s.agreementStatus,
+    licensingStatus: s.licensingStatus,
   };
   for (const s of budget.items || []) ensure(s).project = {
     budgetStatus: s.budgetStatus,

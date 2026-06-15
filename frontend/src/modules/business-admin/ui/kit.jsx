@@ -184,11 +184,15 @@ const BTN_SIZES = {
 };
 
 export function Button({ variant = 'subtle', size = 'sm', loading = false, icon, children, style, disabled, ...rest }) {
+  const isDisabled = disabled || loading;
   return (
     <button
       className={`ac-btn v-${variant}`}
-      disabled={disabled || loading}
-      style={{ fontWeight: 650, cursor: 'pointer', ...BTN_VARIANTS[variant], ...BTN_SIZES[size], ...style }}
+      disabled={isDisabled}
+      // Disabled/in-flight buttons must LOOK non-clickable — otherwise an admin
+      // who clicks (e.g. Financial Closure) sees no state change. The disabled
+      // visual is appended last so it wins over variant/caller styles.
+      style={{ fontWeight: 650, cursor: 'pointer', ...BTN_VARIANTS[variant], ...BTN_SIZES[size], ...style, ...(isDisabled ? { cursor: 'not-allowed', opacity: 0.55 } : {}) }}
       {...rest}
     >
       {loading ? <Spinner /> : icon}

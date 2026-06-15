@@ -129,8 +129,12 @@ export default function FinancialClosureReviewPage() {
     setError(null);
     Promise.all([
       getFC(siteId),
+      // Financial Closure runs inside the Project module (its routes require
+      // module='project'), so the allocatable people are the supervisor's
+      // PROJECT team. 'financial_closure' is not a membership module — asking
+      // for it 404/422s and the list comes back empty.
       isSupervisor
-        ? listMyTeam('financial_closure').catch(() => [])
+        ? listMyTeam('project').catch(() => [])
         : Promise.resolve([]),
     ]).then(([data, team]) => {
       if (cancelled) return;
@@ -323,6 +327,17 @@ export default function FinancialClosureReviewPage() {
           </FieldRow>
         )}
       </SectionCard>
+
+      {/* Closed → explicit completion banner so the finished state is obvious. */}
+      {isClosed && (
+        <div className="zm-glass" style={{
+          padding: '12px 16px', borderLeft: '3px solid var(--zm-success)',
+          color: 'var(--zm-success)', fontFamily: 'var(--zm-font-body)',
+          fontSize: 13, fontWeight: 700,
+        }}>
+          ✓ Financial closure complete — this site is closed.
+        </div>
+      )}
 
       {/* Allocation (supervisor only, unallocated sites) */}
       {isSupervisor && !state?.allocatedTo && !isClosed && (
@@ -533,9 +548,9 @@ export default function FinancialClosureReviewPage() {
                 type="button"
                 disabled={saving}
                 onClick={() => handleSupervisorReview('approve')}
-                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-success)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-success)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.55 : 1 }}
               >
-                Approve
+                {saving ? 'Submitting…' : 'Approve'}
               </button>
               <button
                 type="button"
@@ -570,9 +585,9 @@ export default function FinancialClosureReviewPage() {
                 type="button"
                 disabled={saving}
                 onClick={() => handleFinalize('approve')}
-                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-success)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-success)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.55 : 1 }}
               >
-                Financial Closure
+                {saving ? 'Finalizing…' : 'Financial Closure'}
               </button>
               <button
                 type="button"
