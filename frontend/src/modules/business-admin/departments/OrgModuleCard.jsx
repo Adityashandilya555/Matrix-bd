@@ -54,10 +54,10 @@ function Person({ p, role, onRemove }) {
         <button
           type="button" title={`Remove ${roleLabel}`} aria-label={`Remove ${roleLabel}`}
           onClick={(e) => { e.stopPropagation(); setErr(null); setConfirming(true); }}
-          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28,
-            borderRadius: 8, border: `1px solid ${T.line}`, background: 'transparent', color: T.textFaint, cursor: 'pointer', flex: '0 0 auto' }}
+          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36,
+            borderRadius: 9, border: `1px solid ${T.line}`, background: 'transparent', color: T.textFaint, cursor: 'pointer', flex: '0 0 auto' }}
         >
-          <Icon.trash size={14} />
+          <Icon.trash size={15} />
         </button>
       )}
       {onRemove && confirming && (

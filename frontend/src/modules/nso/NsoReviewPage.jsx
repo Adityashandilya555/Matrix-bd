@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
+import { usePageContext } from '../../App.jsx';
 import {
   finalApproveNso,
   getNso,
@@ -439,6 +440,7 @@ function TriggerRail({ triggers }) {
 export default function NsoReviewPage() {
   const { siteId } = useParams();
   const navigate = useNavigate();
+  const { showToast } = usePageContext();
   const [state, setState] = React.useState({ status: 'loading', review: null, error: null });
   const [stageOne, setStageOne] = React.useState({ communicationFloated: null });
   const [stageThree, setStageThree] = React.useState({
@@ -550,7 +552,9 @@ export default function NsoReviewPage() {
       const next = await finalApproveNso(siteId);
       setState({ status: 'ready', review: next, error: null });
       hydrate(next);
-      setNotice('NSO final approval complete.');
+      // Use the app-level toast (not the local notice) since we navigate away —
+      // a cross-page toast survives the unmount; an inline notice would not.
+      showToast?.('NSO final approval complete.', 'success');
       // End of the NSO chain → back to the queue for the next site.
       navigate(ROUTES.NSO);
     } catch (err) {

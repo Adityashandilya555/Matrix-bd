@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy import desc, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -198,16 +199,26 @@ async def deactivate_org_user(
     """
     async with transaction(session):
         target = (await session.execute(
-            text("SELECT is_active FROM users WHERE id = CAST(:uid AS uuid) AND tenant_id = :tid"),
+            text("SELECT is_active, role FROM users WHERE id = CAST(:uid AS uuid) AND tenant_id = :tid"),
             {"uid": user_id, "tid": tenant_id},
         )).mappings().first()
         if not target or not target["is_active"]:
             return
+        # Only org users (supervisors/executives) are removable here. Refuse to
+        # touch business_admins (or any other role) so this endpoint can't be
+        # used to deactivate a peer admin via a crafted UUID.
+        if target["role"] not in ("supervisor", "executive"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only supervisors and executives can be removed.",
+            )
+        # Role is pinned in the predicate too, as a second guard.
         await session.execute(
             text("""
                 UPDATE users SET is_active = false
                  WHERE id = CAST(:uid AS uuid)
                    AND tenant_id = :tid
+                   AND role IN ('supervisor', 'executive')
             """),
             {"uid": user_id, "tid": tenant_id},
         )
