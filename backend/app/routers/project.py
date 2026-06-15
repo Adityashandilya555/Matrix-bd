@@ -12,6 +12,7 @@ from app.domain.schemas.project import (
     AdminConfirmQualityAuditRequest,
     AllocateProjectRequest,
     InitializationFinalizeRequest,
+    InitializationProposeRequest,
     InitializationRespondRequest,
     MidVisitRequest,
     MilestoneRequest,
@@ -30,6 +31,7 @@ from app.services.project_service import (
     svc_get_project,
     svc_get_project_history_detail,
     svc_list_project_delegations_for_site,
+    svc_propose_initialization,
     svc_nso_handover_queue,
     svc_nso_queue,
     svc_project_queue,
@@ -232,6 +234,21 @@ async def review_project_milestone(
 ) -> ProjectStateResponse:
     return await svc_review_milestone(
         db, tenant_id=tenant_id, actor=current_user, site_id=site_id, field=field, body=body,
+    )
+
+
+@router.post("/{site_id}/initialization/propose", response_model=ProjectStateResponse)
+async def propose_project_initialization(
+    site_id: str,
+    body: InitializationProposeRequest,
+    db: DbDep,
+    current_user: ProjectSupervisor,
+    _module: InProjectModule,
+    tenant_id: TenantId,
+) -> ProjectStateResponse:
+    """Supervisor proposes the initialization date when the PE handover left it unset."""
+    return await svc_propose_initialization(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id, body=body,
     )
 
 

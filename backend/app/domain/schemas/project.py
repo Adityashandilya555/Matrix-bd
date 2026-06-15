@@ -83,6 +83,11 @@ class ProjectStateResponse(BaseModel):
     budget_status: str = "draft"
     budget_total: Optional[float] = None
     budget_items: list["ProjectBudgetLine"] = Field(default_factory=list)
+    # Area & covers live on the GFC SiteBudget too; surfaced read-only so the
+    # Project module can show them and the per-sqft / per-cover metrics.
+    total_indoor_area_sqft: Optional[float] = None
+    total_area_sqft: Optional[float] = None
+    covers: Optional[int] = None
     updated_at: datetime
 
 
@@ -126,6 +131,13 @@ class InitializationRespondRequest(BaseModel):
     # Executive's response to the admin-proposed initialization date.
     decision: Decision
     comments: Optional[str] = None
+
+
+class InitializationProposeRequest(BaseModel):
+    # Supervisor proposes the initialization date from inside the Project module
+    # when the admin handover never seeded one (status still 'pending'). Recovery
+    # path so the initialization exchange can always start.
+    value: date
 
 
 class InitializationFinalizeRequest(BaseModel):

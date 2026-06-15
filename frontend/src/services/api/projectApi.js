@@ -220,6 +220,14 @@ export async function reviewProjectMilestone(siteId, field, { decision, comments
 }
 
 // Executive accepts / rejects the admin-proposed initialization date.
+// Supervisor proposes the initialization date when the PE handover left it
+// unset (status still 'pending') — recovery path so the exchange can start.
+export async function proposeInitialization(siteId, value) {
+  const data = await client.post(`/project/${siteId}/initialization/propose`, { value }).then((r) => r.data);
+  notifySiteDataChanged({ source: 'project', action: 'init_propose', siteId });
+  return stateFromServer(data);
+}
+
 export async function respondInitialization(siteId, { decision, comments }) {
   const data = await client.post(`/project/${siteId}/initialization/respond`, { decision, comments: comments || null }).then((r) => r.data);
   notifySiteDataChanged({ source: 'project', action: 'init_respond', siteId });

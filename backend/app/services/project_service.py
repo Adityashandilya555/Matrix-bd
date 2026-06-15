@@ -20,6 +20,7 @@ from app.domain.schemas.common import OkResponse
 from app.domain.schemas.project import (
     AdminConfirmQualityAuditRequest,
     InitializationFinalizeRequest,
+    InitializationProposeRequest,
     InitializationRespondRequest,
     MidVisitRequest,
     MilestoneRequest,
@@ -245,6 +246,11 @@ async def _build_response(
         budget_status=(budget.status if budget else "draft"),
         budget_total=float(budget.budget_total) if budget and budget.budget_total is not None else None,
         budget_items=budget_lines,
+        # Area & covers come off the same GFC budget row; without these the
+        # Project module showed blank inputs and "—" for every derived metric.
+        total_indoor_area_sqft=float(budget.total_indoor_area_sqft) if budget and budget.total_indoor_area_sqft is not None else None,
+        total_area_sqft=float(budget.total_area_sqft) if budget and budget.total_area_sqft is not None else None,
+        covers=int(budget.covers) if budget and budget.covers is not None else None,
         updated_at=review.updated_at,
     )
 
@@ -632,6 +638,44 @@ async def svc_review_milestone(
             actor_name=actor.get("name"),
             action="project_milestone_reviewed",
             detail=f"{field} decision={body.decision}",
+        )
+        return await _build_response(session, site, review)
+
+
+async def svc_propose_initialization(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    actor: dict,
+    site_id: str | UUID,
+    body: InitializationProposeRequest,
+) -> ProjectStateResponse:
+    """Supervisor proposes the initialization date from the Project module.
+
+    Recovery path for when the Project-Excellence admin handover never seeded a
+    date (status still 'pending') — without it those sites dead-end with no way
+    to start the exchange. Only fires while still pending so it can never clobber
+    an in-flight proposed/approved/rejected date.
+    """
+    if not _is_supervisor(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can set the initialization date.")
+    async with transaction(session):
+        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        review = await _fetch_review_or_create(session, site=site)
+        # A freshly-created review carries None in-memory (the 'pending'
+        # server_default only materializes on a DB read), so treat None as pending.
+        if review.initialization_status not in (None, "pending"):
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="An initialization date has already been proposed.")
+        review.initialization_date = body.value
+        review.initialization_status = "proposed"
+        await write_audit_event(
+            session,
+            tenant_id=tenant_id,
+            site_id=site.id,
+            actor_id=actor["sub"],
+            actor_name=actor.get("name"),
+            action="project_initialization_proposed",
+            detail=f"date={body.value}",
         )
         return await _build_response(session, site, review)
 

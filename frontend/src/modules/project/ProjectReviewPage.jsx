@@ -8,6 +8,7 @@ import {
   allocateProject,
   finalizeInitialization,
   getProject,
+  proposeInitialization,
   respondInitialization,
   reviewProjectMilestone,
   setMidProjectVisit,
@@ -64,6 +65,14 @@ function addDaysISO(isoDate, days) {
   if (!isoDate) return '';
   const d = new Date(`${isoDate}T00:00:00`);
   if (Number.isNaN(d.getTime())) return '';
+  d.setDate(d.getDate() + days);
+  return toISODate(d);
+}
+
+// yyyy-mm-dd for today + N days (timezone-safe). Used for initialization-date
+// presets; +2 days is the default.
+function todayPlusISO(days) {
+  const d = new Date();
   d.setDate(d.getDate() + days);
   return toISODate(d);
 }
@@ -576,6 +585,9 @@ function ExecutionSection({ review, siteId, isSupervisor, dark, busy, mutate }) 
   const [expDate, setExpDate] = React.useState('');
   const [visitDate, setVisitDate] = React.useState('');
   const [finalInitDate, setFinalInitDate] = React.useState('');
+  // Supervisor's proposed init date when the PE handover left it unset; defaults
+  // to today + 2 days (the same default the admin approval panel uses).
+  const [proposeInitDate, setProposeInitDate] = React.useState(() => todayPlusISO(2));
   const [auditFile, setAuditFile] = React.useState(null);
   const [inspectionDate, setInspectionDate] = React.useState('');
   const [modal, setModal] = React.useState(null);
@@ -613,9 +625,24 @@ function ExecutionSection({ review, siteId, isSupervisor, dark, busy, mutate }) 
 
         <StageCard title="1 · Initialization date" status={initStatus} tone={tone(initApproved)}>
           <div style={{ fontFamily: 'var(--zm-font-mono)', fontWeight: 800 }}>{fmtDate(review.initializationDate)}</div>
+          {(!initStatus || initStatus === 'pending') && (
+            isSupervisor ? (
+              <>
+                <span style={muted}>No initialization date was set during budget approval. Propose one to start execution — it goes to the executive to accept.</span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  {[2, 7, 14].map((n) => {
+                    const d = todayPlusISO(n);
+                    return <button key={n} type="button" onClick={() => setProposeInitDate(d)} style={presetPill(proposeInitDate === d)}>+{n} days</button>;
+                  })}
+                  <input type="date" value={proposeInitDate} onChange={(e) => setProposeInitDate(e.target.value)} style={zmDateStyle(dark)} />
+                  <ActionButton disabled={busy || !proposeInitDate} onClick={() => mutate(() => proposeInitialization(siteId, proposeInitDate))}>Propose date</ActionButton>
+                </div>
+              </>
+            ) : <span style={muted}>Awaiting the supervisor to set the initialization date.</span>
+          )}
           {initStatus === 'proposed' && !isSupervisor && (
             <>
-              <span style={muted}>Proposed by business-admin. Accept to confirm, or reject with a reason.</span>
+              <span style={muted}>Proposed initialization date. Accept to confirm, or reject with a reason.</span>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <ActionButton disabled={busy} onClick={() => mutate(() => respondInitialization(siteId, { decision: 'approve' }))}>Accept</ActionButton>
                 <ActionButton variant="ghost" disabled={busy} onClick={() => setModal('init-reject')}>Reject</ActionButton>
