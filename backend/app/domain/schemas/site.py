@@ -76,7 +76,10 @@ class CreateDraftRequest(BaseModel):
     # value (e.g. pasting a year/rent) returns a clean 422 instead. (#135)
     expected_escalation_years: Optional[int] = Field(default=None, ge=0, le=99)
     expected_revshare_pct: Optional[float] = None
-    score: Optional[float] = None
+    # Site score is a 1–5 rating (footfall + visibility). Bounded so an
+    # out-of-range value returns a clean 422 instead of persisting. Output
+    # (SiteResponse) stays unconstrained — legacy rows may hold the old 0–100.
+    score: Optional[int] = Field(default=None, ge=1, le=5)
     est_sales: Optional[float] = None
     nearest_starbucks: Optional[float] = None
     nearest_twc: Optional[float] = None
@@ -107,7 +110,8 @@ class SaveDetailsRequest(BaseModel):
     model: Optional[str] = None
     spoc_name: Optional[str] = Field(default=None, validation_alias=AliasChoices("spoc_name", "spocName"))
     google_pin: Optional[str] = Field(default=None, validation_alias=AliasChoices("google_pin", "googlePin"))
-    score: Optional[float] = None
+    # 1–5 rating (see CreateDraftRequest.score). Bounded on input only.
+    score: Optional[int] = Field(default=None, ge=1, le=5)
     est_sales: Optional[float] = Field(default=None, validation_alias=AliasChoices("est_sales", "estSales"))
     nearest_starbucks: Optional[float] = Field(default=None, validation_alias=AliasChoices("nearest_starbucks", "nearestStarbucks"))
     nearest_twc: Optional[float] = Field(default=None, validation_alias=AliasChoices("nearest_twc", "nearestTWC"))

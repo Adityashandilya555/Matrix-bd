@@ -30,7 +30,7 @@ from app.domain.schemas.project_excellence import (
     ReviewRequest,
     SavePEBudgetRequest,
 )
-from app.services import budget_service
+from app.services import budget_service, project_service
 from app.services._common import fetch_site_or_404, fetch_user_name
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_is_delegated
@@ -508,9 +508,21 @@ async def svc_admin_review_pe_budget(
         if budget.status != "pending_admin":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Budget is not awaiting admin.")
         if body.decision == "approve":
+            # The init date is mandatory on approval: it hands the site to the
+            # Project module and proposes the date the executive will confirm.
+            if body.initialization_date is None:
+                raise HTTPException(
+                    status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Set the project initialization date to approve.",
+                )
             budget.status = "approved"
             budget.approved_at = datetime.now(timezone.utc)
             site.project_excellence_status = "approved"
+            # Hand over to the Project module: seed the proposed initialization
+            # date in the same transaction so approval + handover are atomic.
+            await project_service.seed_initialization_from_pe(
+                session, site=site, initialization_date=body.initialization_date,
+            )
         else:
             budget.status = "rejected"
             budget.admin_comments = (body.comments or "").strip() or "Rejected by business admin."

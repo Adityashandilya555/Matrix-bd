@@ -208,9 +208,9 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
   }, [item?.id]);
 
   const upd = (k) => (v) => setF(prev => ({ ...prev, [k]: v }));
-  // Score is 0–100; clamp at the field boundary so users can't enter or
-  // paste in 150 / 1000 etc. Empty input stays empty so the "required"
-  // validator can still fire on submit.
+  // Score is an integer 1–5 (footfall + visibility rating); clamp at the field
+  // boundary so users can't enter or paste 0 / 7 / 150 etc. Empty input stays
+  // empty so the "required" validator can still fire on submit.
   const updScore = (v) => {
     if (v === '' || v === null || v === undefined) {
       setF(prev => ({ ...prev, score: '' }));
@@ -218,7 +218,7 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
     }
     const n = Number(String(v).replace(/[^\d.]/g, ''));
     if (!Number.isFinite(n)) return; // ignore garbage
-    const clamped = Math.max(0, Math.min(100, n));
+    const clamped = Math.max(1, Math.min(5, Math.round(n)));
     setF(prev => ({ ...prev, score: String(clamped) }));
   };
   const rentNum = parseFloat(f.rent) || 0; const camNum = parseFloat(f.cam) || 0;
@@ -278,7 +278,7 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
             <FormSection n="1·3" title="Identity"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}><TextField label="Name" value={f.name} onChange={upd('name')} required hint="Editable from draft"/><TextField label="Visit date" value={f.visitDate} mono readOnly hint="Locked from pipeline"/><TextField label="City" value={f.city} onChange={upd('city')} required/></div></FormSection>
             <FormSection n="4·5" title="Model · Google pin"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}><SelectField label="Model" value={f.model} onChange={upd('model')} required options={MODELS}/><TextField label="Google pin" value={f.googlePin} onChange={upd('googlePin')} required mono placeholder="19.1183, 72.9089"/></div></FormSection>
             <FormSection n="7" title="Storefront photos"><PhotoPicker photos={f.photos} onAdd={handlePhotoAdd} onRetry={handlePhotoRetry} onRemove={(id) => setF(prev => ({ ...prev, photos: prev.photos.filter(x => x.id !== id) }))} uploadingIds={uploadingPhotoIds}/></FormSection>
-            <FormSection n="8·11" title="Score + adjacency sales"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}><TextField label="Score" value={f.score} onChange={updScore} required type="number" min="0" max="100" hint="0–100 footfall + visibility" error={Number(f.score) > 100 ? 'Max 100' : undefined}/><TextField label="Estimated sales" value={f.estSales} onChange={upd('estSales')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 1250000" hint="Full rupees · no commas"/><TextField label="Nearest Starbucks sales" value={f.nearestStarbucks} onChange={upd('nearestStarbucks')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 900000" hint="Full rupees"/><TextField label="Nearest TWC sales" value={f.nearestTWC} onChange={upd('nearestTWC')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 700000" hint="Third-Wave Coffee · full rupees"/></div></FormSection>
+            <FormSection n="8·11" title="Score + adjacency sales"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}><TextField label="Score" value={f.score} onChange={updScore} required type="number" min="1" max="5" step="1" hint="1–5 footfall + visibility" error={f.score !== '' && (Number(f.score) > 5 || Number(f.score) < 1) ? '1–5 only' : undefined}/><TextField label="Estimated sales" value={f.estSales} onChange={upd('estSales')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 1250000" hint="Full rupees · no commas"/><TextField label="Nearest Starbucks sales" value={f.nearestStarbucks} onChange={upd('nearestStarbucks')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 900000" hint="Full rupees"/><TextField label="Nearest TWC sales" value={f.nearestTWC} onChange={upd('nearestTWC')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 700000" hint="Third-Wave Coffee · full rupees"/></div></FormSection>
             <FormSection n="12·14" title="Carpet · CAM · rent">
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}><TextField label="Carpet / covered area" value={f.carpet} onChange={upd('carpet')} required mono suffix="sqft" placeholder="e.g. 850"/><TextField label="CAM" value={f.cam} onChange={upd('cam')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 25000" hint="Full rupees · no commas"/><div/></div>
               <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>

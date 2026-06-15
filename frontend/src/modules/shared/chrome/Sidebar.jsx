@@ -88,14 +88,16 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
   // we still want the right menu to render based on where the user clicked).
   const path = location.pathname;
   const routeModule =
-    path.startsWith('/legal')   ? 'legal'   :
-    path.startsWith('/design')  ? 'design'  :
-    path.startsWith('/project') ? 'project' :
-    path.startsWith('/nso')     ? 'nso'     :
+    path.startsWith('/legal')              ? 'legal'              :
+    path.startsWith('/design')             ? 'design'             :
+    path.startsWith('/project-excellence') ? 'project_excellence' :
+    path.startsWith('/project')            ? 'project'            :
+    path.startsWith('/nso')                ? 'nso'                :
     'bd';
   const userModule = session?.module || routeModule;
   const isModuleSurface = userModule === 'legal'
-    || userModule === 'design' || userModule === 'project' || userModule === 'nso';
+    || userModule === 'design' || userModule === 'project' || userModule === 'nso'
+    || userModule === 'project_excellence';
 
   // Active view derived from current URL path
   const activeView =
@@ -120,6 +122,9 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
     path.startsWith('/design/process-flow')              ? 'design-process-flow' :
     path.startsWith('/design/history')                   ? 'design-history' :
     path.startsWith('/design')                           ? 'design' :
+    path === ROUTES.PROJECT_EXCELLENCE_OVERVIEW           ? 'pe-overview' :
+    path === ROUTES.PROJECT_EXCELLENCE_HISTORY            ? 'pe-history' :
+    path.startsWith('/project-excellence')               ? 'pe-queue' :
     path.startsWith('/project/process-flow')             ? 'project-process-flow' :
     path.startsWith('/project/history')                  ? 'project-history' :
     path.startsWith('/project/sites')                    ? 'project-sites' :
@@ -325,6 +330,33 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
             label="History"
             active={activeView === 'nso-history'}
             onClick={() => go(ROUTES.NSO_HISTORY)}
+            collapsed={collapsed}
+          />
+        </>
+      )}
+
+      {userModule === 'project_excellence' && (
+        <>
+          {!collapsed && <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Project Excellence</div>}
+          <SidebarItem
+            icon="dashboard"
+            label="Overview"
+            active={activeView === 'pe-overview'}
+            onClick={() => go(ROUTES.PROJECT_EXCELLENCE_OVERVIEW)}
+            collapsed={collapsed}
+          />
+          <SidebarItem
+            icon="box"
+            label="Pipeline"
+            active={activeView === 'pe-queue'}
+            onClick={() => go(ROUTES.PROJECT_EXCELLENCE)}
+            collapsed={collapsed}
+          />
+          <SidebarItem
+            icon="archiveBox"
+            label="History"
+            active={activeView === 'pe-history'}
+            onClick={() => go(ROUTES.PROJECT_EXCELLENCE_HISTORY)}
             collapsed={collapsed}
           />
         </>

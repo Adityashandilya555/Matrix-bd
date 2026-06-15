@@ -5,10 +5,16 @@ silently revert to the merged PE-private / post-project-done design.
 """
 from __future__ import annotations
 
+import datetime as _dt
 import inspect
 
 from app.db import models
-from app.services import budget_service
+from app.services import budget_service, project_service
+
+
+class _Site:
+    id = "11111111-1111-1111-1111-111111111111"
+    tenant_id = "22222222-2222-2222-2222-222222222222"
 
 
 def test_shared_budget_models_replace_pe_private():
@@ -55,3 +61,50 @@ def test_budget_labels_are_the_eleven():
     assert budget_service.BUDGET_LABELS[0] == "Professional Fees"
     assert budget_service.BUDGET_LABELS[-1] == "Misc"
     assert budget_service.GFC == "gfc" and budget_service.CLOSURE == "closure"
+
+
+# ── PE budget approval → Project module initialization handover ───────────────
+# Before the fix the admin's initialization date was dropped and the Project
+# module's initialization could never start (deadstate). These lock the handover.
+
+async def test_seed_initialization_proposes_on_fresh_review(make_session, fake_result):
+    """No existing review → one is created and seeded with the proposed date.
+    (A fresh review's initialization_status is None in-memory — None must count
+    as pending so the seed actually fires.)"""
+    sess = make_session(fake_result(scalar=None))
+    d = _dt.date(2026, 7, 1)
+    review = await project_service.seed_initialization_from_pe(
+        sess, site=_Site(), initialization_date=d,
+    )
+    assert review.initialization_status == "proposed"
+    assert review.initialization_date == d
+    assert sess.added  # the new review was registered on the session
+
+
+async def test_seed_initialization_does_not_clobber_inflight(make_session, fake_result):
+    """An exchange already underway (e.g. approved) is left untouched."""
+    existing = models.ProjectReview(
+        tenant_id=_Site.tenant_id, site_id=_Site.id,
+        project_status="allocated", current_stage="execution",
+    )
+    existing.initialization_status = "approved"
+    existing.initialization_date = _dt.date(2026, 1, 1)
+    sess = make_session(fake_result(scalar=existing))
+    out = await project_service.seed_initialization_from_pe(
+        sess, site=_Site(), initialization_date=_dt.date(2026, 7, 1),
+    )
+    assert out is existing
+    assert out.initialization_status == "approved"           # unchanged
+    assert out.initialization_date == _dt.date(2026, 1, 1)   # unchanged
+
+
+def test_pe_admin_approval_wires_initialization_handover():
+    import app.services.project_excellence_service as pe
+    src = inspect.getsource(pe)
+    assert "seed_initialization_from_pe" in src   # handover is wired on approve
+    assert "initialization_date" in src           # required before approving
+
+
+def test_admin_budget_review_schema_carries_init_date():
+    from app.domain.schemas.project_excellence import AdminBudgetReviewRequest
+    assert "initialization_date" in AdminBudgetReviewRequest.model_fields
