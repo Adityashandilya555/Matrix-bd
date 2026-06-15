@@ -58,23 +58,29 @@ const CONFIG = {
   },
 };
 
+// Peach-skyline node states. Color carries meaning, but the DONE/PENDING/QUEUED
+// label is the redundant non-color cue so states stay legible without relying on
+// hue alone (AA + colorblind-safe):
+//   complete → mint/teal (keeps "green = done")
+//   active   → peach + amber (warm "in-progress", the yellow replacement)
+//   queued   → white/neutral (not started)
 const STAGE_COPY = {
   complete: {
     label: 'DONE',
-    border: 'rgba(47, 125, 82, 0.58)',
-    background: 'rgba(47, 125, 82, 0.10)',
+    border: 'rgba(21, 135, 107, 0.55)',
+    background: 'rgba(21, 135, 107, 0.10)',
     color: 'var(--zm-success)',
   },
   active: {
     label: 'PENDING',
-    border: 'rgba(173, 108, 40, 0.48)',
-    background: 'rgba(173, 108, 40, 0.10)',
+    border: 'rgba(154, 99, 33, 0.45)',
+    background: 'rgba(255, 219, 187, 0.45)',
     color: 'var(--zm-copper)',
   },
   queued: {
     label: 'QUEUED',
-    border: 'rgba(223, 214, 198, 0.82)',
-    background: 'rgba(255, 255, 255, 0.42)',
+    border: 'rgba(203, 213, 225, 0.90)',
+    background: 'rgba(255, 255, 255, 0.50)',
     color: 'var(--zm-fg-3)',
   },
 };
@@ -228,7 +234,7 @@ function StageDiagram({ stages }) {
                 gap: 8,
                 textAlign: 'center',
                 color: stage.state === 'queued' ? 'var(--zm-fg-3)' : 'var(--zm-fg)',
-                boxShadow: stage.state === 'active' ? '0 12px 28px rgba(173, 108, 40, 0.10)' : 'none',
+                boxShadow: stage.state === 'active' ? '0 12px 28px rgba(154, 99, 33, 0.12)' : 'none',
               }}
             >
               <span style={{ display: 'inline-flex', justifyContent: 'center', color: colors.color }}>

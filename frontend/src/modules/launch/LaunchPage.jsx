@@ -209,7 +209,7 @@ export default function LaunchPage() {
                   <div>
                     <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{site.name}</span>
                     {site.isLaunched && (
-                      <span style={{ marginLeft: 8, display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 800, background: 'rgba(46,168,106,0.15)', color: '#2EA86A', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                      <span style={{ marginLeft: 8, display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 800, background: 'rgba(46,168,106,0.15)', color: 'var(--zm-success)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                         🚀 Launched
                       </span>
                     )}
@@ -279,7 +279,7 @@ export default function LaunchPage() {
               <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{item.site_code || '—'}</span>
               <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)', display: 'flex', alignItems: 'center', gap: 8 }}>
                 {item.site_name}
-                <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 800, background: 'rgba(46,168,106,0.15)', color: '#2EA86A', textTransform: 'uppercase', letterSpacing: '0.1em' }}>🚀 Launched</span>
+                <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 800, background: 'rgba(46,168,106,0.15)', color: 'var(--zm-success)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>🚀 Launched</span>
               </span>
               <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{item.city}</span>
               <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12, color: 'var(--zm-fg-2)' }}>

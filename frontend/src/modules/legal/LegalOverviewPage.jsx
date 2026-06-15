@@ -194,21 +194,21 @@ export default function LegalOverviewPage() {
   const loading = queue.status === 'loading';
   const cardMeta = {
     queue: {
-      no: 'Ⅰ', eyebrow: 'Sites in Legal', rule: 'var(--zm-accent)',
+      no: 'Ⅰ', eyebrow: 'Sites in Legal', rule: 'var(--zm-accent)', tone: 'peach',
       value: loading ? '··' : pad(totalInQueue),
       delta: 'In legal review', deltaTone: 'neutral',
       sub: 'Everything in the legal queue',
       onClick: () => selectKpi('queue'),
     },
     in_review: {
-      no: 'Ⅱ', eyebrow: 'DD in review', rule: 'var(--zm-info)',
+      no: 'Ⅱ', eyebrow: 'DD in review', rule: 'var(--zm-info)', tone: 'blue',
       value: loading ? '··' : pad(ddInReview),
       delta: 'Pending + in review', deltaTone: 'neutral',
       sub: `${counts.pending} awaiting · ${counts.in_review} in review`,
       onClick: () => selectKpi('in_review', IN_REVIEW_STATUSES),
     },
     positive: {
-      no: 'Ⅲ', eyebrow: 'DD positive', rule: 'var(--zm-success)',
+      no: 'Ⅲ', eyebrow: 'DD positive', rule: 'var(--zm-success)', tone: 'mint',
       value: loading ? '··' : pad(counts.positive),
       delta: 'Verdict cleared', deltaTone: 'pos',
       sub: 'Ready for agreement / licensing',
@@ -238,6 +238,7 @@ export default function LegalOverviewPage() {
           <MetricCard {...cardMeta.in_review}/>
           <MetricCard {...cardMeta.positive}/>
           <MetricCard
+            tone="slate"
             no="Ⅳ" eyebrow="Change requests" rule="var(--zm-copper)"
             value={crs.status === 'loading' ? '··' : pad(crs.total)}
             delta={crs.status === 'error' ? 'Unavailable' : 'Awaiting decision'}

@@ -255,19 +255,19 @@ function SessionExpiredModal({ sessionExpired, onSignInAgain }) {
           width: 'min(440px, calc(100vw - 32px))',
           borderRadius: 18,
           border: '1px solid rgba(24, 84, 75, 0.22)',
-          background: '#fffaf1',
+          background: 'var(--zm-surface)',
           boxShadow: '0 24px 80px rgba(0,0,0,0.22)',
           padding: 24,
-          color: '#181a20',
+          color: 'var(--zm-fg)',
         }}
       >
-        <p style={{ margin: '0 0 8px', color: '#0f6b5f', fontSize: 12, fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase' }}>
+        <p style={{ margin: '0 0 8px', color: 'var(--zm-accent)', fontSize: 12, fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase' }}>
           Session paused
         </p>
         <h2 id="session-expired-title" style={{ margin: 0, fontSize: 28, lineHeight: 1.05 }}>
           Sign in again to continue
         </h2>
-        <p style={{ margin: '14px 0 22px', color: '#5f626d', lineHeight: 1.45 }}>
+        <p style={{ margin: '14px 0 22px', color: 'var(--zm-fg-3)', lineHeight: 1.45 }}>
           Your workspace session expired. This page is still open so your in-progress form stays visible.
         </p>
         <button
@@ -278,7 +278,7 @@ function SessionExpiredModal({ sessionExpired, onSignInAgain }) {
             minHeight: 48,
             border: 0,
             borderRadius: 14,
-            background: '#0f6b5f',
+            background: 'var(--zm-accent)',
             color: '#fff',
             fontWeight: 800,
             cursor: 'pointer',

@@ -256,9 +256,9 @@ function SiteOverviewTab({ site }) {
             <Field label="Google pin" value={display(site.pin)} mono/>
           </div>
           <div style={{
-            background: 'linear-gradient(135deg,#EEF1F5,#E1E5EB)', borderRadius: 8, position: 'relative', overflow: 'hidden',
+            background: 'linear-gradient(135deg,var(--zm-surface-2),var(--zm-line))', borderRadius: 8, position: 'relative', overflow: 'hidden',
             backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><path d='M32 0 L0 0 0 32' fill='none' stroke='%23005F60' stroke-width='0.6' opacity='0.18'/></svg>\")",
-            backgroundColor: '#EEF1F5', minHeight: 130,
+            backgroundColor: 'var(--zm-surface-2)', minHeight: 130,
           }}>
             {mapHref ? (
               <>
@@ -273,7 +273,7 @@ function SiteOverviewTab({ site }) {
               <span style={{
                 position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 padding: 18, textAlign: 'center', fontFamily: 'var(--zm-font-body)', fontSize: 12.5,
-                color: '#64748B',
+                color: 'var(--zm-fg-3)',
               }}>
                 No Google pin or Maps link was captured for this site.
               </span>

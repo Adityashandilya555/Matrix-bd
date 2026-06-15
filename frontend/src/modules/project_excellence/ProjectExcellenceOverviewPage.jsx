@@ -55,22 +55,22 @@ export default function ProjectExcellenceOverviewPage() {
 
   const metrics = {
     all: {
-      no: 'Ⅰ', eyebrow: 'In Project Excellence', rule: 'var(--zm-accent)',
+      no: 'Ⅰ', eyebrow: 'In Project Excellence', rule: 'var(--zm-accent)', tone: 'peach',
       value: val(items.length), delta: 'Pipeline', deltaTone: 'neutral',
       sub: loading ? 'Loading queue…' : `Across ${cityCount} cit${cityCount === 1 ? 'y' : 'ies'}`,
     },
     pending: {
-      no: 'Ⅱ', eyebrow: 'Awaiting allocation', rule: 'var(--zm-warning)',
+      no: 'Ⅱ', eyebrow: 'Awaiting allocation', rule: 'var(--zm-warning)', tone: 'blue',
       value: val(pending), delta: 'Needs a supervisor', deltaTone: 'neutral',
       sub: 'Unallocated sites',
     },
     budgeting: {
-      no: 'Ⅲ', eyebrow: 'Budgeting', rule: 'var(--zm-copper)',
+      no: 'Ⅲ', eyebrow: 'Budgeting', rule: 'var(--zm-copper)', tone: 'mint',
       value: val(budgeting), delta: 'Allocated · in progress', deltaTone: 'neutral',
       sub: loading ? 'Loading queue…' : `${adminReview} awaiting admin review`,
     },
     approved: {
-      no: 'Ⅳ', eyebrow: 'Approved', rule: 'var(--zm-success)',
+      no: 'Ⅳ', eyebrow: 'Approved', rule: 'var(--zm-success)', tone: 'slate',
       value: val(approved), delta: 'Budget approved', deltaTone: 'pos',
       sub: 'Open the History tab →',
     },

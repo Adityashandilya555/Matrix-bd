@@ -45,7 +45,23 @@ function CornerTicks() {
   );
 }
 
-function MetricCard({ eyebrow, value, rule = 'var(--zm-copper)', delta, deltaTone = 'pos', sub, no, onClick, selected = false }) {
+// Peach-skyline KPI fills. `tone` optional — omit to keep the original glass
+// look (zero regression); set peach|blue|mint|slate to fill the card.
+const TONE_FILL = {
+  peach: 'var(--zm-brand-peach)',
+  blue:  'var(--zm-brand-blue)',
+  mint:  'var(--zm-brand-mint)',
+  slate: 'var(--zm-brand-slate)',
+};
+
+function MetricCard({ eyebrow, value, rule = 'var(--zm-copper)', delta, deltaTone = 'pos', sub, no, onClick, selected = false, tone }) {
+  const fill = TONE_FILL[tone];
+  const toned = !!fill;
+  const onColor = tone === 'slate' ? 'var(--zm-brand-on-slate)' : 'var(--zm-brand-on-pastel)';
+  const ruleColor = toned ? onColor : rule;
+  const valueColor = toned ? onColor : 'var(--zm-fg)';
+  const metaColor = toned ? onColor : 'var(--zm-fg-3)';
+  const noColor = toned ? onColor : 'var(--zm-fg-4)';
   return (
     <div className="zm-glass"
       role={onClick ? 'button' : undefined}
@@ -56,8 +72,9 @@ function MetricCard({ eyebrow, value, rule = 'var(--zm-copper)', delta, deltaTon
         borderRadius: 16, padding: '24px 26px 26px',
         display: 'flex', flexDirection: 'column', gap: 12,
         position: 'relative', overflow: 'hidden',
+        ...(toned ? { background: fill } : {}),
         cursor: onClick ? 'pointer' : 'default',
-        outline: selected ? '2px solid ' + rule : 'none',
+        outline: selected ? '2px solid ' + ruleColor : 'none',
         outlineOffset: -2,
         transition: 'transform 200ms cubic-bezier(0.22,1,0.36,1), box-shadow 200ms cubic-bezier(0.22,1,0.36,1)',
       }}
@@ -66,38 +83,40 @@ function MetricCard({ eyebrow, value, rule = 'var(--zm-copper)', delta, deltaTon
     >
       <span aria-hidden="true" style={{
         position: 'absolute', inset: '0 0 auto 0', height: 1,
-        background: 'linear-gradient(90deg, transparent, ' + rule + ', transparent)', opacity: 0.6,
+        background: 'linear-gradient(90deg, transparent, ' + ruleColor + ', transparent)', opacity: toned ? 0.35 : 0.6,
       }}/>
-      <CornerTicks/>
+      {!toned && <CornerTicks/>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
         {no && (
-          <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 10, fontWeight: 700, letterSpacing: '0.16em', color: 'var(--zm-fg-4)', flex: '0 0 auto' }}>{no}</span>
+          <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 10, fontWeight: 700, letterSpacing: '0.16em', color: noColor, flex: '0 0 auto', opacity: toned ? 0.7 : 1 }}>{no}</span>
         )}
         <span style={{
           fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9.5,
-          letterSpacing: '0.22em', textTransform: 'uppercase', color: 'var(--zm-fg-3)',
+          letterSpacing: '0.22em', textTransform: 'uppercase', color: metaColor,
           lineHeight: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1,
+          opacity: toned ? 0.8 : 1,
         }}>{eyebrow}</span>
         {onClick && (
-          <span style={{ color: 'var(--zm-fg-4)', display: 'inline-flex', flex: '0 0 auto' }}>
+          <span style={{ color: noColor, display: 'inline-flex', flex: '0 0 auto' }}>
             <Icon name={selected ? 'x' : 'chevron'} size={12}/>
           </span>
         )}
       </div>
       <span style={{
         fontFamily: 'var(--zm-font-display)', fontWeight: 800, fontStyle: 'normal',
-        fontSize: 64, letterSpacing: '-0.035em', color: 'var(--zm-fg)', lineHeight: 0.95,
+        fontSize: 64, letterSpacing: '-0.035em', color: valueColor, lineHeight: 0.95,
         fontVariantNumeric: 'tabular-nums',
         fontFeatureSettings: "'tnum' 1",
       }}>{value}</span>
-      <span style={{ width: 36, height: 1, background: rule, opacity: 0.7 }}/>
+      <span style={{ width: 36, height: 1, background: ruleColor, opacity: 0.7 }}/>
       {delta && (
         <span style={{
           fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, letterSpacing: 0,
-          color: deltaTone === 'pos' ? 'var(--zm-success)' : deltaTone === 'neg' ? 'var(--zm-danger)' : 'var(--zm-fg-3)',
+          color: toned ? onColor : (deltaTone === 'pos' ? 'var(--zm-success)' : deltaTone === 'neg' ? 'var(--zm-danger)' : 'var(--zm-fg-3)'),
+          opacity: toned ? 0.85 : 1,
         }}>{delta}</span>
       )}
-      {sub && <span style={{ fontFamily: 'var(--zm-font-body)', fontStyle: 'normal', fontSize: 12.5, color: 'var(--zm-fg-3)', lineHeight: 1.35 }}>{sub}</span>}
+      {sub && <span style={{ fontFamily: 'var(--zm-font-body)', fontStyle: 'normal', fontSize: 12.5, color: metaColor, lineHeight: 1.35, opacity: toned ? 0.78 : 1 }}>{sub}</span>}
     </div>
   );
 }
@@ -509,17 +528,17 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
           boxes when expanded (the other KPIs disappear). */}
       {!view && (
         <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
-          <MetricCard no="Ⅰ" eyebrow="Total sites" value={metrics.total.value}    rule="var(--zm-accent)" delta={metrics.total.delta}    sub={metrics.total.sub}    onClick={() => selectKpi('sites')}/>
-          <MetricCard no="Ⅱ" eyebrow="Archive / Rejected" value={metrics.archived.value} rule="var(--zm-fg-3)" delta={metrics.archived.delta} deltaTone="neutral" sub={metrics.archived.sub} onClick={() => selectKpi('archived')}/>
-          <MetricCard no="Ⅲ" eyebrow="Payments"    value={metrics.payments.value} rule="var(--zm-info)"   delta={metrics.payments.delta} deltaTone="neutral" sub={metrics.payments.sub} onClick={() => selectKpi('payments')}/>
-          <MetricCard no="Ⅳ" eyebrow="Launch"      value={metrics.launch.value}   rule="var(--zm-copper)" delta={metrics.launch.delta}   deltaTone={metrics.launch.deltaTone} sub={metrics.launch.sub} onClick={() => selectKpi('launch')}/>
+          <MetricCard tone="peach" no="Ⅰ" eyebrow="Total sites" value={metrics.total.value}    rule="var(--zm-accent)" delta={metrics.total.delta}    sub={metrics.total.sub}    onClick={() => selectKpi('sites')}/>
+          <MetricCard tone="blue" no="Ⅱ" eyebrow="Archive / Rejected" value={metrics.archived.value} rule="var(--zm-fg-3)" delta={metrics.archived.delta} deltaTone="neutral" sub={metrics.archived.sub} onClick={() => selectKpi('archived')}/>
+          <MetricCard tone="mint" no="Ⅲ" eyebrow="Payments"    value={metrics.payments.value} rule="var(--zm-info)"   delta={metrics.payments.delta} deltaTone="neutral" sub={metrics.payments.sub} onClick={() => selectKpi('payments')}/>
+          <MetricCard tone="slate" no="Ⅳ" eyebrow="Launch"      value={metrics.launch.value}   rule="var(--zm-copper)" delta={metrics.launch.delta}   deltaTone={metrics.launch.deltaTone} sub={metrics.launch.sub} onClick={() => selectKpi('launch')}/>
         </div>
       )}
 
       {view === 'sites' && (
         <>
           <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
-            <MetricCard no="Ⅰ" eyebrow="Total sites" value={metrics.total.value} rule="var(--zm-accent)" delta={metrics.total.delta} sub={metrics.total.sub} selected onClick={() => selectKpi('sites')}/>
+            <MetricCard tone="peach" no="Ⅰ" eyebrow="Total sites" value={metrics.total.value} rule="var(--zm-accent)" delta={metrics.total.delta} sub={metrics.total.sub} selected onClick={() => selectKpi('sites')}/>
             <BigFilterBox label="Pipeline"         value={visibleDrafts.length}    color={STAGES.draft.color}     active={stage === 'draft'}     onClick={() => { setSubFilter('all'); setStage(s => s === 'draft' ? 'all' : 'draft'); }}/>
             <BigFilterBox label="Shortlist"        value={visibleShortlist.length} color={STAGES.shortlist.color} active={stage === 'shortlist'} onClick={() => { setSubFilter('all'); setStage(s => s === 'shortlist' ? 'all' : 'shortlist'); }}/>
             <BigFilterBox label="Sites in process" value={activeStaging.length}    color={STAGES.staging.color}   active={stage === 'staging'}   onClick={() => { setSubFilter('all'); setStage(s => s === 'staging' ? 'all' : 'staging'); }}/>
@@ -548,7 +567,7 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
       {view === 'archived' && (
         <>
           <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
-            <MetricCard no="Ⅱ" eyebrow="Archive / Rejected" value={metrics.archived.value} rule="var(--zm-fg-3)" delta={metrics.archived.delta} deltaTone="neutral" sub={metrics.archived.sub} selected onClick={() => selectKpi('archived')}/>
+            <MetricCard tone="blue" no="Ⅱ" eyebrow="Archive / Rejected" value={metrics.archived.value} rule="var(--zm-fg-3)" delta={metrics.archived.delta} deltaTone="neutral" sub={metrics.archived.sub} selected onClick={() => selectKpi('archived')}/>
             <BigFilterBox label="Archived" value={archivedOnly} color={STAGES.archived.color} active={archStatus === 'archived'} onClick={() => setArchStatus(s => s === 'archived' ? 'all' : 'archived')}/>
             <BigFilterBox label="Rejected" value={rejectedOnly} color={STAGES.rejected.color} active={archStatus === 'rejected'} onClick={() => setArchStatus(s => s === 'rejected' ? 'all' : 'rejected')}/>
           </div>
