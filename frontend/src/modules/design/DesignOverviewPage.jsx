@@ -43,22 +43,22 @@ const STAGE_PILLS = [
 // KPI definitions — `statuses: null` means "every queue row".
 const KPIS = {
   sites: {
-    no: 'Ⅰ', eyebrow: 'Sites in Design', rule: 'var(--zm-accent)',
+    no: 'Ⅰ', eyebrow: 'Sites in Design', rule: 'var(--zm-accent)', tone: 'peach',
     statuses: null,
     sub: 'Finance-approved queue',
   },
   inProgress: {
-    no: 'Ⅱ', eyebrow: 'In progress', rule: 'var(--zm-info)',
+    no: 'Ⅱ', eyebrow: 'In progress', rule: 'var(--zm-info)', tone: 'blue',
     statuses: ['allocated', 'in_progress'],
     sub: 'Allocated or under work',
   },
   gfc: {
-    no: 'Ⅲ', eyebrow: 'Awaiting GFC', rule: 'var(--zm-copper)',
+    no: 'Ⅲ', eyebrow: 'Awaiting GFC', rule: 'var(--zm-copper)', tone: 'mint',
     statuses: ['gfc_pending'],
     sub: 'Waiting on admin GFC gate',
   },
   approved: {
-    no: 'Ⅳ', eyebrow: 'Approved', rule: 'var(--zm-success)',
+    no: 'Ⅳ', eyebrow: 'Approved', rule: 'var(--zm-success)', tone: 'slate',
     statuses: ['approved'],
     sub: 'GFC approved · design done',
   },
@@ -223,6 +223,7 @@ export default function DesignOverviewPage() {
             return (
               <MetricCard
                 key={key}
+                tone={k.tone}
                 no={k.no} eyebrow={k.eyebrow} rule={k.rule}
                 value={String(countFor(key)).padStart(2, '0')}
                 sub={k.sub}
@@ -247,6 +248,7 @@ export default function DesignOverviewPage() {
 
           <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
             <MetricCard
+              tone={kpi.tone}
               no={kpi.no} eyebrow={kpi.eyebrow} rule={kpi.rule}
               value={String(subset.length).padStart(2, '0')}
               sub={kpi.sub}

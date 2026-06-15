@@ -25,11 +25,11 @@ export const GRID_ATTACH = 'local, local, local, local';
 // keeps it steady while content scrolls underneath.
 export function stageVignette(dark) {
   return dark
-    ? 'radial-gradient(125% 90% at 50% -12%, rgba(77,208,193,0.07), transparent 46%), radial-gradient(150% 135% at 50% 120%, rgba(0,0,0,0.55), transparent 60%)'
-    : 'radial-gradient(120% 80% at 50% -14%, rgba(255,255,255,0.72), transparent 52%), radial-gradient(150% 135% at 50% 120%, rgba(28,24,18,0.07), transparent 60%)';
+    ? 'radial-gradient(125% 90% at 50% -12%, rgba(143,182,222,0.07), transparent 46%), radial-gradient(150% 135% at 50% 120%, rgba(0,0,0,0.55), transparent 60%)'
+    : 'radial-gradient(120% 80% at 50% -14%, rgba(255,255,255,0.72), transparent 52%), radial-gradient(150% 135% at 50% 120%, rgba(30,41,59,0.06), transparent 60%)';
 }
 
 // Slightly-deepened base color for the canvas so white cards lift off it.
 export function canvasBase(dark) {
-  return dark ? '#09090F' : '#FAF6EE';
+  return dark ? '#09090F' : '#EEF2F8';
 }

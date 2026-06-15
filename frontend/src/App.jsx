@@ -185,7 +185,7 @@ export default function App() {
           display: 'inline-flex', alignItems: 'center', gap: 10, zIndex: 200,
           animation: 'zm-rise 240ms var(--zm-ease-emp)',
         }}>
-          <span style={{ width: 6, height: 6, borderRadius: 999, background: toast.tone === 'danger' ? '#F87171' : '#34D399' }}/>
+          <span style={{ width: 6, height: 6, borderRadius: 999, background: toast.tone === 'danger' ? 'var(--zm-danger)' : 'var(--zm-success)' }}/>
           {toast.msg}
         </div>
       )}

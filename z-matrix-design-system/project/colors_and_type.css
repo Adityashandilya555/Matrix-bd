@@ -2,89 +2,100 @@
    Z-MATRIX DESIGN SYSTEM — colors + type tokens
    For: Blue Tokai internal automation + new-store-opening folder
    Two themes:
-     :root            → Digital Quartz (light, default)
+     :root            → Peach Skyline (light, default)
      [data-theme=dark]→ Deep Obsidian (high-end command center)
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 /* -------------------------------------------------------------
-   1. Color tokens — Digital Quartz (light) · warm editorial neutrals
+   1. Color tokens — Peach Skyline (light) · cool airy neutrals
    ------------------------------------------------------------- */
 :root {
-  /* Background plane — warm off-white, never pure */
-  --zm-bg:            #F6F2EA;   /* warm cream */
-  --zm-bg-2:          #EFEAE0;
-  --zm-surface:       #FBF8F1;   /* soft paper card */
-  --zm-surface-2:     #F4F0E6;
-  --zm-surface-hover: #EFEAE0;
-  --zm-surface-sunken:#E7E0D2;
+  /* Background plane — cool airy off-white (Peach skyline) */
+  --zm-bg:            #F4F6FA;   /* cool light canvas */
+  --zm-bg-2:          #EDF1F7;
+  --zm-surface:       #FFFFFF;   /* clean white card */
+  --zm-surface-2:     #EFF3F9;
+  --zm-surface-hover: #EAEFF6;
+  --zm-surface-sunken:#E4EAF2;
 
-  /* Linework — warm graphite */
-  --zm-line:          #E4DCC9;
-  --zm-line-strong:   #C8BFA9;
-  --zm-line-faint:    #EFE9DA;
-  --zm-grid:          rgba(28, 24, 18, 0.04);
+  /* Linework — slate-tinted */
+  --zm-line:          #E2E8F0;
+  --zm-line-strong:   #CBD5E1;
+  --zm-line-faint:    #EEF2F7;
+  /* Background grid — cool slate. Fine lines + a stronger coarse rhythm so
+     the plane reads with depth and content surfaces float above it. */
+  --zm-grid:          rgba(30, 41, 59, 0.04);
+  --zm-grid-strong:   rgba(30, 41, 59, 0.06);
 
-  /* Text — warm near-black */
-  --zm-fg:            #1A1A1F;   /* warm ink */
-  --zm-fg-2:          #3A3A45;
-  --zm-fg-3:          #6E6E78;
-  --zm-fg-4:          #9C9CA4;
-  --zm-fg-inv:        #FBF8F1;
+  /* Text — slate ink */
+  --zm-fg:            #1E2A36;   /* slate ink */
+  --zm-fg-2:          #3B4855;
+  --zm-fg-3:          #6B7785;
+  --zm-fg-4:          #9AA6B2;
+  --zm-fg-inv:        #FFFFFF;
 
-  /* Brand accent — Matrix Teal */
-  --zm-accent:        #0F5D5C;
-  --zm-accent-hover:  #0C4B4A;
-  --zm-accent-press:  #093C3B;
-  --zm-accent-soft:   #E5EEED;
-  --zm-accent-line:   #9CC1C0;
+  /* Brand accent — Slate (primary action) */
+  --zm-accent:        #496580;
+  --zm-accent-hover:  #3B5269;
+  --zm-accent-press:  #2F4458;
+  --zm-accent-soft:   #E7EEF5;
+  --zm-accent-line:   #C3D1E0;
   --zm-accent-on:     #FFFFFF;   /* foreground on accent surface */
   /* CTA button tokens — light mode mirrors --zm-accent. */
-  --zm-cta-bg:        #0F5D5C;
-  --zm-cta-bg-hover:  #0C4B4A;
+  --zm-cta-bg:        #496580;
+  --zm-cta-bg-hover:  #3B5269;
   --zm-cta-fg:        #FFFFFF;
 
-  /* Data highlight — Burnished Copper */
-  --zm-copper:        #B0712E;
-  --zm-copper-hover:  #946028;
-  --zm-copper-soft:   #F4E8D6;
-  --zm-copper-line:   #E3C58E;
+  /* Brand palette — Peach skyline (categorical KPI fills / decoration) */
+  --zm-brand-peach:     #FFDBBB;
+  --zm-brand-blue:      #BADDFF;
+  --zm-brand-mint:      #BAFFF5;
+  --zm-brand-slate:     #496580;
+  --zm-brand-on-pastel: #1E2A36;   /* ink on peach/blue/mint fills */
+  --zm-brand-on-slate:  #FFFFFF;   /* text on the slate card */
+
+  /* Data highlight — warm amber (peach family, AA-readable) */
+  --zm-copper:        #9A6321;
+  --zm-copper-hover:  #82531B;
+  --zm-copper-soft:   #FBEAD6;
+  --zm-copper-line:   #E8C49A;
 
   /* Secondary accent — Plum for state */
   --zm-plum:          #6B4789;
   --zm-plum-soft:     #ECE3F2;
 
   /* Semantic */
-  --zm-success:       #2F7A4A;
-  --zm-success-soft:  #DCE9DC;
-  --zm-warning:       #B0712E;
-  --zm-warning-soft:  #F4E8D6;
-  --zm-danger:        #9B2A2A;
-  --zm-danger-soft:   #F0D6D2;
-  --zm-info:          #2A4FA0;
-  --zm-info-soft:     #DDE3F0;
+  --zm-success:       #15876B;
+  --zm-success-soft:  #DBF6EE;
+  --zm-warning:       #9A6321;
+  --zm-warning-soft:  #FBEAD6;
+  --zm-danger:        #C23B3B;
+  --zm-danger-soft:   #FBE1E0;
+  --zm-info:          #2D63B8;
+  --zm-info-soft:     #E3EEFB;
 
-  /* Stage colors */
-  --zm-stage-draft:        #6E6E78;
-  --zm-stage-shortlist:    #2A4FA0;
-  --zm-stage-bd:           #0F5D5C;
-  --zm-stage-loi:          #B0712E;
-  --zm-stage-payment:      #2F7A4A;
+  /* Stage colors — retuned to the palette, kept mutually distinct */
+  --zm-stage-draft:        #6B7785;
+  --zm-stage-shortlist:    #2D63B8;
+  --zm-stage-bd:           #496580;
+  --zm-stage-loi:          #9A6321;
+  --zm-stage-payment:      #15876B;
   --zm-stage-legal:        #6B4789;
   --zm-stage-handover:     #A2407C;
 
-  /* Layered glass shadows */
-  --zm-shadow-1: 0 1px 0 rgba(28,24,18,0.04), 0 1px 3px rgba(28,24,18,0.06);
-  --zm-shadow-2: 0 1px 0 rgba(28,24,18,0.04), 0 4px 14px rgba(28,24,18,0.06), 0 1px 4px rgba(28,24,18,0.04);
-  --zm-shadow-3: 0 12px 32px rgba(28,24,18,0.10), 0 4px 10px rgba(28,24,18,0.06);
-  --zm-shadow-pop: 0 24px 60px rgba(28,24,18,0.18), 0 6px 18px rgba(28,24,18,0.08);
-  --zm-glass: 0 1px 0 rgba(255,255,255,0.6) inset, 0 1px 2px rgba(28,24,18,0.04), 0 8px 24px rgba(28,24,18,0.06);
-  --zm-ring-focus: 0 0 0 3px rgba(15,93,92,0.20);
+  /* Layered glass shadows — cool slate */
+  --zm-shadow-1: 0 1px 0 rgba(30,41,59,0.03), 0 2px 6px rgba(30,41,59,0.06);
+  --zm-shadow-2: 0 1px 0 rgba(30,41,59,0.03), 0 8px 18px rgba(30,41,59,0.07), 0 1px 4px rgba(30,41,59,0.05);
+  --zm-shadow-3: 0 18px 42px rgba(30,41,59,0.12), 0 4px 12px rgba(30,41,59,0.06);
+  --zm-shadow-pop: 0 24px 60px rgba(30,41,59,0.20), 0 6px 18px rgba(30,41,59,0.10);
+  --zm-glass: 0 1px 0 rgba(255,255,255,0.7) inset, 0 1px 2px rgba(30,41,59,0.04), 0 8px 24px rgba(30,41,59,0.07);
+  --zm-ring-focus: 0 0 0 3px rgba(73,101,128,0.22);
 
   /* Glass token — used by frosted surfaces */
-  --zm-glass-bg: rgba(251,248,241,0.66);
-  --zm-glass-border: rgba(255,255,255,0.55);
+  --zm-glass-bg: rgba(255,255,255,0.72);
+  --zm-glass-border: rgba(255,255,255,0.6);
   --zm-glass-blur: blur(16px);
 
   /* Radii */
@@ -130,7 +141,8 @@
   --zm-line:          #28283A;
   --zm-line-strong:   #3A3A50;
   --zm-line-faint:    #1E1E2C;
-  --zm-grid:          rgba(238, 232, 220, 0.04);
+  --zm-grid:          rgba(238, 232, 220, 0.05);
+  --zm-grid-strong:   rgba(238, 232, 220, 0.085);
 
   --zm-fg:            #EDE6D8;   /* warm platinum */
   --zm-fg-2:          #C8C0B0;   /* lifted: ~10:1 on bg */
@@ -138,17 +150,25 @@
   --zm-fg-4:          #6E6757;   /* lifted from #524C40 → ~3.2:1 (non-text UI only) */
   --zm-fg-inv:        #0B0B12;
 
-  --zm-accent:        #4DD0C1;
-  --zm-accent-hover:  #6FDDD0;
-  --zm-accent-press:  #2EB5A6;
-  --zm-accent-soft:   rgba(77,208,193,0.12);
-  --zm-accent-line:   rgba(77,208,193,0.32);
-  --zm-accent-on:     #0B0B12;   /* dark ink on mint accent surfaces */
-  /* CTA: keep dark mode's own identity — mint surface + dark ink text.
-     ~10.5:1 contrast, distinctly "dark theme" (no copy of the light CTA). */
-  --zm-cta-bg:        #4DD0C1;
-  --zm-cta-bg-hover:  #6FDDD0;
+  /* Brand accent — slate-blue (brand-consistent with the light Peach skyline) */
+  --zm-accent:        #8FB6DE;
+  --zm-accent-hover:  #A6C7E8;
+  --zm-accent-press:  #6F9CC9;
+  --zm-accent-soft:   rgba(143,182,222,0.14);
+  --zm-accent-line:   rgba(143,182,222,0.34);
+  --zm-accent-on:     #0B0B12;   /* dark ink on light slate-blue accent */
+  /* CTA: slate-blue surface + dark ink text, distinctly "dark theme". */
+  --zm-cta-bg:        #8FB6DE;
+  --zm-cta-bg-hover:  #A6C7E8;
   --zm-cta-fg:        #0B0B12;
+
+  /* Brand palette (dark) — tinted fills that read on dark surfaces */
+  --zm-brand-peach:     rgba(255,219,187,0.16);
+  --zm-brand-blue:      rgba(186,221,255,0.16);
+  --zm-brand-mint:      rgba(186,255,245,0.16);
+  --zm-brand-slate:     #2A3A4D;
+  --zm-brand-on-pastel: var(--zm-fg);
+  --zm-brand-on-slate:  #EDE6D8;
 
   --zm-copper:        #E0A659;
   --zm-copper-hover:  #ECBA77;
@@ -169,7 +189,7 @@
 
   --zm-stage-draft:        #807868;
   --zm-stage-shortlist:    #7BA5F0;
-  --zm-stage-bd:           #4DD0C1;
+  --zm-stage-bd:           #8FB6DE;
   --zm-stage-loi:          #E0A659;
   --zm-stage-payment:      #5BCB8C;
   --zm-stage-legal:        #B197D2;
@@ -180,7 +200,7 @@
   --zm-shadow-3: 0 12px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(238,230,216,0.04);
   --zm-shadow-pop: 0 24px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(238,230,216,0.06);
   --zm-glass: 0 1px 0 rgba(255,255,255,0.04) inset, 0 12px 32px rgba(0,0,0,0.5);
-  --zm-ring-focus: 0 0 0 3px rgba(77,208,193,0.25);
+  --zm-ring-focus: 0 0 0 3px rgba(143,182,222,0.25);
 
   --zm-glass-bg: rgba(22,22,31,0.66);
   --zm-glass-border: rgba(255,255,255,0.08);
@@ -272,6 +292,12 @@
 .zm-num         { font-family: var(--zm-font-mono); font-feature-settings: 'tnum' 1; }
 .zm-num-hero    { font-family: var(--zm-font-mono); font-feature-settings: 'tnum' 1; font-size: var(--zm-fs-num-hero); font-weight: 600; letter-spacing: -0.02em; color: var(--zm-fg); }
 .zm-num-lg      { font-family: var(--zm-font-mono); font-feature-settings: 'tnum' 1; font-size: var(--zm-fs-num-lg);   font-weight: 600; color: var(--zm-fg); }
+
+.zm-page-title,
+.zm-page-title em {
+  font-family: var(--zm-font-display);
+  font-style: normal;
+}
 
 /* -------------------------------------------------------------
    5. Element-level defaults — opt in by adding .zm-prose

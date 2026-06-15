@@ -187,28 +187,28 @@ export default function ProjectOverviewPage() {
 
   const metrics = {
     all: {
-      no: 'Ⅰ', eyebrow: 'In Project', rule: 'var(--zm-accent)',
+      no: 'Ⅰ', eyebrow: 'In Project', rule: 'var(--zm-accent)', tone: 'peach',
       value: val(items.length),
       delta: 'Pipeline + Sites',
       deltaTone: 'neutral',
       sub: loading ? 'Loading queue…' : `Across ${cityCount} cit${cityCount === 1 ? 'y' : 'ies'}`,
     },
     budget: {
-      no: 'Ⅱ', eyebrow: 'Budget review', rule: 'var(--zm-copper)',
+      no: 'Ⅱ', eyebrow: 'Budget review', rule: 'var(--zm-copper)', tone: 'blue',
       value: val(budgetReview.length),
       delta: 'Supervisor ∥ Admin',
       deltaTone: 'neutral',
       sub: loading ? 'Loading queue…' : `${pendingSupervisor} supervisor · ${budgetReview.length - pendingSupervisor} admin`,
     },
     execution: {
-      no: 'Ⅲ', eyebrow: 'In execution', rule: 'var(--zm-info)',
+      no: 'Ⅲ', eyebrow: 'In execution', rule: 'var(--zm-info)', tone: 'mint',
       value: val(inExecution.length),
       delta: 'Work underway',
       deltaTone: 'neutral',
       sub: 'Budget approved · on site',
     },
     audit: {
-      no: 'Ⅳ', eyebrow: 'Audit cleared', rule: 'var(--zm-success)',
+      no: 'Ⅳ', eyebrow: 'Audit cleared', rule: 'var(--zm-success)', tone: 'slate',
       value: val(auditCleared.length),
       delta: 'Quality audit approved',
       deltaTone: 'pos',

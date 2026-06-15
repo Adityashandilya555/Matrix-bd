@@ -42,10 +42,10 @@ function stageOf(row) {
 }
 
 const KPI_DEFS = [
-  { key: 'total',    no: 'Ⅰ', eyebrow: 'In NSO',            rule: 'var(--zm-accent)',  stages: null,                                        delta: 'Finance / CA ready',     sub: 'All active opening files' },
-  { key: 'property', no: 'Ⅱ', eyebrow: 'Property',          rule: 'var(--zm-info)',    stages: ['pending', 'stage_one'],                    delta: 'Stage 1 · open',         sub: 'Property readiness underway', deltaTone: 'neutral' },
-  { key: 'licenses', no: 'Ⅲ', eyebrow: 'Licenses & launch', rule: 'var(--zm-copper)',  stages: ['stage_two', 'stage_three', 'final_review'], delta: 'Stages 2–3 + review',    sub: 'Licenses, launch checks, sign-off', deltaTone: 'neutral' },
-  { key: 'complete', no: 'Ⅳ', eyebrow: 'Complete',          rule: 'var(--zm-success)', stages: ['complete'],                                delta: 'Final sign-off done',    sub: 'Ready for handover' },
+  { key: 'total',    no: 'Ⅰ', eyebrow: 'In NSO',            rule: 'var(--zm-accent)',  tone: 'peach', stages: null,                                        delta: 'Finance / CA ready',     sub: 'All active opening files' },
+  { key: 'property', no: 'Ⅱ', eyebrow: 'Property',          rule: 'var(--zm-info)',    tone: 'blue',  stages: ['pending', 'stage_one'],                    delta: 'Stage 1 · open',         sub: 'Property readiness underway', deltaTone: 'neutral' },
+  { key: 'licenses', no: 'Ⅲ', eyebrow: 'Licenses & launch', rule: 'var(--zm-copper)',  tone: 'mint',  stages: ['stage_two', 'stage_three', 'final_review'], delta: 'Stages 2–3 + review',    sub: 'Licenses, launch checks, sign-off', deltaTone: 'neutral' },
+  { key: 'complete', no: 'Ⅳ', eyebrow: 'Complete',          rule: 'var(--zm-success)', tone: 'slate', stages: ['complete'],                                delta: 'Final sign-off done',    sub: 'Ready for handover' },
 ];
 
 function pretty(value) {
@@ -218,6 +218,7 @@ export default function NsoOverviewPage() {
   const renderCard = (kpi, selected = false) => (
     <MetricCard
       key={kpi.key}
+      tone={kpi.tone}
       no={kpi.no}
       eyebrow={kpi.eyebrow}
       value={String(kpiCount(kpi)).padStart(2, '0')}

@@ -608,7 +608,7 @@ export default function NsoReviewPage() {
         <div style={{
           padding: '14px 20px', borderRadius: 12,
           background: 'rgba(46,168,106,0.12)', border: '1px solid rgba(46,168,106,0.35)',
-          color: '#2EA86A', fontWeight: 750, fontSize: 15,
+          color: 'var(--zm-success)', fontWeight: 750, fontSize: 15,
           display: 'flex', alignItems: 'center', gap: 10,
         }}>
           🚀 <span>This site has been <strong>LAUNCHED</strong>
