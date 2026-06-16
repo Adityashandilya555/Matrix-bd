@@ -164,6 +164,19 @@ class Settings(BaseSettings):
                 "(or ALLOW_INSECURE_DEFAULTS=true for local dev)."
             )
 
+        # ALLOW_ANON_DEMO_USER authenticates a header-less request as an
+        # executive (deps.py) — unauthenticated role-gated access. Like the JWT
+        # placeholder it must be confined to insecure-dev mode; nothing else
+        # bound it before (#224). Prod never sets it, so prod is unaffected;
+        # legitimate local UI-driving already runs with ALLOW_INSECURE_DEFAULTS
+        # =true (placeholder secret), so existing dev workflows keep working.
+        if self.allow_anon_demo_user and not self.allow_insecure_defaults:
+            raise RuntimeError(
+                "Refusing to start: ALLOW_ANON_DEMO_USER=true requires "
+                "ALLOW_INSECURE_DEFAULTS=true (local dev only) — it grants "
+                "unauthenticated executive access."
+            )
+
         # The retired admin password is handled by effective_platform_admin_*
         # (portal disabled, not a boot failure) — warn loudly so it gets fixed.
         if self.platform_admin_password == _RETIRED_ADMIN_PASSWORD or self.platform_admin_token == _RETIRED_ADMIN_PASSWORD:
