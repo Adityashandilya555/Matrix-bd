@@ -70,3 +70,29 @@ def test_strict_decode_still_rejects_expired_token():
     with pytest.raises(AuthError) as exc:
         decode_token(_token(-3600))
     assert exc.value.status_code == 401
+
+
+# ── #228 — tighten the grace window from 7 days to 48 hours ────────────────
+# The 7-day window let a leaked/stale token mint a fresh session for up to ~8
+# days after visible expiry. 48h keeps the overnight/weekend self-heal while
+# cutting the stolen-token tail to ~3 days. Pin the boundary so it can't widen.
+_DAY = 60 * 60 * 24
+
+
+def test_refresh_grace_window_capped_at_48h():
+    # PROVE-FIRST: pre-fix this was 7 days and the assertion fails.
+    assert REFRESH_GRACE_SECONDS <= 2 * _DAY
+
+
+def test_refresh_accepts_token_expired_1_day():
+    # In-window self-heal must keep working (overnight/weekend tab left open).
+    claims = decode_token_for_refresh(_token(-_DAY))
+    assert claims["role"] == "executive"
+
+
+def test_refresh_rejects_token_expired_3_days():
+    # PROVE-FIRST: pre-fix (7-day window) a 3-day-old token still refreshed;
+    # after the 48h tightening it must be rejected.
+    with pytest.raises(AuthError) as exc:
+        decode_token_for_refresh(_token(-3 * _DAY))
+    assert exc.value.status_code == 401

@@ -625,7 +625,7 @@ async def refresh(
     ``get_current_user`` dependency. It decodes the bearer with
     ``decode_token_for_refresh``, which still verifies the signature, audience
     and required claims but tolerates a token expired within
-    ``REFRESH_GRACE_SECONDS``. That lets a session that lapsed (e.g. a 24h token
+    ``REFRESH_GRACE_SECONDS`` (48h, #228). That lets a session that lapsed (e.g. a 24h token
     that expired while a tab was open) re-mint silently instead of dead-ending
     into a re-login — the shared root cause behind both the "session paused"
     popup and "pipeline not created", since the old handler depended on the same
