@@ -55,6 +55,14 @@ logging.root.setLevel(getattr(logging, settings.log_level, logging.INFO))
 log = logging.getLogger("matrix.api")
 
 
+def _int_or_zero(value: str | None) -> int:
+    """Parse an env var into a non-negative int; 0 on unset/garbage."""
+    try:
+        return max(0, int(value)) if value else 0
+    except (TypeError, ValueError):
+        return 0
+
+
 # ── Request ID middleware (#117) ──────────────────────────────────────────────
 
 class _RequestIdMiddleware(BaseHTTPMiddleware):
@@ -119,6 +127,32 @@ async def lifespan(app: FastAPI):
             "startup: database connection failed — exiting so Railway restarts: %s", exc
         )
         raise SystemExit(1) from exc  # triggers ON_FAILURE restart
+
+    # ── Rate-limiter single-instance invariant (#225, 3.2).
+    # The limiter store (app/core/ratelimit.py) is a process-local dict — valid
+    # ONLY while the backend runs as a single uvicorn process on a single
+    # replica. With >1 worker/replica each process keeps its own windows, so the
+    # effective limit is multiplied by the process count and load-balanced
+    # attackers get a fresh counter per worker. There is no Redis store yet, so
+    # scaling out silently weakens brute-force protection — warn loudly instead
+    # of failing the boot. The long-term fix is the Redis store swap behind the
+    # same interface; until then, keep WEB_CONCURRENCY unset / replicas = 1.
+    import os
+
+    _concurrency = max(
+        _int_or_zero(os.getenv("WEB_CONCURRENCY")),
+        _int_or_zero(os.getenv("UVICORN_WORKERS")),
+        _int_or_zero(os.getenv("RAILWAY_REPLICA_COUNT")),
+    )
+    if _concurrency > 1:
+        log.warning(
+            "startup: in-memory rate limiter active but %d workers/replicas are "
+            "configured — windows are NOT shared across processes, so the "
+            "effective per-client limit is multiplied and brute-force protection "
+            "is weakened (#225). Run a single process/replica, or migrate the "
+            "limiter store to Redis before scaling out.",
+            _concurrency,
+        )
 
     # ── Start background email drain (only when RESEND_API_KEY is configured).
     drain_task: asyncio.Task | None = None

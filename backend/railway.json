@@ -5,7 +5,7 @@
     "buildCommand": "pip install -c requirements.lock.txt setuptools wheel && pip install --no-build-isolation -c requirements.lock.txt -e ."
   },
   "deploy": {
-    "startCommand": "uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips '*'",
+    "startCommand": "uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips '127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fd00::/8'",
     "healthcheckPath": "/api/health/db",
     "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",
