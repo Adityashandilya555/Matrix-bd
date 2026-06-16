@@ -208,6 +208,22 @@ async def test_read_capped_csv_not_byte_checked():
     assert await read_upload_capped(file, max_bytes=1000) == csv
 
 
+async def test_read_capped_rejects_plain_zip_declared_as_docx():
+    # CodeAnt #226: a bare ZIP container must NOT pass as .docx/.xlsx — only a
+    # genuine OOXML package (which filetype detects as the specific mime) does.
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("hello.txt", "not an office document")
+    ct = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    file = _FakeUploadWithMime(buf.getvalue(), content_type=ct)
+    with pytest.raises(HTTPException) as ei:
+        await read_upload_capped(file, max_bytes=10_000)
+    assert ei.value.status_code == 415
+
+
 # ── #92 — storage error handling ───────────────────────────────────────────
 
 def _configure_storage(monkeypatch):

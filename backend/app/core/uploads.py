@@ -59,12 +59,14 @@ _STRONG_MAGIC: dict[str, set[str]] = {
     "image/heic": {"image/heic", "image/heif"},
     "image/heif": {"image/heic", "image/heif"},
     "application/pdf": {"application/pdf"},
+    # OOXML files (.docx/.xlsx) are ZIP containers, but filetype introspects the
+    # package and returns the SPECIFIC OOXML mime for genuine documents. We do
+    # NOT accept a bare application/zip here: that would let any arbitrary ZIP be
+    # uploaded while claiming to be .docx/.xlsx, defeating the mismatch check.
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-        {"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-         "application/zip"},
+        {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
-        {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-         "application/zip"},
+        {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
 }
 # Declared types deliberately NOT byte-checked: legacy OLE2 Office (.doc/.xls)
 # and text/csv have weak/absent magic, so a strict check would reject genuine
@@ -77,7 +79,9 @@ def _unsupported(ct: str) -> HTTPException:
         detail=f"File type '{ct}' not allowed.",
     )
 
-def _content_mismatch(declared: str, detected: str) -> HTTPException:
+def _content_mismatch(declared: str) -> HTTPException:
+    # The detected type is logged at the call site, not echoed to the client
+    # (no need to reveal sniffing internals in the error body).
     return HTTPException(
         status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
         detail=f"File content does not match its declared type '{declared}'.",
@@ -138,5 +142,5 @@ async def read_upload_capped(file: UploadFile, *, max_bytes: int | None = None) 
                 "upload rejected: declared %s but bytes detected as %s",
                 content_type, kind.mime,
             )
-            raise _content_mismatch(content_type, kind.mime)
+            raise _content_mismatch(content_type)
     return data
