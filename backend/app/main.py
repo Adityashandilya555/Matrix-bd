@@ -64,6 +64,33 @@ def _int_or_zero(value: str | None) -> int:
         return 0
 
 
+def _warn_if_scaled_out() -> None:
+    """Warn at startup if >1 worker/replica is configured while the rate-limiter
+    store is the process-local in-memory dict (#225, 3.2).
+
+    The limiter store (app/core/ratelimit.py) is valid ONLY for a single process
+    on a single replica. With >1 worker/replica each process keeps its own
+    windows, so the effective limit is multiplied and load-balanced attackers get
+    a fresh counter per worker. No Redis store exists yet, so scaling out silently
+    weakens brute-force protection — warn loudly rather than fail the boot. Keep
+    WEB_CONCURRENCY unset / replicas = 1 until the store is migrated to Redis.
+    """
+    concurrency = max(
+        _int_or_zero(os.getenv("WEB_CONCURRENCY")),
+        _int_or_zero(os.getenv("UVICORN_WORKERS")),
+        _int_or_zero(os.getenv("RAILWAY_REPLICA_COUNT")),
+    )
+    if concurrency > 1:
+        log.warning(
+            "startup: in-memory rate limiter active but %d workers/replicas are "
+            "configured — windows are NOT shared across processes, so the "
+            "effective per-client limit is multiplied and brute-force protection "
+            "is weakened (#225). Run a single process/replica, or migrate the "
+            "limiter store to Redis before scaling out.",
+            concurrency,
+        )
+
+
 # ── Request ID middleware (#117) ──────────────────────────────────────────────
 
 class _RequestIdMiddleware(BaseHTTPMiddleware):
@@ -129,29 +156,9 @@ async def lifespan(app: FastAPI):
         )
         raise SystemExit(1) from exc  # triggers ON_FAILURE restart
 
-    # ── Rate-limiter single-instance invariant (#225, 3.2).
-    # The limiter store (app/core/ratelimit.py) is a process-local dict — valid
-    # ONLY while the backend runs as a single uvicorn process on a single
-    # replica. With >1 worker/replica each process keeps its own windows, so the
-    # effective limit is multiplied by the process count and load-balanced
-    # attackers get a fresh counter per worker. There is no Redis store yet, so
-    # scaling out silently weakens brute-force protection — warn loudly instead
-    # of failing the boot. The long-term fix is the Redis store swap behind the
-    # same interface; until then, keep WEB_CONCURRENCY unset / replicas = 1.
-    _concurrency = max(
-        _int_or_zero(os.getenv("WEB_CONCURRENCY")),
-        _int_or_zero(os.getenv("UVICORN_WORKERS")),
-        _int_or_zero(os.getenv("RAILWAY_REPLICA_COUNT")),
-    )
-    if _concurrency > 1:
-        log.warning(
-            "startup: in-memory rate limiter active but %d workers/replicas are "
-            "configured — windows are NOT shared across processes, so the "
-            "effective per-client limit is multiplied and brute-force protection "
-            "is weakened (#225). Run a single process/replica, or migrate the "
-            "limiter store to Redis before scaling out.",
-            _concurrency,
-        )
+    # Warn (don't fail) if the deployment scales out past the single-process
+    # invariant the in-memory rate limiter relies on (#225, 3.2).
+    _warn_if_scaled_out()
 
     # ── Start background email drain (only when RESEND_API_KEY is configured).
     drain_task: asyncio.Task | None = None
