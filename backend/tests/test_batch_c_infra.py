@@ -145,6 +145,69 @@ async def test_read_capped_upload_file_valid_mime():
     assert out == b"hello"
 
 
+# ── #226 — magic-byte validation (declared Content-Type is spoofable) ──────
+_PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + b"\x00" * 64
+_JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01" + b"\x00" * 64
+_PDF = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n" + b"x" * 64
+
+
+def _docx_bytes() -> bytes:
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr(
+            "[Content_Types].xml",
+            "<Types xmlns='http://schemas.openxmlformats.org/package/2006/content-types'>"
+            "<Override PartName='/word/document.xml' ContentType='application/vnd."
+            "openxmlformats-officedocument.wordprocessingml.document.main+xml'/></Types>",
+        )
+        z.writestr("word/document.xml", "<doc/>")
+    return buf.getvalue()
+
+
+async def test_read_capped_rejects_png_body_declared_as_pdf():
+    # PROVE-FIRST: pre-fix this returned the bytes (spoofed type accepted);
+    # after the magic-byte check it must be 415.
+    file = _FakeUploadWithMime(_PNG, content_type="application/pdf")
+    with pytest.raises(HTTPException) as ei:
+        await read_upload_capped(file, max_bytes=1000)
+    assert ei.value.status_code == 415
+
+
+async def test_read_capped_rejects_jpeg_body_declared_as_png():
+    file = _FakeUploadWithMime(_JPEG, content_type="image/png")
+    with pytest.raises(HTTPException) as ei:
+        await read_upload_capped(file, max_bytes=1000)
+    assert ei.value.status_code == 415
+
+
+async def test_read_capped_accepts_genuine_pdf():
+    file = _FakeUploadWithMime(_PDF, content_type="application/pdf")
+    assert await read_upload_capped(file, max_bytes=1000) == _PDF
+
+
+async def test_read_capped_accepts_genuine_png():
+    file = _FakeUploadWithMime(_PNG, content_type="image/png")
+    assert await read_upload_capped(file, max_bytes=1000) == _PNG
+
+
+async def test_read_capped_accepts_genuine_docx():
+    data = _docx_bytes()
+    ct = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    file = _FakeUploadWithMime(data, content_type=ct)
+    assert await read_upload_capped(file, max_bytes=10_000) == data
+
+
+async def test_read_capped_csv_not_byte_checked():
+    # text/csv has no reliable magic — must pass on the allowlist alone so real
+    # CSV exports are never rejected (#226, 4.2).
+    csv = b"site_code,city\nBD-1,Mumbai\n"
+    file = _FakeUploadWithMime(csv, content_type="text/csv")
+    assert await read_upload_capped(file, max_bytes=1000) == csv
+
+
 # ── #92 — storage error handling ───────────────────────────────────────────
 
 def _configure_storage(monkeypatch):
