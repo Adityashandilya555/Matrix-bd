@@ -5,6 +5,7 @@ import asyncio
 import contextvars
 import json
 import logging
+import os
 import re
 import uuid
 from contextlib import asynccontextmanager, suppress
@@ -137,8 +138,6 @@ async def lifespan(app: FastAPI):
     # scaling out silently weakens brute-force protection — warn loudly instead
     # of failing the boot. The long-term fix is the Redis store swap behind the
     # same interface; until then, keep WEB_CONCURRENCY unset / replicas = 1.
-    import os
-
     _concurrency = max(
         _int_or_zero(os.getenv("WEB_CONCURRENCY")),
         _int_or_zero(os.getenv("UVICORN_WORKERS")),

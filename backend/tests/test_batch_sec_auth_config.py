@@ -323,15 +323,26 @@ async def test_rate_limit_trips_without_xff_header():
 
 def test_railway_deploy_does_not_trust_all_forwarded_ips():
     # The '*' wildcard makes uvicorn copy the attacker-controlled XFF[0] into
-    # request.client.host, re-opening the bypass at the proxy layer. Guard so it
-    # cannot be silently reintroduced.
+    # request.client.host, re-opening the bypass at the proxy layer. Parse the
+    # actual --forwarded-allow-ips VALUE (shlex strips any quote style) and assert
+    # it is never '*', so no quoting variant can silently reintroduce the bypass.
     import json
     import pathlib
+    import shlex
 
     railway = pathlib.Path(__file__).resolve().parents[1] / "railway.json"
     start_cmd = json.loads(railway.read_text())["deploy"]["startCommand"]
-    assert "--forwarded-allow-ips '*'" not in start_cmd
-    assert "--forwarded-allow-ips *" not in start_cmd
+    tokens = shlex.split(start_cmd)
+    values = [
+        tokens[i + 1]
+        for i, tok in enumerate(tokens)
+        if tok == "--forwarded-allow-ips" and i + 1 < len(tokens)
+    ]
+    # If proxy headers are trusted at all, the trusted set must be scoped, never
+    # the wildcard (and no '*' may appear among comma-separated entries).
+    for value in values:
+        assert value != "*", start_cmd
+        assert "*" not in value.split(","), start_cmd
 
 
 # ── #110 — CORS hardening ───────────────────────────────────────────────────
