@@ -49,7 +49,7 @@ from app.domain.schemas.launch import (
     LaunchReviewRequest,
     SiteDetailsSnapshot,
 )
-from app.services._common import count_rows, fetch_site_or_404, fetch_user_name
+from app.services._common import count_rows, fetch_site_or_404, fetch_user_names
 from app.services.audit_service import write_audit_event
 
 logger = logging.getLogger(__name__)
@@ -196,8 +196,20 @@ async def _build_response(
         .order_by(models.LaunchReviewEvent.created_at)
     )).scalars().all()
 
-    async def name(uid: Optional[UUID]) -> Optional[str]:
-        return await fetch_user_name(session, user_id=uid) if uid else None
+    # Batch the actor-name lookups into ONE query instead of up to 5 sequential
+    # SELECTs to `users` — each a fresh pgBouncer/NullPool round trip (#240/18.6).
+    # fetch_user_names drops falsy ids and omits missing ones, so .get(uid) is
+    # None-safe, preserving the old per-uid `name()` behaviour exactly.
+    names_map = await fetch_user_names(session, [
+        row.admin_sent_for_review_by,
+        row.exec_reviewed_by,
+        row.supervisor_reviewed_by,
+        row.admin_confirmed_by,
+        row.launched_by,
+    ])
+
+    def _name(uid: Optional[UUID]) -> Optional[str]:
+        return names_map.get(uid) if uid else None
 
     details = SiteDetailsSnapshot(
         name=site.name,
@@ -274,21 +286,21 @@ async def _build_response(
         # Stage verdicts / comments
         admin_review_comment=row.admin_review_comment,
         admin_sent_for_review_at=row.admin_sent_for_review_at,
-        admin_sent_for_review_by_name=await name(row.admin_sent_for_review_by),
+        admin_sent_for_review_by_name=_name(row.admin_sent_for_review_by),
         exec_verdict=row.exec_verdict,
         exec_comment=row.exec_comment,
         exec_reviewed_at=row.exec_reviewed_at,
-        exec_reviewed_by_name=await name(row.exec_reviewed_by),
+        exec_reviewed_by_name=_name(row.exec_reviewed_by),
         supervisor_verdict=row.supervisor_verdict,
         supervisor_comment=row.supervisor_comment,
         supervisor_reviewed_at=row.supervisor_reviewed_at,
-        supervisor_reviewed_by_name=await name(row.supervisor_reviewed_by),
+        supervisor_reviewed_by_name=_name(row.supervisor_reviewed_by),
         admin_final_comment=row.admin_final_comment,
         admin_confirmed_at=row.admin_confirmed_at,
-        admin_confirmed_by_name=await name(row.admin_confirmed_by),
+        admin_confirmed_by_name=_name(row.admin_confirmed_by),
         committed_at=row.committed_at,
         launched_at=row.launched_at,
-        launched_by_name=await name(row.launched_by),
+        launched_by_name=_name(row.launched_by),
         events=event_items,
         created_at=row.created_at,
         updated_at=row.updated_at,
