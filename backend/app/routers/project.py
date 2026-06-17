@@ -1,7 +1,6 @@
 """Project Execution router."""
 from __future__ import annotations
 
-from datetime import date
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -82,7 +81,7 @@ async def project_queue(
 @router.get("/nso-handover", response_model=ProjectQueueResponse)
 async def nso_handover_queue(
     db: DbDep,
-    current_user: ProjectMember,
+    _auth: ProjectMember,
     _module: InProjectModule,
     tenant_id: TenantId,
 ) -> ProjectQueueResponse:
@@ -93,7 +92,7 @@ async def nso_handover_queue(
 @router.get("/quality-audit/admin-queue", response_model=ProjectQueueResponse)
 async def quality_audit_admin_queue(
     db: DbDep,
-    current_user: ProjectAdmin,
+    _auth: ProjectAdmin,
     tenant_id: TenantId,
 ) -> ProjectQueueResponse:
     """Business-admin queue: sites awaiting quality-audit confirmation."""
@@ -147,7 +146,7 @@ async def project_history_detail(
 @router.get("/nso-queue", response_model=ProjectQueueResponse)
 async def project_nso_queue(
     db: DbDep,
-    current_user: ProjectMember,
+    _auth: ProjectMember,
     _module: InProjectModule,
     tenant_id: TenantId,
 ) -> ProjectQueueResponse:

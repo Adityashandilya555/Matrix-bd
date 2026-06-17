@@ -67,7 +67,7 @@ async def get_me(current_user: CurrentUser) -> dict:
 @router.get("", summary="List users in tenant (supervisor only)")
 async def list_users(
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
+    _auth: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
     tenant_id: TenantId,
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
@@ -126,7 +126,7 @@ class AssignRoleOut(BaseModel):
 @router.get("/pending", summary="Supervisor: list pending (unassigned) users in tenant")
 async def list_pending_users(
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
+    _auth: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
     tenant_id: TenantId,
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),

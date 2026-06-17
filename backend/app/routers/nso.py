@@ -35,7 +35,7 @@ InNsoModule = Annotated[dict, Depends(require_module("nso"))]
 @router.get("/queue", response_model=NsoQueueResponse)
 async def nso_queue(
     db: DbDep,
-    current_user: NsoMember,
+    _auth: NsoMember,
     _module: InNsoModule,
     tenant_id: TenantId,
     limit: int = Query(500, ge=1, le=1000),
@@ -47,7 +47,7 @@ async def nso_queue(
 @router.get("/history", response_model=NsoHistoryResponse)
 async def nso_history(
     db: DbDep,
-    current_user: NsoMember,
+    _auth: NsoMember,
     _module: InNsoModule,
     tenant_id: TenantId,
     status_filter: str = "all",
@@ -63,7 +63,7 @@ async def nso_history(
 async def nso_history_detail(
     site_id: str,
     db: DbDep,
-    current_user: NsoMember,
+    _auth: NsoMember,
     _module: InNsoModule,
     tenant_id: TenantId,
 ) -> NsoStateResponse:
@@ -74,7 +74,7 @@ async def nso_history_detail(
 async def get_nso_site(
     site_id: str,
     db: DbDep,
-    current_user: NsoMember,
+    _auth: NsoMember,
     _module: InNsoModule,
     tenant_id: TenantId,
 ) -> NsoStateResponse:

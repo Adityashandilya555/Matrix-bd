@@ -33,7 +33,7 @@ router = APIRouter(prefix="/business-admin", tags=["Business Admin"])
 @router.get("/dept-codes", response_model=list[ModuleCodeOut])
 async def list_dept_codes(
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
 ) -> list[dict]:
     return await svc.list_dept_codes(db, tenant_id)
@@ -52,7 +52,7 @@ async def rotate_dept_code(
 @router.get("/pending-supervisors", response_model=list[PendingSupervisorOut])
 async def list_pending_supervisors(
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
     module: Optional[Module] = None,
 ) -> list[dict]:
@@ -67,7 +67,7 @@ async def approve_supervisor(
     user_id: str,
     payload: ApproveSupervisorIn,
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
 ) -> None:
     await svc.approve_supervisor(db, tenant_id, user_id, payload.module)
@@ -80,7 +80,7 @@ async def approve_supervisor(
 async def reject_supervisor(
     user_id: str,
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
 ) -> None:
     await svc.reject_supervisor(db, tenant_id, user_id)
@@ -103,7 +103,7 @@ async def remove_org_user(
 @router.get("/sites", response_model=AdminSitesResponse)
 async def list_admin_sites(
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
     limit: int = 80,
 ) -> dict:
@@ -113,7 +113,7 @@ async def list_admin_sites(
 @router.get("/finance-approvals", response_model=list[FinanceApprovalOut])
 async def list_finance_approvals(
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
 ) -> list[dict]:
     return await svc.list_finance_approvals(db, tenant_id)
@@ -158,7 +158,7 @@ async def reject_finance(
 @router.get("/org", response_model=OrgResponse)
 async def get_org(
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
 ) -> dict:
     """Per-department code + active supervisors and the executives under them."""

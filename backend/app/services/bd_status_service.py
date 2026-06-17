@@ -19,7 +19,6 @@ from app.domain.schemas.bd_status import (
     DdFailedListResponse,
     DdFailedSiteItem,
 )
-from app.domain.schemas.legal_change_request import ChangeRequestResponse
 from app.domain.state_machine import SiteStatus
 from app.services._common import apply_role_scope, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.change_request_service import svc_list_for_site

@@ -11,7 +11,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status as http_status
 from pydantic import BaseModel, Field
 
-from app.core.deps import CurrentUser, DbDep, TenantId
+from app.core.deps import DbDep, TenantId
 from app.core.uploads import read_upload_capped
 from app.domain.schemas.audit import AuditListResponse
 from app.domain.schemas.common import OkResponse

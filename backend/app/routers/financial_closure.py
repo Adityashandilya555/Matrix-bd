@@ -72,7 +72,7 @@ async def fc_queue(
 
 @router.get("/admin-queue", response_model=FCQueueResponse)
 async def fc_admin_queue(
-    db: DbDep, current_user: BusinessAdmin, tenant_id: TenantId,
+    db: DbDep, _auth: BusinessAdmin, tenant_id: TenantId,
     limit: int = Query(500, ge=1, le=1000), offset: int = Query(0, ge=0),
 ) -> FCQueueResponse:
     return await svc_fc_admin_queue(db, tenant_id=tenant_id, limit=limit, offset=offset)
@@ -80,7 +80,7 @@ async def fc_admin_queue(
 
 @router.get("/admin-detail/{site_id}", response_model=FCStateResponse)
 async def fc_admin_detail(
-    site_id: str, db: DbDep, current_user: BusinessAdmin, tenant_id: TenantId,
+    site_id: str, db: DbDep, _auth: BusinessAdmin, tenant_id: TenantId,
 ) -> FCStateResponse:
     return await svc_get_fc_admin_detail(db, tenant_id=tenant_id, site_id=site_id)
 

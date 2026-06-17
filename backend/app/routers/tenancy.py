@@ -20,7 +20,7 @@ from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func, select, text
+from sqlalchemy import select, text
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, DbDep, TenantId
@@ -159,7 +159,7 @@ async def list_tenants(
 @router.get("/cities", summary="List active cities in tenant")
 async def list_cities(
     db: DbDep,
-    current_user: CurrentUser,
+    _auth: CurrentUser,
     tenant_id: TenantId,
     limit: int = Query(200, le=500),
 ) -> dict:
@@ -183,7 +183,7 @@ async def list_cities(
     "/workspace-info",
     summary="Authed: current tenant code + seat usage",
 )
-async def workspace_info(db: DbDep, current_user: CurrentUser, tenant_id: TenantId) -> dict:
+async def workspace_info(db: DbDep, _auth: CurrentUser, tenant_id: TenantId) -> dict:
     row = (await db.execute(
         text("""
             SELECT t.id, t.name, t.slug, t.plan, t.workspace_code, t.seat_limit,

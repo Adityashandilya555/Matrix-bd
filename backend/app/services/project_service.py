@@ -6,9 +6,9 @@ has moved to the Project Excellence module (202606134).
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import Optional
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
 from sqlalchemy import desc, or_, select
@@ -35,7 +35,7 @@ from app.domain.schemas.project import (
 from app.services import budget_service
 from app.services._common import count_rows, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
-from app.services.delegation_service import svc_assigned_sites, svc_is_delegated
+from app.services.delegation_service import svc_is_delegated
 
 
 def _is_supervisor(actor: dict) -> bool:

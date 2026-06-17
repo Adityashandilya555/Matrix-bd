@@ -104,7 +104,7 @@ async def pe_complete_quality_audit(
 @router.get("/budget-admin-queue", response_model=PEBudgetAdminQueueResponse)
 async def pe_budget_admin_queue(
     db: DbDep,
-    current_user: BusinessAdmin,
+    _auth: BusinessAdmin,
     tenant_id: TenantId,
 ) -> PEBudgetAdminQueueResponse:
     return await svc_pe_budget_admin_queue(db, tenant_id=tenant_id)
@@ -114,7 +114,7 @@ async def pe_budget_admin_queue(
 async def pe_budget_admin_detail(
     site_id: str,
     db: DbDep,
-    current_user: BusinessAdmin,
+    _auth: BusinessAdmin,
     tenant_id: TenantId,
 ) -> PEStateResponse:
     return await svc_get_pe_budget_admin_detail(db, tenant_id=tenant_id, site_id=site_id)
