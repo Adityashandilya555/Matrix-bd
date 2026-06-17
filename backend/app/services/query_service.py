@@ -131,7 +131,7 @@ async def list_sites(
     user_ids = submitter_ids | assignee_ids | approver_ids
     if user_ids:
         u_stmt = select(models.User.id, models.User.name).where(models.User.id.in_(user_ids))
-        names = {u_id: n for u_id, n in (await session.execute(u_stmt)).all()}
+        names = dict((await session.execute(u_stmt)).all())
 
     items = [
         site_to_response(

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Optional
 from uuid import UUID
 
@@ -101,10 +102,24 @@ def _property_summary(snapshot: NsoPropertySnapshot) -> str:
     return " | ".join(parts)
 
 
+# A None-valued stand-in for a missing SiteDetail, so _property_snapshot can read
+# attributes uniformly without a per-field `if details else None` branch (which
+# DeepSource PY-R1000 counts as cyclomatic complexity). _num(None) is None and
+# `x or fallback` / `x if x is not None` behave exactly as the old guards did.
+_NO_SITE_DETAIL = SimpleNamespace(
+    rent_type=None, rev_share_pct=None, escalation_pct=None, score=None,
+    estimated_monthly_sales=None, carpet_area_sqft=None, cam_charges=None,
+    security_deposit=None, brokerage=None, lock_in_months=None, tenure_months=None,
+    rent_free_days=None, nearest_starbucks_m=None, nearest_twc_m=None,
+)
+
+
 async def _property_snapshot(
     session: AsyncSession, *, site: models.Site,
 ) -> NsoPropertySnapshot:
-    details = await _fetch_site_detail(session, site_id=site.id)
+    # Substitute an all-None stand-in when there is no SiteDetail so each field
+    # below reads uniformly (behaviour-identical to the old per-field guards).
+    details = await _fetch_site_detail(session, site_id=site.id) or _NO_SITE_DETAIL
     return NsoPropertySnapshot(
         site_name=site.name,
         site_code=site.ca_code or site.code or "",
@@ -116,26 +131,26 @@ async def _property_snapshot(
         ca_code=site.ca_code,
         finance_amount=_num(site.finance_amount),
         kyc_verified=bool(site.kyc_verified),
-        rent_type=(details.rent_type if details and details.rent_type else site.rent_type),
+        rent_type=(details.rent_type or site.rent_type),
         expected_rent=_num(site.expected_rent),
         expected_revshare_pct=_num(
-            details.rev_share_pct if details and details.rev_share_pct is not None else site.expected_revshare_pct
+            details.rev_share_pct if details.rev_share_pct is not None else site.expected_revshare_pct
         ),
         expected_escalation_pct=_num(
-            details.escalation_pct if details and details.escalation_pct is not None else site.expected_escalation_pct
+            details.escalation_pct if details.escalation_pct is not None else site.expected_escalation_pct
         ),
         expected_escalation_years=site.expected_escalation_years,
-        score=_num(details.score) if details else None,
-        estimated_monthly_sales=_num(details.estimated_monthly_sales) if details else None,
-        carpet_area_sqft=_num(details.carpet_area_sqft) if details else None,
-        cam_charges=_num(details.cam_charges) if details else None,
-        security_deposit=_num(details.security_deposit) if details else None,
-        brokerage=_num(details.brokerage) if details else None,
-        lock_in_months=details.lock_in_months if details else None,
-        tenure_months=details.tenure_months if details else None,
-        rent_free_days=details.rent_free_days if details else None,
-        nearest_starbucks_m=details.nearest_starbucks_m if details else None,
-        nearest_twc_m=details.nearest_twc_m if details else None,
+        score=_num(details.score),
+        estimated_monthly_sales=_num(details.estimated_monthly_sales),
+        carpet_area_sqft=_num(details.carpet_area_sqft),
+        cam_charges=_num(details.cam_charges),
+        security_deposit=_num(details.security_deposit),
+        brokerage=_num(details.brokerage),
+        lock_in_months=details.lock_in_months,
+        tenure_months=details.tenure_months,
+        rent_free_days=details.rent_free_days,
+        nearest_starbucks_m=details.nearest_starbucks_m,
+        nearest_twc_m=details.nearest_twc_m,
     )
 
 
@@ -297,11 +312,13 @@ def _stage_three_unlocked(
 
 
 def _compute_stage(
-    site: models.Site,
+    _site: models.Site,
     row: models.NsoReview,
-    project: Optional[models.ProjectReview],
-    licensing: Optional[models.SiteLicensing],
+    _project: Optional[models.ProjectReview],
+    _licensing: Optional[models.SiteLicensing],
 ) -> str:
+    # _site/_project/_licensing kept for a uniform call signature with
+    # _sync_rollups/_display_rollups; not read here (#238, PYL-W0613).
     if row.nso_status == "complete":
         return "done"
     # Handed over from the Project module's NSO-Handover tab → opens directly at
@@ -399,12 +416,13 @@ def _triggers(
 
 
 async def _queue_item(
-    session: AsyncSession,
+    _session: AsyncSession,
     site: models.Site,
     row: Optional[models.NsoReview],
     project: Optional[models.ProjectReview],
     licensing: Optional[models.SiteLicensing],
 ) -> NsoQueueItem:
+    # _session kept for a uniform queue-item signature; not read here (#238, PYL-W0613).
     nso_status = row.nso_status if row else "pending"
     current_stage = row.current_stage if row else "stage_one"
     if row is not None:

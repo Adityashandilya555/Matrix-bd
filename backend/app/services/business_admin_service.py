@@ -280,6 +280,129 @@ async def list_finance_approvals(
     return items
 
 
+async def _fetch_optional_admin_sources(
+    session: AsyncSession, site_ids: list,
+) -> tuple[dict, dict, dict, dict]:
+    """Best-effort Project/NSO/Launch/Budget maps for the admin timeline.
+
+    Each source is optional: if a migration hasn't run, that probe aborts the
+    transaction, so we roll back and yield an empty map for it rather than
+    failing the whole timeline. Behaviour-preserving extract of list_admin_sites
+    (#240, PY-R1000).
+    """
+    project_by_site: dict = {}
+    nso_by_site: dict = {}
+    launch_by_site: dict = {}
+    budget_by_site: dict = {}
+    if not site_ids:
+        return project_by_site, nso_by_site, launch_by_site, budget_by_site
+    try:
+        project_rows = (await session.execute(
+            select(models.ProjectReview).where(models.ProjectReview.site_id.in_(site_ids))
+        )).scalars().all()
+        project_by_site = {
+            row.site_id: {
+                "project_status": row.project_status,
+                "current_stage": row.current_stage,
+                "project_completed_at": row.project_completed_at,
+            }
+            for row in project_rows
+        }
+    except SQLAlchemyError:
+        await session.rollback()
+    try:
+        nso_rows = (await session.execute(
+            select(models.NsoReview).where(models.NsoReview.site_id.in_(site_ids))
+        )).scalars().all()
+        nso_by_site = {
+            row.site_id: {"nso_status": row.nso_status, "current_stage": row.current_stage}
+            for row in nso_rows
+        }
+    except SQLAlchemyError:
+        await session.rollback()
+    try:
+        launch_rows = (await session.execute(
+            select(models.LaunchApproval).where(models.LaunchApproval.site_id.in_(site_ids))
+        )).scalars().all()
+        launch_by_site = {
+            row.site_id: {"status": row.status, "launched_at": row.launched_at}
+            for row in launch_rows
+        }
+    except SQLAlchemyError:
+        await session.rollback()
+    try:
+        budget_rows = (await session.execute(
+            select(models.SiteBudget).where(
+                models.SiteBudget.site_id.in_(site_ids),
+                models.SiteBudget.phase == "gfc",
+            )
+        )).scalars().all()
+        budget_by_site = {
+            row.site_id: {
+                "status": row.status,
+                "total": float(row.budget_total) if row.budget_total is not None else None,
+            }
+            for row in budget_rows
+        }
+    except SQLAlchemyError:
+        await session.rollback()
+    return project_by_site, nso_by_site, launch_by_site, budget_by_site
+
+
+def _admin_site_item(site: dict, *, project: dict, nso: dict, launch: dict, budget: dict, names: dict, now) -> dict:
+    """Build one admin-timeline item from a site snapshot + its optional sources.
+
+    Behaviour-preserving extract of list_admin_sites' per-row builder (#240).
+    """
+    created_at = site["created_at"] or site["updated_at"] or now
+    updated_at = site["updated_at"] or site["created_at"] or now
+    try:
+        finance_amount = float(site["finance_amount"]) if site["finance_amount"] is not None else None
+    except (TypeError, ValueError):
+        finance_amount = None
+    return {
+        "site_id": str(site["id"]),
+        "site_code": site["ca_code"] or site["code"] or f"SITE-{str(site['id'])[:8].upper()}",
+        "site_name": site["name"] or "Unnamed site",
+        "city": site["city"] or "Unknown city",
+        "site_status": site["status"] or "pending",
+        "submitted_by_name": names.get(site["submitted_by"]),
+        "assigned_to_name": names.get(site["assigned_to"]) if site["assigned_to"] else None,
+        "supervisor_name": names.get(site["supervisor_id"]) if site["supervisor_id"] else None,
+        "legal_dd_status": site["legal_dd_status"],
+        "agreement_status": site["agreement_status"],
+        "licensing_status": site["licensing_status"],
+        "finance_status": site["finance_status"] or "pending",
+        "design_status": site["design_status"] or "pending",
+        "financial_closure_status": site["financial_closure_status"] or "pending",
+        "project_status": project.get("project_status", "pending"),
+        "project_current_stage": project.get("current_stage"),
+        "project_budget_status": budget.get("status"),
+        "project_completed_at": project.get("project_completed_at"),
+        "nso_status": nso.get("nso_status"),
+        "nso_current_stage": nso.get("current_stage"),
+        "launch_status": launch.get("status"),
+        "is_launched": bool(site["is_launched"]),
+        "launched_at": site["launched_at"] or launch.get("launched_at"),
+        "ca_code": site["ca_code"],
+        "finance_amount": finance_amount,
+        "kyc_verified": bool(site["kyc_verified"]),
+        "created_at": created_at,
+        "updated_at": updated_at,
+        "draft_submitted_at": site["draft_submitted_at"],
+        "shortlisted_at": site["shortlisted_at"],
+        "details_submitted_at": site["details_submitted_at"],
+        "approved_at": site["approved_at"],
+        "loi_uploaded_at": site["loi_uploaded_at"],
+        "legal_review_at": site["legal_review_at"],
+        "legal_approved_at": site["legal_approved_at"],
+        "legal_rejected_at": site["legal_rejected_at"],
+        "pushed_to_payments_at": site["pushed_to_payments_at"],
+        "design_approved_at": site["design_approved_at"],
+        "rejection_reason": site["rejection_reason"],
+    }
+
+
 async def list_admin_sites(
     session: AsyncSession,
     tenant_id: str | UUID,
@@ -345,137 +468,30 @@ async def list_admin_sites(
                 user_ids.add(data[key])
 
     site_ids = [site["id"] for site in site_rows]
-    project_by_site = {}
-    nso_by_site = {}
-    launch_by_site = {}
-    budget_by_site = {}
-    if site_ids:
-        try:
-            project_rows = (await session.execute(
-                select(models.ProjectReview).where(models.ProjectReview.site_id.in_(site_ids))
-            )).scalars().all()
-            project_by_site = {
-                row.site_id: {
-                    "project_status": row.project_status,
-                    "current_stage": row.current_stage,
-                    "project_completed_at": row.project_completed_at,
-                }
-                for row in project_rows
-            }
-        except SQLAlchemyError:
-            await session.rollback()
-            project_by_site = {}
-        try:
-            nso_rows = (await session.execute(
-                select(models.NsoReview).where(models.NsoReview.site_id.in_(site_ids))
-            )).scalars().all()
-            nso_by_site = {
-                row.site_id: {
-                    "nso_status": row.nso_status,
-                    "current_stage": row.current_stage,
-                }
-                for row in nso_rows
-            }
-        except SQLAlchemyError:
-            await session.rollback()
-            nso_by_site = {}
-        try:
-            launch_rows = (await session.execute(
-                select(models.LaunchApproval).where(models.LaunchApproval.site_id.in_(site_ids))
-            )).scalars().all()
-            launch_by_site = {
-                row.site_id: {
-                    "status": row.status,
-                    "launched_at": row.launched_at,
-                }
-                for row in launch_rows
-            }
-        except SQLAlchemyError:
-            await session.rollback()
-            launch_by_site = {}
-        try:
-            budget_rows = (await session.execute(
-                select(models.SiteBudget).where(
-                    models.SiteBudget.site_id.in_(site_ids),
-                    models.SiteBudget.phase == "gfc",
-                )
-            )).scalars().all()
-            budget_by_site = {
-                row.site_id: {
-                    "status": row.status,
-                    "total": float(row.budget_total) if row.budget_total is not None else None,
-                }
-                for row in budget_rows
-            }
-        except SQLAlchemyError:
-            await session.rollback()
-            budget_by_site = {}
+    project_by_site, nso_by_site, launch_by_site, budget_by_site = (
+        await _fetch_optional_admin_sources(session, site_ids)
+    )
 
     names: dict = {}
     if user_ids:
         pairs = (await session.execute(
             select(models.User.id, models.User.name).where(models.User.id.in_(user_ids))
         )).all()
-        names = {uid: name for uid, name in pairs}
+        names = dict(pairs)
 
-    items = []
     now = datetime.now(timezone.utc)
-    for site in site_rows:
-        project = project_by_site.get(site["id"], {})
-        nso = nso_by_site.get(site["id"], {})
-        launch = launch_by_site.get(site["id"], {})
-        budget = budget_by_site.get(site["id"], {})
-        created_at = site["created_at"] or site["updated_at"] or now
-        updated_at = site["updated_at"] or site["created_at"] or now
-        try:
-            finance_amount = (
-                float(site["finance_amount"])
-                if site["finance_amount"] is not None
-                else None
-            )
-        except (TypeError, ValueError):
-            finance_amount = None
-        items.append({
-            "site_id": str(site["id"]),
-            "site_code": site["ca_code"] or site["code"] or f"SITE-{str(site['id'])[:8].upper()}",
-            "site_name": site["name"] or "Unnamed site",
-            "city": site["city"] or "Unknown city",
-            "site_status": site["status"] or "pending",
-            "submitted_by_name": names.get(site["submitted_by"]),
-            "assigned_to_name": names.get(site["assigned_to"]) if site["assigned_to"] else None,
-            "supervisor_name": names.get(site["supervisor_id"]) if site["supervisor_id"] else None,
-            "legal_dd_status": site["legal_dd_status"],
-            "agreement_status": site["agreement_status"],
-            "licensing_status": site["licensing_status"],
-            "finance_status": site["finance_status"] or "pending",
-            "design_status": site["design_status"] or "pending",
-            "financial_closure_status": site["financial_closure_status"] or "pending",
-            "project_status": project.get("project_status", "pending"),
-            "project_current_stage": project.get("current_stage"),
-            "project_budget_status": budget.get("status"),
-            "project_completed_at": project.get("project_completed_at"),
-            "nso_status": nso.get("nso_status"),
-            "nso_current_stage": nso.get("current_stage"),
-            "launch_status": launch.get("status"),
-            "is_launched": bool(site["is_launched"]),
-            "launched_at": site["launched_at"] or launch.get("launched_at"),
-            "ca_code": site["ca_code"],
-            "finance_amount": finance_amount,
-            "kyc_verified": bool(site["kyc_verified"]),
-            "created_at": created_at,
-            "updated_at": updated_at,
-            "draft_submitted_at": site["draft_submitted_at"],
-            "shortlisted_at": site["shortlisted_at"],
-            "details_submitted_at": site["details_submitted_at"],
-            "approved_at": site["approved_at"],
-            "loi_uploaded_at": site["loi_uploaded_at"],
-            "legal_review_at": site["legal_review_at"],
-            "legal_approved_at": site["legal_approved_at"],
-            "legal_rejected_at": site["legal_rejected_at"],
-            "pushed_to_payments_at": site["pushed_to_payments_at"],
-            "design_approved_at": site["design_approved_at"],
-            "rejection_reason": site["rejection_reason"],
-        })
+    items = [
+        _admin_site_item(
+            site,
+            project=project_by_site.get(site["id"], {}),
+            nso=nso_by_site.get(site["id"], {}),
+            launch=launch_by_site.get(site["id"], {}),
+            budget=budget_by_site.get(site["id"], {}),
+            names=names,
+            now=now,
+        )
+        for site in site_rows
+    ]
     return {"items": items, "total": len(items)}
 
 

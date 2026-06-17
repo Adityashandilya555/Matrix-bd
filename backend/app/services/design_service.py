@@ -736,6 +736,141 @@ async def _after_supervisor_approval(
         )
 
 
+async def _resolve_design_review(
+    session: AsyncSession, *, tenant_id, actor, site, site_id, kind, is_supervisor,
+) -> models.DesignReview:
+    """Resolve the DesignReview for a submit: lazily create it on a supervisor
+    self-handle, enforce the executive's allocation, and check the active stage.
+    Behaviour-preserving extract of svc_submit_deliverable (#240)."""
+    review = await _fetch_review_or_none(session, site_id=site.id)
+    if review is None:
+        if is_supervisor:
+            # Supervisor handles the site directly (no executive). Open the design
+            # folder lazily on their first upload — no allocation needed.
+            review = models.DesignReview(
+                site_id=site.id, tenant_id=tenant_id, current_stage="recce",
+            )
+            session.add(review)
+            await session.flush()
+        else:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=(
+                    f"No design review found for site {site_id}. A supervisor must "
+                    "allocate the site (or handle it directly) before uploads."
+                ),
+            )
+    # Executives must hold an active design allocation; supervisors are free.
+    if not is_supervisor:
+        ok = await svc_is_delegated(
+            session, tenant_id=tenant_id, site_id=site.id,
+            user_id=actor["sub"], module="design",
+        )
+        if not ok:
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "You do not have an active design allocation on this site. "
+                    "Ask the design supervisor to allocate it to you first."
+                ),
+            )
+    if review.current_stage != kind:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"'{kind}' is not the active deliverable for this site "
+                f"(current stage: '{review.current_stage}')."
+            ),
+        )
+    return review
+
+
+async def _resolve_submit_deliverable_row(
+    session: AsyncSession, *, tenant_id, site, kind, body,
+) -> models.DesignDeliverable:
+    """Fetch-or-create the deliverable row for a submit, guard its status, and
+    apply the uploaded fields. Behaviour-preserving extract of
+    svc_submit_deliverable (#240)."""
+    deliverable = await _fetch_deliverable_or_none(session, site_id=site.id, kind=kind)
+    if deliverable is None:
+        deliverable = models.DesignDeliverable(tenant_id=tenant_id, site_id=site.id, kind=kind)
+        session.add(deliverable)
+    elif deliverable.status not in {"pending", "rejected"}:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"The {kind} deliverable is already {deliverable.status}. "
+                "Re-upload is available only after supervisor/admin rejection."
+            ),
+        )
+    if body.file_url is not None:
+        deliverable.file_url = body.file_url
+    if body.file_name is not None:
+        deliverable.file_name = body.file_name
+    if kind == "boq" and body.estimated_amount is not None:
+        deliverable.estimated_amount = body.estimated_amount
+    return deliverable
+
+
+async def _handle_supervisor_self_upload(
+    session: AsyncSession, *, tenant_id, actor, site, review, deliverable, kind, now,
+) -> None:
+    """Supervisor self-handle: the upload IS the authority — auto-approve and
+    advance; the only remaining gate is the admin's GFC. Behaviour-preserving
+    extract of svc_submit_deliverable's supervisor branch (#240)."""
+    deliverable.status = "approved"
+    deliverable.admin_status = "pending"
+    deliverable.reviewed_by = actor["sub"]
+    deliverable.reviewed_at = now
+    deliverable.supervisor_comments = None
+    await write_audit_event(
+        session, tenant_id=tenant_id, site_id=site.id,
+        actor_id=actor["sub"], actor_name=actor.get("name"),
+        action="design_deliverable_self_uploaded",
+        detail=f"kind={kind} (supervisor handled directly — auto-approved)",
+    )
+    await _after_supervisor_approval(
+        session, tenant_id=tenant_id, actor=actor, site=site, review=review,
+        deliverable=deliverable, kind=kind,
+    )
+
+
+async def _handle_executive_upload(
+    session: AsyncSession, *, tenant_id, actor, site, review, deliverable, kind,
+) -> None:
+    """Executive upload: flip to 'submitted' and notify design supervisors for
+    review. Behaviour-preserving extract of svc_submit_deliverable's executive
+    branch (#240)."""
+    deliverable.status = "submitted"
+    deliverable.admin_status = "pending"
+    deliverable.admin_comments = None
+    deliverable.admin_reviewed_by = None
+    deliverable.admin_reviewed_at = None
+    deliverable.supervisor_comments = None  # clear any prior rejection note
+    deliverable.reviewed_by = None
+    deliverable.reviewed_at = None
+    review.reviewed_by = actor["sub"]
+    await write_audit_event(
+        session, tenant_id=tenant_id, site_id=site.id,
+        actor_id=actor["sub"], actor_name=actor.get("name"),
+        action="design_deliverable_submitted",
+        detail=f"kind={kind}",
+    )
+    supervisors = await recipients_for_design_supervisors(session, tenant_id=tenant_id)
+    if supervisors:
+        await notify_enqueue(
+            session, tenant_id=tenant_id, event="design_deliverable_submitted",
+            recipient_ids=supervisors, site_id=site.id,
+            channels=("in_app",),
+            payload={"site_id": str(site.id), "site_name": site.name, "kind": kind},
+            subject=f"Design review pending ({kind}): {site.name}",
+            body=(
+                f"{actor.get('name') or 'A design executive'} submitted the {kind} "
+                f"deliverable for '{site.name}' ({site.code}). It awaits your review."
+            ),
+        )
+
+
 async def svc_submit_deliverable(
     session: AsyncSession,
     *,
@@ -764,70 +899,13 @@ async def svc_submit_deliverable(
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_design_unlocked(site)
         is_supervisor = (actor.get("role") or "").lower() == "supervisor"
-        review = await _fetch_review_or_none(session, site_id=site.id)
-        if review is None:
-            if is_supervisor:
-                # Supervisor handles the site directly (no executive). Open the
-                # design folder lazily on their first upload — no allocation needed.
-                review = models.DesignReview(
-                    site_id=site.id, tenant_id=tenant_id, current_stage="recce",
-                )
-                session.add(review)
-                await session.flush()
-            else:
-                raise HTTPException(
-                    status_code=http_status.HTTP_404_NOT_FOUND,
-                    detail=(
-                        f"No design review found for site {site_id}. A supervisor must "
-                        "allocate the site (or handle it directly) before uploads."
-                    ),
-                )
-
-        # Executives must hold an active design allocation; supervisors are free.
-        if not is_supervisor:
-            ok = await svc_is_delegated(
-                session, tenant_id=tenant_id, site_id=site.id,
-                user_id=actor["sub"], module="design",
-            )
-            if not ok:
-                raise HTTPException(
-                    status_code=http_status.HTTP_403_FORBIDDEN,
-                    detail=(
-                        "You do not have an active design allocation on this site. "
-                        "Ask the design supervisor to allocate it to you first."
-                    ),
-                )
-
-        if review.current_stage != kind:
-            raise HTTPException(
-                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=(
-                    f"'{kind}' is not the active deliverable for this site "
-                    f"(current stage: '{review.current_stage}')."
-                ),
-            )
-
-        deliverable = await _fetch_deliverable_or_none(session, site_id=site.id, kind=kind)
-        if deliverable is None:
-            deliverable = models.DesignDeliverable(
-                tenant_id=tenant_id, site_id=site.id, kind=kind,
-            )
-            session.add(deliverable)
-        elif deliverable.status not in {"pending", "rejected"}:
-            raise HTTPException(
-                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=(
-                    f"The {kind} deliverable is already {deliverable.status}. "
-                    "Re-upload is available only after supervisor/admin rejection."
-                ),
-            )
-
-        if body.file_url is not None:
-            deliverable.file_url = body.file_url
-        if body.file_name is not None:
-            deliverable.file_name = body.file_name
-        if kind == "boq" and body.estimated_amount is not None:
-            deliverable.estimated_amount = body.estimated_amount
+        review = await _resolve_design_review(
+            session, tenant_id=tenant_id, actor=actor, site=site,
+            site_id=site_id, kind=kind, is_supervisor=is_supervisor,
+        )
+        deliverable = await _resolve_submit_deliverable_row(
+            session, tenant_id=tenant_id, site=site, kind=kind, body=body,
+        )
 
         now = datetime.now(timezone.utc)
         deliverable.submitted_by = actor["sub"]
@@ -836,53 +914,15 @@ async def svc_submit_deliverable(
             site.design_status = "in_progress"
 
         if is_supervisor:
-            # Supervisor self-handle: their upload IS the authority — auto-approve
-            # and advance. The only remaining gate is the admin's GFC, so every
-            # approval is between the supervisor and the admin.
-            deliverable.status = "approved"
-            deliverable.admin_status = "pending"
-            deliverable.reviewed_by = actor["sub"]
-            deliverable.reviewed_at = now
-            deliverable.supervisor_comments = None
-            await write_audit_event(
-                session, tenant_id=tenant_id, site_id=site.id,
-                actor_id=actor["sub"], actor_name=actor.get("name"),
-                action="design_deliverable_self_uploaded",
-                detail=f"kind={kind} (supervisor handled directly — auto-approved)",
-            )
-            await _after_supervisor_approval(
-                session, tenant_id=tenant_id, actor=actor, site=site, review=review,
-                deliverable=deliverable, kind=kind,
+            await _handle_supervisor_self_upload(
+                session, tenant_id=tenant_id, actor=actor, site=site,
+                review=review, deliverable=deliverable, kind=kind, now=now,
             )
         else:
-            deliverable.status = "submitted"
-            deliverable.admin_status = "pending"
-            deliverable.admin_comments = None
-            deliverable.admin_reviewed_by = None
-            deliverable.admin_reviewed_at = None
-            deliverable.supervisor_comments = None  # clear any prior rejection note
-            deliverable.reviewed_by = None
-            deliverable.reviewed_at = None
-            review.reviewed_by = actor["sub"]
-            await write_audit_event(
-                session, tenant_id=tenant_id, site_id=site.id,
-                actor_id=actor["sub"], actor_name=actor.get("name"),
-                action="design_deliverable_submitted",
-                detail=f"kind={kind}",
+            await _handle_executive_upload(
+                session, tenant_id=tenant_id, actor=actor, site=site,
+                review=review, deliverable=deliverable, kind=kind,
             )
-            supervisors = await recipients_for_design_supervisors(session, tenant_id=tenant_id)
-            if supervisors:
-                await notify_enqueue(
-                    session, tenant_id=tenant_id, event="design_deliverable_submitted",
-                    recipient_ids=supervisors, site_id=site.id,
-                    channels=("in_app",),
-                    payload={"site_id": str(site.id), "site_name": site.name, "kind": kind},
-                    subject=f"Design review pending ({kind}): {site.name}",
-                    body=(
-                        f"{actor.get('name') or 'A design executive'} submitted the {kind} "
-                        f"deliverable for '{site.name}' ({site.code}). It awaits your review."
-                    ),
-                )
 
     return await _build_design_response(session, site)
 
@@ -1029,6 +1069,61 @@ async def svc_design_admin_queue(
     return DesignAdminQueueResponse(items=[by_site[s] for s in order], total=len(order))
 
 
+async def _admin_approve_deliverable(
+    session: AsyncSession, *, tenant_id, actor, site, review, deliverable, kind, supervisors,
+) -> None:
+    """Admin approve path of svc_admin_review_deliverable (behaviour-preserving extract, #240)."""
+    deliverable.admin_status = "approved"
+    await write_audit_event(
+        session, tenant_id=tenant_id, site_id=site.id,
+        actor_id=actor["sub"], actor_name=actor.get("name"),
+        action="design_admin_approved",
+        detail=f"kind={kind} approved by business_admin",
+    )
+    if review.current_stage == kind:
+        await _advance_stage_after_approval(
+            session, tenant_id=tenant_id, actor=actor, site=site, review=review, kind=kind,
+        )
+    if supervisors:
+        deliverable_label = "BOQ" if kind == "boq" else kind.upper()
+        design_copy = "The design is complete." if kind == "boq" else "The design advances."
+        await notify_enqueue(
+            session, tenant_id=tenant_id, event="design_admin_approved",
+            recipient_ids=supervisors, site_id=site.id, channels=("in_app",),
+            payload={"site_id": str(site.id), "site_name": site.name, "kind": kind},
+            subject=f"{deliverable_label} approved by admin: {site.name}",
+            body=f"The admin approved the {deliverable_label} for '{site.name}'. {design_copy}",
+        )
+
+
+async def _admin_reject_deliverable(
+    session: AsyncSession, *, tenant_id, actor, site, deliverable, kind, supervisors,
+) -> None:
+    """Admin send-back path of svc_admin_review_deliverable (behaviour-preserving extract, #240)."""
+    deliverable.status = "rejected"
+    deliverable.admin_status = "pending"
+    if (site.design_status or "pending") != "approved":
+        site.design_status = "in_progress"
+    await write_audit_event(
+        session, tenant_id=tenant_id, site_id=site.id,
+        actor_id=actor["sub"], actor_name=actor.get("name"),
+        action="design_admin_rejected",
+        detail=f"kind={kind}: {deliverable.admin_comments or ''}",
+    )
+    if supervisors:
+        await notify_enqueue(
+            session, tenant_id=tenant_id, event="design_admin_rejected",
+            recipient_ids=supervisors, site_id=site.id, channels=("in_app", "email"),
+            payload={"site_id": str(site.id), "site_name": site.name,
+                     "kind": kind, "comments": deliverable.admin_comments},
+            subject=f"{kind.upper()} sent back by admin: {site.name}",
+            body=(
+                f"The admin sent back the {kind} for '{site.name}'.\n\n"
+                f"Comments: {deliverable.admin_comments or '(none)'}"
+            ),
+        )
+
+
 async def svc_admin_review_deliverable(
     session: AsyncSession,
     *,
@@ -1080,54 +1175,15 @@ async def svc_admin_review_deliverable(
         supervisors = await recipients_for_design_supervisors(session, tenant_id=tenant_id)
 
         if body.decision == "approve":
-            deliverable.admin_status = "approved"
-            await write_audit_event(
-                session, tenant_id=tenant_id, site_id=site.id,
-                actor_id=actor["sub"], actor_name=actor.get("name"),
-                action="design_admin_approved",
-                detail=f"kind={kind} approved by business_admin",
+            await _admin_approve_deliverable(
+                session, tenant_id=tenant_id, actor=actor, site=site,
+                review=review, deliverable=deliverable, kind=kind, supervisors=supervisors,
             )
-            if review.current_stage == kind:
-                await _advance_stage_after_approval(
-                    session, tenant_id=tenant_id, actor=actor, site=site, review=review, kind=kind,
-                )
-            if supervisors:
-                deliverable_label = "BOQ" if kind == "boq" else kind.upper()
-                design_copy = (
-                    "The design is complete."
-                    if kind == "boq"
-                    else "The design advances."
-                )
-                await notify_enqueue(
-                    session, tenant_id=tenant_id, event="design_admin_approved",
-                    recipient_ids=supervisors, site_id=site.id, channels=("in_app",),
-                    payload={"site_id": str(site.id), "site_name": site.name, "kind": kind},
-                    subject=f"{deliverable_label} approved by admin: {site.name}",
-                    body=f"The admin approved the {deliverable_label} for '{site.name}'. {design_copy}",
-                )
         else:
-            deliverable.status = "rejected"
-            deliverable.admin_status = "pending"
-            if (site.design_status or "pending") != "approved":
-                site.design_status = "in_progress"
-            await write_audit_event(
-                session, tenant_id=tenant_id, site_id=site.id,
-                actor_id=actor["sub"], actor_name=actor.get("name"),
-                action="design_admin_rejected",
-                detail=f"kind={kind}: {deliverable.admin_comments or ''}",
+            await _admin_reject_deliverable(
+                session, tenant_id=tenant_id, actor=actor, site=site,
+                deliverable=deliverable, kind=kind, supervisors=supervisors,
             )
-            if supervisors:
-                await notify_enqueue(
-                    session, tenant_id=tenant_id, event="design_admin_rejected",
-                    recipient_ids=supervisors, site_id=site.id, channels=("in_app", "email"),
-                    payload={"site_id": str(site.id), "site_name": site.name,
-                             "kind": kind, "comments": deliverable.admin_comments},
-                    subject=f"{kind.upper()} sent back by admin: {site.name}",
-                    body=(
-                        f"The admin sent back the {kind} for '{site.name}'.\n\n"
-                        f"Comments: {deliverable.admin_comments or '(none)'}"
-                    ),
-                )
 
     return await _build_design_response(session, site)
 
