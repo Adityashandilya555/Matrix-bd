@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.deps import DbDep, TenantId
 from app.domain.schemas.common import OkResponse
@@ -60,18 +60,22 @@ async def send_for_financial_closure(
 @router.get("/queue", response_model=FCQueueResponse)
 async def fc_queue(
     db: DbDep, current_user: FCMember, _module: InProjectModule, tenant_id: TenantId,
+    limit: int = Query(50, le=200), offset: int = Query(0, ge=0),
 ) -> FCQueueResponse:
     restrict_to: Optional[list[str]] = None
     if _is_executive(current_user):
         restrict_to = await svc_assigned_sites(db, tenant_id=tenant_id, user_id=current_user["sub"], module=_MODULE)
-    return await svc_fc_queue(db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to)
+    return await svc_fc_queue(
+        db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to, limit=limit, offset=offset,
+    )
 
 
 @router.get("/admin-queue", response_model=FCQueueResponse)
 async def fc_admin_queue(
     db: DbDep, current_user: BusinessAdmin, tenant_id: TenantId,
+    limit: int = Query(50, le=200), offset: int = Query(0, ge=0),
 ) -> FCQueueResponse:
-    return await svc_fc_admin_queue(db, tenant_id=tenant_id)
+    return await svc_fc_admin_queue(db, tenant_id=tenant_id, limit=limit, offset=offset)
 
 
 @router.get("/admin-detail/{site_id}", response_model=FCStateResponse)

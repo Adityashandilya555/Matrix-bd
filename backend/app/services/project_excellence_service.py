@@ -215,7 +215,15 @@ async def svc_pe_queue(
     *,
     tenant_id: str | UUID,
     restrict_to_site_ids: Optional[list[str]] = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> PEQueueResponse:
+    """Return one page of the Project Excellence queue, oldest-updated first.
+
+    Paginated (``limit``/``offset``) so the queue and its per-row budget
+    enrichment are bounded by page size (#230). Executive scoping is applied
+    before pagination. ``total`` is the page row count.
+    """
     async with transaction(session):
         stmt = (
             select(models.Site, models.SiteBudget)
@@ -233,7 +241,9 @@ async def svc_pe_queue(
             if not restrict_to_site_ids:
                 return PEQueueResponse(items=[], total=0)
             stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
-        rows = (await session.execute(stmt.order_by(models.Site.updated_at.asc()))).all()
+        rows = (await session.execute(
+            stmt.order_by(models.Site.updated_at.asc()).limit(limit).offset(offset)
+        )).all()
 
         delegates, names = await _batch_pe_prefetch(session, [site for site, _b in rows])
         items = [

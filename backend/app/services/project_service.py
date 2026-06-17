@@ -286,7 +286,15 @@ async def svc_project_queue(
     *,
     tenant_id: str | UUID,
     restrict_to_site_ids: Optional[list[str]] = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> ProjectQueueResponse:
+    """Return one page of the active Project queue, oldest-updated first.
+
+    Paginated (``limit``/``offset``) so the queue and its per-row enrichment are
+    bounded by page size (#230). Executive ``restrict_to_site_ids`` scoping is
+    applied before pagination. ``total`` is the page row count.
+    """
     async with transaction(session):
         # One joined query for sites+reviews (done-filter pushed into SQL), one
         # batched delegate lookup, one batched name lookup — instead of the old
@@ -310,7 +318,7 @@ async def svc_project_queue(
             if not restrict_to_site_ids:
                 return ProjectQueueResponse(items=[], total=0)
             stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
-        rows = (await session.execute(stmt)).all()
+        rows = (await session.execute(stmt.limit(limit).offset(offset))).all()
 
         delegates, names = await _batch_project_prefetch(session, [site for site, _r in rows])
 
@@ -332,11 +340,17 @@ async def svc_project_history(
     tenant_id: str | UUID,
     status_filter: str = "all",
     restrict_to_site_ids: Optional[list[str]] = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> ProjectHistoryResponse:
     """Read-only Project history for sites that reached or entered Project.
 
     Executives pass `restrict_to_site_ids` (their project-delegated sites); a
     supervisor passes None and sees the whole tenant's project history.
+
+    Paginated (``limit``/``offset``, newest first) so the response can't grow
+    unbounded with tenant lifetime (#230); exec scoping is applied before the
+    page window. ``total`` is the page row count.
     """
     if restrict_to_site_ids is not None and not restrict_to_site_ids:
         return ProjectHistoryResponse(items=[], total=0)
@@ -369,7 +383,7 @@ async def svc_project_history(
         stmt.order_by(
             desc(models.ProjectReview.updated_at).nulls_last(),
             desc(models.Site.updated_at),
-        )
+        ).limit(limit).offset(offset)
     )).all()
 
     # Batch submitter names (1 query) instead of one per row (#91).

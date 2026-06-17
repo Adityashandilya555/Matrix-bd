@@ -305,8 +305,10 @@ async def svc_legal_queue(
     *,
     tenant_id: str | UUID,
     restrict_to_site_ids: Optional[list[str]] = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> LegalQueueResponse:
-    """Return all sites in LEGAL_REVIEW or LEGAL_REJECTED with their DD status.
+    """Return one page of sites in LEGAL_REVIEW or LEGAL_REJECTED with DD status.
 
     LEGAL_REJECTED sites are included so the legal supervisor can see them in
     their queue (marked with a 'negative' badge) and directly fix the failing
@@ -315,6 +317,10 @@ async def svc_legal_queue(
     `restrict_to_site_ids` is an optional additive filter the router passes
     when the caller is an executive (so they see only delegated sites).
     Pass None for the supervisor-wide view.
+
+    Paginated (``limit``/``offset``) so the queue and its batched per-site
+    lookups are bounded by page size (#230); exec scoping is applied before the
+    page window. ``total`` is the page row count.
     """
     stmt = (
         select(models.Site)
@@ -332,7 +338,7 @@ async def svc_legal_queue(
             return LegalQueueResponse(items=[], total=0)
         stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
 
-    sites = (await session.execute(stmt)).scalars().all()
+    sites = (await session.execute(stmt.limit(limit).offset(offset))).scalars().all()
 
     # Batch the per-site lookups: 2 queries total instead of 2 per site
     # (N+1 costs a full round trip each through pgBouncer/NullPool).

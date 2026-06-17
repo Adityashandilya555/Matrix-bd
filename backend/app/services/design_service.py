@@ -253,12 +253,18 @@ async def svc_design_queue(
     *,
     tenant_id: str | UUID,
     restrict_to_site_ids: Optional[list[str]] = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> DesignQueueResponse:
     """Finance-approved sites that are still active in design (design_status != approved).
 
     `restrict_to_site_ids` is the additive filter the router passes for an
     executive caller (so they only see sites delegated to them). None = the
     supervisor-wide view.
+
+    Paginated (``limit``/``offset``) so the queue and its batched per-site
+    lookups are bounded by page size (#230); exec scoping is applied before the
+    page window. ``total`` is the page row count.
     """
     stmt = (
         select(models.Site)
@@ -275,7 +281,7 @@ async def svc_design_queue(
             return DesignQueueResponse(items=[], total=0)
         stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
 
-    sites = (await session.execute(stmt)).scalars().all()
+    sites = (await session.execute(stmt.limit(limit).offset(offset))).scalars().all()
 
     # Batch the per-site lookups: 3 queries total instead of 3 per site
     # (each N+1 round trip costs real latency through pgBouncer/NullPool).

@@ -562,7 +562,14 @@ async def svc_nso_queue(
 
 async def svc_nso_history(
     session: AsyncSession, *, tenant_id: str | UUID, status_filter: str = "all",
+    limit: int = 50, offset: int = 0,
 ) -> NsoHistoryResponse:
+    """Return one page of tenant NSO history, newest first.
+
+    Paginated (``limit``/``offset``) so the response can't grow unbounded with
+    tenant lifetime (#230); mirrors the bounded ``svc_nso_queue`` pattern.
+    ``total`` is the count of rows in this page, exactly as the queue reports.
+    """
     async with transaction(session):
         stmt = (
             select(models.Site, models.NsoReview, models.ProjectReview, models.SiteLicensing)
@@ -586,6 +593,7 @@ async def svc_nso_history(
 
         rows = (await session.execute(
             stmt.order_by(desc(models.NsoReview.updated_at).nulls_last(), desc(models.Site.updated_at))
+            .limit(limit).offset(offset)
         )).all()
         items = [await _queue_item(session, site, row, project, licensing) for (site, row, project, licensing) in rows]
         return NsoHistoryResponse(items=items, total=len(items))

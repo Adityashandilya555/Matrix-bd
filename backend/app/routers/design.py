@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status as http_status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status as http_status
 
 from app.core.deps import DbDep, TenantId
 from app.core.uploads import read_upload_capped
@@ -88,6 +88,8 @@ async def design_queue(
     current_user: DesignMember,
     _module: InDesignModule,
     tenant_id: TenantId,
+    limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
 ) -> DesignQueueResponse:
     # Executives only see sites allocated to them. Supervisors see all.
     restrict_to: Optional[list[str]] = None
@@ -95,7 +97,9 @@ async def design_queue(
         restrict_to = await svc_assigned_sites(
             db, tenant_id=tenant_id, user_id=current_user["sub"], module="design",
         )
-    return await svc_design_queue(db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to)
+    return await svc_design_queue(
+        db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to, limit=limit, offset=offset,
+    )
 
 
 @router.get(

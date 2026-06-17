@@ -177,7 +177,15 @@ async def svc_send_for_financial_closure(
 async def svc_fc_queue(
     session: AsyncSession, *, tenant_id: str | UUID,
     restrict_to_site_ids: Optional[list[str]] = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> FCQueueResponse:
+    """Return one page of the Financial Closure queue, newest-launched first.
+
+    Paginated (``limit``/``offset``) so the queue and its per-row budget lookups
+    are bounded by page size (#230). Executive scoping is applied before
+    pagination. ``total`` is the page row count.
+    """
     async with transaction(session):
         stmt = (
             select(models.Site, models.SiteBudget)
@@ -194,7 +202,9 @@ async def svc_fc_queue(
             if not restrict_to_site_ids:
                 return FCQueueResponse(items=[], total=0)
             stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
-        rows = (await session.execute(stmt.order_by(models.Site.launched_at.desc()))).all()
+        rows = (await session.execute(
+            stmt.order_by(models.Site.launched_at.desc()).limit(limit).offset(offset)
+        )).all()
 
         items: list[FCQueueItem] = []
         for site, closure in rows:
@@ -387,7 +397,13 @@ async def svc_review_fc_budget(
 
 async def svc_fc_admin_queue(
     session: AsyncSession, *, tenant_id: str | UUID,
+    limit: int = 50, offset: int = 0,
 ) -> FCQueueResponse:
+    """Return one page of the FC admin queue (sites pending admin), oldest first.
+
+    Paginated (``limit``/``offset``) so the queue and its per-row budget lookups
+    are bounded by page size (#230). ``total`` is the page row count.
+    """
     rows = (await session.execute(
         select(models.Site, models.SiteBudget)
         .join(models.SiteBudget, (models.SiteBudget.site_id == models.Site.id) & (models.SiteBudget.phase == _PHASE))
@@ -396,6 +412,7 @@ async def svc_fc_admin_queue(
             models.SiteBudget.status == "pending_admin",
         )
         .order_by(models.SiteBudget.updated_at.asc())
+        .limit(limit).offset(offset)
     )).all()
     items: list[FCQueueItem] = []
     for site, closure in rows:

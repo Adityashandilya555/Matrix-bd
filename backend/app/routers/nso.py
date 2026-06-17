@@ -51,8 +51,12 @@ async def nso_history(
     _module: InNsoModule,
     tenant_id: TenantId,
     status_filter: str = "all",
+    limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
 ) -> NsoHistoryResponse:
-    return await svc_nso_history(db, tenant_id=tenant_id, status_filter=status_filter)
+    return await svc_nso_history(
+        db, tenant_id=tenant_id, status_filter=status_filter, limit=limit, offset=offset,
+    )
 
 
 @router.get("/history/{site_id}", response_model=NsoStateResponse)

@@ -376,7 +376,16 @@ async def svc_get_launch_queue(
     *,
     tenant_id: str | UUID,
     status_filter: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> LaunchQueueResponse:
+    """Return one page of the launch-approval queue, newest-created first.
+
+    Paginated (``limit``/``offset``) so the queue can't grow unbounded with
+    tenant lifetime (#230). The queue previously had no ``ORDER BY``; a
+    deterministic ``created_at DESC`` order is added so paging is stable.
+    ``total`` is the page row count.
+    """
     q = select(models.LaunchApproval, models.Site, models.User.name).join(
         models.Site, models.Site.id == models.LaunchApproval.site_id
     ).join(
@@ -387,6 +396,7 @@ async def svc_get_launch_queue(
         statuses = [s.strip() for s in status_filter.split(",")]
         q = q.where(models.LaunchApproval.status.in_(statuses))
 
+    q = q.order_by(models.LaunchApproval.created_at.desc()).limit(limit).offset(offset)
     rows = (await session.execute(q)).all()
     items = [
         LaunchQueueItem(
