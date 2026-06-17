@@ -44,16 +44,19 @@ LEGAL_LICENSE_FIELDS = (
     "storage_license",
 )
 
-# NSO Stage 2 readiness fields. Stage 2 *reflects* these from canonical Legal
-# Licensing via ``_sync_rollups``; they are not authored on the Stage 2 endpoint
-# (see ``svc_save_stage_two`` and #229).
-_STAGE_TWO_STATUS_FIELDS = (
-    "fssai_status",
-    "health_trade_status",
-    "shops_estab_status",
-    "fire_noc_status",
-    "storage_license_status",
-)
+# NSO Stage 2 readiness fields → the canonical Legal Licensing field each one
+# *reflects*. Stage 2 is derived from Legal Licensing (see _state_response and
+# #229); the NsoReview.*_status columns are never synced from licensing, so the
+# Stage 2 contract (and the dropped-body divergence check) must read the licensing
+# snapshot, not the row.
+_STAGE_TWO_STATUS_TO_LICENSE = {
+    "fssai_status": "fssai",
+    "health_trade_status": "health_trade",
+    "shops_estab_status": "shops_estab_reg",
+    "fire_noc_status": "fire_noc",
+    "storage_license_status": "storage_license",
+}
+_STAGE_TWO_STATUS_FIELDS = tuple(_STAGE_TWO_STATUS_TO_LICENSE)
 
 
 async def _fetch_project(
@@ -241,6 +244,23 @@ def _legal_licensing_snapshot(
         fire_noc=values["fire_noc"],
         storage_license=values["storage_license"],
     )
+
+
+def _stage_two_canonical_status(
+    site: models.Site, licensing: Optional[models.SiteLicensing],
+) -> dict[str, str]:
+    """Stage 2 status fields as derived from canonical Legal Licensing.
+
+    Uses the exact derivation _state_response surfaces to clients
+    (``_legacy_done`` of each licensing field), so callers comparing a submitted
+    body against "canonical" read the real source of truth — NOT the never-synced
+    ``NsoReview.*_status`` columns, which would yield false divergences (#229).
+    """
+    snapshot = _legal_licensing_snapshot(site, licensing)
+    return {
+        field: _legacy_done(getattr(snapshot, license_field))
+        for field, license_field in _STAGE_TWO_STATUS_TO_LICENSE.items()
+    }
 
 
 def _stage_three_complete(row: models.NsoReview) -> bool:
@@ -647,10 +667,16 @@ async def svc_save_stage_two(
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="NSO Stage 2 is locked until Stage 1 and Project initiation are complete.")
         _sync_rollups(site, row, project, licensing)
         if body is not None:
+            # Compare the submitted fields against the canonical Legal
+            # Licensing-derived values (the same ones _state_response returns to
+            # clients), NOT against row.*_status — those columns are never synced
+            # from licensing, so comparing to them would warn on every normal save
+            # and log a stale "canonical" value (#229 review).
+            canonical = _stage_two_canonical_status(site, licensing)
             ignored = {
                 field: getattr(body, field)
                 for field in _STAGE_TWO_STATUS_FIELDS
-                if getattr(body, field) != getattr(row, field)
+                if getattr(body, field) != canonical[field]
             }
             if ignored:
                 logger.warning(
@@ -658,7 +684,7 @@ async def svc_save_stage_two(
                     "Stage 2 reflects canonical Legal Licensing "
                     "(submitted=%s, canonical=%s)",
                     site.id, ignored,
-                    {f: getattr(row, f) for f in ignored},
+                    {f: canonical[f] for f in ignored},
                 )
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
