@@ -67,73 +67,85 @@ def project_licensing_for_caller(row, *, module: Optional[str]) -> dict:
     return _project_for_caller(row, _LICENSING_BD_FIELDS, module=module)
 
 
-async def list_sites(
-    session: AsyncSession,
-    *,
-    tenant_id: str | UUID,
-    user: dict,
-    status: Optional[str] = None,
-    city: Optional[str] = None,
-    limit: int = 200,
-) -> SiteListResponse:
-    stmt = select(models.Site).where(models.Site.tenant_id == tenant_id)
-    if status:
-        # Accept a comma-separated list so views spanning several statuses
-        # (e.g. Payments: legal_review,legal_approved,pushed_to_payments) can
-        # load in one request instead of one per status.
-        statuses = [s.strip() for s in status.split(",") if s.strip()]
-        stmt = stmt.where(
-            models.Site.status == statuses[0]
-            if len(statuses) == 1
-            else models.Site.status.in_(statuses)
-        )
-    if city:
-        stmt = stmt.where(models.Site.city == city)
-    stmt = apply_role_scope(stmt, model=models.Site, user=user)
-    stmt = stmt.order_by(desc(models.Site.updated_at)).limit(limit)
-    rows = (await session.execute(stmt)).scalars().all()
+def _apply_status_filter(stmt, status: Optional[str]):
+    """Apply an optional comma-separated status filter to a sites query.
 
-    # Collect detail/project/approval rows first, then resolve all the user ids
-    # (submitter + assignee + approver) in one names query.
-    submitter_ids = {r.submitted_by for r in rows if r.submitted_by}
-    assignee_ids = {r.assigned_to for r in rows if r.assigned_to}
-    site_ids = [r.id for r in rows]
-    detail_by_site = {}
-    project_by_site = {}
-    approval_by_site = {}
-    nso_by_site = {}
-    launch_by_site = {}
-    if site_ids:
-        d_stmt = select(models.SiteDetail).where(models.SiteDetail.site_id.in_(site_ids))
-        details = (await session.execute(d_stmt)).scalars().all()
-        detail_by_site = {d.site_id: d for d in details}
-        p_stmt = select(models.ProjectReview).where(models.ProjectReview.site_id.in_(site_ids))
-        projects = (await session.execute(p_stmt)).scalars().all()
-        project_by_site = {p.site_id: p for p in projects}
-        # Latest approval per site carries expected_loi_days + the approver, which
-        # power the LOI SLA tracker (#115). desc(created_at) → first seen is newest.
-        a_stmt = (
-            select(models.Approval)
-            .where(models.Approval.site_id.in_(site_ids))
-            .order_by(desc(models.Approval.created_at))
-        )
-        for a in (await session.execute(a_stmt)).scalars().all():
-            approval_by_site.setdefault(a.site_id, a)
-        n_stmt = select(models.NsoReview).where(models.NsoReview.site_id.in_(site_ids))
-        nso_rows = (await session.execute(n_stmt)).scalars().all()
-        nso_by_site = {n.site_id: n for n in nso_rows}
-        l_stmt = select(models.LaunchApproval).where(models.LaunchApproval.site_id.in_(site_ids))
-        launch_rows = (await session.execute(l_stmt)).scalars().all()
-        launch_by_site = {l.site_id: l for l in launch_rows}
+    A list (e.g. Payments: legal_review,legal_approved,pushed_to_payments) loads
+    in one request. Split out to keep list_sites' complexity low (#240, PY-R1000).
+    """
+    if not status:
+        return stmt
+    statuses = [s.strip() for s in status.split(",") if s.strip()]
+    if not statuses:
+        return stmt
+    return stmt.where(
+        models.Site.status == statuses[0]
+        if len(statuses) == 1
+        else models.Site.status.in_(statuses)
+    )
 
-    approver_ids = {a.approver_id for a in approval_by_site.values() if a.approver_id}
-    names = {}
-    user_ids = submitter_ids | assignee_ids | approver_ids
-    if user_ids:
-        u_stmt = select(models.User.id, models.User.name).where(models.User.id.in_(user_ids))
-        names = dict((await session.execute(u_stmt)).all())
 
-    items = [
+async def _gather_site_sources(
+    session: AsyncSession, site_ids: list,
+) -> tuple[dict, dict, dict, dict, dict]:
+    """Batch-load detail/project/approval/nso/launch maps for a set of sites (one
+    query each). Split out to keep list_sites' complexity low (#240, PY-R1000)."""
+    detail_by_site: dict = {}
+    project_by_site: dict = {}
+    approval_by_site: dict = {}
+    nso_by_site: dict = {}
+    launch_by_site: dict = {}
+    if not site_ids:
+        return detail_by_site, project_by_site, approval_by_site, nso_by_site, launch_by_site
+    details = (await session.execute(
+        select(models.SiteDetail).where(models.SiteDetail.site_id.in_(site_ids))
+    )).scalars().all()
+    detail_by_site = {d.site_id: d for d in details}
+    projects = (await session.execute(
+        select(models.ProjectReview).where(models.ProjectReview.site_id.in_(site_ids))
+    )).scalars().all()
+    project_by_site = {p.site_id: p for p in projects}
+    # Latest approval per site (desc created_at → first seen is newest) carries
+    # expected_loi_days + the approver for the LOI SLA tracker (#115).
+    for a in (await session.execute(
+        select(models.Approval)
+        .where(models.Approval.site_id.in_(site_ids))
+        .order_by(desc(models.Approval.created_at))
+    )).scalars().all():
+        approval_by_site.setdefault(a.site_id, a)
+    nso_rows = (await session.execute(
+        select(models.NsoReview).where(models.NsoReview.site_id.in_(site_ids))
+    )).scalars().all()
+    nso_by_site = {n.site_id: n for n in nso_rows}
+    launch_rows = (await session.execute(
+        select(models.LaunchApproval).where(models.LaunchApproval.site_id.in_(site_ids))
+    )).scalars().all()
+    launch_by_site = {lr.site_id: lr for lr in launch_rows}
+    return detail_by_site, project_by_site, approval_by_site, nso_by_site, launch_by_site
+
+
+async def _resolve_site_names(session: AsyncSession, rows, approval_by_site: dict) -> dict:
+    """Resolve {user_id: name} for submitters, assignees, and approvers in one
+    query. Split out to keep list_sites' complexity low (#240, PY-R1000)."""
+    user_ids = (
+        {r.submitted_by for r in rows if r.submitted_by}
+        | {r.assigned_to for r in rows if r.assigned_to}
+        | {a.approver_id for a in approval_by_site.values() if a.approver_id}
+    )
+    if not user_ids:
+        return {}
+    return dict((await session.execute(
+        select(models.User.id, models.User.name).where(models.User.id.in_(user_ids))
+    )).all())
+
+
+def _build_site_items(
+    rows, *, names: dict, detail_by_site: dict, project_by_site: dict,
+    approval_by_site: dict, nso_by_site: dict, launch_by_site: dict,
+) -> list:
+    """Map site rows + prefetched sources into SiteResponse items. Split out to
+    keep list_sites' complexity low (#240, PY-R1000)."""
+    return [
         site_to_response(
             r,
             created_by_name=names.get(r.submitted_by, ""),
@@ -149,16 +161,41 @@ async def list_sites(
         )
         for r in rows
     ]
+
+
+async def list_sites(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    user: dict,
+    status: Optional[str] = None,
+    city: Optional[str] = None,
+    limit: int = 200,
+) -> SiteListResponse:
+    stmt = select(models.Site).where(models.Site.tenant_id == tenant_id)
+    stmt = _apply_status_filter(stmt, status)
+    if city:
+        stmt = stmt.where(models.Site.city == city)
+    stmt = apply_role_scope(stmt, model=models.Site, user=user)
+    stmt = stmt.order_by(desc(models.Site.updated_at)).limit(limit)
+    rows = (await session.execute(stmt)).scalars().all()
+
+    site_ids = [r.id for r in rows]
+    (detail_by_site, project_by_site, approval_by_site,
+     nso_by_site, launch_by_site) = await _gather_site_sources(session, site_ids)
+    names = await _resolve_site_names(session, rows, approval_by_site)
+
+    items = _build_site_items(
+        rows, names=names, detail_by_site=detail_by_site, project_by_site=project_by_site,
+        approval_by_site=approval_by_site, nso_by_site=nso_by_site, launch_by_site=launch_by_site,
+    )
     return SiteListResponse(items=items, total=len(items))
 
 
-async def get_site(
-    session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID, user: dict,
-) -> SiteResponse:
-    site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-    # role scope re-check: an exec must not be able to read another exec's site
+def _assert_can_read_site(user: dict, site) -> None:
+    """Object-level read scope (#104): an executive may only read a site they
+    submitted or are assigned. Split out to keep get_site's complexity low (#240)."""
     from app.rbac.roles import Role
-
     if (
         user["role"] == Role.EXECUTIVE.value
         and str(site.submitted_by) != user["sub"]
@@ -166,6 +203,13 @@ async def get_site(
     ):
         from fastapi import HTTPException, status as http_status
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+
+async def get_site(
+    session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID, user: dict,
+) -> SiteResponse:
+    site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+    _assert_can_read_site(user, site)
 
     name_stmt = select(models.User.name).where(models.User.id == site.submitted_by)
     name = (await session.execute(name_stmt)).scalar_one_or_none()
