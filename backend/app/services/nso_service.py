@@ -515,6 +515,7 @@ async def _state_response(
 async def svc_nso_queue(
     session: AsyncSession, *, tenant_id: str | UUID, limit: int = 500, offset: int = 0,
 ) -> NsoQueueResponse:
+    """Return one page of finance-approved sites eligible for NSO, oldest-updated first."""
     async with transaction(session):
         stmt = (
             select(models.Site)
@@ -607,6 +608,7 @@ async def svc_nso_history(
 async def svc_get_nso(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID, create: bool = True,
 ) -> NsoStateResponse:
+    """Return a site's NSO state, optionally creating the review row when work begins."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         project = await _fetch_project(session, site_id=site.id)
@@ -642,6 +644,7 @@ async def svc_save_stage_one(
     site_id: str | UUID,
     body: NsoStageOneRequest,
 ) -> NsoStateResponse:
+    """Save NSO Stage 1 property details and communication status, gated on Finance/CA approval."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         if not _trigger_one_unlocked(site):
@@ -735,6 +738,7 @@ async def svc_save_stage_three(
     site_id: str | UUID,
     body: NsoStageThreeRequest,
 ) -> NsoStateResponse:
+    """Save NSO Stage 3 launch-readiness checklist, gated on Legal Licensing and Project completion."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         project = await _fetch_project(session, site_id=site.id)
@@ -766,6 +770,7 @@ async def svc_final_approval(
     actor: dict,
     site_id: str | UUID,
 ) -> NsoStateResponse:
+    """Mark NSO complete after Stage 3 and kick off the post-NSO launch approval chain."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         project = await _fetch_project(session, site_id=site.id)

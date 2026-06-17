@@ -182,6 +182,7 @@ async def svc_shortlist_draft(
     actor: dict,
     site_id: str | UUID,
 ) -> SiteResponse:
+    """Shortlist a site as the acting supervisor, blocking self-approval of own draft."""
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_not_self_approval(actor, site)
@@ -278,6 +279,7 @@ async def svc_submit_details(
     site_id: str | UUID,
     details: dict | None = None,
 ) -> SiteResponse:
+    """Persist edited site details and submit them for supervisor review, logging field diffs."""
     details = _normalise_detail_keys(details or {})
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
@@ -341,6 +343,7 @@ async def svc_approve_shortlist(
     site_id: str | UUID,
     expected_loi_days: int,
 ) -> SiteResponse:
+    """Approve a site's details and record the LOI deadline derived from expected_loi_days."""
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         current_status = SiteStatus(site.status)
@@ -450,6 +453,7 @@ async def svc_reject_site(
     session: AsyncSession, *, tenant_id: str | UUID, actor: dict,
     site_id: str | UUID, reasons: list[str], comment: Optional[str] = None,
 ) -> OkResponse:
+    """Reject a site with reasons, blocking self-rejection and notifying the site owners."""
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_not_self_approval(actor, site)
@@ -480,6 +484,7 @@ async def svc_archive_site(
     session: AsyncSession, *, tenant_id: str | UUID, actor: dict,
     site_id: str | UUID, note: Optional[str] = None,
 ) -> OkResponse:
+    """Archive a site, requiring a non-empty note so the Archive tab stays browsable."""
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         # Archive note is mandatory — see Todo #9. Per the product spec every
@@ -561,6 +566,7 @@ async def svc_reassign_site(
     session: AsyncSession, *, tenant_id: str | UUID, actor: dict,
     site_id: str | UUID, new_owner_id: str | UUID,
 ) -> OkResponse:
+    """Reassign a site to another active executive in the same workspace."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         assignee = (await session.execute(

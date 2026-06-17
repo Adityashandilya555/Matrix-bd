@@ -47,6 +47,7 @@ async def svc_grant_delegation(
     delegate_user_id: str | UUID,
     notes: Optional[str] = None,
 ) -> dict:
+    """Grant a supervisor's shortlist delegation for a site to an active executive delegate."""
     if (actor.get("role") or "").lower() != "supervisor":
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
@@ -132,6 +133,7 @@ async def svc_revoke_delegation(
     actor: dict,
     delegation_id: str | UUID,
 ) -> OkResponse:
+    """Revoke a delegation by id, staying idempotent if it was already revoked."""
     if (actor.get("role") or "").lower() != "supervisor":
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
@@ -165,6 +167,7 @@ async def svc_list_delegations_for_site(
     tenant_id: str | UUID,
     site_id: str | UUID,
 ) -> dict:
+    """Return all active delegations for a site, newest first, with delegate email and name."""
     stmt = (
         select(models.ShortlistDelegation, models.User.email, models.User.name)
         .join(models.User, models.User.id == models.ShortlistDelegation.delegate_user_id)
@@ -199,6 +202,7 @@ async def svc_list_my_delegations(
     tenant_id: str | UUID,
     actor: dict,
 ) -> dict:
+    """Return active delegations granted to the calling user, newest first, with site details."""
     stmt = (
         select(models.ShortlistDelegation, models.Site.code, models.Site.name, models.Site.city)
         .join(models.Site, models.Site.id == models.ShortlistDelegation.site_id)

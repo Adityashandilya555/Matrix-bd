@@ -411,6 +411,7 @@ async def svc_project_history(
 async def svc_get_project(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
 ) -> ProjectStateResponse:
+    """Return the active Project state for a site, creating its review row if absent."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_project_unlocked(site)
@@ -450,6 +451,7 @@ async def svc_get_project_history_detail(
 async def svc_list_project_delegations_for_site(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
 ) -> dict:
+    """List the site's active (non-revoked) project delegations with delegate identity."""
     stmt = (
         select(models.SiteDelegation, models.User.email, models.User.name)
         .join(models.User, models.User.id == models.SiteDelegation.delegate_user_id)
@@ -490,6 +492,7 @@ async def svc_allocate_project(
     delegate_user_id: str | UUID,
     notes: Optional[str] = None,
 ) -> ProjectStateResponse:
+    """Allocate a site's project to an active executive; only a supervisor may do so."""
     if not _is_supervisor(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can allocate.")
     if str(delegate_user_id) == str(actor["sub"]):
@@ -552,6 +555,7 @@ async def svc_revoke_project_delegation(
     site_id: str | UUID,
     delegate_user_id: str | UUID,
 ) -> OkResponse:
+    """Revoke a site's active project delegation; only a supervisor may do so."""
     if not _is_supervisor(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can revoke.")
     async with transaction(session):
@@ -588,6 +592,7 @@ async def svc_submit_milestone(
     field: str,
     body: MilestoneRequest,
 ) -> ProjectStateResponse:
+    """Set an expected or final completion milestone, enforcing the gating order of dates."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         await _assert_can_work_project(session, tenant_id=tenant_id, actor=actor, site_id=site.id)
@@ -634,6 +639,7 @@ async def svc_review_milestone(
     field: str,
     body: ReviewRequest,
 ) -> ProjectStateResponse:
+    """Approve or reject a submitted expected-completion milestone; supervisor only."""
     if not _is_supervisor(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can review milestones.")
     if field != "expected_completion_date":

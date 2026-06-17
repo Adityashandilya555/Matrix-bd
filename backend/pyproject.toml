@@ -40,3 +40,18 @@ filterwarnings = [
     "ignore::DeprecationWarning",
 ]
 
+[tool.ruff.lint]
+# Phased docstring policy (#241). No global `select` is set here, so a plain
+# `ruff check` keeps ruff's defaults and does NOT flag the ~300 not-yet-documented
+# router/core symbols during the phased rollout. The Phase-1 gate enforces the
+# *presence* of docstrings on public service symbols (wired into CI by #223):
+#     ruff check app/services --select D101,D102,D103
+# The extend-ignore below covers the module/package/__init__ docstring rules and
+# the two mutually-exclusive multiline-summary rules so that a broader `--select D`
+# (stylistic D2xx/D4xx) can be adopted in a later phase without churn.
+extend-ignore = ["D100", "D104", "D107", "D203", "D213"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests don't need docstrings.
+"tests/*" = ["D"]
+

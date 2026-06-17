@@ -231,6 +231,7 @@ async def svc_fc_queue(
 async def svc_get_fc(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
 ) -> FCStateResponse:
+    """Return the financial closure state for one site, opening its budget if absent."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_closure_open(site)
@@ -241,6 +242,7 @@ async def svc_get_fc(
 async def svc_list_fc_delegations_for_site(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
 ) -> dict:
+    """List active financial-closure delegations for a site, newest grant first."""
     stmt = (
         select(models.SiteDelegation, models.User.email, models.User.name)
         .join(models.User, models.User.id == models.SiteDelegation.delegate_user_id)
@@ -271,6 +273,7 @@ async def svc_allocate_fc(
     session: AsyncSession, *, tenant_id: str | UUID, actor: dict,
     site_id: str | UUID, delegate_user_id: str | UUID, notes: Optional[str] = None,
 ) -> FCStateResponse:
+    """Delegate financial closure on a site to another user (supervisor only, not self)."""
     if not _is_supervisor(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can allocate financial closure.")
     if str(delegate_user_id) == str(actor["sub"]):
@@ -317,6 +320,7 @@ async def svc_revoke_fc_delegation(
     session: AsyncSession, *, tenant_id: str | UUID, actor: dict,
     site_id: str | UUID, delegate_user_id: str | UUID,
 ) -> OkResponse:
+    """Revoke a user's active financial-closure delegation on a site (supervisor only)."""
     if not _is_supervisor(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can revoke financial closure.")
     async with transaction(session):
@@ -345,6 +349,7 @@ async def svc_save_fc_budget(
     session: AsyncSession, *, tenant_id: str | UUID, actor: dict,
     site_id: str | UUID, body: SaveFCBudgetRequest,
 ) -> FCStateResponse:
+    """Save or submit a closure budget; submit routes to supervisor or admin by role."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_closure_open(site)
@@ -376,6 +381,7 @@ async def svc_review_fc_budget(
     session: AsyncSession, *, tenant_id: str | UUID, actor: dict,
     site_id: str | UUID, body: FCReviewRequest,
 ) -> FCStateResponse:
+    """Supervisor review of a submitted closure budget; approve escalates to admin, else reject."""
     if not _is_supervisor(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can review financial closure.")
     async with transaction(session):
@@ -466,6 +472,7 @@ async def svc_admin_finalize_fc(
 async def svc_get_fc_admin_detail(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
 ) -> FCStateResponse:
+    """Return the closure state for an admin detail view, 404 if closure was never opened."""
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
     closure = await budget_service.fetch_budget(session, site_id=site.id, phase=_PHASE, tenant_id=tenant_id)
     if closure is None:

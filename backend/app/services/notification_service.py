@@ -147,6 +147,7 @@ async def recipients_for_business_admins(
 async def recipients_for_site_owner(
     _session: AsyncSession, *, site: models.Site,
 ) -> list[UUID]:
+    """Return the site's assignee and submitter as notification recipients."""
     # _session is unused (recipients are read from the in-memory site) but kept
     # in the signature for call-site uniformity with the other recipients_*
     # helpers; underscore-prefixed to mark it intentionally unused (#238).

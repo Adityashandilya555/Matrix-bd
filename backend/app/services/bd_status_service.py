@@ -36,6 +36,7 @@ from app.services.legal_service import (
 async def svc_bd_site_status(
     session: AsyncSession, *, site_id: str | UUID, tenant_id: str | UUID,
 ) -> BdSiteStatusResponse:
+    """Return the combined DD/agreement/licensing status snapshot for one BD site."""
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
 
     dd  = await _fetch_dd_or_none(session, site_id=site.id)

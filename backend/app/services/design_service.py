@@ -339,6 +339,7 @@ async def svc_design_queue(
 async def svc_get_design_review(
     session: AsyncSession, *, site_id: str | UUID, tenant_id: str | UUID,
 ) -> DesignReviewResponse:
+    """Return the full Design review for one site, requiring Design to be unlocked."""
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
     _assert_design_unlocked(site)
     return await _build_design_response(session, site)
