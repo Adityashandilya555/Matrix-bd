@@ -209,7 +209,7 @@ async def _build_design_response(
     )
     deliverable_responses = [
         _deliverable_to_response(d, download_url=url)
-        for d, url in zip(deliverables, download_urls)
+        for d, url in zip(deliverables, download_urls, strict=False)
     ]
     return DesignReviewResponse(
         site_id=str(site.id),

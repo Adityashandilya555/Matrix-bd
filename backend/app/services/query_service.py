@@ -131,7 +131,7 @@ async def list_sites(
     user_ids = submitter_ids | assignee_ids | approver_ids
     if user_ids:
         u_stmt = select(models.User.id, models.User.name).where(models.User.id.in_(user_ids))
-        names = dict((u_id, n) for u_id, n in (await session.execute(u_stmt)).all())
+        names = {u_id: n for u_id, n in (await session.execute(u_stmt)).all()}
 
     items = [
         site_to_response(
@@ -159,10 +159,13 @@ async def get_site(
     # role scope re-check: an exec must not be able to read another exec's site
     from app.rbac.roles import Role
 
-    if user["role"] == Role.EXECUTIVE.value:
-        if str(site.submitted_by) != user["sub"] and str(site.assigned_to or "") != user["sub"]:
-            from fastapi import HTTPException, status as http_status
-            raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    if (
+        user["role"] == Role.EXECUTIVE.value
+        and str(site.submitted_by) != user["sub"]
+        and str(site.assigned_to or "") != user["sub"]
+    ):
+        from fastapi import HTTPException, status as http_status
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     name_stmt = select(models.User.name).where(models.User.id == site.submitted_by)
     name = (await session.execute(name_stmt)).scalar_one_or_none()

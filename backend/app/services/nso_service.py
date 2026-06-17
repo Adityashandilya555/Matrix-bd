@@ -213,7 +213,7 @@ def _stage_one_complete(row: models.NsoReview) -> bool:
 
 def _legal_license_values(licensing: Optional[models.SiteLicensing]) -> dict[str, str]:
     if licensing is None:
-        return {field: "pending" for field in LEGAL_LICENSE_FIELDS}
+        return dict.fromkeys(LEGAL_LICENSE_FIELDS, "pending")
     return {field: (getattr(licensing, field) or "pending") for field in LEGAL_LICENSE_FIELDS}
 
 
@@ -529,15 +529,16 @@ async def svc_nso_queue(
             licensing_rows = {l.site_id: l for l in (await session.execute(
                 select(models.SiteLicensing).where(models.SiteLicensing.site_id.in_(site_ids))
             )).scalars()}
-        items: list[NsoQueueItem] = []
-        for site in sites:
-            items.append(await _queue_item(
+        items: list[NsoQueueItem] = [
+            await _queue_item(
                 session,
                 site,
                 nso_rows.get(site.id),
                 projects.get(site.id),
                 licensing_rows.get(site.id),
-            ))
+            )
+            for site in sites
+        ]
         return NsoQueueResponse(items=items, total=len(items))
 
 

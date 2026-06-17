@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import secrets
 import string
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -228,7 +228,7 @@ def site_to_response(
 def _days_since(d: Optional[date]) -> Optional[int]:
     if d is None:
         return None
-    return max(0, (date.today() - d).days)
+    return max(0, (datetime.now(timezone.utc).date() - d).days)
 
 
 def _legacy_stage_for(status: str) -> str:

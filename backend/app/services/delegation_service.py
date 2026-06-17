@@ -472,13 +472,14 @@ async def svc_is_delegated(
                 models.SiteDelegation.revoked_at.is_(None),
             ).limit(1)
         )).first()
-        return row is not None
     except Exception:
         logger.exception(
             "delegation_service.svc_is_delegated failed (tenant=%s, site=%s, user=%s, module=%s) — "
             "returning safe default False", tenant_id, site_id, user_id, module,
         )
         return False
+    else:
+        return row is not None
 
 
 async def svc_list_legal_delegations_for_site(
