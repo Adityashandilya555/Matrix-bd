@@ -349,26 +349,40 @@ async def _fetch_optional_admin_sources(
     return project_by_site, nso_by_site, launch_by_site, budget_by_site
 
 
+def _admin_item_meta(site: dict, names: dict, now) -> dict:
+    """Derived/defaulted scalars for one admin-timeline item, split out to keep
+    _admin_site_item's cyclomatic complexity low (#240, PY-R1000). `names.get`
+    returns None for a missing/None id, so the old per-name guards are redundant.
+    """
+    try:
+        finance_amount = float(site["finance_amount"]) if site["finance_amount"] is not None else None
+    except (TypeError, ValueError):
+        finance_amount = None
+    return {
+        "created_at": site["created_at"] or site["updated_at"] or now,
+        "updated_at": site["updated_at"] or site["created_at"] or now,
+        "finance_amount": finance_amount,
+        "submitted_by_name": names.get(site["submitted_by"]),
+        "assigned_to_name": names.get(site["assigned_to"]),
+        "supervisor_name": names.get(site["supervisor_id"]),
+    }
+
+
 def _admin_site_item(site: dict, *, project: dict, nso: dict, launch: dict, budget: dict, names: dict, now) -> dict:
     """Build one admin-timeline item from a site snapshot + its optional sources.
 
     Behaviour-preserving extract of list_admin_sites' per-row builder (#240).
     """
-    created_at = site["created_at"] or site["updated_at"] or now
-    updated_at = site["updated_at"] or site["created_at"] or now
-    try:
-        finance_amount = float(site["finance_amount"]) if site["finance_amount"] is not None else None
-    except (TypeError, ValueError):
-        finance_amount = None
+    meta = _admin_item_meta(site, names, now)
     return {
         "site_id": str(site["id"]),
         "site_code": site["ca_code"] or site["code"] or f"SITE-{str(site['id'])[:8].upper()}",
         "site_name": site["name"] or "Unnamed site",
         "city": site["city"] or "Unknown city",
         "site_status": site["status"] or "pending",
-        "submitted_by_name": names.get(site["submitted_by"]),
-        "assigned_to_name": names.get(site["assigned_to"]) if site["assigned_to"] else None,
-        "supervisor_name": names.get(site["supervisor_id"]) if site["supervisor_id"] else None,
+        "submitted_by_name": meta["submitted_by_name"],
+        "assigned_to_name": meta["assigned_to_name"],
+        "supervisor_name": meta["supervisor_name"],
         "legal_dd_status": site["legal_dd_status"],
         "agreement_status": site["agreement_status"],
         "licensing_status": site["licensing_status"],
@@ -385,10 +399,10 @@ def _admin_site_item(site: dict, *, project: dict, nso: dict, launch: dict, budg
         "is_launched": bool(site["is_launched"]),
         "launched_at": site["launched_at"] or launch.get("launched_at"),
         "ca_code": site["ca_code"],
-        "finance_amount": finance_amount,
+        "finance_amount": meta["finance_amount"],
         "kyc_verified": bool(site["kyc_verified"]),
-        "created_at": created_at,
-        "updated_at": updated_at,
+        "created_at": meta["created_at"],
+        "updated_at": meta["updated_at"],
         "draft_submitted_at": site["draft_submitted_at"],
         "shortlisted_at": site["shortlisted_at"],
         "details_submitted_at": site["details_submitted_at"],
