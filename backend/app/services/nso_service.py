@@ -44,6 +44,17 @@ LEGAL_LICENSE_FIELDS = (
     "storage_license",
 )
 
+# NSO Stage 2 readiness fields. Stage 2 *reflects* these from canonical Legal
+# Licensing via ``_sync_rollups``; they are not authored on the Stage 2 endpoint
+# (see ``svc_save_stage_two`` and #229).
+_STAGE_TWO_STATUS_FIELDS = (
+    "fssai_status",
+    "health_trade_status",
+    "shops_estab_status",
+    "fire_noc_status",
+    "storage_license_status",
+)
+
 
 async def _fetch_project(
     session: AsyncSession, *, site_id: str | UUID,
@@ -608,8 +619,25 @@ async def svc_save_stage_two(
     tenant_id: str | UUID,
     actor: dict,
     site_id: str | UUID,
-    body: NsoStageTwoRequest,
+    body: NsoStageTwoRequest | None = None,
 ) -> NsoStateResponse:
+    """Reflect NSO Stage 2 readiness from canonical Legal Licensing.
+
+    Stage 2 is **auto-derived**: its licensing status fields (FSSAI, health
+    trade, shops & establishment, fire NOC, storage license) are recomputed by
+    ``_sync_rollups`` from the site's Legal Licensing record — they are *not*
+    authored on this endpoint. ``body`` is accepted only for backward
+    compatibility with the router/clients that still POST the Stage 2 form; its
+    fields are advisory and intentionally not persisted here.
+
+    Previously the body was accepted with a typed contract and then silently
+    dropped — a caller checking boxes got a 200 and believed their input saved
+    (#229). We now log a WARNING whenever a submitted value diverges from the
+    derived state, so the drop is observable instead of silent.
+
+    To make these fields user-authored instead, write ``body.<field>`` onto
+    ``row`` before ``_sync_rollups`` and surface them in the state response.
+    """
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         project = await _fetch_project(session, site_id=site.id)
@@ -618,6 +646,20 @@ async def svc_save_stage_two(
         if not _stage_two_unlocked(row, project):
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="NSO Stage 2 is locked until Stage 1 and Project initiation are complete.")
         _sync_rollups(site, row, project, licensing)
+        if body is not None:
+            ignored = {
+                field: getattr(body, field)
+                for field in _STAGE_TWO_STATUS_FIELDS
+                if getattr(body, field) != getattr(row, field)
+            }
+            if ignored:
+                logger.warning(
+                    "nso_stage_two: ignoring submitted status fields for site=%s; "
+                    "Stage 2 reflects canonical Legal Licensing "
+                    "(submitted=%s, canonical=%s)",
+                    site.id, ignored,
+                    {f: getattr(row, f) for f in ignored},
+                )
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor.get("name"),
