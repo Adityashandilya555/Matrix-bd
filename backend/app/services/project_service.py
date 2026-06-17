@@ -312,7 +312,7 @@ async def svc_project_queue(
                     models.ProjectReview.project_status != "done",
                 ),
             )
-            .order_by(models.Site.updated_at.asc())
+            .order_by(models.Site.updated_at.asc(), models.Site.id)  # id = stable-paging tie-breaker
         )
         if restrict_to_site_ids is not None:
             if not restrict_to_site_ids:
@@ -383,6 +383,7 @@ async def svc_project_history(
         stmt.order_by(
             desc(models.ProjectReview.updated_at).nulls_last(),
             desc(models.Site.updated_at),
+            models.Site.id,  # deterministic tie-breaker for stable offset paging
         ).limit(limit).offset(offset)
     )).all()
 

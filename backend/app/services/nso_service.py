@@ -592,7 +592,11 @@ async def svc_nso_history(
             stmt = stmt.where(False)
 
         rows = (await session.execute(
-            stmt.order_by(desc(models.NsoReview.updated_at).nulls_last(), desc(models.Site.updated_at))
+            stmt.order_by(
+                desc(models.NsoReview.updated_at).nulls_last(),
+                desc(models.Site.updated_at),
+                models.Site.id,  # deterministic tie-breaker for stable offset paging
+            )
             .limit(limit).offset(offset)
         )).all()
         items = [await _queue_item(session, site, row, project, licensing) for (site, row, project, licensing) in rows]

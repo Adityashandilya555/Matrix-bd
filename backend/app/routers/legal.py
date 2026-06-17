@@ -90,7 +90,7 @@ async def legal_queue(
     current_user: LegalMember,
     _module: InLegalModule,
     tenant_id: TenantId,
-    limit: int = Query(50, le=200),
+    limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> LegalQueueResponse:
     # Executives only see sites delegated to them. Supervisors see all.
@@ -400,7 +400,7 @@ async def list_pending_change_requests(
     current_user: LegalMember,
     _module: InLegalModule,
     tenant_id: TenantId,
-    limit: int = Query(50, le=200),
+    limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> ChangeRequestListResponse:
     return await svc_list_pending_for_legal(db, tenant_id=tenant_id, limit=limit, offset=offset)

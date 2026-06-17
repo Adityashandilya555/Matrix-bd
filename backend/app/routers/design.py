@@ -88,7 +88,7 @@ async def design_queue(
     current_user: DesignMember,
     _module: InDesignModule,
     tenant_id: TenantId,
-    limit: int = Query(50, le=200),
+    limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> DesignQueueResponse:
     # Executives only see sites allocated to them. Supervisors see all.

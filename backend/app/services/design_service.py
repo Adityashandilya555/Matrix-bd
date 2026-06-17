@@ -274,7 +274,7 @@ async def svc_design_queue(
             models.Site.finance_status == "approved",
             or_(models.Site.design_status.is_(None), models.Site.design_status != "approved"),
         )
-        .order_by(models.Site.updated_at.asc())
+        .order_by(models.Site.updated_at.asc(), models.Site.id)  # id = stable-paging tie-breaker
     )
     if restrict_to_site_ids is not None:
         if not restrict_to_site_ids:

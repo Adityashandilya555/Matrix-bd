@@ -60,7 +60,7 @@ async def send_for_financial_closure(
 @router.get("/queue", response_model=FCQueueResponse)
 async def fc_queue(
     db: DbDep, current_user: FCMember, _module: InProjectModule, tenant_id: TenantId,
-    limit: int = Query(50, le=200), offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
 ) -> FCQueueResponse:
     restrict_to: Optional[list[str]] = None
     if _is_executive(current_user):
@@ -73,7 +73,7 @@ async def fc_queue(
 @router.get("/admin-queue", response_model=FCQueueResponse)
 async def fc_admin_queue(
     db: DbDep, current_user: BusinessAdmin, tenant_id: TenantId,
-    limit: int = Query(50, le=200), offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
 ) -> FCQueueResponse:
     return await svc_fc_admin_queue(db, tenant_id=tenant_id, limit=limit, offset=offset)
 

@@ -242,7 +242,7 @@ async def svc_pe_queue(
                 return PEQueueResponse(items=[], total=0)
             stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
         rows = (await session.execute(
-            stmt.order_by(models.Site.updated_at.asc()).limit(limit).offset(offset)
+            stmt.order_by(models.Site.updated_at.asc(), models.Site.id).limit(limit).offset(offset)
         )).all()
 
         delegates, names = await _batch_pe_prefetch(session, [site for site, _b in rows])

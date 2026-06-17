@@ -331,7 +331,7 @@ async def svc_legal_queue(
                 SiteStatus.LEGAL_REJECTED.value,
             ]),
         )
-        .order_by(models.Site.legal_review_at.asc())
+        .order_by(models.Site.legal_review_at.asc(), models.Site.id)  # id = stable-paging tie-breaker
     )
     if restrict_to_site_ids is not None:
         if not restrict_to_site_ids:

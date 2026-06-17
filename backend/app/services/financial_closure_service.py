@@ -203,7 +203,7 @@ async def svc_fc_queue(
                 return FCQueueResponse(items=[], total=0)
             stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
         rows = (await session.execute(
-            stmt.order_by(models.Site.launched_at.desc()).limit(limit).offset(offset)
+            stmt.order_by(models.Site.launched_at.desc(), models.Site.id).limit(limit).offset(offset)
         )).all()
 
         items: list[FCQueueItem] = []
@@ -411,7 +411,7 @@ async def svc_fc_admin_queue(
             models.Site.tenant_id == tenant_id,
             models.SiteBudget.status == "pending_admin",
         )
-        .order_by(models.SiteBudget.updated_at.asc())
+        .order_by(models.SiteBudget.updated_at.asc(), models.SiteBudget.id)  # id = stable-paging tie-breaker
         .limit(limit).offset(offset)
     )).all()
     items: list[FCQueueItem] = []

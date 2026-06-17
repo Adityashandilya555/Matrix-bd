@@ -396,7 +396,8 @@ async def svc_get_launch_queue(
         statuses = [s.strip() for s in status_filter.split(",")]
         q = q.where(models.LaunchApproval.status.in_(statuses))
 
-    q = q.order_by(models.LaunchApproval.created_at.desc()).limit(limit).offset(offset)
+    q = q.order_by(models.LaunchApproval.created_at.desc(), models.LaunchApproval.id).limit(limit).offset(offset)
+    # LaunchApproval.id = deterministic tie-breaker for stable offset paging
     rows = (await session.execute(q)).all()
     items = [
         LaunchQueueItem(
