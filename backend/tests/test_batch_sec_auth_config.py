@@ -41,6 +41,18 @@ def _user_row(password_hash=None, is_active=True, role="executive"):
     }
 
 
+def _login_row(user_id=USER_ID, is_active=True, password_hash=None, role="executive"):
+    """The combined tenant+user row login() now gets from its single LEFT JOIN
+    (#234). user_id is None when the workspace exists but the email isn't a
+    member (the LEFT JOIN still returns the tenant columns)."""
+    return {
+        "tenant_id": TENANT_ROW["id"], "tenant_name": TENANT_ROW["name"],
+        "seat_limit": TENANT_ROW["seat_limit"],
+        "user_id": user_id, "email": "a@b.co", "user_name": "A", "role": role,
+        "is_active": is_active, "assigned_city": None, "password_hash": password_hash,
+    }
+
+
 def _settings(**kw):
     base = dict(
         _env_file=None,
@@ -109,8 +121,7 @@ async def test_login_rejects_null_hash_account_without_password(make_session, fa
     from app.routers.auth import LoginIn, login
 
     sess = make_session(
-        fake_result(mappings_rows=[TENANT_ROW]),
-        fake_result(mappings_rows=[_user_row(password_hash=None)]),
+        fake_result(mappings_rows=[_login_row(password_hash=None)]),
     )
     payload = LoginIn(email="a@b.co", workspace_code="ACME-CODE1")
     with pytest.raises(HTTPException) as exc:
@@ -124,8 +135,7 @@ async def test_login_does_not_silently_store_first_password(make_session, fake_r
     from app.routers.auth import LoginIn, login
 
     sess = make_session(
-        fake_result(mappings_rows=[TENANT_ROW]),
-        fake_result(mappings_rows=[_user_row(password_hash=None)]),
+        fake_result(mappings_rows=[_login_row(password_hash=None)]),
     )
     payload = LoginIn(email="a@b.co", workspace_code="ACME-CODE1", password="attacker-pw")
     with pytest.raises(HTTPException) as exc:
@@ -417,14 +427,65 @@ async def test_login_unknown_email_in_known_workspace_is_404(make_session, fake_
     from app.routers.auth import LoginIn, login
 
     sess = make_session(
-        fake_result(mappings_rows=[TENANT_ROW]),
-        fake_result(mappings_rows=[]),  # no such user in this tenant
+        # LEFT JOIN: tenant present, but the email is not a member → user_id NULL.
+        fake_result(mappings_rows=[_login_row(user_id=None)]),
     )
     payload = LoginIn(email="stranger@b.co", workspace_code="ACME-CODE1")
     with pytest.raises(HTTPException) as exc:
         await login(payload, sess)
     assert exc.value.status_code == 404
     assert not any("INSERT INTO users" in s for s in sess.executed)
+
+
+async def test_login_happy_path_issues_two_selects(make_session, fake_result, monkeypatch):
+    # #234 regression: the happy path must issue exactly 2 reads — one combined
+    # tenant+user JOIN, then the membership lookup — not the old 3 (tenant, user,
+    # membership). Guards against anyone re-splitting the JOIN. Use a passwordless
+    # demo tenant so the password gate is skipped and the membership query runs.
+    from app.core.config import settings as live_settings
+    from app.routers.auth import LoginIn, login
+
+    monkeypatch.setattr(live_settings, "passwordless_demo_codes", "ACME-CODE1")
+    sess = make_session(
+        fake_result(mappings_rows=[_login_row(password_hash=None)]),   # combined JOIN
+        fake_result(mappings_rows=[                                     # membership
+            {"module": "bd", "role_in_module": "executive", "supervisor_id": None}
+        ]),
+    )
+    out = await login(LoginIn(email="a@b.co", workspace_code="ACME-CODE1"), sess)
+    assert out.access_token
+    selects = [s for s in sess.executed if "SELECT" in s.upper()]
+    assert len(selects) == 2
+    assert any("JOIN users" in s for s in sess.executed)  # the combined read
+
+
+# ── #234 (12.2) — single shared tenant/user lookup helper ──────────────────
+
+async def test_tenant_lookup_helper_keeps_case_folding_contract(make_session, fake_result):
+    from app.services.auth_repo import get_tenant_by_workspace_code
+
+    sess = make_session(fake_result(mappings_rows=[TENANT_ROW]))
+    out = await get_tenant_by_workspace_code(sess, "acme-code1")
+    assert out == TENANT_ROW
+    # The upper()/upper() case-folding contract the unique index relies on now
+    # lives in exactly one place — assert the helper still carries it.
+    assert any("upper(workspace_code) = upper(:code)" in s for s in sess.executed)
+    assert sess.execute_params[0] == {"code": "acme-code1"}
+
+
+def test_tenant_lookup_literal_lives_in_exactly_one_place():
+    # Grep guard: the raw 'FROM tenants WHERE upper(workspace_code)' string must
+    # exist ONLY in the shared helper, so a future edit can't re-duplicate it or
+    # silently drop upper() (which would break case-insensitive matching).
+    import pathlib
+
+    app_dir = pathlib.Path(__file__).resolve().parents[1] / "app"
+    needle = "FROM tenants WHERE upper(workspace_code)"
+    hits = sorted(
+        str(p.relative_to(app_dir)) for p in app_dir.rglob("*.py")
+        if needle in p.read_text()
+    )
+    assert hits == ["services/auth_repo.py"], hits
 
 
 async def test_login_check_reports_account_state(make_session, fake_result):

@@ -42,6 +42,7 @@ from app.core.security import (
 )
 from app.core.passwords import hash_password_async, verify_password_async
 from app.domain.schemas.common import OkResponse
+from app.services.auth_repo import get_tenant_by_workspace_code, get_user_by_tenant_email
 
 logger = logging.getLogger("matrix.auth")
 
@@ -145,32 +146,37 @@ class SignupAcceptedOut(BaseModel):
     },
 )
 async def login(payload: LoginIn, db: DbDep):
-    # 1. Resolve workspace code → tenant.
-    tenant = (await db.execute(
+    # 1+2. Resolve workspace → tenant AND the (tenant, email) user in ONE round
+    # trip (#234). A LEFT JOIN anchored on tenants collapses two serial Supabase
+    # -pooler round-trips into one while keeping the two distinct "no tenant" vs
+    # "no user" branches below distinguishable. The membership lookup (step 4)
+    # stays a separate query — it depends on user_id and carries its own ORDER BY.
+    row = (await db.execute(
         text("""
-            SELECT id, name, seat_limit
-              FROM tenants
-             WHERE upper(workspace_code) = upper(:code)
+            SELECT t.id   AS tenant_id,
+                   t.name AS tenant_name,
+                   t.seat_limit,
+                   u.id   AS user_id,
+                   u.email,
+                   u.name AS user_name,
+                   u.role,
+                   u.is_active,
+                   u.assigned_city,
+                   u.password_hash
+              FROM tenants t
+              LEFT JOIN users u
+                ON u.tenant_id = t.id AND lower(u.email) = lower(:email)
+             WHERE upper(t.workspace_code) = upper(:code)
         """),
-        {"code": payload.workspace_code},
+        {"code": payload.workspace_code, "email": payload.email},
     )).mappings().first()
-    if not tenant:
+    if row is None:
         # Same soft 202 a valid code + unknown email gets — a 404 here was a
         # valid-code enumeration oracle (#84). Discriminator logged server-side.
         logger.info("login: unknown workspace_code=%r", payload.workspace_code)
         return _pending_response(payload.email)
 
-    # 2. Find the user by (tenant, email).
-    user = (await db.execute(
-        text("""
-            SELECT id, email, name, role, is_active, assigned_city, password_hash
-              FROM users
-             WHERE tenant_id = :tid AND lower(email) = lower(:email)
-        """),
-        {"tid": tenant["id"], "email": payload.email},
-    )).mappings().first()
-
-    if user is None:
+    if row["user_id"] is None:
         # The email is not a member of this workspace. We no longer silently
         # auto-register it as a pending "ghost" user (that let any holder of the
         # workspace_code seed never-approved rows, and made a stranger's email
@@ -189,7 +195,7 @@ async def login(payload: LoginIn, db: DbDep):
         )
 
     # 3. Known user. If still inactive (no role assigned), keep them pending.
-    if not user["is_active"]:
+    if not row["is_active"]:
         return _pending_response(payload.email)
 
     # 3b. Password gate (#83). An account with a password must present it. An
@@ -198,7 +204,7 @@ async def login(payload: LoginIn, db: DbDep):
     #     stored — an account-claim race on every freshly provisioned user).
     #     First-time passwords are set via the admin-approved, token-bound
     #     reset flow (#85). Sample/demo tenants can be exempted explicitly.
-    stored_hash = user["password_hash"]
+    stored_hash = row["password_hash"]
     provided = (payload.password or "").strip()
     is_demo_tenant = payload.workspace_code.strip().upper() in settings.passwordless_demo_code_list
     if stored_hash:
@@ -231,16 +237,16 @@ async def login(payload: LoginIn, db: DbDep):
              ORDER BY module
              LIMIT 1
         """),
-        {"uid": user["id"]},
+        {"uid": row["user_id"]},
     )).mappings().first() or {}
     supervisor_id = membership.get("supervisor_id")
     token = issue_token(
-        sub=str(user["id"]),
-        email=user["email"],
-        name=user["name"] or user["email"].split("@")[0],
-        role=user["role"],
-        tenant_id=str(tenant["id"]),
-        city=user["assigned_city"],
+        sub=str(row["user_id"]),
+        email=row["email"],
+        name=row["user_name"] or row["email"].split("@")[0],
+        role=row["role"],
+        tenant_id=str(row["tenant_id"]),
+        city=row["assigned_city"],
         module=membership.get("module"),
         module_role=membership.get("role_in_module"),
         supervisor_id=str(supervisor_id) if supervisor_id else None,
@@ -248,13 +254,13 @@ async def login(payload: LoginIn, db: DbDep):
     return LoginOut(
         access_token=token,
         user={
-            "id":         str(user["id"]),
-            "email":      user["email"],
-            "name":       user["name"],
-            "role":       user["role"],
-            "tenant_id":  str(tenant["id"]),
-            "tenant_name": tenant["name"],
-            "city":       user["assigned_city"],
+            "id":         str(row["user_id"]),
+            "email":      row["email"],
+            "name":       row["user_name"],
+            "role":       row["role"],
+            "tenant_id":  str(row["tenant_id"]),
+            "tenant_name": row["tenant_name"],
+            "city":       row["assigned_city"],
         },
     )
 
@@ -276,17 +282,12 @@ async def login_check(payload: LoginCheckIn, db: DbDep) -> dict:
     non-oracle (#84). `password_set` is retained for backward-compatible callers.
     """
     unknown = {"account_state": "unknown", "password_set": False}  # nosec B105 — flags, not a credential
-    tenant = (await db.execute(
-        text("SELECT id FROM tenants WHERE upper(workspace_code) = upper(:code)"),
-        {"code": payload.workspace_code},
-    )).mappings().first()
+    tenant = await get_tenant_by_workspace_code(db, payload.workspace_code)
     if not tenant:
         return unknown
-    user = (await db.execute(
-        text("""SELECT is_active, password_hash FROM users
-                 WHERE tenant_id = :tid AND lower(email) = lower(:email)"""),
-        {"tid": tenant["id"], "email": payload.email},
-    )).mappings().first()
+    user = await get_user_by_tenant_email(
+        db, tenant["id"], payload.email, columns="is_active, password_hash"
+    )
     if not user:
         return unknown
     if not user["is_active"]:
@@ -308,16 +309,10 @@ async def password_reset_request(payload: ResetRequestIn, db: DbDep) -> dict:
         "status": "requested",
         "message": "If that account exists, a reset request was sent to the platform admin for approval.",
     }
-    tenant = (await db.execute(
-        text("SELECT id FROM tenants WHERE upper(workspace_code) = upper(:code)"),
-        {"code": payload.workspace_code},
-    )).mappings().first()
+    tenant = await get_tenant_by_workspace_code(db, payload.workspace_code)
     if not tenant:
         return soft
-    user = (await db.execute(
-        text("SELECT id FROM users WHERE tenant_id = :tid AND lower(email) = lower(:email)"),
-        {"tid": tenant["id"], "email": payload.email},
-    )).mappings().first()
+    user = await get_user_by_tenant_email(db, tenant["id"], payload.email)
     if not user:
         return soft
     dup = (await db.execute(
@@ -343,16 +338,10 @@ async def password_reset_request(payload: ResetRequestIn, db: DbDep) -> dict:
     dependencies=[Depends(rate_limit(times=5, seconds=300))],
 )
 async def password_reset_complete(payload: ResetCompleteIn, db: DbDep) -> dict:
-    tenant = (await db.execute(
-        text("SELECT id FROM tenants WHERE upper(workspace_code) = upper(:code)"),
-        {"code": payload.workspace_code},
-    )).mappings().first()
+    tenant = await get_tenant_by_workspace_code(db, payload.workspace_code)
     if not tenant:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset request.")
-    user = (await db.execute(
-        text("SELECT id FROM users WHERE tenant_id = :tid AND lower(email) = lower(:email)"),
-        {"tid": tenant["id"], "email": payload.email},
-    )).mappings().first()
+    user = await get_user_by_tenant_email(db, tenant["id"], payload.email)
     if not user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset request.")
     req = (await db.execute(
@@ -411,17 +400,12 @@ async def password_setup(payload: PasswordSetupIn, db: DbDep) -> dict:
     on ``password_hash IS NULL``, so a double-submit (or anyone racing for the
     account) finds the row already set and gets a 409, never an overwrite.
     """
-    tenant = (await db.execute(
-        text("SELECT id FROM tenants WHERE upper(workspace_code) = upper(:code)"),
-        {"code": payload.workspace_code},
-    )).mappings().first()
+    tenant = await get_tenant_by_workspace_code(db, payload.workspace_code)
     if not tenant:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid request.")
-    user = (await db.execute(
-        text("""SELECT id, is_active, password_hash FROM users
-                 WHERE tenant_id = :tid AND lower(email) = lower(:email)"""),
-        {"tid": tenant["id"], "email": payload.email},
-    )).mappings().first()
+    user = await get_user_by_tenant_email(
+        db, tenant["id"], payload.email, columns="id, is_active, password_hash"
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -548,14 +532,9 @@ async def _enqueue_signup(
     Returns 202 if a pending row already exists or a new one is created.
     Raises 409 if the email is already active in the tenant.
     """
-    existing = (await db.execute(
-        text("""
-            SELECT id, is_active
-              FROM users
-             WHERE tenant_id = :tid AND lower(email) = lower(:email)
-        """),
-        {"tid": tenant_id, "email": email},
-    )).mappings().first()
+    existing = await get_user_by_tenant_email(
+        db, tenant_id, email, columns="id, is_active"
+    )
     if existing:
         if existing["is_active"]:
             raise HTTPException(
