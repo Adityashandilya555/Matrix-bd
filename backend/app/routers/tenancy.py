@@ -80,13 +80,6 @@ def _generate_workspace_code(slug_hint: Optional[str] = None) -> str:
     return f"{base}-{secrets.token_hex(8).upper()}"
 
 
-def _json_string(s: Optional[str]) -> str:
-    """Serialise a Python string to a JSON-escaped string fragment so we can
-    splice it into the JSONB literal that goes into notification_outbox.payload.
-    Defending against quotes/newlines in the company name."""
-    return json.dumps(s or "")
-
-
 def _require_platform_admin(provided: Optional[str]) -> None:
     expected = settings.effective_platform_admin_token
     if not expected:
@@ -634,14 +627,19 @@ async def approve_workspace_request(
             "email":   req_admin_email,
             "subject": outbox_subject,
             "body":    outbox_body,
-            "payload": (
-                '{"tenant_id":"' + str(tenant_id) + '",'
-                '"workspace_code":"' + workspace_code + '",'
-                '"business_admin_id":"' + str(business_admin_id) + '",'
-                '"supervisor_id":"' + str(business_admin_id) + '",'
-                '"company":' + _json_string(req_company) + ','
-                '"city":' + _json_string(payload.city or "") + '}'
-            ),
+            # Serialise with json.dumps rather than hand-splicing the JSON
+            # template (#240/18.5): a company/city containing a quote, backslash
+            # or other escapable char produced malformed JSON, and
+            # CAST(:payload AS jsonb) then threw at runtime. json.dumps escapes
+            # every field correctly in all cases.
+            "payload": json.dumps({
+                "tenant_id": str(tenant_id),
+                "workspace_code": workspace_code,
+                "business_admin_id": str(business_admin_id),
+                "supervisor_id": str(business_admin_id),
+                "company": req_company,
+                "city": payload.city or "",
+            }),
         },
     )
 
