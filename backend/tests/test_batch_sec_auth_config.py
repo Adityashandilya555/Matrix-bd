@@ -34,13 +34,6 @@ TENANT_ROW = {"id": uuid.uuid4(), "name": "Acme", "seat_limit": 10}
 USER_ID = uuid.uuid4()
 
 
-def _user_row(password_hash=None, is_active=True, role="executive"):
-    return {
-        "id": USER_ID, "email": "a@b.co", "name": "A", "role": role,
-        "is_active": is_active, "assigned_city": None, "password_hash": password_hash,
-    }
-
-
 def _login_row(user_id=USER_ID, is_active=True, password_hash=None, role="executive"):
     """The combined tenant+user row login() now gets from its single LEFT JOIN
     (#234). user_id is None when the workspace exists but the email isn't a
