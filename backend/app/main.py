@@ -69,24 +69,29 @@ def _warn_if_scaled_out() -> None:
     store is the process-local in-memory dict (#225, 3.2).
 
     The limiter store (app/core/ratelimit.py) is valid ONLY for a single process
-    on a single replica. With >1 worker/replica each process keeps its own
-    windows, so the effective limit is multiplied and load-balanced attackers get
-    a fresh counter per worker. No Redis store exists yet, so scaling out silently
-    weakens brute-force protection — warn loudly rather than fail the boot. Keep
-    WEB_CONCURRENCY unset / replicas = 1 until the store is migrated to Redis.
+    on a single replica. With >1 worker per process each keeps its own windows,
+    so the effective limit is multiplied and load-balanced attackers get a fresh
+    counter per worker. No Redis store exists yet, so scaling out silently weakens
+    brute-force protection — warn loudly rather than fail the boot. Keep
+    WEB_CONCURRENCY unset until the store is migrated to Redis.
+
+    Detectable from inside the container: the worker count
+    (WEB_CONCURRENCY / UVICORN_WORKERS). NOT detectable: horizontal *replica*
+    scaling — Railway exposes per-instance ids (RAILWAY_REPLICA_ID) but no
+    reliable replica *count*, so running multiple replicas can't be warned about
+    here and is operationally unsupported until the store moves to Redis.
     """
     concurrency = max(
         _int_or_zero(os.getenv("WEB_CONCURRENCY")),
         _int_or_zero(os.getenv("UVICORN_WORKERS")),
-        _int_or_zero(os.getenv("RAILWAY_REPLICA_COUNT")),
     )
     if concurrency > 1:
         log.warning(
-            "startup: in-memory rate limiter active but %d workers/replicas are "
-            "configured — windows are NOT shared across processes, so the "
-            "effective per-client limit is multiplied and brute-force protection "
-            "is weakened (#225). Run a single process/replica, or migrate the "
-            "limiter store to Redis before scaling out.",
+            "startup: in-memory rate limiter active but %d workers are configured "
+            "(WEB_CONCURRENCY/UVICORN_WORKERS) — windows are NOT shared across "
+            "processes, so the effective per-client limit is multiplied and "
+            "brute-force protection is weakened (#225). Run a single worker, or "
+            "migrate the limiter store to Redis before scaling out.",
             concurrency,
         )
 
