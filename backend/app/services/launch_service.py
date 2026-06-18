@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional, overload
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
@@ -102,6 +102,26 @@ def _str(v) -> Optional[str]:
     return str(v)
 
 
+# Typed via @overload so callers get the precise return type (#234-adjacent
+# typecheck fix): required=True can only return a LaunchApproval (it raises 404
+# otherwise), so it is non-Optional; required=False may return None. The runtime
+# body is unchanged.
+@overload
+async def _fetch_approval(
+    session: AsyncSession,
+    *,
+    site_id: str | UUID,
+    tenant_id: str | UUID,
+    required: Literal[True] = ...,
+) -> models.LaunchApproval: ...
+@overload
+async def _fetch_approval(
+    session: AsyncSession,
+    *,
+    site_id: str | UUID,
+    tenant_id: str | UUID,
+    required: Literal[False],
+) -> Optional[models.LaunchApproval]: ...
 async def _fetch_approval(
     session: AsyncSession,
     *,
