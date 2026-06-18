@@ -131,18 +131,18 @@ def _security_headers(request: Request) -> dict[str, str]:
     return headers
 
 
-class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Add the security headers to every response that passes through the user
-    middleware stack (2xx/4xx). Only ADDS via setdefault — never strips — so the
-    CORS headers set by CORSMiddleware are preserved. Unhandled 500s are produced
-    by Starlette's outer ServerErrorMiddleware, OUTSIDE this middleware, so the
-    exception handler applies the same headers there (see `_security_headers`)."""
-
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        for name, value in _security_headers(request).items():
-            response.headers.setdefault(name, value)
-        return response
+async def _security_headers_dispatch(request: Request, call_next):
+    """BaseHTTPMiddleware dispatch (registered via the ``dispatch=`` form, so it's
+    a plain function — no unused ``self``). Adds the security headers to every
+    response that passes through the user middleware stack (2xx/4xx). Only ADDS
+    via setdefault — never strips — so the CORS headers set by CORSMiddleware are
+    preserved. Unhandled 500s are produced by Starlette's outer
+    ServerErrorMiddleware, OUTSIDE this middleware, so the exception handler
+    applies the same headers there (see `_security_headers`)."""
+    response = await call_next(request)
+    for name, value in _security_headers(request).items():
+        response.headers.setdefault(name, value)
+    return response
 
 
 # ── Background email drain (#112) ─────────────────────────────────────────────
@@ -241,7 +241,7 @@ app.add_middleware(
 )
 # Added after CORS (so it wraps it): only adds headers, never strips, so CORS —
 # including the error-path re-application — is preserved (#227).
-app.add_middleware(_SecurityHeadersMiddleware)
+app.add_middleware(BaseHTTPMiddleware, dispatch=_security_headers_dispatch)
 app.add_middleware(_RequestIdMiddleware)  # outermost — runs first on ingress
 
 
