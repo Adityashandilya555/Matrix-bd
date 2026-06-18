@@ -1,11 +1,5 @@
 version = 1
 
-exclude_patterns = [
-  "frontend/eslint.config.js",
-  "frontend/src/services/api/axiosClient.js",
-  "frontend/src/services/api/_utils.js"
-]
-
 [[analyzers]]
 name = "javascript"
 enabled = true
