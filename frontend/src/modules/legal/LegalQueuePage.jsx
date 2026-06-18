@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import SubFilterPill from '../shared/primitives/SubFilterPill.jsx';
+import ViewMoreButton from '../shared/primitives/ViewMoreButton.jsx';
 import { useFocusSite } from '../../hooks/useFocusSite.js';
 import { useSession } from '../../state/SessionContext.jsx';
 import { getLegalQueue } from '../../services/api/legalApi.js';
@@ -10,6 +11,7 @@ import { listLegalDelegationsForSite } from '../../services/api/legalDelegationA
 import { legalSiteAgreementRoute, legalSiteDdrRoute, legalSiteLicensingRoute } from '../../router/routes.js';
 import { agreementAllowsLicensing, normalizeAgreementStatus } from '../../lib/agreementStatus.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
+import { usePagedList } from '../../hooks/usePagedList.js';
 import { keyActivate } from '../../lib/a11y.js';
 
 const STATUS_LABELS = {
@@ -83,42 +85,22 @@ export default function LegalQueuePage() {
   React.useEffect(() => {
     if (DD_FILTERS.includes(filterParam)) setDdFilter(filterParam);
   }, [filterParam]);
-  const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
+  // "View more" batch pager — loads a page at a time and appends; `total` is the
+  // server COUNT(*) of the whole queue (headline count), `items` the rows loaded
+  // so far (client filters operate over these).
+  const { items, total, status, error, hasMore, loadingMore, loadMore, reload } =
+    usePagedList(({ limit, offset }) => getLegalQueue({ limit, offset }));
   // siteId -> delegate name string (supervisor view only)
   const [delegateNames, setDelegateNames] = React.useState({});
 
-  const load = React.useCallback(() => {
-    let cancelled = false;
-    // Keep previously loaded rows visible during background refreshes —
-    // wiping them blanked the table on every tab refocus.
-    setState((s) => ({ ...s, status: s.items.length ? s.status : 'loading', error: null }));
-    getLegalQueue()
-      .then((data) => {
-        if (cancelled) return;
-        setState({ status: 'ready', items: data.items, total: data.total, error: null });
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        // A failed background refresh must not destroy good data — keep the
-        // stale rows and surface the error as a banner.
-        setState((s) => ({
-          ...s,
-          status: s.items.length ? 'ready' : 'error',
-          error: err?.detail || err?.message || 'Failed to load legal queue',
-        }));
-      });
-    return () => { cancelled = true; };
-  }, []);
-
-  React.useEffect(() => load(), [load]);
-  useSiteDataRefresh(load);
+  useSiteDataRefresh(reload);
 
   // Supervisor view: best-effort hydration of delegate names per visible row.
   // Failures degrade silently — the row just won't show a delegated badge.
-  // Keyed on a stable id signature (state.items is a new array identity on
+  // Keyed on a stable id signature (items is a new array identity on
   // every refresh) and skips already-hydrated ids, so a tab refocus doesn't
   // re-issue N delegation requests for unchanged rows.
-  const itemIdKey = state.items.map((r) => r.siteId).join('|');
+  const itemIdKey = items.map((r) => r.siteId).join('|');
   const delegateNamesRef = React.useRef(delegateNames);
   delegateNamesRef.current = delegateNames;
   React.useEffect(() => {
@@ -161,15 +143,15 @@ export default function LegalQueuePage() {
 
   const filterCounts = React.useMemo(() => {
     const counts = { pending: 0, in_review: 0, positive: 0, negative: 0 };
-    for (const row of state.items) {
+    for (const row of items) {
       if (counts[row.legalDdStatus] != null) counts[row.legalDdStatus] += 1;
     }
     return counts;
-  }, [state.items]);
+  }, [items]);
 
   const visibleItems = ddFilter === 'all'
-    ? state.items
-    : state.items.filter((row) => row.legalDdStatus === ddFilter);
+    ? items
+    : items.filter((row) => row.legalDdStatus === ddFilter);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -180,7 +162,7 @@ export default function LegalQueuePage() {
         right={<HeaderTag icon="shield" label="LEGAL_REVIEW"/>}
       />
 
-      {state.status === 'loading' && (
+      {status === 'loading' && (
         <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
           Loading queue…
         </div>
@@ -188,35 +170,35 @@ export default function LegalQueuePage() {
 
       {/* Error banner — also shown above stale rows when a background
           refresh fails (status stays 'ready' so the table survives). */}
-      {state.error && (
+      {error && (
         <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>
-          {state.error}
+          {error}
         </div>
       )}
 
-      {state.status === 'ready' && state.items.length === 0 && (
+      {status === 'ready' && items.length === 0 && (
         <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
           <Icon name="shield" size={20}/>
           <p style={{ margin: '12px 0 0' }}>No sites are awaiting legal review right now.</p>
         </div>
       )}
 
-      {state.status === 'ready' && state.items.length > 0 && (
+      {status === 'ready' && items.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {DD_FILTERS.map((status) => (
+          {DD_FILTERS.map((filterKey) => (
             <SubFilterPill
-              key={status}
-              label={FILTER_PILLS[status].label}
-              count={filterCounts[status]}
-              color={FILTER_PILLS[status].color}
-              active={ddFilter === status}
-              onClick={() => setDdFilter((f) => (f === status ? 'all' : status))}
+              key={filterKey}
+              label={FILTER_PILLS[filterKey].label}
+              count={filterCounts[filterKey]}
+              color={FILTER_PILLS[filterKey].color}
+              active={ddFilter === filterKey}
+              onClick={() => setDdFilter((f) => (f === filterKey ? 'all' : filterKey))}
             />
           ))}
         </div>
       )}
 
-      {state.status === 'ready' && state.items.length > 0 && (
+      {status === 'ready' && items.length > 0 && (
         <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
           <div style={{
             display: 'grid',
@@ -302,6 +284,16 @@ export default function LegalQueuePage() {
             </div>
           )}
         </div>
+      )}
+
+      {status === 'ready' && (
+        <ViewMoreButton
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          loaded={items.length}
+          total={total}
+          onClick={loadMore}
+        />
       )}
     </div>
   );

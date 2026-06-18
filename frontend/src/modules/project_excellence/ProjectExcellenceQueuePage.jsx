@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import SubFilterPill from '../shared/primitives/SubFilterPill.jsx';
+import ViewMoreButton from '../shared/primitives/ViewMoreButton.jsx';
 import { useSession } from '../../state/SessionContext.jsx';
 import { getPEQueue } from '../../services/api/projectExcellenceApi.js';
 import { projectExcellenceSiteRoute } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
+import { usePagedList } from '../../hooks/usePagedList.js';
 import { useFocusSite } from '../../hooks/useFocusSite.js';
 import { keyActivate } from '../../lib/a11y.js';
 
@@ -58,40 +60,24 @@ export default function ProjectExcellenceQueuePage({ mode = 'pipeline' }) {
   const filters = isHistory ? HISTORY_FILTERS : STATUS_FILTERS;
   const navigate = useNavigate();
   const { role } = useSession();
-  const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
+  // "View more" batch pager — `total` is the server COUNT(*) of the whole PE
+  // queue; `items` are the rows loaded so far (client mode/status filters
+  // operate over these accumulated rows).
+  const { items, total, status, error, hasMore, loadingMore, loadMore, reload } =
+    usePagedList(({ limit, offset }) => getPEQueue({ limit, offset }));
   const [statusFilter, setStatusFilter] = React.useState('all');
 
   useFocusSite();
 
-  const load = React.useCallback(() => {
-    let cancelled = false;
-    setState((prev) => ({ ...prev, status: prev.items.length ? prev.status : 'loading', error: null }));
-    getPEQueue()
-      .then((data) => {
-        if (!cancelled) setState({ status: 'ready', items: data.items, total: data.total, error: null });
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setState((prev) => ({
-            ...prev,
-            status: prev.items.length ? 'ready' : 'error',
-            error: err?.detail || err?.message || 'Failed to load project excellence queue',
-          }));
-        }
-      });
-    return () => { cancelled = true; };
-  }, []);
-
-  React.useEffect(() => load(), [load]);
-  useSiteDataRefresh(load, { sources: ['project_excellence', 'businessAdmin', 'project'] });
+  useSiteDataRefresh(reload, { sources: ['project_excellence', 'businessAdmin', 'project'] });
 
   const open = (row) => navigate(projectExcellenceSiteRoute(row.siteId));
   const COLS = '120px minmax(220px, 1fr) 130px 160px 160px 120px';
 
   // History only lists the closed-out tail; Pipeline lists everything.
   const scopedItems = isHistory
-    ? state.items.filter((row) => HISTORY_STATUSES.includes(row.excellenceStatus))
-    : state.items;
+    ? items.filter((row) => HISTORY_STATUSES.includes(row.excellenceStatus))
+    : items;
   const statusCounts = filters.reduce((acc, f) => {
     acc[f.key] = scopedItems.filter((row) => row.excellenceStatus === f.key).length;
     return acc;
@@ -109,17 +95,17 @@ export default function ProjectExcellenceQueuePage({ mode = 'pipeline' }) {
         right={<HeaderTag icon="box" label={isHistory ? 'APPROVED · DONE' : 'DESIGN GFC-APPROVED'}/>}
       />
 
-      {state.status === 'loading' && (
+      {status === 'loading' && (
         <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
           Loading project excellence queue...
         </div>
       )}
 
-      {state.error && (
-        <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{state.error}</div>
+      {error && (
+        <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{error}</div>
       )}
 
-      {state.status === 'ready' && scopedItems.length > 0 && (
+      {status === 'ready' && scopedItems.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {filters.filter((f) => statusCounts[f.key] > 0 || f.key === statusFilter).map((f) => (
             <SubFilterPill
@@ -134,7 +120,7 @@ export default function ProjectExcellenceQueuePage({ mode = 'pipeline' }) {
         </div>
       )}
 
-      {state.status === 'ready' && visibleItems.length === 0 && (
+      {status === 'ready' && visibleItems.length === 0 && (
         <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
           <Icon name="box" size={20}/>
           <p style={{ margin: '12px 0 0' }}>
@@ -147,7 +133,7 @@ export default function ProjectExcellenceQueuePage({ mode = 'pipeline' }) {
         </div>
       )}
 
-      {state.status === 'ready' && visibleItems.length > 0 && (
+      {status === 'ready' && visibleItems.length > 0 && (
         <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', overflowX: 'auto' }}>
           <div style={{
             display: 'grid', gridTemplateColumns: COLS, gap: 12, padding: '12px 16px',
@@ -212,6 +198,18 @@ export default function ProjectExcellenceQueuePage({ mode = 'pipeline' }) {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Pager loads more of the whole queue; the Pipeline/History scope split
+          is applied client-side over the accumulated rows. */}
+      {status === 'ready' && (
+        <ViewMoreButton
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          loaded={items.length}
+          total={total}
+          onClick={loadMore}
+        />
       )}
     </div>
   );

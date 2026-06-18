@@ -12,10 +12,22 @@ import { createApiClient } from './axiosClient.js';
 
 const client = createApiClient();
 
-/** All launch approval rows (optionally filter by comma-separated status values). */
-export async function getLaunchQueue(statusFilter) {
-  const params = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : '';
-  const r = await client.get(`/launch-approvals/queue${params}`);
+/**
+ * All launch approval rows (optionally filter by comma-separated status values).
+ *
+ * Accepts an options object `{ statusFilter, limit, offset } = {}`. limit/offset
+ * only travel to the backend when supplied, so an un-migrated caller still hits
+ * the backend default page size, unchanged. A bare string arg is still accepted
+ * as `statusFilter` for backward compatibility.
+ */
+export async function getLaunchQueue(options = {}) {
+  const { statusFilter, limit, offset } =
+    typeof options === 'string' ? { statusFilter: options } : options;
+  const params = {};
+  if (statusFilter) params.status = statusFilter;
+  if (limit != null) params.limit = limit;
+  if (offset != null) params.offset = offset;
+  const r = await client.get('/launch-approvals/queue', { params });
   return r.data; // { items, total }
 }
 

@@ -176,7 +176,11 @@ export default function DesignOverviewPage() {
   useSiteDataRefresh(load, { sources: ['design', 'businessAdmin', 'siteTrackerApi', 'legalApi'] });
 
   const items = state.items;
-  const countFor = (key) => items.filter((r) => matchesKpi(r, KPIS[key])).length;
+  // The headline "Sites in Design" card + lede use the server COUNT(*)
+  // (state.total); the other KPIs are per-status breakdowns over loaded items.
+  const countFor = (key) => (KPIS[key].statuses == null
+    ? state.total
+    : items.filter((r) => matchesKpi(r, KPIS[key])).length);
 
   const selectKpi = (key) => {
     setView((v) => (v === key ? null : key));
@@ -195,7 +199,7 @@ export default function DesignOverviewPage() {
 
   const openRow = (row) => navigate(`${ROUTES.DESIGN}?focus=${encodeURIComponent(row.siteId)}`);
 
-  const total = items.length;
+  const total = state.total; // server COUNT(*) headline
   const lede = state.status === 'ready'
     ? `${total} site${total === 1 ? '' : 's'} in design`
     : 'Module KPIs and drill-downs.';

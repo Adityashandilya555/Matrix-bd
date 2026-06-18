@@ -3,10 +3,12 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import SubFilterPill from '../shared/primitives/SubFilterPill.jsx';
+import ViewMoreButton from '../shared/primitives/ViewMoreButton.jsx';
 import { useSession } from '../../state/SessionContext.jsx';
 import { getProjectQueue } from '../../services/api/projectApi.js';
 import { projectSiteRoute } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
+import { usePagedList } from '../../hooks/usePagedList.js';
 import { useFocusSite } from '../../hooks/useFocusSite.js';
 import { keyActivate } from '../../lib/a11y.js';
 
@@ -63,7 +65,11 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
   const location = useLocation();
   const { role } = useSession();
   const isSupervisor = role === 'supervisor';
-  const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
+  // "View more" batch pager — `total` is the server COUNT(*) of the whole queue;
+  // `items` are the rows loaded so far (client mode/status filters operate over
+  // these accumulated rows).
+  const { items, total, status, error, hasMore, loadingMore, loadMore, reload } =
+    usePagedList(({ limit, offset }) => getProjectQueue({ limit, offset }));
 
   // ?filter=<projectStatus> deep link (HashRouter — read location.search via
   // react-router, never window.location.search).
@@ -79,29 +85,7 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
 
   useFocusSite(); // scroll/flash a row reached via ?focus=<siteId>
 
-  const load = React.useCallback(() => {
-    let cancelled = false;
-    // Keep loaded rows on screen during refreshes; failed refreshes keep
-    // stale data + a banner instead of blanking the table.
-    setState((prev) => ({ ...prev, status: prev.items.length ? prev.status : 'loading', error: null }));
-    getProjectQueue()
-      .then((data) => {
-        if (!cancelled) setState({ status: 'ready', items: data.items, total: data.total, error: null });
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setState((prev) => ({
-            ...prev,
-            status: prev.items.length ? 'ready' : 'error',
-            error: err?.detail || err?.message || 'Failed to load project queue',
-          }));
-        }
-      });
-    return () => { cancelled = true; };
-  }, []);
-
-  React.useEffect(() => load(), [load]);
-  useSiteDataRefresh(load, { sources: ['project', 'businessAdmin', 'design', 'siteTrackerApi'] });
+  useSiteDataRefresh(reload, { sources: ['project', 'businessAdmin', 'design', 'siteTrackerApi'] });
 
   const open = (row) => navigate(projectSiteRoute(row.siteId));
   const COLS = '120px minmax(220px, 1fr) 130px 160px 160px 120px';
@@ -109,7 +93,7 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
   // A site moves from Pipeline to Sites once the executive has uploaded the
   // quality-audit doc + inspection date (quality_audit_status leaves 'pending').
   const inSites = (row) => !!row.qualityAuditStatus && row.qualityAuditStatus !== 'pending';
-  const modeItems = state.items.filter((row) => (mode === 'sites' ? inSites(row) : !inSites(row)));
+  const modeItems = items.filter((row) => (mode === 'sites' ? inSites(row) : !inSites(row)));
   const statusCounts = STATUS_FILTERS.reduce((acc, f) => {
     acc[f.key] = modeItems.filter((row) => row.projectStatus === f.key).length;
     return acc;
@@ -127,19 +111,19 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
         right={<HeaderTag icon="box" label={mode === 'sites' ? 'QUALITY AUDIT' : 'DESIGN APPROVED'}/>}
       />
 
-      {state.status === 'loading' && (
+      {status === 'loading' && (
         <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
           Loading project queue...
         </div>
       )}
 
-      {state.error && (
+      {error && (
         <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>
-          {state.error}
+          {error}
         </div>
       )}
 
-      {state.status === 'ready' && modeItems.length > 0 && (
+      {status === 'ready' && modeItems.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {STATUS_FILTERS.filter((f) => statusCounts[f.key] > 0 || f.key === statusFilter).map((f) => (
             <SubFilterPill
@@ -154,7 +138,7 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
         </div>
       )}
 
-      {state.status === 'ready' && visibleItems.length === 0 && (
+      {status === 'ready' && visibleItems.length === 0 && (
         <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
           <Icon name="box" size={20}/>
           <p style={{ margin: '12px 0 0' }}>
@@ -167,7 +151,7 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
         </div>
       )}
 
-      {state.status === 'ready' && visibleItems.length > 0 && (
+      {status === 'ready' && visibleItems.length > 0 && (
         <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', overflowX: 'auto' }}>
           <div style={{
             display: 'grid',
@@ -251,6 +235,18 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Pager loads more of the whole queue; counts are over all loaded rows
+          (Pipeline + Sites), since the mode split is applied client-side. */}
+      {status === 'ready' && (
+        <ViewMoreButton
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          loaded={items.length}
+          total={total}
+          onClick={loadMore}
+        />
       )}
     </div>
   );

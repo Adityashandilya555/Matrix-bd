@@ -64,8 +64,12 @@ function delegationFromServer(row) {
   };
 }
 
-export async function getPEQueue() {
-  const data = await client.get('/project-excellence/queue').then((r) => r.data);
+export async function getPEQueue({ limit, offset } = {}) {
+  // limit/offset only travel when the caller supplies them (default page intact).
+  const params = {};
+  if (limit != null) params.limit = limit;
+  if (offset != null) params.offset = offset;
+  const data = await client.get('/project-excellence/queue', { params }).then((r) => r.data);
   return { items: (data.items || []).map(queueItemFromServer), total: data.total ?? 0 };
 }
 

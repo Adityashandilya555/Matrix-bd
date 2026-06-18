@@ -3,9 +3,11 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import StateKpiTile from '../shared/primitives/StateKpiTile.jsx';
+import ViewMoreButton from '../shared/primitives/ViewMoreButton.jsx';
 import { getNsoQueue } from '../../services/api/nsoApi.js';
 import { nsoSiteRoute } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
+import { usePagedList } from '../../hooks/usePagedList.js';
 import { useFocusSite } from '../../hooks/useFocusSite.js';
 
 const STATUS_LABELS = {
@@ -79,7 +81,11 @@ const STAGE_TO_TILE = {
 export default function NsoQueuePage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
+  // "View more" batch pager — `total` is the server COUNT(*) of the whole NSO
+  // queue (drives the headline "In NSO" tile); `items` are the rows loaded so
+  // far. Per-stage tiles count over the loaded rows.
+  const { items, total, status, error, hasMore, loadingMore, loadMore, reload } =
+    usePagedList(({ limit, offset }) => getNsoQueue({ limit, offset }));
   // 'all' | 'property' | 'licenses' | 'complete' — KPI tile filter.
   const [filter, setFilter] = React.useState('all');
   const focusId = useFocusSite();
@@ -92,29 +98,7 @@ export default function NsoQueuePage() {
     if (tile) setFilter(tile);
   }, [filterParam]);
 
-  const load = React.useCallback(() => {
-    let cancelled = false;
-    // Keep loaded rows on screen during refreshes; only the initial load
-    // shows the loading panel. A failed refresh keeps stale data + banner.
-    setState((prev) => ({ ...prev, status: prev.items.length ? prev.status : 'loading', error: null }));
-    getNsoQueue()
-      .then((data) => {
-        if (!cancelled) setState({ status: 'ready', items: data.items, total: data.total, error: null });
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setState((prev) => ({
-            ...prev,
-            status: prev.items.length ? 'ready' : 'error',
-            error: err?.detail || err?.message || 'Failed to load NSO queue',
-          }));
-        }
-      });
-    return () => { cancelled = true; };
-  }, []);
-
-  React.useEffect(() => load(), [load]);
-  useSiteDataRefresh(load, { sources: ['nso', 'project', 'businessAdmin', 'payment', 'legalApi', 'siteTrackerApi', 'launch'] });
+  useSiteDataRefresh(reload, { sources: ['nso', 'project', 'businessAdmin', 'payment', 'legalApi', 'siteTrackerApi', 'launch'] });
 
   // useFocusSite polls only ~6s after mount; the queue endpoint can be slower
   // than that. Once rows are actually in the DOM, re-run the scroll + flash so
@@ -122,7 +106,7 @@ export default function NsoQueuePage() {
   // background data refreshes don't keep yanking the scroll position).
   const focusedRef = React.useRef(null);
   React.useEffect(() => {
-    if (!focusId || state.status !== 'ready' || focusedRef.current === focusId) return undefined;
+    if (!focusId || status !== 'ready' || focusedRef.current === focusId) return undefined;
     const t = setTimeout(() => {
       const esc = window.CSS?.escape ? window.CSS.escape(focusId) : focusId.replace(/"/g, '\\"');
       const el = document.querySelector(`[data-site-id="${esc}"]`);
@@ -133,27 +117,28 @@ export default function NsoQueuePage() {
       setTimeout(() => el.classList.remove('zm-focus-target'), 2600);
     }, 150);
     return () => clearTimeout(t);
-  }, [focusId, state.status]);
+  }, [focusId, status]);
 
   const open = (row) => navigate(nsoSiteRoute(row.siteId));
   // Derive tile counts once per items change rather than re-filtering the whole
   // queue three times on every render (#233). Logic is byte-identical to the
-  // old `countFor(tile)` — same TILE_STAGES + stageOf filter.
+  // old `countFor(tile)` — same TILE_STAGES + stageOf filter. These count over
+  // the LOADED rows (per-stage sub-tiles), while "In NSO" uses the server total.
   const counts = React.useMemo(() => {
     const out = {};
     for (const tile of Object.keys(TILE_STAGES)) {
-      out[tile] = state.items.filter((item) => TILE_STAGES[tile].includes(stageOf(item))).length;
+      out[tile] = items.filter((item) => TILE_STAGES[tile].includes(stageOf(item))).length;
     }
     return out;
-  }, [state.items]);
+  }, [items]);
   const countFor = (tile) => counts[tile];
   const toggleTile = (tile) => setFilter((f) => (f === tile ? 'all' : tile));
   // Memoized so the filtered list isn't recomputed on unrelated re-renders.
   const visibleItems = React.useMemo(() => (
     filter === 'all'
-      ? state.items
-      : state.items.filter((item) => TILE_STAGES[filter].includes(stageOf(item)))
-  ), [state.items, filter]);
+      ? items
+      : items.filter((item) => TILE_STAGES[filter].includes(stageOf(item)))
+  ), [items, filter]);
   const COLS = '120px minmax(220px, 1fr) 130px 150px 150px 160px 110px';
 
   return (
@@ -167,25 +152,25 @@ export default function NsoQueuePage() {
       />
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <StateKpiTile label="In NSO" value={state.total} sub="Finance / CA ready" color="var(--zm-accent)" active={filter === 'all'} onClick={() => setFilter('all')}/>
+        <StateKpiTile label="In NSO" value={total} sub="Finance / CA ready" color="var(--zm-accent)" active={filter === 'all'} onClick={() => setFilter('all')}/>
         <StateKpiTile label="Property" value={countFor('property')} sub="Stage 1 open" color="var(--zm-info)" active={filter === 'property'} onClick={() => toggleTile('property')}/>
         <StateKpiTile label="Licenses / launch" value={countFor('licenses')} sub="Active downstream checks" color="var(--zm-copper)" active={filter === 'licenses'} onClick={() => toggleTile('licenses')}/>
         <StateKpiTile label="Completed" value={countFor('complete')} sub="Final sign-off done" color="var(--zm-success)" active={filter === 'complete'} onClick={() => toggleTile('complete')}/>
       </div>
 
-      {state.status === 'loading' && (
+      {status === 'loading' && (
         <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
           Loading NSO queue...
         </div>
       )}
 
-      {state.error && (
+      {error && (
         <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>
-          {state.error}
+          {error}
         </div>
       )}
 
-      {state.status === 'ready' && state.items.length === 0 && (
+      {status === 'ready' && items.length === 0 && (
         <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
           <Icon name="home" size={22}/>
           <p style={{ margin: '12px 0 0' }}>
@@ -194,7 +179,7 @@ export default function NsoQueuePage() {
         </div>
       )}
 
-      {state.items.length > 0 && (
+      {items.length > 0 && (
         <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
           <div style={{
             display: 'grid',
@@ -282,6 +267,16 @@ export default function NsoQueuePage() {
             </div>
           )}
         </div>
+      )}
+
+      {status === 'ready' && (
+        <ViewMoreButton
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          loaded={items.length}
+          total={total}
+          onClick={loadMore}
+        />
       )}
     </div>
   );

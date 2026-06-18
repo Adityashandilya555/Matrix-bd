@@ -2,10 +2,12 @@ import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
+import ViewMoreButton from '../shared/primitives/ViewMoreButton.jsx';
 import { useSession } from '../../state/SessionContext.jsx';
 import { getDesignQueue } from '../../services/api/designApi.js';
 import { designSiteRoute } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
+import { usePagedList } from '../../hooks/usePagedList.js';
 import { useFocusSite } from '../../hooks/useFocusSite.js';
 import { keyActivate } from '../../lib/a11y.js';
 
@@ -66,7 +68,10 @@ export default function DesignQueuePage() {
   const location = useLocation();
   const { role } = useSession();
   const isSupervisor = role === 'supervisor';
-  const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
+  // "View more" batch pager — `total` is the server COUNT(*) of the whole queue;
+  // `items` are the rows loaded so far (client filters operate over these).
+  const { items, total, status, error, hasMore, loadingMore, loadMore, reload } =
+    usePagedList(({ limit, offset }) => getDesignQueue({ limit, offset }));
   // Deep links from the overview page: ?stage= preselects a stage chip,
   // ?filter= narrows by designStatus, ?focus= scrolls to a specific row.
   const params = new URLSearchParams(location.search);
@@ -87,35 +92,13 @@ export default function DesignQueuePage() {
   }, [statusParam]);
   useFocusSite();
 
-  const load = React.useCallback(() => {
-    let cancelled = false;
-    // Keep loaded rows visible during background refreshes (no table wipe on
-    // tab refocus); a failed refresh keeps stale data + shows a banner.
-    setState((s) => ({ ...s, status: s.items.length ? s.status : 'loading', error: null }));
-    getDesignQueue()
-      .then((data) => {
-        if (cancelled) return;
-        setState({ status: 'ready', items: data.items, total: data.total, error: null });
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setState((s) => ({
-          ...s,
-          status: s.items.length ? 'ready' : 'error',
-          error: err?.detail || err?.message || 'Failed to load design queue',
-        }));
-      });
-    return () => { cancelled = true; };
-  }, []);
-
-  React.useEffect(() => load(), [load]);
-  useSiteDataRefresh(load, { sources: ['design', 'businessAdmin', 'siteTrackerApi', 'legalApi'] });
+  useSiteDataRefresh(reload, { sources: ['design', 'businessAdmin', 'siteTrackerApi', 'legalApi'] });
 
   const open = (row) => navigate(designSiteRoute(row.siteId));
 
   const visibleItems = statusFilter
-    ? state.items.filter((r) => statusFilter.includes(r.designStatus))
-    : state.items;
+    ? items.filter((r) => statusFilter.includes(r.designStatus))
+    : items;
 
   const COLS = '120px minmax(200px, 1fr) 120px 170px 110px 120px';
 
@@ -128,19 +111,19 @@ export default function DesignQueuePage() {
         right={<HeaderTag icon="box" label="FINANCE APPROVED"/>}
       />
 
-      {state.status === 'loading' && (
+      {status === 'loading' && (
         <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
           Loading queue…
         </div>
       )}
 
-      {state.error && (
+      {error && (
         <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>
-          {state.error}
+          {error}
         </div>
       )}
 
-      {state.status === 'ready' && state.items.length === 0 && (
+      {status === 'ready' && items.length === 0 && (
         <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
           <Icon name="box" size={20}/>
           <p style={{ margin: '12px 0 0' }}>
@@ -151,7 +134,7 @@ export default function DesignQueuePage() {
         </div>
       )}
 
-      {state.status === 'ready' && state.items.length > 0 && (
+      {status === 'ready' && items.length > 0 && (
         <>
           {/* Stage filter chips */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -258,6 +241,16 @@ export default function DesignQueuePage() {
           ))}
         </div>
         </>
+      )}
+
+      {status === 'ready' && (
+        <ViewMoreButton
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          loaded={items.length}
+          total={total}
+          onClick={loadMore}
+        />
       )}
     </div>
   );

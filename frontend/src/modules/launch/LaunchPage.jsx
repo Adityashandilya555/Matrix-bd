@@ -3,7 +3,9 @@ import { usePageContext } from '../../App.jsx';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Avatar from '../shared/primitives/Avatar.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
+import ViewMoreButton from '../shared/primitives/ViewMoreButton.jsx';
 import { useLaunchSites } from '../../hooks/useLaunchSites.js';
+import { usePagedList } from '../../hooks/usePagedList.js';
 import { useSession } from '../../state/SessionContext.jsx';
 import { filterByScope } from '../../rbac/scope.js';
 import { getLaunchQueue } from '../../services/api/launchApprovalApi.js';
@@ -79,7 +81,20 @@ export default function LaunchPage() {
   const [range, setRange] = React.useState({ from: '', to: '' });
   const [tab, setTab] = React.useState('nso');
 
-  const [approvalQueue, setApprovalQueue] = React.useState({ loading: true, items: [], error: null });
+  // Launch-approval rows (Review + Launched tabs) — "View more" batch pager.
+  // `total` is the server COUNT(*) of all launch-approval rows; the creator /
+  // supervisor / launched buckets are derived client-side over the loaded rows.
+  const {
+    items: approvalItems,
+    total: approvalTotal,
+    status: approvalStatus,
+    error: approvalError,
+    hasMore: approvalHasMore,
+    loadingMore: approvalLoadingMore,
+    loadMore: loadMoreApprovals,
+    reload: loadApprovals,
+  } = usePagedList(({ limit, offset }) => getLaunchQueue({ limit, offset }));
+  const approvalLoading = approvalStatus === 'loading';
   const [review, setReview] = React.useState(null); // { siteId, role: 'exec' | 'supervisor' }
 
   const isExec = role === 'exec' || role === 'executive';
@@ -98,38 +113,21 @@ export default function LaunchPage() {
   });
   const dateActive = !!(range.from || range.to);
 
-  const loadApprovals = React.useCallback(async () => {
-    setApprovalQueue((s) => ({ ...s, loading: true }));
-    try {
-      const d = await getLaunchQueue();
-      if (!cancelledRef.current) setApprovalQueue({ loading: false, items: d.items || [], error: null });
-    } catch (e) {
-      if (!cancelledRef.current) setApprovalQueue({ loading: false, items: [], error: e?.detail || e?.message || 'Failed to load' });
-    }
-  }, []);
-
-  const cancelledRef = React.useRef(false);
-  React.useEffect(() => {
-    cancelledRef.current = false;
-    loadApprovals();
-    return () => { cancelledRef.current = true; };
-  }, [loadApprovals]);
-
   // Stage 1 — sites I CREATED, awaiting my (creator) review. Role-agnostic: the
   // creator may be an executive OR a supervisor (supervisors can create via
   // delegation). Scoped reliably by submitted_by from the backend queue, not a
   // fragile join against the NSO list.
   const myId = String(user?.id || user?.userId || '');
-  const creatorItems = approvalQueue.items.filter(
+  const creatorItems = approvalItems.filter(
     (i) => i.status === 'under_exec_review' && String(i.submitted_by || '') === myId,
   );
   // Stage 2 — supervisor review (any supervisor in the tenant).
   const supervisorItems = isSupervisor
-    ? approvalQueue.items.filter((i) => i.status === 'under_supervisor_review')
+    ? approvalItems.filter((i) => i.status === 'under_supervisor_review')
     : [];
   const reviewItems = [...creatorItems, ...supervisorItems];
 
-  const launchedItems = approvalQueue.items.filter((i) => i.status === 'launched');
+  const launchedItems = approvalItems.filter((i) => i.status === 'launched');
 
   const showReview = isExec || isSupervisor;
   const TABS = [
@@ -250,20 +248,32 @@ export default function LaunchPage() {
             <span>Code</span><span>Site</span><span>City</span><span>Verdicts</span><span>Action</span>
           </div>
 
-          {approvalQueue.loading && <div style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>Loading…</div>}
-          {approvalQueue.error && (
-            <div style={{ margin: 16, padding: 14, borderRadius: 10, border: '1px solid var(--zm-danger)', background: 'var(--zm-danger-soft)', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>{approvalQueue.error}</div>
+          {approvalLoading && <div style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>Loading…</div>}
+          {approvalError && (
+            <div style={{ margin: 16, padding: 14, borderRadius: 10, border: '1px solid var(--zm-danger)', background: 'var(--zm-danger-soft)', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>{approvalError}</div>
           )}
 
-          {!approvalQueue.loading && reviewItems.map((item) => (
+          {!approvalLoading && reviewItems.map((item) => (
             <ReviewRow key={item.site_id} item={item}
               onReview={(it) => setReview({ siteId: it.site_id, role: it.status === 'under_supervisor_review' ? 'supervisor' : 'exec' })} />
           ))}
 
-          {!approvalQueue.loading && reviewItems.length === 0 && (
+          {!approvalLoading && reviewItems.length === 0 && (
             <div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
               Nothing awaiting your review.
             </div>
+          )}
+
+          {/* Pager loads more of all launch-approval rows; the review buckets
+              are derived client-side from the accumulated set. */}
+          {approvalStatus === 'ready' && (
+            <ViewMoreButton
+              hasMore={approvalHasMore}
+              loadingMore={approvalLoadingMore}
+              loaded={approvalItems.length}
+              total={approvalTotal}
+              onClick={loadMoreApprovals}
+            />
           )}
         </div>
       )}
@@ -274,8 +284,8 @@ export default function LaunchPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.5fr 0.9fr 1fr', gap: 12, padding: '9px 16px', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
             <span>Code</span><span>Site</span><span>City</span><span>Launched On</span>
           </div>
-          {approvalQueue.loading && <div style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)', fontSize: 13 }}>Loading…</div>}
-          {!approvalQueue.loading && launchedItems.map((item) => (
+          {approvalLoading && <div style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)', fontSize: 13 }}>Loading…</div>}
+          {!approvalLoading && launchedItems.map((item) => (
             <div key={item.site_id} style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.5fr 0.9fr 1fr', gap: 12, padding: '13px 16px', borderBottom: '1px solid var(--zm-line-faint)', alignItems: 'center' }}>
               <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{item.site_code || '—'}</span>
               <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -288,10 +298,21 @@ export default function LaunchPage() {
               </span>
             </div>
           ))}
-          {!approvalQueue.loading && launchedItems.length === 0 && (
+          {!approvalLoading && launchedItems.length === 0 && (
             <div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
               No sites have been launched yet.
             </div>
+          )}
+          {/* Pager loads more of all launch-approval rows; the launched bucket
+              is derived client-side from the accumulated set. */}
+          {approvalStatus === 'ready' && (
+            <ViewMoreButton
+              hasMore={approvalHasMore}
+              loadingMore={approvalLoadingMore}
+              loaded={approvalItems.length}
+              total={approvalTotal}
+              onClick={loadMoreApprovals}
+            />
           )}
         </div>
       )}
