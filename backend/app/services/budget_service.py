@@ -42,6 +42,7 @@ BUDGET_LABELS: tuple[str, ...] = (
 async def fetch_budget(
     session: AsyncSession, *, site_id: str | UUID, phase: str, tenant_id: str | UUID,
 ) -> Optional[models.SiteBudget]:
+    """Return the (site, phase) budget header for this tenant, or None if absent."""
     return (await session.execute(
         select(models.SiteBudget).where(
             models.SiteBudget.site_id == site_id,
@@ -77,6 +78,7 @@ async def fetch_or_create_budget(
 async def budget_items(
     session: AsyncSession, *, budget_id: str | UUID, tenant_id: str | UUID,
 ) -> list[models.SiteBudgetItem]:
+    """Return a budget's line items for this tenant, ordered by line index."""
     rows = (await session.execute(
         select(models.SiteBudgetItem)
         .where(

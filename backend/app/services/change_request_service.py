@@ -149,6 +149,7 @@ async def svc_create_change_request(
     actor: dict,
     body: CreateChangeRequestRequest,
 ) -> ChangeRequestResponse:
+    """Open a pending change request on a legal field of an executive's own site."""
     if not _allowed_field(body.target_table, body.field_name):
         raise HTTPException(
             status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -359,6 +360,7 @@ async def svc_approve_change_request(
     request_id: str | UUID,
     body: ReviewChangeRequestRequest,
 ) -> ChangeRequestResponse:
+    """Approve a pending change request, apply the field, and run the DD recovery loop."""
     async with transaction(session):
         cr = await _fetch_request_or_404(session, request_id=request_id, tenant_id=tenant_id)
 
@@ -449,6 +451,7 @@ async def svc_reject_change_request(
     request_id: str | UUID,
     body: ReviewChangeRequestRequest,
 ) -> ChangeRequestResponse:
+    """Reject a pending change request, leaving the underlying legal field unchanged."""
     async with transaction(session):
         cr = await _fetch_request_or_404(session, request_id=request_id, tenant_id=tenant_id)
 
@@ -570,6 +573,7 @@ async def _list_with_status(
 async def svc_list_pending_for_legal(
     session: AsyncSession, *, tenant_id: str | UUID, limit: int = 50, offset: int = 0,
 ) -> ChangeRequestListResponse:
+    """List the tenant's pending change requests for the legal review queue."""
     return await _list_with_status(
         session, tenant_id=tenant_id, status_filter="pending", limit=limit, offset=offset,
     )
@@ -578,10 +582,12 @@ async def svc_list_pending_for_legal(
 async def svc_list_for_site(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
 ) -> ChangeRequestListResponse:
+    """List every change request raised against one site, regardless of status."""
     return await _list_with_status(session, tenant_id=tenant_id, site_id=site_id)
 
 
 async def svc_list_my_requests(
     session: AsyncSession, *, tenant_id: str | UUID, actor: dict,
 ) -> ChangeRequestListResponse:
+    """List the change requests raised by the calling actor."""
     return await _list_with_status(session, tenant_id=tenant_id, requested_by=actor["sub"])

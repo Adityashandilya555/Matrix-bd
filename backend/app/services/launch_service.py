@@ -461,6 +461,7 @@ async def svc_get_approval(
     tenant_id: str | UUID,
     site_id: str | UUID,
 ) -> LaunchApprovalResponse:
+    """Return the current launch-approval record for a site."""
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
     row = await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id)
     return await _build_response(session, row=row, site=site)
@@ -484,6 +485,7 @@ async def svc_save_rent_fields(
     site_id: str | UUID,
     body: LaunchRentFieldsRequest,
 ) -> LaunchApprovalResponse:
+    """Save staged rent-term edits, enforcing which role may edit at the current status."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         row = await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id)

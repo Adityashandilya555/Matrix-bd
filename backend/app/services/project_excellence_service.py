@@ -261,6 +261,7 @@ async def svc_pe_queue(
 async def svc_get_pe(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
 ) -> PEStateResponse:
+    """Return the full Project Excellence state for one unlocked site."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_pe_unlocked(site)
@@ -271,6 +272,7 @@ async def svc_get_pe(
 async def svc_list_pe_delegations_for_site(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
 ) -> dict:
+    """List active Project Excellence delegations for a site, newest grant first."""
     stmt = (
         select(models.SiteDelegation, models.User.email, models.User.name)
         .join(models.User, models.User.id == models.SiteDelegation.delegate_user_id)
@@ -311,6 +313,7 @@ async def svc_allocate_pe(
     delegate_user_id: str | UUID,
     notes: Optional[str] = None,
 ) -> PEStateResponse:
+    """Delegate a site's PE budgeting to an active executive (supervisor-only)."""
     if not _is_supervisor(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project excellence supervisor can allocate.")
     if str(delegate_user_id) == str(actor["sub"]):
@@ -371,6 +374,7 @@ async def svc_revoke_pe_delegation(
     site_id: str | UUID,
     delegate_user_id: str | UUID,
 ) -> OkResponse:
+    """Revoke an active PE delegation for a site (supervisor-only)."""
     if not _is_supervisor(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project excellence supervisor can revoke.")
     async with transaction(session):
@@ -406,6 +410,7 @@ async def svc_save_pe_budget(
     site_id: str | UUID,
     body: SavePEBudgetRequest,
 ) -> PEStateResponse:
+    """Save or submit a PE budget, routing submits to supervisor or admin review."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_pe_unlocked(site)
@@ -451,6 +456,7 @@ async def svc_review_pe_budget(
     site_id: str | UUID,
     body: ReviewRequest,
 ) -> PEStateResponse:
+    """Supervisor reviews a submitted PE budget, escalating to admin or rejecting it."""
     if not _is_supervisor(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project excellence supervisor can review budgets.")
     async with transaction(session):
@@ -478,6 +484,7 @@ async def svc_review_pe_budget(
 async def svc_pe_budget_admin_queue(
     session: AsyncSession, *, tenant_id: str | UUID,
 ) -> PEBudgetAdminQueueResponse:
+    """List PE budgets awaiting business-admin review, oldest-updated first."""
     rows = (await session.execute(
         select(models.Site, models.SiteBudget)
         .join(
@@ -511,6 +518,7 @@ async def svc_admin_review_pe_budget(
     site_id: str | UUID,
     body: AdminBudgetReviewRequest,
 ) -> PEStateResponse:
+    """Business admin approves a PE budget (seeding the init date) or rejects it."""
     if not _is_business_admin(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a business admin can review project excellence budgets.")
     async with transaction(session):
@@ -552,6 +560,7 @@ async def svc_admin_review_pe_budget(
 async def svc_get_pe_budget_admin_detail(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
 ) -> PEStateResponse:
+    """Return the PE budget detail an admin needs to review a site, or 404 if absent."""
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
     budget = await budget_service.fetch_budget(session, site_id=site.id, phase=_PHASE, tenant_id=tenant_id)
     if budget is None:

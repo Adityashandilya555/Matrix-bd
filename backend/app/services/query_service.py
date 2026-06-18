@@ -172,6 +172,7 @@ async def list_sites(
     city: Optional[str] = None,
     limit: int = 200,
 ) -> SiteListResponse:
+    """List sites for the caller, role-scoped and filterable by comma-separated status and city."""
     stmt = select(models.Site).where(models.Site.tenant_id == tenant_id)
     stmt = _apply_status_filter(stmt, status)
     if city:
@@ -208,6 +209,7 @@ def _assert_can_read_site(user: dict, site) -> None:
 async def get_site(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID, user: dict,
 ) -> SiteResponse:
+    """Return one site for the caller (executive read scope enforced), with names and related sources resolved."""
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
     _assert_can_read_site(user, site)
 
@@ -290,6 +292,7 @@ async def list_site_activity(
     limit: int = 100,
     module: Optional[str] = None,
 ) -> AuditListResponse:
+    """Return a site's audit timeline, newest first, optionally filtered to one module."""
     module_clause = _module_audit_clause(module)
     stmt = select(models.AuditLog).where(
         models.AuditLog.tenant_id == tenant_id,
@@ -306,6 +309,7 @@ async def list_site_activity(
 async def list_tenant_audit(
     session: AsyncSession, *, tenant_id: str | UUID, page: int = 1, limit: int = 50,
 ) -> AuditListResponse:
+    """Return a paginated tenant-wide audit log, newest first."""
     offset = max(0, (page - 1) * limit)
     stmt = (
         select(models.AuditLog)

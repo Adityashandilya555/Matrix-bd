@@ -533,6 +533,7 @@ async def svc_legal_history(
 async def svc_get_legal_review(
     session: AsyncSession, *, site_id: str | UUID, tenant_id: str | UUID,
 ) -> LegalReviewResponse:
+    """Return the full legal review (DD checklist and status) for one site."""
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
     return await _build_review_response(session, site)
 

@@ -32,6 +32,7 @@ def _generate_code() -> str:
 
 
 async def get_my_code(session: AsyncSession, supervisor_id: str, module: str) -> dict | None:
+    """Return this supervisor's active invite code for the module, or None if none exists."""
     row = (await session.execute(
         text(
             "SELECT module, code, created_at, rotated_at "
@@ -46,6 +47,7 @@ async def get_my_code(session: AsyncSession, supervisor_id: str, module: str) ->
 async def rotate_my_code(
     session: AsyncSession, tenant_id: str, supervisor_id: str, module: str,
 ) -> dict:
+    """Mint or regenerate this supervisor's invite code for the module and stamp rotated_at."""
     async with transaction(session):
         row = (await session.execute(
             text(
@@ -63,6 +65,7 @@ async def rotate_my_code(
 async def list_my_pending_execs(
     session: AsyncSession, supervisor_id: str, module: str,
 ) -> list[dict]:
+    """List inactive executives awaiting this supervisor's approval in the module."""
     # The marker is the exact `notes` value at signup time, so we can equality-
     # match in SQL and skip a Python parse pass entirely.
     marker = f"{_PENDING_PREFIX}{supervisor_id}{_MODULE_MARKER}{module}"
@@ -87,6 +90,7 @@ async def approve_my_pending_exec(
     user_id: str,
     module: str,
 ) -> None:
+    """Activate a pending executive and bind them to this supervisor, enforcing ownership."""
     # Ownership re-check (#86): the approve path must enforce the same
     # `notes` marker the list query scopes by — otherwise any supervisor in
     # the tenant can activate ANY pending user and bind them under themself.
@@ -169,6 +173,7 @@ async def list_my_team(
 async def reject_my_pending_exec(
     session: AsyncSession, tenant_id: str, user_id: str, supervisor_id: str,
 ) -> None:
+    """Delete a pending recruit, scoped to only this supervisor's own inactive executives."""
     # Ownership scope (same class as #86): only THIS supervisor's pending
     # recruits are deletable — previously any supervisor could delete any
     # inactive user in the tenant (other supervisors' recruits, pending

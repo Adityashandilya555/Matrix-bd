@@ -49,6 +49,7 @@ def _parse_pending_module(notes: Optional[str]) -> Optional[str]:
 
 
 async def list_dept_codes(session: AsyncSession, tenant_id: str | UUID) -> list[dict]:
+    """Return every per-module department code for the tenant, ordered by module."""
     rows = (await session.execute(
         text("""
             SELECT id, module, code, created_at, rotated_at
@@ -76,6 +77,7 @@ async def rotate_dept_code(
     module: Module,
     created_by: str | UUID,
 ) -> dict:
+    """Mint and upsert a fresh join code for the module, returning the new code."""
     async with transaction(session):
         row = (await session.execute(
             text("""
@@ -97,6 +99,7 @@ async def list_pending_supervisors(
     tenant_id: str | UUID,
     module: Optional[Module] = None,
 ) -> list[dict]:
+    """List inactive supervisor rows awaiting approval, optionally filtered by module."""
     rows = (await session.execute(
         text("""
             SELECT id, email, notes, created_at
@@ -131,6 +134,7 @@ async def approve_supervisor(
     user_id: str | UUID,
     module: Module,
 ) -> None:
+    """Activate a pending supervisor and grant module membership; idempotent on re-submit."""
     async with transaction(session):
         # Only act on a genuinely PENDING candidate in this tenant. Without this
         # guard a re-submit (double-click) re-activates the row and tries to
@@ -170,6 +174,7 @@ async def reject_supervisor(
     tenant_id: str | UUID,
     user_id: str | UUID,
 ) -> None:
+    """Delete a still-pending (inactive) supervisor applicant from the tenant."""
     async with transaction(session):
         await session.execute(
             text("""
@@ -238,6 +243,7 @@ async def list_finance_approvals(
     session: AsyncSession,
     tenant_id: str | UUID,
 ) -> list[dict]:
+    """Return sites awaiting admin finance sign-off, oldest-updated first."""
     rows = (await session.execute(
         select(models.Site)
         .where(
@@ -422,6 +428,7 @@ async def list_admin_sites(
     tenant_id: str | UUID,
     limit: int = 80,
 ) -> dict:
+    """Return the admin site timeline with merged project/NSO/launch/budget status."""
     try:
         safe_limit = int(limit)
     except (TypeError, ValueError):
@@ -515,6 +522,7 @@ async def approve_finance(
     site_id: str | UUID,
     actor: dict,
 ) -> dict:
+    """Approve a site's finance review on the admin's behalf via the finance service."""
     return await svc_finance_approve(
         session,
         tenant_id=tenant_id,
@@ -530,6 +538,7 @@ async def reject_finance(
     actor: dict,
     reason: str | None = None,
 ) -> dict:
+    """Reject a site's finance review on the admin's behalf, with an optional reason."""
     return await svc_finance_reject(
         session,
         tenant_id=tenant_id,
