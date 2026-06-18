@@ -138,8 +138,12 @@ function historyItemFromServer(row) {
 
 // ── Queue / read ────────────────────────────────────────────────────────────
 
-export async function getDesignQueue() {
-  const data = await client.get('/design/queue').then((r) => r.data);
+export async function getDesignQueue({ limit, offset } = {}) {
+  // limit/offset only travel when the caller supplies them (default page intact).
+  const params = {};
+  if (limit != null) params.limit = limit;
+  if (offset != null) params.offset = offset;
+  const data = await client.get('/design/queue', { params }).then((r) => r.data);
   return { items: (data.items || []).map(queueItemFromServer), total: data.total ?? 0 };
 }
 
@@ -148,8 +152,11 @@ export async function getDesignReview(siteId) {
   return reviewFromServer(data);
 }
 
-export async function listDesignHistory(statusFilter = 'all') {
-  const data = await client.get('/design/history', { params: { status_filter: statusFilter } }).then((r) => r.data);
+export async function listDesignHistory(statusFilter = 'all', { limit, offset } = {}) {
+  const params = { status_filter: statusFilter };
+  if (limit != null) params.limit = limit;
+  if (offset != null) params.offset = offset;
+  const data = await client.get('/design/history', { params }).then((r) => r.data);
   return { items: (data.items || []).map(historyItemFromServer), total: data.total ?? 0 };
 }
 

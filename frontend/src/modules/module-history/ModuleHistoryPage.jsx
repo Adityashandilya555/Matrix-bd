@@ -15,7 +15,9 @@ import {
   nsoHistorySiteRoute,
   ROUTES,
 } from '../../router/routes.js';
+import ViewMoreButton from '../shared/primitives/ViewMoreButton.jsx';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
+import { usePagedList } from '../../hooks/usePagedList.js';
 import { useFocusSite } from '../../hooks/useFocusSite.js';
 
 const FILTERS = [
@@ -286,36 +288,26 @@ export default function ModuleHistoryPage({ moduleKey, defaultFilter = 'all' }) 
     }
   }, [filterParam]);
   const [query, setQuery] = React.useState('');
-  const [listState, setListState] = React.useState({ status: 'loading', items: [], error: null });
   const [detailState, setDetailState] = React.useState({ status: 'idle', detail: null, audit: [], error: null });
-  const mountedRef = React.useRef(true);
-  const listRequestRef = React.useRef(0);
 
-  const loadList = React.useCallback(() => {
-    const requestId = listRequestRef.current + 1;
-    listRequestRef.current = requestId;
-    setListState((prev) => ({ ...prev, status: 'loading', error: null }));
-    config.list(filter)
-      .then((data) => {
-        if (mountedRef.current && requestId === listRequestRef.current) {
-          setListState({ status: 'ready', items: data.items || [], error: null });
-        }
-      })
-      .catch((err) => {
-        if (mountedRef.current && requestId === listRequestRef.current) {
-          setListState({ status: 'error', items: [], error: err?.detail || err?.message || 'History failed to load.' });
-        }
-      });
-  }, [config, filter]);
+  // History list — "View more" batch pager. `total` is the server COUNT(*) of
+  // the filtered history set; `items` are the rows loaded so far (the search box
+  // narrows over the accumulated rows). Reloads whenever the status filter
+  // changes (config is stable per module).
+  const {
+    items: listItems,
+    total: listTotal,
+    status: listStatus,
+    error: listError,
+    hasMore: listHasMore,
+    loadingMore: listLoadingMore,
+    loadMore: loadMoreList,
+    reload: loadList,
+  } = usePagedList(
+    ({ limit, offset }) => config.list(filter, { limit, offset }),
+    { deps: [config, filter] },
+  );
 
-  // Reset on every (re)mount: under StrictMode the dev double-mount runs the
-  // cleanup once, and a `() => () => …` effect would leave the ref false
-  // forever, silently dropping every list response.
-  React.useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
-  React.useEffect(() => { loadList(); }, [loadList]);
   useSiteDataRefresh(loadList);
 
   React.useEffect(() => {
@@ -348,7 +340,7 @@ export default function ModuleHistoryPage({ moduleKey, defaultFilter = 'all' }) 
     return () => { cancelled = true; };
   }, [config, siteId]);
 
-  const filtered = listState.items.filter((item) => {
+  const filtered = listItems.filter((item) => {
     const needle = query.trim().toLowerCase();
     if (!needle) return true;
     return [item.siteCode, item.siteName, item.city, item.submittedByName]
@@ -393,7 +385,7 @@ export default function ModuleHistoryPage({ moduleKey, defaultFilter = 'all' }) 
               key={item.key}
               label={item.label}
               color={item.color}
-              count={item.key === filter && listState.status === 'ready' ? listState.items.length : undefined}
+              count={item.key === filter && listStatus === 'ready' ? listTotal : undefined}
               active={filter === item.key}
               onClick={() => setFilter(item.key)}
             />
@@ -406,19 +398,19 @@ export default function ModuleHistoryPage({ moduleKey, defaultFilter = 'all' }) 
           <div style={{ padding: 16, borderBottom: '1px solid var(--zm-line)' }}>
             <h2 style={{ margin: 0, fontSize: 16 }}>Sites</h2>
             <p style={{ margin: '4px 0 0', color: 'var(--zm-fg-3)', fontSize: 12.5 }}>
-              {listState.status === 'loading' ? 'Loading history...' : `${filtered.length} site${filtered.length === 1 ? '' : 's'} in this view`}
+              {listStatus === 'loading' ? 'Loading history...' : `${filtered.length} site${filtered.length === 1 ? '' : 's'} in this view`}
             </p>
           </div>
-          {listState.error && (
+          {listError && (
             <div style={{ padding: 16, color: 'var(--zm-danger)' }}>
-              {listState.error}
+              {listError}
               <button type="button" onClick={loadList} style={{ marginLeft: 12 }}>Retry</button>
             </div>
           )}
-          {!listState.error && filtered.length === 0 && (
+          {!listError && filtered.length === 0 && (
             <div style={{ padding: 24, color: 'var(--zm-fg-3)' }}>No history items found.</div>
           )}
-          {!listState.error && filtered.map((item) => {
+          {!listError && filtered.map((item) => {
             const active = item.siteId === siteId;
             return (
               <button
@@ -450,6 +442,17 @@ export default function ModuleHistoryPage({ moduleKey, defaultFilter = 'all' }) 
               </button>
             );
           })}
+          {!listError && listStatus === 'ready' && (
+            <div style={{ padding: '12px 16px' }}>
+              <ViewMoreButton
+                hasMore={listHasMore}
+                loadingMore={listLoadingMore}
+                loaded={listItems.length}
+                total={listTotal}
+                onClick={loadMoreList}
+              />
+            </div>
+          )}
         </section>
 
         {siteId && (

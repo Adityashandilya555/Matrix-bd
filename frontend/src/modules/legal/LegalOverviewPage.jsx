@@ -163,7 +163,9 @@ export default function LegalOverviewPage() {
     return byStatus;
   }, [queue.items]);
 
-  const totalInQueue = queue.items.length;
+  // Headline count uses the server COUNT(*) (queue.total), not the loaded page
+  // size. Per-stage breakdowns below stay over the loaded items.
+  const totalInQueue = queue.total;
   const ddInReview = counts.pending + counts.in_review;
   const pad = (n) => String(n).padStart(2, '0');
 

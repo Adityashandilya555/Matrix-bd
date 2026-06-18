@@ -105,13 +105,20 @@ function delegationFromServer(row) {
   };
 }
 
-export async function getProjectQueue() {
-  const data = await client.get('/project/queue').then((r) => r.data);
+export async function getProjectQueue({ limit, offset } = {}) {
+  // limit/offset only travel when the caller supplies them (default page intact).
+  const params = {};
+  if (limit != null) params.limit = limit;
+  if (offset != null) params.offset = offset;
+  const data = await client.get('/project/queue', { params }).then((r) => r.data);
   return { items: (data.items || []).map(queueItemFromServer), total: data.total ?? 0 };
 }
 
-export async function listProjectHistory(statusFilter = 'all') {
-  const data = await client.get('/project/history', { params: { status_filter: statusFilter } }).then((r) => r.data);
+export async function listProjectHistory(statusFilter = 'all', { limit, offset } = {}) {
+  const params = { status_filter: statusFilter };
+  if (limit != null) params.limit = limit;
+  if (offset != null) params.offset = offset;
+  const data = await client.get('/project/history', { params }).then((r) => r.data);
   return { items: (data.items || []).map(historyItemFromServer), total: data.total ?? 0 };
 }
 

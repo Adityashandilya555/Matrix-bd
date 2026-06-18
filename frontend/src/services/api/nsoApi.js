@@ -121,13 +121,20 @@ function stateFromServer(row) {
   };
 }
 
-export async function getNsoQueue() {
-  const data = await client.get('/nso/queue').then((r) => r.data);
+export async function getNsoQueue({ limit, offset } = {}) {
+  // limit/offset only travel when the caller supplies them (default page intact).
+  const params = {};
+  if (limit != null) params.limit = limit;
+  if (offset != null) params.offset = offset;
+  const data = await client.get('/nso/queue', { params }).then((r) => r.data);
   return { items: (data.items || []).map(queueItemFromServer), total: data.total ?? 0 };
 }
 
-export async function listNsoHistory(statusFilter = 'all') {
-  const data = await client.get('/nso/history', { params: { status_filter: statusFilter } }).then((r) => r.data);
+export async function listNsoHistory(statusFilter = 'all', { limit, offset } = {}) {
+  const params = { status_filter: statusFilter };
+  if (limit != null) params.limit = limit;
+  if (offset != null) params.offset = offset;
+  const data = await client.get('/nso/history', { params }).then((r) => r.data);
   return { items: (data.items || []).map(queueItemFromServer), total: data.total ?? 0 };
 }
 

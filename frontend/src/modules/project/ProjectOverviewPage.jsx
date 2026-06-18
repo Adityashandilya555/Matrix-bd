@@ -146,7 +146,7 @@ function QueueTable({ rows, onOpen }) {
 
 export default function ProjectOverviewPage() {
   const navigate = useNavigate();
-  const [state, setState] = React.useState({ status: 'loading', items: [], error: null });
+  const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
 
   // view: which KPI is expanded in place ('audit' navigates away instead).
   const [view, setView] = React.useState(null); // null | 'all' | 'budget' | 'execution'
@@ -160,7 +160,7 @@ export default function ProjectOverviewPage() {
     setState((prev) => ({ ...prev, status: prev.items.length ? prev.status : 'loading', error: null }));
     getProjectQueue()
       .then((data) => {
-        if (!cancelled) setState({ status: 'ready', items: data.items, error: null });
+        if (!cancelled) setState({ status: 'ready', items: data.items, total: data.total ?? 0, error: null });
       })
       .catch((err) => {
         if (!cancelled) {
@@ -192,7 +192,9 @@ export default function ProjectOverviewPage() {
   const metrics = {
     all: {
       no: 'Ⅰ', eyebrow: 'In Project', rule: 'var(--zm-accent)', tone: 'peach',
-      value: val(items.length),
+      // Headline uses the server COUNT(*); the other KPIs stay per-status over
+      // the loaded items.
+      value: val(state.total),
       delta: 'Pipeline + Sites',
       deltaTone: 'neutral',
       sub: loading ? 'Loading queue…' : `Across ${cityCount} cit${cityCount === 1 ? 'y' : 'ies'}`,
@@ -247,7 +249,7 @@ export default function ProjectOverviewPage() {
 
   const lede = loading
     ? 'Loading the project queue…'
-    : `${items.length} site${items.length === 1 ? '' : 's'} in the project queue`;
+    : `${state.total} site${state.total === 1 ? '' : 's'} in the project queue`;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>

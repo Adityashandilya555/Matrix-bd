@@ -74,8 +74,12 @@ export async function sendForFinancialClosure(siteId) {
   return stateFromServer(data);
 }
 
-export async function getFCQueue() {
-  const data = await client.get('/financial-closure/queue').then((r) => r.data);
+export async function getFCQueue({ limit, offset } = {}) {
+  // limit/offset only travel when the caller supplies them (default page intact).
+  const params = {};
+  if (limit != null) params.limit = limit;
+  if (offset != null) params.offset = offset;
+  const data = await client.get('/financial-closure/queue', { params }).then((r) => r.data);
   return { items: (data.items || []).map(queueItemFromServer), total: data.total ?? 0 };
 }
 

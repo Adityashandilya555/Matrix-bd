@@ -92,8 +92,13 @@ function reviewFromServer(row) {
 
 // ── Reads ───────────────────────────────────────────────────────────────────
 
-export async function getLegalQueue() {
-  const data = await client.get('/legal/queue').then((r) => r.data);
+export async function getLegalQueue({ limit, offset } = {}) {
+  // limit/offset only travel to the backend when the caller supplies them; an
+  // un-migrated caller still hits the backend default page size, unchanged.
+  const params = {};
+  if (limit != null) params.limit = limit;
+  if (offset != null) params.offset = offset;
+  const data = await client.get('/legal/queue', { params }).then((r) => r.data);
   return {
     items: (data.items || []).map(queueItemFromServer),
     total: data.total ?? 0,
@@ -108,8 +113,11 @@ export async function listLegalRejectedSites() {
   };
 }
 
-export async function listLegalHistory(statusFilter = 'all') {
-  const data = await client.get('/legal/history', { params: { status_filter: statusFilter } }).then((r) => r.data);
+export async function listLegalHistory(statusFilter = 'all', { limit, offset } = {}) {
+  const params = { status_filter: statusFilter };
+  if (limit != null) params.limit = limit;
+  if (offset != null) params.offset = offset;
+  const data = await client.get('/legal/history', { params }).then((r) => r.data);
   return {
     items: (data.items || []).map(historyItemFromServer),
     total: data.total ?? 0,

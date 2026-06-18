@@ -21,13 +21,16 @@ import CitySelect from './modules/shared/primitives/CitySelect.jsx';
 
 export default function App() {
   const { user, role, setRole, dark, toggleDark, authReady } = useSession();
-  const { drafts, shortlist, staging, archive, createDraft } = useSites();
+  const { drafts, shortlist, staging, archive, createDraft, error: sitesError, refresh } = useSites();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [openSite, setOpenSite] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [toast, setToast] = useState(null);
+  // #182 — surface a SitesContext fetch failure to the user (was set but never
+  // displayed). Dismissible; resets when a different error arrives.
+  const [dismissedSitesError, setDismissedSitesError] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       return window.localStorage.getItem('zm-sidebar-collapsed') === 'true';
@@ -156,6 +159,29 @@ export default function App() {
         }}>
           {/* Pages inject showToast and onOpenSite via context (see below) or props.
               AppRouter clones page elements with these props via a wrapper. */}
+          {sitesError && sitesError !== dismissedSitesError && (
+            <div role="alert" style={{
+              marginBottom: 16, padding: '10px 14px', borderRadius: 8,
+              display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between',
+              background: dark ? '#3a1a1a' : '#fdecec',
+              border: '1px solid ' + (dark ? '#7a2d2d' : '#f3b5b5'),
+              color: dark ? '#ffb4b4' : '#9e1c1c', fontSize: 13,
+            }}>
+              <span>Couldn’t load sites: {sitesError}</span>
+              <span style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <button type="button" onClick={() => { setDismissedSitesError(null); refresh?.(); }}
+                  style={{ cursor: 'pointer', border: '1px solid currentColor', background: 'transparent',
+                    color: 'inherit', borderRadius: 6, padding: '3px 10px', fontSize: 12 }}>
+                  Retry
+                </button>
+                <button type="button" aria-label="Dismiss error" onClick={() => setDismissedSitesError(sitesError)}
+                  style={{ cursor: 'pointer', border: 'none', background: 'transparent',
+                    color: 'inherit', fontSize: 16, lineHeight: 1, padding: '0 4px' }}>
+                  ×
+                </button>
+              </span>
+            </div>
+          )}
           <PageContext.Provider value={pageContextValue}>
             <Outlet/>
           </PageContext.Provider>

@@ -17,5 +17,10 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.js'],
     include: ['src/**/*.{test,spec}.{js,jsx}'],
     css: false,
+    // Pin the real (non-mock) code paths during tests so the suite is
+    // deterministic regardless of a developer's local .env.local. With
+    // VITE_USE_MOCK=true (an offline-dev setting) guards/session short-circuit,
+    // flipping env-dependent tests like guards.test.jsx. CI has no .env.local.
+    env: { VITE_USE_MOCK: 'false' },
   },
 });

@@ -58,12 +58,9 @@ export function RequireModule({ modules, children }) {
   return children;
 }
 
-export function RequireScope({ kind, children }) {
-  // TODO(auth): enforce scope from session claims — currently logs a warning
-  // and passes through. When the identity service ships JWT scope claims,
-  // replace the console.warn with a Navigate to UNAUTHORIZED.
-  if (import.meta.env.DEV) {
-    console.warn(`[RequireScope] kind="${kind}" — not yet enforced`);
-  }
-  return children;
-}
+// NOTE (#188): the former `RequireScope` guard was removed. It was a pass-through
+// no-op (it only console.warned and returned children), wired to no route, and
+// the backend JWT emits no scope claim to enforce — a guard that *looks* like it
+// protects but doesn't is worse than none. Re-introduce real scope enforcement
+// here (Navigate to UNAUTHORIZED on a failed claim check) only when the identity
+// service actually ships JWT scope claims to check against.
