@@ -59,8 +59,12 @@ async def get_launch_queue(
     current_user: AnyUser,
     tenant_id: TenantId,
     status: str = Query(default=None, description="Comma-separated status filter"),
+    limit: int = Query(500, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
 ) -> LaunchQueueResponse:
-    return await svc_get_launch_queue(db, tenant_id=tenant_id, status_filter=status)
+    return await svc_get_launch_queue(
+        db, tenant_id=tenant_id, status_filter=status, limit=limit, offset=offset,
+    )
 
 
 @router.get("/{site_id}", response_model=LaunchApprovalResponse)

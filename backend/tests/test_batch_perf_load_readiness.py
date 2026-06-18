@@ -128,12 +128,13 @@ async def test_project_history_batches_names(make_session, fake_result):
 
     rows = [(_fake_site(i), None) for i in range(4)]
     sess = make_session(
+        fake_result(scalar=4),           # COUNT(*) — accurate total
         fake_result(all_rows=rows),      # outer
         fake_result(all_rows=[]),        # batched names
     )
     out = await project_service.svc_project_history(sess, tenant_id="t1")
-    assert out.total == 4
-    assert len(sess.executed) == 2       # was 1 + N
+    assert out.total == 4                # real COUNT(*), not len(items)
+    assert len(sess.executed) == 3       # count + outer + batched names (was 1 + N)
 
 
 async def test_legal_rejected_sites_batches_lookups(make_session, fake_result):
@@ -155,13 +156,14 @@ async def test_legal_history_batches_lookups(make_session, fake_result):
 
     sites = [_fake_site(i) for i in range(3)]
     sess = make_session(
+        fake_result(scalar=3),            # COUNT(*) — accurate total
         fake_result(scalars_list=sites),
         fake_result(scalars_list=[]),
         fake_result(all_rows=[]),
     )
     out = await legal_service.svc_legal_history(sess, tenant_id="t1")
-    assert out.total == 3
-    assert len(sess.executed) == 3
+    assert out.total == 3                 # real COUNT(*), not len(items)
+    assert len(sess.executed) == 4        # count + outer + batched DD + names
 
 
 async def test_bd_dd_failed_queue_batches_lookups(make_session, fake_result):
@@ -304,12 +306,13 @@ async def test_design_history_batches_names(make_session, fake_result):
 
     rows = [(_fake_site(i), None) for i in range(4)]
     sess = make_session(
+        fake_result(scalar=4),           # COUNT(*) — accurate total
         fake_result(all_rows=rows),      # outer
         fake_result(all_rows=[]),        # batched names
     )
     out = await design_service.svc_design_history(sess, tenant_id="t1")
-    assert out.total == 4
-    assert len(sess.executed) == 2       # was 1 + N
+    assert out.total == 4                # real COUNT(*), not len(items)
+    assert len(sess.executed) == 3       # count + outer + batched names (was 1 + N)
 
 
 async def test_design_admin_queue_signs_urls_concurrently(make_session, fake_result, monkeypatch):

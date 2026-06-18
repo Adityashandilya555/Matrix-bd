@@ -49,7 +49,7 @@ from app.domain.schemas.launch import (
     LaunchReviewRequest,
     SiteDetailsSnapshot,
 )
-from app.services._common import fetch_site_or_404, fetch_user_name
+from app.services._common import count_rows, fetch_site_or_404, fetch_user_name
 from app.services.audit_service import write_audit_event
 
 logger = logging.getLogger(__name__)
@@ -396,7 +396,16 @@ async def svc_get_launch_queue(
     *,
     tenant_id: str | UUID,
     status_filter: Optional[str] = None,
+    limit: int = 500,
+    offset: int = 0,
 ) -> LaunchQueueResponse:
+    """Return one page of the launch-approval queue, newest-created first.
+
+    Paginated (``limit``/``offset``) so the queue can't grow unbounded with
+    tenant lifetime (#230). The queue previously had no ``ORDER BY``; a
+    deterministic ``created_at DESC`` order is added so paging is stable.
+    ``total`` is the page row count.
+    """
     q = select(models.LaunchApproval, models.Site, models.User.name).join(
         models.Site, models.Site.id == models.LaunchApproval.site_id
     ).join(
@@ -407,6 +416,9 @@ async def svc_get_launch_queue(
         statuses = [s.strip() for s in status_filter.split(",")]
         q = q.where(models.LaunchApproval.status.in_(statuses))
 
+    total = await count_rows(session, q)
+    q = q.order_by(models.LaunchApproval.created_at.desc(), models.LaunchApproval.id).limit(limit).offset(offset)
+    # LaunchApproval.id = deterministic tie-breaker for stable offset paging
     rows = (await session.execute(q)).all()
     items = [
         LaunchQueueItem(
@@ -428,7 +440,7 @@ async def svc_get_launch_queue(
         )
         for approval, site, creator_name in rows
     ]
-    return LaunchQueueResponse(items=items, total=len(items))
+    return LaunchQueueResponse(items=items, total=total)
 
 
 async def svc_get_approval(

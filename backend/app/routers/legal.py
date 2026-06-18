@@ -90,6 +90,8 @@ async def legal_queue(
     current_user: LegalMember,
     _module: InLegalModule,
     tenant_id: TenantId,
+    limit: int = Query(500, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
 ) -> LegalQueueResponse:
     # Executives only see sites delegated to them. Supervisors see all.
     restrict_to: Optional[list[str]] = None
@@ -97,7 +99,9 @@ async def legal_queue(
         restrict_to = await svc_assigned_sites(
             db, tenant_id=tenant_id, user_id=current_user["sub"], module="legal",
         )
-    return await svc_legal_queue(db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to)
+    return await svc_legal_queue(
+        db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to, limit=limit, offset=offset,
+    )
 
 
 @router.get(
@@ -131,6 +135,8 @@ async def legal_history(
     _module: InLegalModule,
     tenant_id: TenantId,
     status_filter: str = "all",
+    limit: int = Query(500, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
 ) -> LegalHistoryResponse:
     # Executives only see legal history for sites delegated to them. Supervisors see all.
     restrict_to: Optional[list[str]] = None
@@ -140,6 +146,7 @@ async def legal_history(
         )
     return await svc_legal_history(
         db, tenant_id=tenant_id, status_filter=status_filter, restrict_to_site_ids=restrict_to,
+        limit=limit, offset=offset,
     )
 
 
@@ -396,7 +403,7 @@ async def list_pending_change_requests(
     current_user: LegalMember,
     _module: InLegalModule,
     tenant_id: TenantId,
-    limit: int = Query(50, le=200),
+    limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> ChangeRequestListResponse:
     return await svc_list_pending_for_legal(db, tenant_id=tenant_id, limit=limit, offset=offset)
