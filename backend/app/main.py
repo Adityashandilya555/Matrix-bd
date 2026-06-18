@@ -115,27 +115,33 @@ class _RequestIdMiddleware(BaseHTTPMiddleware):
 
 # ── Security response headers (#227) ──────────────────────────────────────────
 
-class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Add defense-in-depth security headers to every response.
+def _security_headers(request: Request) -> dict[str, str]:
+    """The defense-in-depth headers added to every response. HSTS only on HTTPS
+    so local http dev / health checks are unaffected (scheme is proxy-corrected
+    from X-Forwarded-Proto on Railway). No Content-Security-Policy here — a CSP
+    on API JSON adds no value and risks breaking calls; the SPA's CSP is applied
+    at the Vercel edge (frontend/vercel.json)."""
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+    }
+    if request.url.scheme == "https":
+        headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+    return headers
 
-    Only ADDS headers (via setdefault) — never strips existing ones — so the
-    CORS headers set by CORSMiddleware, including the error-path re-application
-    in `_cors_headers_for`, are preserved. Deliberately sets NO Content-Security
-    -Policy: a CSP on API JSON responses adds no value and risks breaking calls;
-    the SPA's CSP is applied at the Vercel edge (frontend/vercel.json). HSTS is
-    emitted only on HTTPS so local http dev and health checks are unaffected
-    (the scheme is proxy-corrected from X-Forwarded-Proto on Railway).
-    """
+
+class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add the security headers to every response that passes through the user
+    middleware stack (2xx/4xx). Only ADDS via setdefault — never strips — so the
+    CORS headers set by CORSMiddleware are preserved. Unhandled 500s are produced
+    by Starlette's outer ServerErrorMiddleware, OUTSIDE this middleware, so the
+    exception handler applies the same headers there (see `_security_headers`)."""
 
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        response.headers.setdefault("X-Frame-Options", "DENY")
-        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-        if request.url.scheme == "https":
-            response.headers.setdefault(
-                "Strict-Transport-Security", "max-age=63072000; includeSubDomains"
-            )
+        for name, value in _security_headers(request).items():
+            response.headers.setdefault(name, value)
         return response
 
 
@@ -277,7 +283,9 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
         # Include request_id in the response body so support can match a
         # user's screenshot to the exact Railway log line.
         content={"detail": "Internal server error", "request_id": rid},
-        headers={**_cors_headers_for(request), "X-Request-Id": rid},
+        # Unhandled 500s are produced outside the user middleware stack, so apply
+        # the security headers (and re-apply CORS, #117) here too (#227).
+        headers={**_cors_headers_for(request), **_security_headers(request), "X-Request-Id": rid},
     )
 
 
