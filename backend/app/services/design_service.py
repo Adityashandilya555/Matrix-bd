@@ -56,7 +56,7 @@ from app.domain.schemas.design import (
     SubmitDeliverableRequest,
 )
 from app.services.storage_service import signed_url as storage_signed_url
-from app.services._common import fetch_site_or_404, fetch_user_name, fetch_user_names
+from app.services._common import count_rows, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_is_delegated
 from app.services import budget_service
@@ -253,7 +253,7 @@ async def svc_design_queue(
     *,
     tenant_id: str | UUID,
     restrict_to_site_ids: Optional[list[str]] = None,
-    limit: int = 50,
+    limit: int = 500,
     offset: int = 0,
 ) -> DesignQueueResponse:
     """Finance-approved sites that are still active in design (design_status != approved).
@@ -281,6 +281,7 @@ async def svc_design_queue(
             return DesignQueueResponse(items=[], total=0)
         stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
 
+    total = await count_rows(session, stmt)
     sites = (await session.execute(stmt.limit(limit).offset(offset))).scalars().all()
 
     # Batch the per-site lookups: 3 queries total instead of 3 per site
@@ -332,7 +333,7 @@ async def svc_design_queue(
             allocated_to_name=(delegate[1] if delegate else None),
             submitted_by_name=submitted_by_name,
         ))
-    return DesignQueueResponse(items=items, total=len(items))
+    return DesignQueueResponse(items=items, total=total)
 
 
 async def svc_get_design_review(
@@ -349,11 +350,17 @@ async def svc_design_history(
     tenant_id: str | UUID,
     status_filter: str = "all",
     restrict_to_site_ids: Optional[list[str]] = None,
+    limit: int = 500,
+    offset: int = 0,
 ) -> DesignHistoryResponse:
     """Read-only Design history for sites that entered or reached Design.
 
     Executives pass `restrict_to_site_ids` (their design-delegated sites); a
     supervisor passes None and sees the whole tenant's design history.
+
+    Bounded by a safety ceiling (``limit``/``offset``, #230) so the response
+    can't grow unbounded with tenant lifetime; ``total`` is the true filtered
+    count (not the page size), so KPI tiles stay accurate past the ceiling.
     """
     if restrict_to_site_ids is not None and not restrict_to_site_ids:
         return DesignHistoryResponse(items=[], total=0)
@@ -388,12 +395,13 @@ async def svc_design_history(
     if restrict_to_site_ids is not None:
         stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
 
+    total = await count_rows(session, stmt)
     rows = (await session.execute(
         stmt.order_by(
             desc(models.DesignReview.updated_at).nulls_last(),
             desc(models.Site.design_approved_at).nulls_last(),
             desc(models.Site.updated_at),
-        )
+        ).limit(limit).offset(offset)
     )).all()
 
     # Batch submitter names (1 query) instead of one per row (#91, swept sibling
@@ -415,7 +423,7 @@ async def svc_design_history(
             finance_status=site.finance_status,
             updated_at=(review.updated_at if review else site.updated_at),
         ))
-    return DesignHistoryResponse(items=items, total=len(items))
+    return DesignHistoryResponse(items=items, total=total)
 
 
 # ── Allocation (supervisor → design executive) ───────────────────────────────

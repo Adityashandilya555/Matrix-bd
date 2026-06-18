@@ -45,7 +45,7 @@ from app.domain.schemas.legal import (
     SaveVerificationRequest,
 )
 from app.domain.state_machine import SiteStatus, assert_transition
-from app.services._common import fetch_site_or_404, fetch_user_name, fetch_user_names
+from app.services._common import count_rows, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.notification_service import (
     enqueue as notify_enqueue,
@@ -305,7 +305,7 @@ async def svc_legal_queue(
     *,
     tenant_id: str | UUID,
     restrict_to_site_ids: Optional[list[str]] = None,
-    limit: int = 50,
+    limit: int = 500,
     offset: int = 0,
 ) -> LegalQueueResponse:
     """Return one page of sites in LEGAL_REVIEW or LEGAL_REJECTED with DD status.
@@ -338,6 +338,7 @@ async def svc_legal_queue(
             return LegalQueueResponse(items=[], total=0)
         stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
 
+    total = await count_rows(session, stmt)
     sites = (await session.execute(stmt.limit(limit).offset(offset))).scalars().all()
 
     # Batch the per-site lookups: 2 queries total instead of 2 per site
@@ -374,7 +375,7 @@ async def svc_legal_queue(
             submitted_by_name=submitted_by_name,
         ))
 
-    return LegalQueueResponse(items=items, total=len(items))
+    return LegalQueueResponse(items=items, total=total)
 
 
 async def svc_legal_rejected_sites(
@@ -429,11 +430,17 @@ async def svc_legal_history(
     tenant_id: str | UUID,
     status_filter: str = "all",
     restrict_to_site_ids: Optional[list[str]] = None,
+    limit: int = 500,
+    offset: int = 0,
 ) -> LegalHistoryResponse:
     """Read-only Legal history for sites that have touched the Legal module.
 
     Executives pass `restrict_to_site_ids` (their legal-delegated sites); a
     supervisor passes None and sees the whole tenant's legal history.
+
+    Bounded by a safety ceiling (``limit``/``offset``, #230) so the response
+    can't grow unbounded with tenant lifetime; ``total`` is the true filtered
+    count (not the page size), so KPI tiles stay accurate past the ceiling.
     """
     if restrict_to_site_ids is not None and not restrict_to_site_ids:
         return LegalHistoryResponse(items=[], total=0)
@@ -493,7 +500,8 @@ async def svc_legal_history(
         desc(models.Site.legal_review_at).nulls_last(),
         desc(models.Site.updated_at),
     )
-    sites = (await session.execute(stmt)).scalars().all()
+    total = await count_rows(session, stmt)
+    sites = (await session.execute(stmt.limit(limit).offset(offset))).scalars().all()
 
     # Batch DD checklists + submitter names (2 queries total) instead of 2 per
     # site (#91).
@@ -519,7 +527,7 @@ async def svc_legal_history(
             legal_rejected_at=site.legal_rejected_at,
             updated_at=site.updated_at,
         ))
-    return LegalHistoryResponse(items=items, total=len(items))
+    return LegalHistoryResponse(items=items, total=total)
 
 
 async def svc_get_legal_review(

@@ -38,7 +38,7 @@ async def nso_queue(
     current_user: NsoMember,
     _module: InNsoModule,
     tenant_id: TenantId,
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(500, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> NsoQueueResponse:
     return await svc_nso_queue(db, tenant_id=tenant_id, limit=limit, offset=offset)
@@ -51,7 +51,7 @@ async def nso_history(
     _module: InNsoModule,
     tenant_id: TenantId,
     status_filter: str = "all",
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(500, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> NsoHistoryResponse:
     return await svc_nso_history(

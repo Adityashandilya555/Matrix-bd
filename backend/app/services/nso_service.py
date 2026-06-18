@@ -30,7 +30,7 @@ from app.domain.schemas.nso import (
     NsoStateResponse,
     NsoTriggerState,
 )
-from app.services._common import fetch_site_or_404, fetch_user_name
+from app.services._common import count_rows, fetch_site_or_404, fetch_user_name
 from app.services.audit_service import write_audit_event
 from app.services.launch_service import svc_create_launch_approval
 
@@ -513,10 +513,10 @@ async def _state_response(
 
 
 async def svc_nso_queue(
-    session: AsyncSession, *, tenant_id: str | UUID, limit: int = 50, offset: int = 0,
+    session: AsyncSession, *, tenant_id: str | UUID, limit: int = 500, offset: int = 0,
 ) -> NsoQueueResponse:
     async with transaction(session):
-        sites = (await session.execute(
+        stmt = (
             select(models.Site)
             .where(
                 models.Site.tenant_id == tenant_id,
@@ -524,9 +524,9 @@ async def svc_nso_queue(
                 models.Site.ca_code.is_not(None),
             )
             .order_by(models.Site.updated_at.asc())
-            .limit(limit)
-            .offset(offset)
-        )).scalars().all()
+        )
+        total = await count_rows(session, stmt)
+        sites = (await session.execute(stmt.limit(limit).offset(offset))).scalars().all()
         # Batch the child lookups (2 queries regardless of N) and never create
         # rows on a GET — `_queue_item` handles row=None, and the write paths
         # (`svc_save_stage_*`) create the NsoReview when work actually starts.
@@ -557,12 +557,12 @@ async def svc_nso_queue(
             )
             for site in sites
         ]
-        return NsoQueueResponse(items=items, total=len(items))
+        return NsoQueueResponse(items=items, total=total)
 
 
 async def svc_nso_history(
     session: AsyncSession, *, tenant_id: str | UUID, status_filter: str = "all",
-    limit: int = 50, offset: int = 0,
+    limit: int = 500, offset: int = 0,
 ) -> NsoHistoryResponse:
     """Return one page of tenant NSO history, newest first.
 
@@ -591,6 +591,7 @@ async def svc_nso_history(
         elif status_filter == "rejected":
             stmt = stmt.where(False)
 
+        total = await count_rows(session, stmt)
         rows = (await session.execute(
             stmt.order_by(
                 desc(models.NsoReview.updated_at).nulls_last(),
@@ -600,7 +601,7 @@ async def svc_nso_history(
             .limit(limit).offset(offset)
         )).all()
         items = [await _queue_item(session, site, row, project, licensing) for (site, row, project, licensing) in rows]
-        return NsoHistoryResponse(items=items, total=len(items))
+        return NsoHistoryResponse(items=items, total=total)
 
 
 async def svc_get_nso(

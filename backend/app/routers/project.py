@@ -66,7 +66,7 @@ async def project_queue(
     current_user: ProjectMember,
     _module: InProjectModule,
     tenant_id: TenantId,
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(500, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> ProjectQueueResponse:
     restrict_to: Optional[list[str]] = None
@@ -107,7 +107,7 @@ async def project_history(
     _module: InProjectModule,
     tenant_id: TenantId,
     status_filter: str = "all",
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(500, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> ProjectHistoryResponse:
     # Executives only see project history for sites delegated to them. Supervisors see all.

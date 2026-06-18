@@ -56,7 +56,7 @@ async def pe_queue(
     current_user: PEMember,
     _module: InPEModule,
     tenant_id: TenantId,
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(500, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> PEQueueResponse:
     restrict_to: Optional[list[str]] = None

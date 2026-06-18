@@ -32,7 +32,7 @@ from app.domain.schemas.financial_closure import (
     SaveFCBudgetRequest,
 )
 from app.services import budget_service
-from app.services._common import fetch_site_or_404, fetch_user_name
+from app.services._common import count_rows, fetch_site_or_404, fetch_user_name
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_is_delegated
 
@@ -177,7 +177,7 @@ async def svc_send_for_financial_closure(
 async def svc_fc_queue(
     session: AsyncSession, *, tenant_id: str | UUID,
     restrict_to_site_ids: Optional[list[str]] = None,
-    limit: int = 50,
+    limit: int = 500,
     offset: int = 0,
 ) -> FCQueueResponse:
     """Return one page of the Financial Closure queue, newest-launched first.
@@ -202,6 +202,7 @@ async def svc_fc_queue(
             if not restrict_to_site_ids:
                 return FCQueueResponse(items=[], total=0)
             stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
+        total = await count_rows(session, stmt)
         rows = (await session.execute(
             stmt.order_by(models.Site.launched_at.desc(), models.Site.id).limit(limit).offset(offset)
         )).all()
@@ -224,7 +225,7 @@ async def svc_fc_queue(
                 closure_budget_total=float(closure.budget_total) if closure and closure.budget_total is not None else None,
                 variation_total=round(sum(variation.values()), 2),
             ))
-        return FCQueueResponse(items=items, total=len(items))
+        return FCQueueResponse(items=items, total=total)
 
 
 async def svc_get_fc(
@@ -397,14 +398,14 @@ async def svc_review_fc_budget(
 
 async def svc_fc_admin_queue(
     session: AsyncSession, *, tenant_id: str | UUID,
-    limit: int = 50, offset: int = 0,
+    limit: int = 500, offset: int = 0,
 ) -> FCQueueResponse:
     """Return one page of the FC admin queue (sites pending admin), oldest first.
 
     Paginated (``limit``/``offset``) so the queue and its per-row budget lookups
     are bounded by page size (#230). ``total`` is the page row count.
     """
-    rows = (await session.execute(
+    stmt = (
         select(models.Site, models.SiteBudget)
         .join(models.SiteBudget, (models.SiteBudget.site_id == models.Site.id) & (models.SiteBudget.phase == _PHASE))
         .where(
@@ -412,8 +413,9 @@ async def svc_fc_admin_queue(
             models.SiteBudget.status == "pending_admin",
         )
         .order_by(models.SiteBudget.updated_at.asc(), models.SiteBudget.id)  # id = stable-paging tie-breaker
-        .limit(limit).offset(offset)
-    )).all()
+    )
+    total = await count_rows(session, stmt)
+    rows = (await session.execute(stmt.limit(limit).offset(offset))).all()
     items: list[FCQueueItem] = []
     for site, closure in rows:
         variation = await budget_service.variation_vs_gfc(session, site_id=site.id, tenant_id=tenant_id)
@@ -430,7 +432,7 @@ async def svc_fc_admin_queue(
             closure_budget_total=float(closure.budget_total) if closure.budget_total is not None else None,
             variation_total=round(sum(variation.values()), 2),
         ))
-    return FCQueueResponse(items=items, total=len(items))
+    return FCQueueResponse(items=items, total=total)
 
 
 async def svc_admin_finalize_fc(

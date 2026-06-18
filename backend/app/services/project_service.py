@@ -33,7 +33,7 @@ from app.domain.schemas.project import (
     ReviewRequest,
 )
 from app.services import budget_service
-from app.services._common import fetch_site_or_404, fetch_user_name, fetch_user_names
+from app.services._common import count_rows, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_assigned_sites, svc_is_delegated
 
@@ -286,7 +286,7 @@ async def svc_project_queue(
     *,
     tenant_id: str | UUID,
     restrict_to_site_ids: Optional[list[str]] = None,
-    limit: int = 50,
+    limit: int = 500,
     offset: int = 0,
 ) -> ProjectQueueResponse:
     """Return one page of the active Project queue, oldest-updated first.
@@ -318,6 +318,7 @@ async def svc_project_queue(
             if not restrict_to_site_ids:
                 return ProjectQueueResponse(items=[], total=0)
             stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
+        total = await count_rows(session, stmt)
         rows = (await session.execute(stmt.limit(limit).offset(offset))).all()
 
         delegates, names = await _batch_project_prefetch(session, [site for site, _r in rows])
@@ -331,7 +332,7 @@ async def svc_project_queue(
                     "submitted_by_name": names.get(site.submitted_by, ""),
                 },
             ))
-        return ProjectQueueResponse(items=items, total=len(items))
+        return ProjectQueueResponse(items=items, total=total)
 
 
 async def svc_project_history(
@@ -340,7 +341,7 @@ async def svc_project_history(
     tenant_id: str | UUID,
     status_filter: str = "all",
     restrict_to_site_ids: Optional[list[str]] = None,
-    limit: int = 50,
+    limit: int = 500,
     offset: int = 0,
 ) -> ProjectHistoryResponse:
     """Read-only Project history for sites that reached or entered Project.
@@ -379,6 +380,7 @@ async def svc_project_history(
     if restrict_to_site_ids is not None:
         stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
 
+    total = await count_rows(session, stmt)
     rows = (await session.execute(
         stmt.order_by(
             desc(models.ProjectReview.updated_at).nulls_last(),
@@ -403,7 +405,7 @@ async def svc_project_history(
             project_completed_at=(review.project_completed_at if review else None),
             updated_at=(review.updated_at if review else site.updated_at),
         ))
-    return ProjectHistoryResponse(items=items, total=len(items))
+    return ProjectHistoryResponse(items=items, total=total)
 
 
 async def svc_get_project(

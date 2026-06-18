@@ -88,7 +88,7 @@ async def design_queue(
     current_user: DesignMember,
     _module: InDesignModule,
     tenant_id: TenantId,
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(500, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> DesignQueueResponse:
     # Executives only see sites allocated to them. Supervisors see all.
@@ -113,6 +113,8 @@ async def design_history(
     _module: InDesignModule,
     tenant_id: TenantId,
     status_filter: str = "all",
+    limit: int = Query(500, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
 ) -> DesignHistoryResponse:
     # Executives only see design history for sites delegated to them. Supervisors see all.
     restrict_to: Optional[list[str]] = None
@@ -122,6 +124,7 @@ async def design_history(
         )
     return await svc_design_history(
         db, tenant_id=tenant_id, status_filter=status_filter, restrict_to_site_ids=restrict_to,
+        limit=limit, offset=offset,
     )
 
 

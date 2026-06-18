@@ -59,7 +59,7 @@ async def get_launch_queue(
     current_user: AnyUser,
     tenant_id: TenantId,
     status: str = Query(default=None, description="Comma-separated status filter"),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(500, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> LaunchQueueResponse:
     return await svc_get_launch_queue(
