@@ -278,10 +278,9 @@ async def drain_pending_emails(*, resend_api_key: str, batch_size: int = 20) -> 
                 reason = str(exc)[:200]
 
             # Optimistic update: skip if another drain already processed this row.
-            async with SessionLocal() as upd:
-                async with upd.begin():
-                    await upd.execute(
-                        text("""
+            async with SessionLocal() as upd, upd.begin():
+                await upd.execute(
+                    text("""
                             UPDATE notification_outbox
                                SET status        = :status,
                                    failed_reason = :reason,
@@ -290,8 +289,8 @@ async def drain_pending_emails(*, resend_api_key: str, batch_size: int = 20) -> 
                                                         THEN now() ELSE sent_at END
                              WHERE id = :id AND status = 'pending'
                         """),
-                        {"status": new_status, "reason": reason, "id": str(row["id"])},
-                    )
+                    {"status": new_status, "reason": reason, "id": str(row["id"])},
+                )
 
             if new_status == "failed":
                 log.warning("email_drain: failed to send row=%s reason=%s", row["id"], reason)

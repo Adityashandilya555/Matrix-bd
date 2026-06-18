@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Optional
 from uuid import UUID
 
@@ -43,6 +44,20 @@ LEGAL_LICENSE_FIELDS = (
     "fire_noc",
     "storage_license",
 )
+
+# NSO Stage 2 readiness fields → the canonical Legal Licensing field each one
+# *reflects*. Stage 2 is derived from Legal Licensing (see _state_response and
+# #229); the NsoReview.*_status columns are never synced from licensing, so the
+# Stage 2 contract (and the dropped-body divergence check) must read the licensing
+# snapshot, not the row.
+_STAGE_TWO_STATUS_TO_LICENSE = {
+    "fssai_status": "fssai",
+    "health_trade_status": "health_trade",
+    "shops_estab_status": "shops_estab_reg",
+    "fire_noc_status": "fire_noc",
+    "storage_license_status": "storage_license",
+}
+_STAGE_TWO_STATUS_FIELDS = tuple(_STAGE_TWO_STATUS_TO_LICENSE)
 
 
 async def _fetch_project(
@@ -87,10 +102,24 @@ def _property_summary(snapshot: NsoPropertySnapshot) -> str:
     return " | ".join(parts)
 
 
+# A None-valued stand-in for a missing SiteDetail, so _property_snapshot can read
+# attributes uniformly without a per-field `if details else None` branch (which
+# DeepSource PY-R1000 counts as cyclomatic complexity). _num(None) is None and
+# `x or fallback` / `x if x is not None` behave exactly as the old guards did.
+_NO_SITE_DETAIL = SimpleNamespace(
+    rent_type=None, rev_share_pct=None, escalation_pct=None, score=None,
+    estimated_monthly_sales=None, carpet_area_sqft=None, cam_charges=None,
+    security_deposit=None, brokerage=None, lock_in_months=None, tenure_months=None,
+    rent_free_days=None, nearest_starbucks_m=None, nearest_twc_m=None,
+)
+
+
 async def _property_snapshot(
     session: AsyncSession, *, site: models.Site,
 ) -> NsoPropertySnapshot:
-    details = await _fetch_site_detail(session, site_id=site.id)
+    # Substitute an all-None stand-in when there is no SiteDetail so each field
+    # below reads uniformly (behaviour-identical to the old per-field guards).
+    details = await _fetch_site_detail(session, site_id=site.id) or _NO_SITE_DETAIL
     return NsoPropertySnapshot(
         site_name=site.name,
         site_code=site.ca_code or site.code or "",
@@ -102,26 +131,26 @@ async def _property_snapshot(
         ca_code=site.ca_code,
         finance_amount=_num(site.finance_amount),
         kyc_verified=bool(site.kyc_verified),
-        rent_type=(details.rent_type if details and details.rent_type else site.rent_type),
+        rent_type=(details.rent_type or site.rent_type),
         expected_rent=_num(site.expected_rent),
         expected_revshare_pct=_num(
-            details.rev_share_pct if details and details.rev_share_pct is not None else site.expected_revshare_pct
+            details.rev_share_pct if details.rev_share_pct is not None else site.expected_revshare_pct
         ),
         expected_escalation_pct=_num(
-            details.escalation_pct if details and details.escalation_pct is not None else site.expected_escalation_pct
+            details.escalation_pct if details.escalation_pct is not None else site.expected_escalation_pct
         ),
         expected_escalation_years=site.expected_escalation_years,
-        score=_num(details.score) if details else None,
-        estimated_monthly_sales=_num(details.estimated_monthly_sales) if details else None,
-        carpet_area_sqft=_num(details.carpet_area_sqft) if details else None,
-        cam_charges=_num(details.cam_charges) if details else None,
-        security_deposit=_num(details.security_deposit) if details else None,
-        brokerage=_num(details.brokerage) if details else None,
-        lock_in_months=details.lock_in_months if details else None,
-        tenure_months=details.tenure_months if details else None,
-        rent_free_days=details.rent_free_days if details else None,
-        nearest_starbucks_m=details.nearest_starbucks_m if details else None,
-        nearest_twc_m=details.nearest_twc_m if details else None,
+        score=_num(details.score),
+        estimated_monthly_sales=_num(details.estimated_monthly_sales),
+        carpet_area_sqft=_num(details.carpet_area_sqft),
+        cam_charges=_num(details.cam_charges),
+        security_deposit=_num(details.security_deposit),
+        brokerage=_num(details.brokerage),
+        lock_in_months=details.lock_in_months,
+        tenure_months=details.tenure_months,
+        rent_free_days=details.rent_free_days,
+        nearest_starbucks_m=details.nearest_starbucks_m,
+        nearest_twc_m=details.nearest_twc_m,
     )
 
 
@@ -199,7 +228,7 @@ def _stage_one_complete(row: models.NsoReview) -> bool:
 
 def _legal_license_values(licensing: Optional[models.SiteLicensing]) -> dict[str, str]:
     if licensing is None:
-        return {field: "pending" for field in LEGAL_LICENSE_FIELDS}
+        return dict.fromkeys(LEGAL_LICENSE_FIELDS, "pending")
     return {field: (getattr(licensing, field) or "pending") for field in LEGAL_LICENSE_FIELDS}
 
 
@@ -230,6 +259,23 @@ def _legal_licensing_snapshot(
         fire_noc=values["fire_noc"],
         storage_license=values["storage_license"],
     )
+
+
+def _stage_two_canonical_status(
+    site: models.Site, licensing: Optional[models.SiteLicensing],
+) -> dict[str, str]:
+    """Stage 2 status fields as derived from canonical Legal Licensing.
+
+    Uses the exact derivation _state_response surfaces to clients
+    (``_legacy_done`` of each licensing field), so callers comparing a submitted
+    body against "canonical" read the real source of truth — NOT the never-synced
+    ``NsoReview.*_status`` columns, which would yield false divergences (#229).
+    """
+    snapshot = _legal_licensing_snapshot(site, licensing)
+    return {
+        field: _legacy_done(getattr(snapshot, license_field))
+        for field, license_field in _STAGE_TWO_STATUS_TO_LICENSE.items()
+    }
 
 
 def _stage_three_complete(row: models.NsoReview) -> bool:
@@ -266,11 +312,13 @@ def _stage_three_unlocked(
 
 
 def _compute_stage(
-    site: models.Site,
+    _site: models.Site,
     row: models.NsoReview,
-    project: Optional[models.ProjectReview],
-    licensing: Optional[models.SiteLicensing],
+    _project: Optional[models.ProjectReview],
+    _licensing: Optional[models.SiteLicensing],
 ) -> str:
+    # _site/_project/_licensing kept for a uniform call signature with
+    # _sync_rollups/_display_rollups; not read here (#238, PYL-W0613).
     if row.nso_status == "complete":
         return "done"
     # Handed over from the Project module's NSO-Handover tab → opens directly at
@@ -368,12 +416,13 @@ def _triggers(
 
 
 async def _queue_item(
-    session: AsyncSession,
+    _session: AsyncSession,
     site: models.Site,
     row: Optional[models.NsoReview],
     project: Optional[models.ProjectReview],
     licensing: Optional[models.SiteLicensing],
 ) -> NsoQueueItem:
+    # _session kept for a uniform queue-item signature; not read here (#238, PYL-W0613).
     nso_status = row.nso_status if row else "pending"
     current_stage = row.current_stage if row else "stage_one"
     if row is not None:
@@ -498,15 +547,16 @@ async def svc_nso_queue(
             licensing_rows = {l.site_id: l for l in (await session.execute(
                 select(models.SiteLicensing).where(models.SiteLicensing.site_id.in_(site_ids))
             )).scalars()}
-        items: list[NsoQueueItem] = []
-        for site in sites:
-            items.append(await _queue_item(
+        items: list[NsoQueueItem] = [
+            await _queue_item(
                 session,
                 site,
                 nso_rows.get(site.id),
                 projects.get(site.id),
                 licensing_rows.get(site.id),
-            ))
+            )
+            for site in sites
+        ]
         return NsoQueueResponse(items=items, total=len(items))
 
 
@@ -608,8 +658,25 @@ async def svc_save_stage_two(
     tenant_id: str | UUID,
     actor: dict,
     site_id: str | UUID,
-    body: NsoStageTwoRequest,
+    body: NsoStageTwoRequest | None = None,
 ) -> NsoStateResponse:
+    """Reflect NSO Stage 2 readiness from canonical Legal Licensing.
+
+    Stage 2 is **auto-derived**: its licensing status fields (FSSAI, health
+    trade, shops & establishment, fire NOC, storage license) are recomputed by
+    ``_sync_rollups`` from the site's Legal Licensing record — they are *not*
+    authored on this endpoint. ``body`` is accepted only for backward
+    compatibility with the router/clients that still POST the Stage 2 form; its
+    fields are advisory and intentionally not persisted here.
+
+    Previously the body was accepted with a typed contract and then silently
+    dropped — a caller checking boxes got a 200 and believed their input saved
+    (#229). We now log a WARNING whenever a submitted value diverges from the
+    derived state, so the drop is observable instead of silent.
+
+    To make these fields user-authored instead, write ``body.<field>`` onto
+    ``row`` before ``_sync_rollups`` and surface them in the state response.
+    """
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         project = await _fetch_project(session, site_id=site.id)
@@ -618,6 +685,26 @@ async def svc_save_stage_two(
         if not _stage_two_unlocked(row, project):
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="NSO Stage 2 is locked until Stage 1 and Project initiation are complete.")
         _sync_rollups(site, row, project, licensing)
+        if body is not None:
+            # Compare the submitted fields against the canonical Legal
+            # Licensing-derived values (the same ones _state_response returns to
+            # clients), NOT against row.*_status — those columns are never synced
+            # from licensing, so comparing to them would warn on every normal save
+            # and log a stale "canonical" value (#229 review).
+            canonical = _stage_two_canonical_status(site, licensing)
+            ignored = {
+                field: getattr(body, field)
+                for field in _STAGE_TWO_STATUS_FIELDS
+                if getattr(body, field) != canonical[field]
+            }
+            if ignored:
+                logger.warning(
+                    "nso_stage_two: ignoring submitted status fields for site=%s; "
+                    "Stage 2 reflects canonical Legal Licensing "
+                    "(submitted=%s, canonical=%s)",
+                    site.id, ignored,
+                    {f: canonical[f] for f in ignored},
+                )
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor.get("name"),

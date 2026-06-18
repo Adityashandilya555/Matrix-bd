@@ -381,7 +381,11 @@ async def svc_create_launch_approval(
             await session.flush()
     except IntegrityError:
         logger.warning("launch_approval insert lost a race for site %s — returning existing row", site.id)
-        return await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id, required=True)
+        existing_row = await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id, required=True)
+        # required=True raises 404 on a miss, so this is never None — narrow the
+        # Optional for the type checker (TYP-005) without changing behaviour.
+        assert existing_row is not None
+        return existing_row
     return row
 
 

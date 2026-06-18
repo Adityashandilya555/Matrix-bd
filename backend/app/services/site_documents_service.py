@@ -50,6 +50,6 @@ async def get_site_documents(
             "uploaded_by": str(r.uploaded_by),
             "url": url,
         }
-        for r, url in zip(rows, urls)
+        for r, url in zip(rows, urls, strict=False)
     ]
     return {"site_id": str(site_id), "documents": items}
