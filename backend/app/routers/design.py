@@ -137,7 +137,7 @@ async def design_history(
 )
 async def design_gfc_queue(
     db: DbDep,
-    current_user: BusinessAdmin,
+    _auth: BusinessAdmin,
     tenant_id: TenantId,
 ) -> DesignGfcQueueResponse:
     return await svc_design_gfc_queue(db, tenant_id=tenant_id)
@@ -151,7 +151,7 @@ async def design_gfc_queue(
 async def design_gfc_read(
     site_id: str,
     db: DbDep,
-    current_user: BusinessAdmin,
+    _auth: BusinessAdmin,
     tenant_id: TenantId,
 ) -> DesignReviewResponse:
     return await svc_get_design_review(db, site_id=site_id, tenant_id=tenant_id)
@@ -183,7 +183,7 @@ async def design_gfc_decision(
 )
 async def design_admin_queue(
     db: DbDep,
-    current_user: BusinessAdmin,
+    _auth: BusinessAdmin,
     tenant_id: TenantId,
 ) -> DesignAdminQueueResponse:
     return await svc_design_admin_queue(db, tenant_id=tenant_id)

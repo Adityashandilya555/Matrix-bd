@@ -48,7 +48,7 @@ async def recipients_for_supervisors(
         models.User.is_active.is_(True),
         models.User.role == Role.SUPERVISOR.value,
     )
-    return [r for r in (await session.execute(stmt)).scalars().all()]
+    return list((await session.execute(stmt)).scalars().all())
 
 
 async def recipients_for_legal_supervisors(
@@ -141,12 +141,15 @@ async def recipients_for_business_admins(
         models.User.is_active.is_(True),
         models.User.role == Role.BUSINESS_ADMIN.value,
     )
-    return [r for r in (await session.execute(stmt)).scalars().all()]
+    return list((await session.execute(stmt)).scalars().all())
 
 
 async def recipients_for_site_owner(
-    session: AsyncSession, *, site: models.Site,
+    _session: AsyncSession, *, site: models.Site,
 ) -> list[UUID]:
+    # _session is unused (recipients are read from the in-memory site) but kept
+    # in the signature for call-site uniformity with the other recipients_*
+    # helpers; underscore-prefixed to mark it intentionally unused (#238).
     ids: list[UUID] = []
     if site.assigned_to:
         ids.append(site.assigned_to)

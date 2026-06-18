@@ -9,7 +9,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 
-from app.core.deps import CurrentUser, DbDep, TenantId
+from app.core.deps import DbDep, TenantId
 from app.domain.schemas.common import OkResponse
 from app.domain.schemas.site import (
     ApproveShortlistRequest,

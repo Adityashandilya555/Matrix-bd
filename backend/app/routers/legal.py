@@ -400,7 +400,7 @@ async def submit_licensing_for_review(
 )
 async def list_pending_change_requests(
     db: DbDep,
-    current_user: LegalMember,
+    _auth: LegalMember,
     _module: InLegalModule,
     tenant_id: TenantId,
     limit: int = Query(50, ge=1, le=200),

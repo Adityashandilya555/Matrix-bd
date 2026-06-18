@@ -105,7 +105,7 @@ async def fetch_user_names(session: AsyncSession, user_ids) -> dict:
     rows = (await session.execute(
         select(models.User.id, models.User.name).where(models.User.id.in_(ids))
     )).all()
-    return {uid: name for uid, name in rows}
+    return dict(rows)
 
 
 async def count_rows(session: AsyncSession, stmt) -> int:

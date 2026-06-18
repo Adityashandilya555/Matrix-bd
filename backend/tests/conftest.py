@@ -198,6 +198,6 @@ def _reset_storage_client():
     """
     from app.services import storage_service
 
-    storage_service._client = None
+    storage_service._holder.client = None
     yield
-    storage_service._client = None
+    storage_service._holder.client = None

@@ -216,7 +216,7 @@ async def test_storage_client_is_shared():
     c2 = storage_service.get_storage_client()
     assert c1 is c2
     await storage_service.aclose_storage_client()
-    assert storage_service._client is None
+    assert storage_service._holder.client is None
 
 
 async def test_site_documents_signs_urls_concurrently(make_session, fake_result, monkeypatch):
@@ -262,7 +262,7 @@ async def test_list_users_is_bounded(make_session, fake_result):
     from app.routers import users
 
     sess = make_session(fake_result(scalars_list=[]))
-    await users.list_users(db=sess, current_user={"role": "supervisor"}, tenant_id="t1", limit=50, offset=0)
+    await users.list_users(db=sess, _auth={"role": "supervisor"}, tenant_id="t1", limit=50, offset=0)
     assert "LIMIT" in sess.sql.upper()
 
 
@@ -270,7 +270,7 @@ async def test_list_pending_users_is_bounded(make_session, fake_result):
     from app.routers import users
 
     sess = make_session(fake_result(scalars_list=[]))
-    await users.list_pending_users(db=sess, current_user={"role": "supervisor"}, tenant_id="t1", limit=50, offset=0)
+    await users.list_pending_users(db=sess, _auth={"role": "supervisor"}, tenant_id="t1", limit=50, offset=0)
     assert "LIMIT" in sess.sql.upper()
 
 
@@ -294,7 +294,7 @@ async def test_list_cities_is_bounded(make_session, fake_result):
     from app.routers import tenancy
 
     sess = make_session(fake_result(all_rows=[]))
-    await tenancy.list_cities(db=sess, current_user={"role": "supervisor"}, tenant_id="t1", limit=200)
+    await tenancy.list_cities(db=sess, _auth={"role": "supervisor"}, tenant_id="t1", limit=200)
     assert "LIMIT" in sess.sql.upper()
 
 
