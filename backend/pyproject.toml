@@ -17,6 +17,9 @@ dependencies = [
     "python-multipart>=0.0.9",
     "httpx>=0.27",
     "bcrypt>=4.1",
+    # Pure-python magic-byte sniffing for upload validation (#226). No libmagic
+    # system dependency — safer for the Railway/Nixpacks build than python-magic.
+    "filetype>=1.2",
 ]
 
 [project.optional-dependencies]
