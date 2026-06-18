@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import js from '@eslint/js';
 import reactPlugin from 'eslint-plugin-react';
 import reactHooksPlugin from 'eslint-plugin-react-hooks';

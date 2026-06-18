@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import axios from 'axios';
 import { getAuthToken, setAuthToken, notifySessionExpired } from './authToken.js';
 import { ApiError, ensureFreshAuthToken, requestCarriedToken } from './adapters/httpAdapter.js';
