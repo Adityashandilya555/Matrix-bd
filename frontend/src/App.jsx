@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useId } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useSession } from './state/SessionContext.jsx';
 import { useSites } from './state/SitesContext.jsx';
@@ -111,6 +111,11 @@ export default function App() {
     return () => { alive = false; clearInterval(t); };
   }, [authReady, role]);
 
+  // Memoized so the context value identity is stable across renders (both
+  // showToast/onOpenSite are already useCallback) — prevents every consumer
+  // from re-rendering on unrelated App state changes (#232).
+  const pageContextValue = useMemo(() => ({ showToast, onOpenSite }), [showToast, onOpenSite]);
+
   const counts = {
     pipeline:     visibleDrafts.length,
     shortlist:    visibleShortlist.length,
@@ -151,7 +156,7 @@ export default function App() {
         }}>
           {/* Pages inject showToast and onOpenSite via context (see below) or props.
               AppRouter clones page elements with these props via a wrapper. */}
-          <PageContext.Provider value={{ showToast, onOpenSite }}>
+          <PageContext.Provider value={pageContextValue}>
             <Outlet/>
           </PageContext.Provider>
         </main>
@@ -375,8 +380,8 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
                   </div>
                 </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={labelBase}>Escalation cadence</label>
+              <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <legend style={{ ...labelBase, padding: 0, marginBottom: 6 }}>Escalation cadence</legend>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {[
                     { years: 1, label: 'Yearly' },
@@ -401,7 +406,7 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
                     );
                   })}
                 </div>
-              </div>
+              </fieldset>
             </div>
           )}
           {form.rentType === 'revshare' && (

@@ -136,11 +136,24 @@ export default function NsoQueuePage() {
   }, [focusId, state.status]);
 
   const open = (row) => navigate(nsoSiteRoute(row.siteId));
-  const countFor = (tile) => state.items.filter((item) => TILE_STAGES[tile].includes(stageOf(item))).length;
+  // Derive tile counts once per items change rather than re-filtering the whole
+  // queue three times on every render (#233). Logic is byte-identical to the
+  // old `countFor(tile)` — same TILE_STAGES + stageOf filter.
+  const counts = React.useMemo(() => {
+    const out = {};
+    for (const tile of Object.keys(TILE_STAGES)) {
+      out[tile] = state.items.filter((item) => TILE_STAGES[tile].includes(stageOf(item))).length;
+    }
+    return out;
+  }, [state.items]);
+  const countFor = (tile) => counts[tile];
   const toggleTile = (tile) => setFilter((f) => (f === tile ? 'all' : tile));
-  const visibleItems = filter === 'all'
-    ? state.items
-    : state.items.filter((item) => TILE_STAGES[filter].includes(stageOf(item)));
+  // Memoized so the filtered list isn't recomputed on unrelated re-renders.
+  const visibleItems = React.useMemo(() => (
+    filter === 'all'
+      ? state.items
+      : state.items.filter((item) => TILE_STAGES[filter].includes(stageOf(item)))
+  ), [state.items, filter]);
   const COLS = '120px minmax(220px, 1fr) 130px 150px 150px 160px 110px';
 
   return (

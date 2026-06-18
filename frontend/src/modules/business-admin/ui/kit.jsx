@@ -459,6 +459,10 @@ export function Drawer({ open, onClose, title, subtitle, headerRight, children, 
   if (!open) return null;
   const drawer = (
     <div className="ac-root ac-portal-root" data-theme={portalTheme}>
+      {/* Presentational modal scrim — mousedown on the scrim itself dismisses
+          the dialog; the dialog (role="dialog") owns keyboard focus and its
+          header carries a real Close button, so the scrim isn't a focus target. */}
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div className="ac-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
       <div ref={drawerRef} className="ac-drawer" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="ac-drawer-header" style={{ padding: '18px 22px', borderBottom: `1px solid ${T.line}`, display: 'flex', alignItems: 'flex-start', gap: 12 }}>

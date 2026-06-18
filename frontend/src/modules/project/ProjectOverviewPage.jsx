@@ -8,6 +8,7 @@ import SubFilterPill from '../shared/primitives/SubFilterPill.jsx';
 import { getProjectQueue } from '../../services/api/projectApi.js';
 import { ROUTES } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
+import { keyActivate } from '../../lib/a11y.js';
 
 // Project module overview — four drill-down KPIs over the project queue:
 //   Ⅰ In Project    — every site in the queue (Pipeline + Sites).
@@ -101,7 +102,10 @@ function QueueTable({ rows, onOpen }) {
         <div
           key={row.siteId}
           className="zm-row"
+          role="button"
+          tabIndex={0}
           onClick={() => onOpen(row)}
+          onKeyDown={keyActivate(() => onOpen(row))}
           style={{
             display: 'grid',
             gridTemplateColumns: COLS,

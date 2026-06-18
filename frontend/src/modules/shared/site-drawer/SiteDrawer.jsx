@@ -416,6 +416,10 @@ export default function SiteDrawer({ site, onClose }) {
   if (!site) return null;
   return (
     <>
+      {/* Presentational scrim — click only dismisses the drawer; it carries no
+          information and isn't a focus target (the drawer's own close button
+          provides the keyboard-reachable affordance). */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div onClick={onClose} style={{
         position: 'absolute', inset: 0, background: 'rgba(17,24,39,0.32)',
         animation: 'zm-fade 200ms var(--zm-ease)',

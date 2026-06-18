@@ -545,7 +545,7 @@ async def svc_nso_queue(
             projects = {p.site_id: p for p in (await session.execute(
                 select(models.ProjectReview).where(models.ProjectReview.site_id.in_(site_ids))
             )).scalars()}
-            licensing_rows = {l.site_id: l for l in (await session.execute(
+            licensing_rows = {lic.site_id: lic for lic in (await session.execute(
                 select(models.SiteLicensing).where(models.SiteLicensing.site_id.in_(site_ids))
             )).scalars()}
         items: list[NsoQueueItem] = [

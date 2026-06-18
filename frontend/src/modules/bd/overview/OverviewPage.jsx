@@ -10,6 +10,7 @@ import { useLaunchSites } from '../../../hooks/useLaunchSites.js';
 import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Avatar from '../../shared/primitives/Avatar.jsx';
 import StatusPill from '../../shared/primitives/StatusPill.jsx';
+import { keyActivate } from '../../../lib/a11y.js';
 import Icon from '../../shared/primitives/Icon.jsx';
 import { STAGES } from '../../shared/primitives/constants.js';
 import { ROUTES } from '../../../router/routes.js';
@@ -63,11 +64,15 @@ function MetricCard({ eyebrow, value, rule = 'var(--zm-copper)', delta, deltaTon
   const metaColor = toned ? onColor : 'var(--zm-fg-3)';
   const noColor = toned ? onColor : 'var(--zm-fg-4)';
   return (
+    // KPI card is interactive only when an onClick is supplied; in that branch
+    // it carries role="button" + tabIndex + onKeyDown, so keyboard parity is
+    // fully provided. The rule can't see the conditional role.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div className="zm-glass"
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
-      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+      onKeyDown={onClick ? keyActivate(onClick) : undefined}
       style={{
         borderRadius: 16, padding: '24px 26px 26px',
         display: 'flex', flexDirection: 'column', gap: 12,
@@ -308,7 +313,7 @@ function MotionTable({ rows, onOpen, limit = 12 }) {
         <span>Code</span><span>Site</span><span>City</span><span>Owner</span><span>Days</span><span>Stage</span><span>Detail</span>
       </div>
       {rows.slice(0, limit).map(r => (
-        <div key={r.id} onClick={() => onOpen(r)} className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.7fr 1fr 1fr 0.7fr 1.1fr 1.2fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: r.stage === 'overdue' ? 'rgba(217,119,6,0.06)' : 'transparent', cursor: 'pointer', position: 'relative' }}>
+        <div key={r.id} role="button" tabIndex={0} onClick={() => onOpen(r)} onKeyDown={keyActivate(() => onOpen(r))} className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.7fr 1fr 1fr 0.7fr 1.1fr 1.2fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: r.stage === 'overdue' ? 'rgba(217,119,6,0.06)' : 'transparent', cursor: 'pointer', position: 'relative' }}>
           {r.stage === 'overdue' && <span style={{ position: 'absolute', left: 0, top: 12, bottom: 12, width: 2, background: 'var(--zm-warning)', borderRadius: 2 }}/>}
           <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{r.code}</span>
           <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{r.name}</span>
@@ -334,7 +339,7 @@ function ArchiveTable({ rows, onOpen }) {
       {rows.map(a => {
         const hasReasons = (a.reasons || []).length > 0;
         return (
-          <div key={a.id} onClick={() => onOpen?.(a)} className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1.1fr 0.9fr 1.5fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', cursor: 'pointer', position: 'relative', alignItems: 'flex-start' }}>
+          <div key={a.id} role="button" tabIndex={0} onClick={() => onOpen?.(a)} onKeyDown={keyActivate(() => onOpen?.(a))} className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1.1fr 0.9fr 1.5fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', cursor: 'pointer', position: 'relative', alignItems: 'flex-start' }}>
             <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)', paddingTop: 2 }}>{a.code}</span>
             <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{a.name}</span>
             <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{a.city}</span>

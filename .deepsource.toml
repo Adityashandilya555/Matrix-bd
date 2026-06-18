@@ -6,6 +6,11 @@ enabled = true
 
   [analyzers.meta]
   environment = ["browser", "es2022", "node"]
+  # ESM + JSX so DeepSource's parser stops emitting JS-0833 "import/export only with
+  # sourceType: module" false-positives on the ES modules (#223 1.3) — the proper
+  # fix that makes the per-file `skipcq: JS-0833` band-aids unnecessary.
+  module_system = "esm"
+  dialect = "jsx"
 
 [[analyzers]]
 name = "python"

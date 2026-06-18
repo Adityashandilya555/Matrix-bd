@@ -25,6 +25,7 @@ function EyeIcon({ size = 16 }) {
 
 export function LOITimelineModal({ site, onCancel, onSubmit }) {
   const [days, setDays] = React.useState(14);
+  const daysId = React.useId();
   // Guard against double-submit: a second click before the first approve
   // resolves double-fires the (unlocked) backend state transition. (#96)
   const [submitting, setSubmitting] = React.useState(false);
@@ -48,9 +49,9 @@ export function LOITimelineModal({ site, onCancel, onSubmit }) {
           <button onClick={onCancel} className="zm-icon-btn" style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 8, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--zm-fg-2)', cursor: 'pointer', flex: '0 0 30px' }}><Icon name="x" size={14}/></button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <label style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)' }}>Days from today</label>
+          <label htmlFor={daysId} style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)' }}>Days from today</label>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <input type="number" min="1" max="120" value={days} onChange={(e) => setDays(Math.max(1, Math.min(120, Number(e.target.value) || 0)))} style={{ width: 110, height: 56, padding: '0 14px', background: 'var(--zm-bg)', border: '1px solid var(--zm-line)', borderRadius: 8, fontFamily: 'var(--zm-font-mono)', fontSize: 28, fontWeight: 600, color: 'var(--zm-fg)', outline: 'none', textAlign: 'center' }}/>
+            <input id={daysId} type="number" min="1" max="120" value={days} onChange={(e) => setDays(Math.max(1, Math.min(120, Number(e.target.value) || 0)))} style={{ width: 110, height: 56, padding: '0 14px', background: 'var(--zm-bg)', border: '1px solid var(--zm-line)', borderRadius: 8, fontFamily: 'var(--zm-font-mono)', fontSize: 28, fontWeight: 600, color: 'var(--zm-fg)', outline: 'none', textAlign: 'center' }}/>
             <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-2)' }}>days · target date{' '}<strong style={{ color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-mono)' }}>{new Date(Date.now() + days * 86400000).toISOString().slice(0,10)}</strong></span>
           </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>

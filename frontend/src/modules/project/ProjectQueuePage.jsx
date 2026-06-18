@@ -8,6 +8,7 @@ import { getProjectQueue } from '../../services/api/projectApi.js';
 import { projectSiteRoute } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 import { useFocusSite } from '../../hooks/useFocusSite.js';
+import { keyActivate } from '../../lib/a11y.js';
 
 const STATUS_LABELS = {
   pending: 'Awaiting allocation',
@@ -195,7 +196,10 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
               key={row.siteId}
               data-site-id={row.siteId}
               className="zm-row"
+              role="button"
+              tabIndex={0}
               onClick={() => open(row)}
+              onKeyDown={keyActivate(() => open(row))}
               style={{
                 display: 'grid',
                 gridTemplateColumns: COLS,

@@ -262,6 +262,9 @@ function FinanceStatusBadge({ status }) {
 }
 
 function FinancePanel({ data, role, onClose, onUpdate }) {
+  const kycId    = React.useId();
+  const caCodeId = React.useId();
+  const amountId = React.useId();
   const siteStatus   = data.siteStatus ?? '';
   const accessible   = PAYMENT_READY_STATUSES.has(siteStatus) || Boolean(data.loiUploadedAt);
   const financeStatus = data.financeStatus ?? 'pending';
@@ -450,7 +453,7 @@ function FinancePanel({ data, role, onClose, onUpdate }) {
           <>
             {/* Step 1 — KYC */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{
+              <label htmlFor={kycId} style={{
                 fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 11.5,
                 textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--zm-fg-2)',
               }}>
@@ -462,6 +465,7 @@ function FinancePanel({ data, role, onClose, onUpdate }) {
                 opacity: isLocked ? 0.6 : 1,
               }}>
                 <input
+                  id={kycId}
                   type="checkbox"
                   checked={kycVerified}
                   disabled={isLocked}
@@ -482,13 +486,14 @@ function FinancePanel({ data, role, onClose, onUpdate }) {
             {/* Step 2 — CA Code (visible only when KYC checked) */}
             {kycVerified && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={{
+                <label htmlFor={caCodeId} style={{
                   fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 11.5,
                   textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--zm-fg-2)',
                 }}>
                   Step 2 · CA / Commercial Code
                 </label>
                 <input
+                  id={caCodeId}
                   type="text"
                   value={caCode}
                   disabled={isLocked}
@@ -507,13 +512,14 @@ function FinancePanel({ data, role, onClose, onUpdate }) {
             {/* Step 3 — Amount (visible only when CA code is set) */}
             {kycVerified && caCode.trim() && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={{
+                <label htmlFor={amountId} style={{
                   fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 11.5,
                   textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--zm-fg-2)',
                 }}>
                   Step 3 · Token Amount (₹)
                 </label>
                 <input
+                  id={amountId}
                   type="number"
                   value={amount}
                   disabled={isLocked}

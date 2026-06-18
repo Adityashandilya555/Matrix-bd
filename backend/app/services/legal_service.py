@@ -24,8 +24,6 @@ from sqlalchemy import desc, or_, select, text
 from sqlalchemy.exc import ProgrammingError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = logging.getLogger(__name__)
-
 from app.db import models
 from app.db.session import transaction
 from app.domain.schemas.legal import (
