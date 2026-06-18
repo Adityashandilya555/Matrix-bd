@@ -77,6 +77,32 @@ class _RequestIdMiddleware(BaseHTTPMiddleware):
             _request_id_var.reset(token)
 
 
+# ── Security response headers (#227) ──────────────────────────────────────────
+
+class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add defense-in-depth security headers to every response.
+
+    Only ADDS headers (via setdefault) — never strips existing ones — so the
+    CORS headers set by CORSMiddleware, including the error-path re-application
+    in `_cors_headers_for`, are preserved. Deliberately sets NO Content-Security
+    -Policy: a CSP on API JSON responses adds no value and risks breaking calls;
+    the SPA's CSP is applied at the Vercel edge (frontend/vercel.json). HSTS is
+    emitted only on HTTPS so local http dev and health checks are unaffected
+    (the scheme is proxy-corrected from X-Forwarded-Proto on Railway).
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        if request.url.scheme == "https":
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=63072000; includeSubDomains"
+            )
+        return response
+
+
 # ── Background email drain (#112) ─────────────────────────────────────────────
 
 async def _email_drain_loop() -> None:
@@ -167,6 +193,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Added after CORS (so it wraps it): only adds headers, never strips, so CORS —
+# including the error-path re-application — is preserved (#227).
+app.add_middleware(_SecurityHeadersMiddleware)
 app.add_middleware(_RequestIdMiddleware)  # outermost — runs first on ingress
 
 
