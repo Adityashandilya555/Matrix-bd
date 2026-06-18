@@ -5,6 +5,7 @@ import asyncio
 import contextvars
 import json
 import logging
+import os
 import re
 import uuid
 from contextlib import asynccontextmanager, suppress
@@ -53,6 +54,41 @@ logging.root.handlers = [_handler]
 logging.root.setLevel(getattr(logging, settings.log_level, logging.INFO))
 
 log = logging.getLogger("matrix.api")
+
+
+def _int_or_zero(value: str | None) -> int:
+    """Parse an env var into a non-negative int; 0 on unset/garbage."""
+    try:
+        return max(0, int(value)) if value else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _warn_if_scaled_out() -> None:
+    """Warn at startup if >1 worker/replica is configured while the rate-limiter
+    store is the process-local in-memory dict (#225, 3.2).
+
+    The limiter store (app/core/ratelimit.py) is valid ONLY for a single process
+    on a single replica. With >1 worker/replica each process keeps its own
+    windows, so the effective limit is multiplied and load-balanced attackers get
+    a fresh counter per worker. No Redis store exists yet, so scaling out silently
+    weakens brute-force protection — warn loudly rather than fail the boot. Keep
+    WEB_CONCURRENCY unset / replicas = 1 until the store is migrated to Redis.
+    """
+    concurrency = max(
+        _int_or_zero(os.getenv("WEB_CONCURRENCY")),
+        _int_or_zero(os.getenv("UVICORN_WORKERS")),
+        _int_or_zero(os.getenv("RAILWAY_REPLICA_COUNT")),
+    )
+    if concurrency > 1:
+        log.warning(
+            "startup: in-memory rate limiter active but %d workers/replicas are "
+            "configured — windows are NOT shared across processes, so the "
+            "effective per-client limit is multiplied and brute-force protection "
+            "is weakened (#225). Run a single process/replica, or migrate the "
+            "limiter store to Redis before scaling out.",
+            concurrency,
+        )
 
 
 # ── Request ID middleware (#117) ──────────────────────────────────────────────
@@ -145,6 +181,10 @@ async def lifespan(app: FastAPI):
             "startup: database connection failed — exiting so Railway restarts: %s", exc
         )
         raise SystemExit(1) from exc  # triggers ON_FAILURE restart
+
+    # Warn (don't fail) if the deployment scales out past the single-process
+    # invariant the in-memory rate limiter relies on (#225, 3.2).
+    _warn_if_scaled_out()
 
     # ── Start background email drain (only when RESEND_API_KEY is configured).
     drain_task: asyncio.Task | None = None

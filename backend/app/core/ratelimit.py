@@ -7,6 +7,19 @@ workspace codes / passwords / reset tokens and queue-flooding bots. If the
 deployment ever scales horizontally, swap the store for Redis — the dependency
 interface stays the same.
 
+Two deployment invariants this limiter depends on (#225):
+
+* Single process / replica. The window store is a process-local dict, NOT
+  shared across workers. Running >1 worker/replica multiplies the effective
+  limit and lets a load-balanced attacker get a fresh counter per worker. The
+  app lifespan logs a loud startup warning if WEB_CONCURRENCY/replicas > 1.
+  Keep it at one until the store is migrated to Redis.
+* Scoped trusted proxy. The client IP comes from request.client.host, which
+  uvicorn rewrites from X-Forwarded-For ONLY for trusted upstreams. railway.json
+  must set --forwarded-allow-ips to the private-network ranges (Railway's proxy),
+  never '*' — '*' makes uvicorn copy the attacker-controlled XFF[0] verbatim and
+  re-opens the spoofing bypass this limiter is meant to stop.
+
 Usage::
 
     @router.post("/login", dependencies=[Depends(rate_limit(times=10, seconds=60))])
@@ -26,11 +39,15 @@ _LAST_PRUNE = 0.0
 
 
 def _client_ip(request: Request) -> str:
-    # Railway terminates TLS in front of us; the original client lands in
-    # X-Forwarded-For (first hop). Fall back to the socket peer for local dev.
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[0].strip()
+    # Use the socket peer that uvicorn resolved — NEVER the raw X-Forwarded-For
+    # header (#225). The raw header is fully attacker-controlled on every
+    # request, so keying on XFF[0] let a spoofer mint a fresh window per call
+    # and bypass the limit entirely. uvicorn's --proxy-headers, with a SCOPED
+    # --forwarded-allow-ips (trusting only Railway's private-network proxy, not
+    # '*'), rewrites request.client.host to the real client by walking
+    # X-Forwarded-For right-to-left past trusted hops — so the value here is the
+    # genuine client even when a malicious XFF is present, and falls back to the
+    # true socket peer in local dev where no proxy is in front.
     return request.client.host if request.client else "unknown"
 
 

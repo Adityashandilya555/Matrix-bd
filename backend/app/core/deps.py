@@ -1,6 +1,7 @@
 """FastAPI dependencies: get_db, get_current_user, get_tenant."""
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Optional
 
 from fastapi import Depends, Header
@@ -11,6 +12,8 @@ from app.core.config import settings
 from app.core.security import AuthError, decode_token
 from app.db.session import get_db
 
+
+_log = logging.getLogger("matrix.deps")
 
 DbDep = Annotated[AsyncSession, Depends(get_db)]
 
@@ -47,6 +50,14 @@ async def get_current_user(
     """
     if not authorization:
         if settings.allow_anon_demo_user:
+            # Boot-time validator (#224) already confined this flag to
+            # insecure-dev mode; log each time the bypass is actually exercised
+            # so an accidental dev-mode deploy is visible in the request logs.
+            _log.warning(
+                "ALLOW_ANON_DEMO_USER bypass taken — header-less request "
+                "authenticated as demo executive on tenant %s",
+                _DEMO_USER["tenant_id"],
+            )
             return _DEMO_USER
         raise AuthError("Missing Authorization header")
 
