@@ -820,7 +820,16 @@ async def set_tenant_branding(
     if not tenant:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found.")
 
+    # The SELECT above auto-began a read transaction on the session. Release it
+    # BEFORE the (up-to-30s) storage upload so we don't hold a connection / scarce
+    # pgBouncer slot across slow external I/O (#235; mirrors the #89 LOI/photo/
+    # design fix). Only plain values are carried across the rollback; the UPDATE
+    # below targets WHERE id = :id and does not depend on the released read. No
+    # FOR UPDATE is needed — last-write-wins on branding metadata is acceptable.
+    new_name = (name or "").strip() or tenant["name"]
     logo_path = tenant["logo_url"]
+    await db.rollback()
+
     if logo is not None:
         body = await read_upload_capped(logo)
         if body:
@@ -832,7 +841,6 @@ async def set_tenant_branding(
                 content_type=logo.content_type or "image/png",
             )
 
-    new_name = (name or "").strip() or tenant["name"]
     await db.execute(
         text("UPDATE tenants SET name = :name, logo_url = :logo WHERE id = :id"),
         {"name": new_name, "logo": logo_path, "id": tenant_id},
