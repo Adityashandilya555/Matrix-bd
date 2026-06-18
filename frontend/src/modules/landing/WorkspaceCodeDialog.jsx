@@ -46,6 +46,10 @@ export default function WorkspaceCodeDialog({ open, onClose }) {
 
   return (
     <div className="wsc-overlay" role="presentation" onMouseDown={onClose}>
+      {/* onMouseDown only stops the click from bubbling to the overlay scrim
+          (which closes the dialog); the dialog body is not itself an
+          interactive control — its inner controls own their own keyboard. */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <div className="wsc-card" role="dialog" aria-modal="true" aria-label="Enter workspace code"
         onMouseDown={(e) => e.stopPropagation()}>
 

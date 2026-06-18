@@ -391,19 +391,26 @@ export default function PaymentStubPage() {
   useSiteDataRefresh(load);
 
   const rows = state.rows;
-  const counts = rows.reduce((acc, site) => {
+  // Memoized over the loaded rows so the per-state tally isn't recomputed on
+  // every unrelated re-render (search keystrokes, filter clicks) (#233).
+  // Byte-identical reduce.
+  const counts = React.useMemo(() => rows.reduce((acc, site) => {
     const key = paymentState(site);
     acc[key] = (acc[key] || 0) + 1;
     return acc;
-  }, { pending: 0, awaiting: 0, approved: 0 });
+  }, { pending: 0, awaiting: 0, approved: 0 }), [rows]);
 
-  const needle = q.trim().toLowerCase();
-  const visible = rows.filter((site) => {
-    if (filter !== 'all' && paymentState(site) !== filter) return false;
-    if (!needle) return true;
-    const hay = `${site.siteCode || ''} ${site.siteName || ''} ${site.city || ''}`.toLowerCase();
-    return hay.includes(needle);
-  });
+  // Memoized filtered list — same filter + needle predicate as before; recomputes
+  // only when rows, the search box, or the active filter change.
+  const visible = React.useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return rows.filter((site) => {
+      if (filter !== 'all' && paymentState(site) !== filter) return false;
+      if (!needle) return true;
+      const hay = `${site.siteCode || ''} ${site.siteName || ''} ${site.city || ''}`.toLowerCase();
+      return hay.includes(needle);
+    });
+  }, [rows, q, filter]);
 
   const openPayment = (site) => {
     navigate(`${siteTrackerDetailRoute(site.siteId)}?node=ca`);

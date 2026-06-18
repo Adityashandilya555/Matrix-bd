@@ -10,6 +10,7 @@ import { useLaunchSites } from '../../../hooks/useLaunchSites.js';
 import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Avatar from '../../shared/primitives/Avatar.jsx';
 import StatusPill from '../../shared/primitives/StatusPill.jsx';
+import { keyActivate } from '../../../lib/a11y.js';
 import Icon from '../../shared/primitives/Icon.jsx';
 import { STAGES } from '../../shared/primitives/constants.js';
 import { ROUTES } from '../../../router/routes.js';
@@ -63,11 +64,15 @@ function MetricCard({ eyebrow, value, rule = 'var(--zm-copper)', delta, deltaTon
   const metaColor = toned ? onColor : 'var(--zm-fg-3)';
   const noColor = toned ? onColor : 'var(--zm-fg-4)';
   return (
+    // KPI card is interactive only when an onClick is supplied; in that branch
+    // it carries role="button" + tabIndex + onKeyDown, so keyboard parity is
+    // fully provided. The rule can't see the conditional role.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div className="zm-glass"
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
-      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+      onKeyDown={onClick ? keyActivate(onClick) : undefined}
       style={{
         borderRadius: 16, padding: '24px 26px 26px',
         display: 'flex', flexDirection: 'column', gap: 12,
@@ -206,7 +211,7 @@ function RangeCalendar({ from, to, onChange }) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
         {['S','M','T','W','T','F','S'].map((d, i) => (<span key={i} style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 9.5, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--zm-fg-4)', textAlign: 'center', padding: '4px 0' }}>{d}</span>))}
-        {cells.map((d, i) => { if (!d) return <span key={i} style={{ height: 28 }}/>; const startSel = sameDay(d, fromD); const endSel = sameDay(d, toD); const within = inRange(d) && !startSel && !endSel; return (<button key={i} onClick={() => pick(d)} className="zm-cal-day" data-state={startSel ? 'start' : endSel ? 'end' : within ? 'within' : 'idle'} style={{ height: 28, padding: 0, border: 'none', borderRadius: startSel ? '999px 0 0 999px' : endSel ? '0 999px 999px 0' : within ? 0 : 6, background: (startSel || endSel) ? 'var(--zm-accent)' : within ? 'var(--zm-accent-soft)' : 'transparent', color: (startSel || endSel) ? '#fff' : within ? 'var(--zm-accent)' : 'var(--zm-fg)', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 12, fontWeight: (startSel || endSel) ? 700 : 500, cursor: 'pointer' }}>{d.getDate()}</button>); })}
+        {cells.map((d, i) => { const cellKey = d ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` : `null-${i}`; if (!d) return <span key={cellKey} style={{ height: 28 }}/>; const startSel = sameDay(d, fromD); const endSel = sameDay(d, toD); const within = inRange(d) && !startSel && !endSel; return (<button key={cellKey} onClick={() => pick(d)} className="zm-cal-day" data-state={startSel ? 'start' : endSel ? 'end' : within ? 'within' : 'idle'} style={{ height: 28, padding: 0, border: 'none', borderRadius: startSel ? '999px 0 0 999px' : endSel ? '0 999px 999px 0' : within ? 0 : 6, background: (startSel || endSel) ? 'var(--zm-accent)' : within ? 'var(--zm-accent-soft)' : 'transparent', color: (startSel || endSel) ? '#fff' : within ? 'var(--zm-accent)' : 'var(--zm-fg)', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 12, fontWeight: (startSel || endSel) ? 700 : 500, cursor: 'pointer' }}>{d.getDate()}</button>); })}
       </div>
     </div>
   );
@@ -308,7 +313,7 @@ function MotionTable({ rows, onOpen, limit = 12 }) {
         <span>Code</span><span>Site</span><span>City</span><span>Owner</span><span>Days</span><span>Stage</span><span>Detail</span>
       </div>
       {rows.slice(0, limit).map(r => (
-        <div key={r.id} onClick={() => onOpen(r)} className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.7fr 1fr 1fr 0.7fr 1.1fr 1.2fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: r.stage === 'overdue' ? 'rgba(217,119,6,0.06)' : 'transparent', cursor: 'pointer', position: 'relative' }}>
+        <div key={r.id} role="button" tabIndex={0} onClick={() => onOpen(r)} onKeyDown={keyActivate(() => onOpen(r))} className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.7fr 1fr 1fr 0.7fr 1.1fr 1.2fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: r.stage === 'overdue' ? 'rgba(217,119,6,0.06)' : 'transparent', cursor: 'pointer', position: 'relative' }}>
           {r.stage === 'overdue' && <span style={{ position: 'absolute', left: 0, top: 12, bottom: 12, width: 2, background: 'var(--zm-warning)', borderRadius: 2 }}/>}
           <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{r.code}</span>
           <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{r.name}</span>
@@ -334,7 +339,7 @@ function ArchiveTable({ rows, onOpen }) {
       {rows.map(a => {
         const hasReasons = (a.reasons || []).length > 0;
         return (
-          <div key={a.id} onClick={() => onOpen?.(a)} className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1.1fr 0.9fr 1.5fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', cursor: 'pointer', position: 'relative', alignItems: 'flex-start' }}>
+          <div key={a.id} role="button" tabIndex={0} onClick={() => onOpen?.(a)} onKeyDown={keyActivate(() => onOpen?.(a))} className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1.1fr 0.9fr 1.5fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', cursor: 'pointer', position: 'relative', alignItems: 'flex-start' }}>
             <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)', paddingTop: 2 }}>{a.code}</span>
             <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{a.name}</span>
             <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{a.city}</span>
@@ -400,27 +405,27 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
   const ME = user.name;
   // RBAC: isExec = cannot shortlist (exec cannot approve); used for scope/display logic in render body
   const isExec = !can(role, 'shortlist');
-  const visibleDrafts    = isExec ? filterByScope(drafts, role, user) : drafts;
-  const visibleShortlist = isExec ? filterByScope(shortlist, role, user) : shortlist;
-  const visibleStaging   = isExec ? filterByScope(staging, role, user) : staging;
+  const visibleDrafts    = React.useMemo(() => isExec ? filterByScope(drafts, role, user) : drafts, [isExec, drafts, role, user]);
+  const visibleShortlist = React.useMemo(() => isExec ? filterByScope(shortlist, role, user) : shortlist, [isExec, shortlist, role, user]);
+  const visibleStaging   = React.useMemo(() => isExec ? filterByScope(staging, role, user) : staging, [isExec, staging, role, user]);
   // "Sites in process" for KPI math = pre-push only. Pushed sites belong to
   // the Payments KPI (Legal ∥ Finance run in parallel after the push).
-  const activeStaging = visibleStaging.filter(s => !s.pushed);
+  const activeStaging = React.useMemo(() => visibleStaging.filter(s => !s.pushed), [visibleStaging]);
 
   // Executives count only their own pushed/launch sites — mirrors the
   // payments tab scoping (backend scopes real exec JWTs; this covers mock
   // mode and the supervisor "View as" switcher).
-  const visibleLaunch = isExec ? filterByScope(launch.rows || [], role, user) : (launch.rows || []);
-  const launchIds = new Set(visibleLaunch.map(r => r.id));
-  const pushedSites = sites.filter(s => PUSHED_STATUSES.includes(s.status));
-  const paymentSites = (isExec ? filterByScope(pushedSites, role, user) : pushedSites).filter(s => !launchIds.has(s.id));
+  const visibleLaunch = React.useMemo(() => isExec ? filterByScope(launch.rows || [], role, user) : (launch.rows || []), [isExec, launch.rows, role, user]);
+  const launchIds = React.useMemo(() => new Set(visibleLaunch.map(r => r.id)), [visibleLaunch]);
+  const pushedSites = React.useMemo(() => sites.filter(s => PUSHED_STATUSES.includes(s.status)), [sites]);
+  const paymentSites = React.useMemo(() => (isExec ? filterByScope(pushedSites, role, user) : pushedSites).filter(s => !launchIds.has(s.id)), [isExec, pushedSites, role, user, launchIds]);
 
-  const totalSites = visibleDrafts.length + visibleShortlist.length + activeStaging.length;
-  const cityCount = new Set([...visibleDrafts.map(d => d.city), ...visibleShortlist.map(s => s.city), ...activeStaging.map(s => s.city)]).size;
+  const totalSites = React.useMemo(() => visibleDrafts.length + visibleShortlist.length + activeStaging.length, [visibleDrafts, visibleShortlist, activeStaging]);
+  const cityCount = React.useMemo(() => new Set([...visibleDrafts.map(d => d.city), ...visibleShortlist.map(s => s.city), ...activeStaging.map(s => s.city)]).size, [visibleDrafts, visibleShortlist, activeStaging]);
   const archivedOnly = archive.filter(a => a.status === SiteStatus.ARCHIVED).length;
   const rejectedOnly = archive.length - archivedOnly;
 
-  const metrics = {
+  const metrics = React.useMemo(() => ({
     total: {
       value: String(totalSites).padStart(2, '0'),
       delta: isExec ? `Your sites · ${ME.split(' ')[0]}` : 'Tenant-wide',
@@ -444,42 +449,44 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
       deltaTone: launch.loading ? 'neutral' : 'pos',
       sub: 'Handed to NSO',
     },
-  };
+  }), [totalSites, isExec, ME, cityCount, archive, archivedOnly, rejectedOnly, paymentSites, launch.loading, visibleLaunch]);
 
   // Rows for the "all files in motion" table (default view) — includes pushed
   // sites so nothing disappears from the default listing.
-  const allMotion = [
+  const allMotion = React.useMemo(() => [
     ...visibleDrafts.map(d => ({ id: d.id, code: d.code, name: d.name, city: d.city, stage: 'draft', days: d.days, owner: d.createdBy, when: d.visitDate, meta: 'Visit ' + d.visitDate })),
     ...visibleShortlist.map(s => ({ id: s.code, code: s.code, name: s.name, city: s.city, stage: s.inReview ? 'inReview' : 'shortlist', days: 3, owner: s.createdBy, when: s.visitDate, meta: s.inReview ? 'In review' : 'Awaiting details' })),
     ...visibleStaging.map(s => { const overdue = s.daysSinceApproval > s.expectedLoiDays && !s.loiUploaded; return { id: s.id, code: s.code, name: s.name, city: s.city, stage: s.pushed ? 'completed' : s.loiUploaded ? 'uploaded' : (overdue ? 'overdue' : 'staging'), days: s.daysSinceApproval, owner: s.createdBy, when: s.draftDate || s.approvedDate, meta: `LOI ${s.daysSinceApproval}/${s.expectedLoiDays}d` }; }),
-  ];
-  // The expanded "Total sites" view counts only pre-push files.
-  const totalMotion = allMotion.filter(r => r.stage !== 'completed');
+  ], [visibleDrafts, visibleShortlist, visibleStaging]);
 
-  const needle = search.trim().toLowerCase();
-  const baseRows = view === 'sites' ? totalMotion : allMotion;
-  const stageFiltered = stage === 'all' ? baseRows : baseRows.filter(r => {
-    if (stage === 'staging') return ['staging','overdue','uploaded','completed'].includes(r.stage);
-    if (stage === 'shortlist') return ['shortlist','inReview'].includes(r.stage);
-    return r.stage === stage;
-  });
-  const subFiltered = (view === 'sites' && subFilter !== 'all')
-    ? stageFiltered.filter(r => {
-        if (stage === 'shortlist') return r.stage === (subFilter === 'pending' ? 'inReview' : 'shortlist');
-        if (stage === 'staging') return subFilter === 'awaiting_loi' ? ['staging', 'overdue'].includes(r.stage) : r.stage === 'uploaded';
-        return true;
-      })
-    : stageFiltered;
-  const filteredMotion = subFiltered
-    .filter(r => matchesAdvanced(r.when, advanced))
-    .filter(r => matchesSearch(needle, r.code || '', r.name || '', r.city || '', r.owner || ''));
+  const filteredMotion = React.useMemo(() => {
+    const base = view === 'sites' ? allMotion.filter(r => r.stage !== 'completed') : allMotion;
+    const stageFiltered = stage === 'all' ? base : base.filter(r => {
+      if (stage === 'staging') return ['staging','overdue','uploaded','completed'].includes(r.stage);
+      if (stage === 'shortlist') return ['shortlist','inReview'].includes(r.stage);
+      return r.stage === stage;
+    });
+    const subFiltered = (view === 'sites' && subFilter !== 'all')
+      ? stageFiltered.filter(r => {
+          if (stage === 'shortlist') return r.stage === (subFilter === 'pending' ? 'inReview' : 'shortlist');
+          if (stage === 'staging') return subFilter === 'awaiting_loi' ? ['staging', 'overdue'].includes(r.stage) : r.stage === 'uploaded';
+          return true;
+        })
+      : stageFiltered;
+    const n = search.trim().toLowerCase();
+    return subFiltered
+      .filter(r => matchesAdvanced(r.when, advanced))
+      .filter(r => matchesSearch(n, r.code || '', r.name || '', r.city || '', r.owner || ''));
+  }, [view, stage, subFilter, advanced, search, allMotion]);
 
   // Archived rows + filters.
-  const archNeedle = archSearch.trim().toLowerCase();
-  const filteredArchive = archive
-    .filter(a => archStatus === 'all' ? true : archStatus === 'archived' ? a.status === SiteStatus.ARCHIVED : REJECTED_STATUSES.includes(a.status))
-    .filter(a => matchesAdvanced(a.archivedAt, archAdvanced))
-    .filter(a => matchesSearch(archNeedle, a.code || '', a.name || '', a.city || '', a.createdBy || ''));
+  const filteredArchive = React.useMemo(() => {
+    const archNeedle = archSearch.trim().toLowerCase();
+    return archive
+      .filter(a => archStatus === 'all' ? true : archStatus === 'archived' ? a.status === SiteStatus.ARCHIVED : REJECTED_STATUSES.includes(a.status))
+      .filter(a => matchesAdvanced(a.archivedAt, archAdvanced))
+      .filter(a => matchesSearch(archNeedle, a.code || '', a.name || '', a.city || '', a.createdBy || ''));
+  }, [archive, archStatus, archAdvanced, archSearch]);
 
   // Row click → owning tab, focused on that exact site (?focus= handled by
   // useFocusSite in the target page).

@@ -10,6 +10,7 @@ import { listLegalDelegationsForSite } from '../../services/api/legalDelegationA
 import { legalSiteAgreementRoute, legalSiteDdrRoute, legalSiteLicensingRoute } from '../../router/routes.js';
 import { agreementAllowsLicensing, normalizeAgreementStatus } from '../../lib/agreementStatus.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
+import { keyActivate } from '../../lib/a11y.js';
 
 const STATUS_LABELS = {
   pending:   { label: 'Awaiting review',    tone: 'var(--zm-fg-3)' },
@@ -237,7 +238,10 @@ export default function LegalQueuePage() {
               key={row.siteId}
               data-site-id={row.siteId}
               className="zm-row"
+              role="button"
+              tabIndex={0}
               onClick={() => open(row)}
+              onKeyDown={keyActivate(() => open(row))}
               style={{
                 display: 'grid',
                 gridTemplateColumns: '120px minmax(220px, 1fr) 140px 160px 140px',

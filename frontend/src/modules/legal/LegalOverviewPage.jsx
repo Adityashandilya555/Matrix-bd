@@ -9,6 +9,7 @@ import { getLegalQueue } from '../../services/api/legalApi.js';
 import { listPendingChangeRequests } from '../../services/api/changeRequestApi.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 import { ROUTES } from '../../router/routes.js';
+import { keyActivate } from '../../lib/a11y.js';
 
 // Legal module overview — four drill-down KPIs over the legal queue +
 // change-request backlog:
@@ -77,7 +78,10 @@ function QueueTable({ rows, onOpen }) {
         <div
           key={row.siteId}
           className="zm-row"
+          role="button"
+          tabIndex={0}
           onClick={() => onOpen(row)}
+          onKeyDown={keyActivate(() => onOpen(row))}
           style={{
             display: 'grid',
             gridTemplateColumns: '120px minmax(220px, 1fr) 140px 160px',

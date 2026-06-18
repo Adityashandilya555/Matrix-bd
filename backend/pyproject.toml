@@ -53,6 +53,14 @@ filterwarnings = [
 # the two mutually-exclusive multiline-summary rules so that a broader `--select D`
 # (stylistic D2xx/D4xx) can be adopted in a later phase without churn.
 extend-ignore = ["D100", "D104", "D107", "D203", "D213"]
+# C901 cyclomatic-complexity gate (#223 1.2). Added to the default rule set so a
+# plain `ruff check backend/app` (wired into CI) fails if any function exceeds the
+# ceiling. The whole backend currently passes at 15; keep new/refactored code at
+# or below it (the #240 god-function extractions are tracked separately).
+extend-select = ["C901"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
 
 [tool.ruff.lint.per-file-ignores]
 # Tests don't need docstrings.

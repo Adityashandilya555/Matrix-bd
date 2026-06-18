@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useSession } from './state/SessionContext.jsx';
 import { useSites } from './state/SitesContext.jsx';
@@ -111,6 +111,11 @@ export default function App() {
     return () => { alive = false; clearInterval(t); };
   }, [authReady, role]);
 
+  // Memoized so the context value identity is stable across renders (both
+  // showToast/onOpenSite are already useCallback) — prevents every consumer
+  // from re-rendering on unrelated App state changes (#232).
+  const pageContextValue = useMemo(() => ({ showToast, onOpenSite }), [showToast, onOpenSite]);
+
   const counts = {
     pipeline:     visibleDrafts.length,
     shortlist:    visibleShortlist.length,
@@ -151,7 +156,7 @@ export default function App() {
         }}>
           {/* Pages inject showToast and onOpenSite via context (see below) or props.
               AppRouter clones page elements with these props via a wrapper. */}
-          <PageContext.Provider value={{ showToast, onOpenSite }}>
+          <PageContext.Provider value={pageContextValue}>
             <Outlet/>
           </PageContext.Provider>
         </main>
@@ -207,6 +212,16 @@ const PIPELINE_RENT_TYPES = [
   { id: 'mg_revshare', label: 'MG + Revenue share', sub: 'minimum guarantee + % of sales' },
 ];
 function NewPipelineModal({ onClose, onSubmit, dark }) {
+  const idSite = useId();
+  const idVisitDate = useId();
+  const idCity = useId();
+  const idModel = useId();
+  const idGooglePin = useId();
+  const idExpectedRent = useId();
+  const idEscalation = useId();
+  const idRevshare = useId();
+  const idMgRent = useId();
+  const idMgRevshare = useId();
   const [form, setForm] = useState({ name: '', visitDate: '', city: '', model: '', googlePin: '', googleMapsUrl: '', rentType: '', expectedRent: '', expectedEscalation: '', expectedEscalationYears: '', expectedRevshare: '' });
   const [pinStatus, setPinStatus] = useState(null); // { tone: 'info'|'ok'|'err', msg: string }
   const [submitting, setSubmitting] = useState(false);
@@ -284,16 +299,16 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
           <button onClick={onClose} className="zm-icon-btn" style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 8, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--zm-fg-2)', cursor: 'pointer', flex: '0 0 30px' }}><Icon name="x" size={14}/></button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label style={labelBase}>Site</label><input value={form.name} onChange={set('name')} placeholder="e.g. Powai · Lake Homes" style={inputBase}/></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label htmlFor={idSite} style={labelBase}>Site</label><input id={idSite} value={form.name} onChange={set('name')} placeholder="e.g. Powai · Lake Homes" style={inputBase}/></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label style={labelBase}>Visit date</label><input type="date" value={form.visitDate} onChange={set('visitDate')} style={{ ...inputBase, fontFamily: 'var(--zm-font-mono)', fontSize: 13 }}/></div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label style={labelBase}>City</label><CitySelect value={form.city} onChange={(c) => setForm(prev => ({ ...prev, city: c }))} options={INDIAN_CITIES}/></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label htmlFor={idVisitDate} style={labelBase}>Visit date</label><input id={idVisitDate} type="date" value={form.visitDate} onChange={set('visitDate')} style={{ ...inputBase, fontFamily: 'var(--zm-font-mono)', fontSize: 13 }}/></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label htmlFor={idCity} style={labelBase}>City</label><CitySelect id={idCity} value={form.city} onChange={(c) => setForm(prev => ({ ...prev, city: c }))} options={INDIAN_CITIES}/></div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label style={labelBase}>Model</label><select value={form.model} onChange={set('model')} style={inputBase}><option value="">Select model…</option>{PIPELINE_MODELS.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label htmlFor={idModel} style={labelBase}>Model</label><select id={idModel} value={form.model} onChange={set('model')} style={inputBase}><option value="">Select model…</option>{PIPELINE_MODELS.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={labelBase}>Google pin</label>
-              <input value={form.googlePin || form.googleMapsUrl} onChange={onPinChange} onPaste={onPinPaste} onBlur={onPinBlur} placeholder="Paste Google Maps link or 19.1183, 72.9089" style={{ ...inputBase, fontFamily: 'var(--zm-font-mono)', fontSize: 13 }}/>
+              <label htmlFor={idGooglePin} style={labelBase}>Google pin</label>
+              <input id={idGooglePin} value={form.googlePin || form.googleMapsUrl} onChange={onPinChange} onPaste={onPinPaste} onBlur={onPinBlur} placeholder="Paste Google Maps link or 19.1183, 72.9089" style={{ ...inputBase, fontFamily: 'var(--zm-font-mono)', fontSize: 13 }}/>
               {pinStatus && (
                 <span style={{
                   fontFamily: 'var(--zm-font-body)', fontSize: 11.5,
@@ -315,8 +330,8 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
               )}
             </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={labelBase}>Rent type</label>
+          <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <legend style={{ ...labelBase, padding: 0, marginBottom: 6 }}>Rent type</legend>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
               {PIPELINE_RENT_TYPES.map(rt => (
                 <button
@@ -324,6 +339,7 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
                   key={rt.id}
                   onClick={() => setForm(prev => ({ ...prev, rentType: rt.id }))}
                   className="zm-btn"
+                  aria-pressed={form.rentType === rt.id}
                   style={{
                     textAlign: 'left', padding: 12, borderRadius: 8,
                     border: '1px solid ' + (form.rentType === rt.id ? 'var(--zm-accent)' : 'var(--zm-line)'),
@@ -344,28 +360,28 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
                 </button>
               ))}
             </div>
-          </div>
+          </fieldset>
           {form.rentType === 'fixed' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={labelBase}>Expected rent</label>
+                  <label htmlFor={idExpectedRent} style={labelBase}>Expected rent</label>
                   <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
                     <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderRight: '1px solid var(--zm-line)' }}>₹</span>
-                    <input type="number" min="0" step="any" value={form.expectedRent} onChange={set('expectedRent')} placeholder="120000" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
+                    <input id={idExpectedRent} type="number" min="0" step="any" value={form.expectedRent} onChange={set('expectedRent')} placeholder="120000" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
                     <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>/mo</span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={labelBase}>Escalation</label>
+                  <label htmlFor={idEscalation} style={labelBase}>Escalation</label>
                   <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
-                    <input type="number" min="0" step="any" value={form.expectedEscalation} onChange={set('expectedEscalation')} placeholder="e.g. 4.5" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
+                    <input id={idEscalation} type="number" min="0" step="any" value={form.expectedEscalation} onChange={set('expectedEscalation')} placeholder="e.g. 4.5" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
                     <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>%</span>
                   </div>
                 </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={labelBase}>Escalation cadence</label>
+              <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <legend style={{ ...labelBase, padding: 0, marginBottom: 6 }}>Escalation cadence</legend>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {[
                     { years: 1, label: 'Yearly' },
@@ -390,14 +406,14 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
                     );
                   })}
                 </div>
-              </div>
+              </fieldset>
             </div>
           )}
           {form.rentType === 'revshare' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={labelBase}>Revenue share</label>
+              <label htmlFor={idRevshare} style={labelBase}>Revenue share</label>
               <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
-                <input type="number" min="0" step="any" value={form.expectedRevshare} onChange={set('expectedRevshare')} placeholder="e.g. 12.5" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
+                <input id={idRevshare} type="number" min="0" step="any" value={form.expectedRevshare} onChange={set('expectedRevshare')} placeholder="e.g. 12.5" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
                 <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>% of sales</span>
               </div>
             </div>
@@ -405,17 +421,17 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
           {form.rentType === 'mg_revshare' && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={labelBase}>Minimum guarantee</label>
+                <label htmlFor={idMgRent} style={labelBase}>Minimum guarantee</label>
                 <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
                   <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderRight: '1px solid var(--zm-line)' }}>₹</span>
-                  <input type="number" min="0" step="any" value={form.expectedRent} onChange={set('expectedRent')} placeholder="80000" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
+                  <input id={idMgRent} type="number" min="0" step="any" value={form.expectedRent} onChange={set('expectedRent')} placeholder="80000" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
                   <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>/mo</span>
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={labelBase}>Revenue share</label>
+                <label htmlFor={idMgRevshare} style={labelBase}>Revenue share</label>
                 <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
-                  <input type="number" min="0" step="any" value={form.expectedRevshare} onChange={set('expectedRevshare')} placeholder="e.g. 12.5" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
+                  <input id={idMgRevshare} type="number" min="0" step="any" value={form.expectedRevshare} onChange={set('expectedRevshare')} placeholder="e.g. 12.5" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
                   <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>% above MG</span>
                 </div>
               </div>

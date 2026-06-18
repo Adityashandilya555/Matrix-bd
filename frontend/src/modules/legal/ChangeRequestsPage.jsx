@@ -34,10 +34,16 @@ const btnStyle = (bg, textCol) => ({
 
 function ConfirmModal({ title, message, busy, onConfirm, onClose }) {
   return (
+    // Presentational backdrop — click on the scrim dismisses the modal; the
+    // dialog's own Cancel/Approve buttons provide keyboard dismissal.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events
     <div role="dialog" aria-modal="true" onClick={onClose} style={{
       position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)',
       zIndex: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
     }}>
+      {/* onClick only stops the click from bubbling to the backdrop (which
+          would close the modal); the panel is not an interactive control. */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div onClick={(e) => e.stopPropagation()} style={{
         background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 14,
         width: 'min(460px, 96vw)', padding: 24, display: 'flex', flexDirection: 'column', gap: 14,
@@ -57,10 +63,16 @@ function ConfirmModal({ title, message, busy, onConfirm, onClose }) {
 function PromptModal({ title, placeholder, busy, onConfirm, onClose }) {
   const [text, setText] = React.useState('');
   return (
+    // Presentational backdrop — click on the scrim dismisses the modal; the
+    // dialog's own Cancel/Confirm buttons provide keyboard dismissal.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events
     <div role="dialog" aria-modal="true" onClick={onClose} style={{
       position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)',
       zIndex: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
     }}>
+      {/* onClick only stops the click from bubbling to the backdrop (which
+          would close the modal); the panel is not an interactive control. */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div onClick={(e) => e.stopPropagation()} style={{
         background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 14,
         width: 'min(460px, 96vw)', padding: 24, display: 'flex', flexDirection: 'column', gap: 14,

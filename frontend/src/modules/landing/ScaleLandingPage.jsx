@@ -775,6 +775,10 @@ function AuthModal({ mode, onMode, onClose, prefillEmail, lockRegister = false }
 
   return (
     <div className="scale-auth-overlay" role="presentation" onMouseDown={onClose}>
+      {/* onMouseDown only stops the click from bubbling to the overlay scrim
+          (which closes the dialog); the form itself is not an interactive
+          control and the real Close button below handles keyboard dismissal. */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <form className="scale-auth-card" onSubmit={submitHandler} onMouseDown={(e) => e.stopPropagation()}>
         <button type="button" className="scale-auth-close" onClick={onClose} aria-label="Close auth">×</button>
         {!lockRegister && (

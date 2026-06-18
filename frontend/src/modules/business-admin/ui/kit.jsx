@@ -426,12 +426,24 @@ function getPortalTheme() {
 
 export function Drawer({ open, onClose, title, subtitle, headerRight, children, footer }) {
   const [portalTheme, setPortalTheme] = React.useState(getPortalTheme);
+  const titleId = React.useId();
+  const drawerRef = React.useRef(null);
 
   React.useEffect(() => {
     if (!open) return undefined;
     const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // Move focus into the drawer on open so keyboard/screen-reader users can
+    // navigate its content without tabbing past the rest of the page first.
+    const frame = requestAnimationFrame(() => {
+      const el = drawerRef.current;
+      if (!el) return;
+      const focusable = el.querySelector(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      (focusable || el).focus();
+    });
+    return () => { window.removeEventListener('keydown', onKey); cancelAnimationFrame(frame); };
   }, [open, onClose]);
 
   React.useEffect(() => {
@@ -447,12 +459,16 @@ export function Drawer({ open, onClose, title, subtitle, headerRight, children, 
   if (!open) return null;
   const drawer = (
     <div className="ac-root ac-portal-root" data-theme={portalTheme}>
+      {/* Presentational modal scrim — mousedown on the scrim itself dismisses
+          the dialog; the dialog (role="dialog") owns keyboard focus and its
+          header carries a real Close button, so the scrim isn't a focus target. */}
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div className="ac-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
-      <div className="ac-drawer" role="dialog" aria-modal="true">
+      <div ref={drawerRef} className="ac-drawer" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="ac-drawer-header" style={{ padding: '18px 22px', borderBottom: `1px solid ${T.line}`, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             {subtitle && <div style={{ fontSize: 11.5, letterSpacing: '0.04em', color: T.textMuted, marginBottom: 3 }}>{subtitle}</div>}
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 720, letterSpacing: '-0.015em', color: T.text }}>{title}</h2>
+            <h2 id={titleId} style={{ margin: 0, fontSize: 18, fontWeight: 720, letterSpacing: '-0.015em', color: T.text }}>{title}</h2>
           </div>
           {headerRight}
           <IconButton label="Close" onClick={onClose}><Icon.x size={16} /></IconButton>

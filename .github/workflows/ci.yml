@@ -1,0 +1,63 @@
+name: CI
+
+# Regression substrate for the code-review backlog (#223): every PR and every
+# push to main runs the backend ruff lint (incl. the C901 complexity gate and the
+# #241 docstring gate) + pytest, and the frontend eslint (a11y + context-value
+# guards enforced as errors) + vite build + vitest. A red check here is the gate
+# the per-issue regression guards (#238 hygiene, #241 docstrings, #239 a11y,
+# #230 pagination, #237 axios) rely on to stay enforced.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend · ruff + pytest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install (runtime + dev/test deps + ruff)
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e ".[dev]"
+          pip install ruff
+      - name: Ruff lint (defaults + C901 complexity gate, max-complexity 15)
+        run: ruff check app
+      - name: Ruff docstring gate (#241 Phase 1)
+        run: ruff check app/services --select D101,D102,D103
+      - name: Pytest
+        run: python -m pytest -q
+
+  frontend:
+    name: Frontend · eslint + build + vitest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Lint (a11y + jsx-no-constructed-context-values enforced as errors)
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Test
+        run: npx vitest run

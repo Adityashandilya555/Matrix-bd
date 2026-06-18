@@ -15,6 +15,7 @@ function EyeIcon({ size = 12 }) {
 
 function ReviveDialog({ site, onCancel, onConfirm, busy }) {
   const [note, setNote] = React.useState('');
+  const noteId = React.useId();
   if (!site) return null;
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -28,8 +29,8 @@ function ReviveDialog({ site, onCancel, onConfirm, busy }) {
           <button onClick={onCancel} className="zm-icon-btn" style={{ background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)', borderRadius: 8, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--zm-fg-2)', cursor: 'pointer' }}><Icon name="x" size={14}/></button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <label style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)' }}>Revive note <span style={{ color: 'var(--zm-fg-3)', fontWeight: 500 }}>(optional)</span></label>
-          <textarea autoFocus value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. landlord called back with revised rent…" style={{ width: '100%', minHeight: 80, padding: 10, resize: 'vertical', border: '1px solid var(--zm-line)', borderRadius: 8, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', outline: 'none', background: 'var(--zm-bg)' }}/>
+          <label htmlFor={noteId} style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)' }}>Revive note <span style={{ color: 'var(--zm-fg-3)', fontWeight: 500 }}>(optional)</span></label>
+          <textarea id={noteId} autoFocus value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. landlord called back with revised rent…" style={{ width: '100%', minHeight: 80, padding: 10, resize: 'vertical', border: '1px solid var(--zm-line)', borderRadius: 8, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', outline: 'none', background: 'var(--zm-bg)' }}/>
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onCancel} disabled={busy} className="zm-btn" style={{ height: 36, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: busy ? 'not-allowed' : 'pointer' }}>Cancel</button>

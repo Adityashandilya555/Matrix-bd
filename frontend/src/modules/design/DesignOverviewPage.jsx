@@ -8,6 +8,7 @@ import Icon from '../shared/primitives/Icon.jsx';
 import { getDesignQueue } from '../../services/api/designApi.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 import { ROUTES } from '../../router/routes.js';
+import { keyActivate } from '../../lib/a11y.js';
 
 // Design module overview — four drill-down KPIs over the design queue:
 //   Ⅰ Sites in Design — every site in the queue.
@@ -106,7 +107,10 @@ function QueueTable({ rows, onOpen }) {
         <div
           key={row.siteId}
           className="zm-row"
+          role="button"
+          tabIndex={0}
           onClick={() => onOpen(row)}
+          onKeyDown={keyActivate(() => onOpen(row))}
           style={{
             display: 'grid', gridTemplateColumns: COLS,
             gap: 12, padding: '14px 16px',

@@ -8,6 +8,7 @@ import { useSession } from '../../state/SessionContext.jsx';
 import { filterByScope } from '../../rbac/scope.js';
 import { getLaunchQueue } from '../../services/api/launchApprovalApi.js';
 import LaunchReviewModal from './LaunchReviewModal.jsx';
+import { keyActivate } from '../../lib/a11y.js';
 
 // LaunchPage — BD-facing page for the post-NSO validation loop.
 //
@@ -203,7 +204,7 @@ export default function LaunchPage() {
             {!loading && !error && filtered.map((site) => {
               const owner = site.createdBy?.name || site.createdBy || '—';
               return (
-                <div key={site.id} data-site-id={site.id} className="zm-row" onClick={() => onOpenSite?.(site)}
+                <div key={site.id} data-site-id={site.id} className="zm-row" role="button" tabIndex={0} onClick={() => onOpenSite?.(site)} onKeyDown={keyActivate(() => onOpenSite?.(site))}
                   style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1.1fr 1.2fr 1.2fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', cursor: 'pointer', position: 'relative', alignItems: 'center' }}>
                   <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{site.code}</span>
                   <div>

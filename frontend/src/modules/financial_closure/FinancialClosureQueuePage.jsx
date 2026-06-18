@@ -8,6 +8,7 @@ import { getFCQueue } from '../../services/api/financialClosureApi.js';
 import { projectFinancialClosureSiteRoute } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 import { useFocusSite } from '../../hooks/useFocusSite.js';
+import { keyActivate } from '../../lib/a11y.js';
 
 const STATUS_LABELS = {
   open: 'Open',
@@ -151,7 +152,10 @@ export default function FinancialClosureQueuePage() {
                 key={row.siteId}
                 data-site-id={row.siteId}
                 className="zm-row"
+                role="button"
+                tabIndex={0}
                 onClick={() => open(row)}
+                onKeyDown={keyActivate(() => open(row))}
                 style={{
                   display: 'grid', gridTemplateColumns: COLS, gap: 12,
                   padding: '14px 16px', borderBottom: '1px solid var(--zm-line-faint)',

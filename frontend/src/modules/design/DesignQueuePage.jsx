@@ -7,6 +7,7 @@ import { getDesignQueue } from '../../services/api/designApi.js';
 import { designSiteRoute } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 import { useFocusSite } from '../../hooks/useFocusSite.js';
+import { keyActivate } from '../../lib/a11y.js';
 
 const STATUS_LABELS = {
   pending:     { label: 'Awaiting allocation', tone: 'var(--zm-fg-3)' },
@@ -203,7 +204,10 @@ export default function DesignQueuePage() {
             <div
               key={row.siteId}
               data-site-id={row.siteId}
+              role="button"
+              tabIndex={0}
               onClick={() => open(row)}
+              onKeyDown={keyActivate(() => open(row))}
               style={{
                 display: 'grid', gridTemplateColumns: COLS,
                 gap: 12, padding: '14px 16px',

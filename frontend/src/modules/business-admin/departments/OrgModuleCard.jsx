@@ -61,6 +61,10 @@ function Person({ p, role, onRemove }) {
         </button>
       )}
       {onRemove && confirming && (
+        // Not an interactive control — the onClick only stops the click from
+        // bubbling up to the enclosing Disclosure header (the real buttons
+        // inside handle their own keyboard activation). Purely a guard.
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }} onClick={(e) => e.stopPropagation()}>
           <span style={{ fontSize: 11.5, color: T.textMuted, whiteSpace: 'nowrap' }}>Remove this {roleLabel}?</span>
           <Button variant="danger" size="sm" loading={busy} onClick={doRemove}>Remove</Button>
