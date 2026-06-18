@@ -1,7 +1,6 @@
 import React from 'react';
-import { useNavigate, useLocation, NavLink } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Icon from '../primitives/Icon.jsx';
-import Avatar from '../primitives/Avatar.jsx';
 import { ROUTES } from '../../../router/routes.js';
 import { useSession } from '../../../state/SessionContext.jsx';
 
@@ -64,13 +63,6 @@ function SidebarItem({ icon, label, count, active, onClick, collapsed = false })
     </div>
   );
 }
-
-// Role display labels for the <select>
-const ROLE_LABELS = {
-  supervisor: 'Supervisor',
-  business_admin: 'Business Admin',
-  exec: 'BD exec',
-};
 
 const SECTION_HEADING_STYLE = {
   fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10,

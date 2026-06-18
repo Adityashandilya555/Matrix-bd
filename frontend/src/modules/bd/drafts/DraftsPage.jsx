@@ -5,7 +5,6 @@ import { usePageContext } from '../../../App.jsx';
 import { can } from '../../../rbac/permissions.js';
 import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Avatar from '../../shared/primitives/Avatar.jsx';
-import StatusPill from '../../shared/primitives/StatusPill.jsx';
 import Icon from '../../shared/primitives/Icon.jsx';
 import { useFocusSite } from '../../../hooks/useFocusSite.js';
 

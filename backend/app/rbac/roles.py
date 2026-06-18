@@ -14,4 +14,3 @@ class Role(str, Enum):
     BUSINESS_ADMIN = "business_admin"
     SUPERVISOR = "supervisor"
     EXECUTIVE = "executive"
-    SYSTEM = "system"

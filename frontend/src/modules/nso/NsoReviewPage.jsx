@@ -507,11 +507,6 @@ export default function NsoReviewPage() {
   const stageThreeUnlocked = Boolean(triggerMap.project_completion?.unlocked);
   const finalUnlocked = Boolean(review?.stageThreeCompletedAt && !review?.finalApprovedAt);
 
-  const markDirty = (setter) => (value) => {
-    setDirty(true);
-    setter(value);
-  };
-
   const saveOne = async () => {
     setBusy('stage-one');
     setNotice(null);
