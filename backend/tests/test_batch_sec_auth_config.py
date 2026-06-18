@@ -74,6 +74,35 @@ def test_insecure_dev_mode_allows_defaults():
     assert s.allow_insecure_defaults is True
 
 
+# ── #224 — ALLOW_ANON_DEMO_USER must be gated by insecure-dev mode ─────────
+# The demo bypass (deps.py) authenticates a header-less request as an
+# executive on tenant …099. Its only safety control used to be "operator
+# remembers to keep the env var false" — nothing bound it to insecure-dev
+# mode the way the JWT-secret placeholder is. These pin the gate.
+
+def test_demo_user_flag_refuses_to_boot_outside_insecure_dev():
+    # PROVE-FIRST: pre-fix this construction did NOT raise (the gap).
+    with pytest.raises((RuntimeError, ValidationError)):
+        _settings(allow_anon_demo_user=True, allow_insecure_defaults=False)
+
+
+def test_demo_user_flag_allowed_in_insecure_dev():
+    # Local UI-driving runs with ALLOW_INSECURE_DEFAULTS=true (placeholder
+    # secret), so the demo user must keep working there.
+    s = _settings(
+        supabase_jwt_secret="change-me-in-production",
+        allow_insecure_defaults=True,
+        allow_anon_demo_user=True,
+    )
+    assert s.allow_anon_demo_user is True
+
+
+def test_demo_user_flag_false_is_unaffected():
+    # Prod default: flag off boots cleanly with any valid secret.
+    s = _settings(allow_anon_demo_user=False)
+    assert s.allow_anon_demo_user is False
+
+
 # ── #83 — no passwordless fall-through, no silent first-password claim ─────
 
 async def test_login_rejects_null_hash_account_without_password(make_session, fake_result):
