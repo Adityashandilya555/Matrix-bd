@@ -11,7 +11,8 @@
     "build": "node ./node_modules/vite/bin/vite.js build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "lint": "eslint src --max-warnings=0"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
@@ -28,7 +29,14 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "eslint": "^9.0.0",
+    "eslint-plugin-jsx-a11y": "^6.10.0",
+    "eslint-plugin-react": "^7.37.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
     "jsdom": "^29.1.1",
     "vitest": "^2.1.9"
+  },
+  "overrides": {
+    "esbuild": "^0.25.0"
   }
 }

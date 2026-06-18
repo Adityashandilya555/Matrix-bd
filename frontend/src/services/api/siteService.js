@@ -5,6 +5,15 @@
 import { adapter } from './adapters/index.js';
 import { SiteStatus } from '../../lib/stateMachine.js';
 
+// Coerce a form field (possibly with currency formatting) to a plain number.
+// Returns undefined (not null) so callers can spread into objects without
+// accidentally writing explicit nulls for fields the backend treats as optional.
+function toNumber(v) {
+  if (v === null || v === undefined || v === '') return undefined;
+  const n = Number(String(v).replace(/[,\s₹]/g, ''));
+  return Number.isFinite(n) ? n : undefined;
+}
+
 // Core transition function — validates the transition via assertTransition (inside adapter),
 // applies the change, writes an audit entry, and returns the updated site.
 export async function transitionSite(siteId, nextStatus, payload = {}) {
@@ -22,11 +31,6 @@ export async function submitDetails(siteId, formData, by) {
   // cadex…) — store them as entered. No unit conversion. The backend column
   // types are NUMERIC and a higher-up renderer is responsible for "₹ X.XX L"
   // / "₹ X k" presentation. Anything else corrupts the data going in.
-  const toNumber = (v) => {
-    if (v === null || v === undefined || v === '') return undefined;
-    const n = Number(String(v).replace(/[,\s₹]/g, ''));
-    return Number.isFinite(n) ? n : undefined;
-  };
   // Coerce every numeric field in the form payload before sending. Without
   // this, the backend's status-patch dispatcher (which reads payload.details
   // as a raw dict and skips Pydantic) ends up writing string values straight
@@ -137,11 +141,6 @@ export async function assignSite(siteId, execId) {
 // FE→BE string write only succeeds opportunistically depending on column
 // type and PG version.
 export async function saveDraftDetails(siteId, formData) {
-  const toNumber = (v) => {
-    if (v === null || v === undefined || v === '') return undefined;
-    const n = Number(String(v).replace(/[,\s₹]/g, ''));
-    return Number.isFinite(n) ? n : undefined;
-  };
   const NUMERIC_FIELDS = [
     'score', 'estSales', 'nearestStarbucks', 'nearestTWC',
     'carpet', 'cam', 'rent', 'escalation', 'revshare',

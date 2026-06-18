@@ -206,7 +206,7 @@ function RangeCalendar({ from, to, onChange }) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
         {['S','M','T','W','T','F','S'].map((d, i) => (<span key={i} style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 9.5, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--zm-fg-4)', textAlign: 'center', padding: '4px 0' }}>{d}</span>))}
-        {cells.map((d, i) => { if (!d) return <span key={i} style={{ height: 28 }}/>; const startSel = sameDay(d, fromD); const endSel = sameDay(d, toD); const within = inRange(d) && !startSel && !endSel; return (<button key={i} onClick={() => pick(d)} className="zm-cal-day" data-state={startSel ? 'start' : endSel ? 'end' : within ? 'within' : 'idle'} style={{ height: 28, padding: 0, border: 'none', borderRadius: startSel ? '999px 0 0 999px' : endSel ? '0 999px 999px 0' : within ? 0 : 6, background: (startSel || endSel) ? 'var(--zm-accent)' : within ? 'var(--zm-accent-soft)' : 'transparent', color: (startSel || endSel) ? '#fff' : within ? 'var(--zm-accent)' : 'var(--zm-fg)', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 12, fontWeight: (startSel || endSel) ? 700 : 500, cursor: 'pointer' }}>{d.getDate()}</button>); })}
+        {cells.map((d, i) => { const cellKey = d ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` : `null-${i}`; if (!d) return <span key={cellKey} style={{ height: 28 }}/>; const startSel = sameDay(d, fromD); const endSel = sameDay(d, toD); const within = inRange(d) && !startSel && !endSel; return (<button key={cellKey} onClick={() => pick(d)} className="zm-cal-day" data-state={startSel ? 'start' : endSel ? 'end' : within ? 'within' : 'idle'} style={{ height: 28, padding: 0, border: 'none', borderRadius: startSel ? '999px 0 0 999px' : endSel ? '0 999px 999px 0' : within ? 0 : 6, background: (startSel || endSel) ? 'var(--zm-accent)' : within ? 'var(--zm-accent-soft)' : 'transparent', color: (startSel || endSel) ? '#fff' : within ? 'var(--zm-accent)' : 'var(--zm-fg)', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 12, fontWeight: (startSel || endSel) ? 700 : 500, cursor: 'pointer' }}>{d.getDate()}</button>); })}
       </div>
     </div>
   );
@@ -400,27 +400,27 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
   const ME = user.name;
   // RBAC: isExec = cannot shortlist (exec cannot approve); used for scope/display logic in render body
   const isExec = !can(role, 'shortlist');
-  const visibleDrafts    = isExec ? filterByScope(drafts, role, user) : drafts;
-  const visibleShortlist = isExec ? filterByScope(shortlist, role, user) : shortlist;
-  const visibleStaging   = isExec ? filterByScope(staging, role, user) : staging;
+  const visibleDrafts    = React.useMemo(() => isExec ? filterByScope(drafts, role, user) : drafts, [isExec, drafts, role, user]);
+  const visibleShortlist = React.useMemo(() => isExec ? filterByScope(shortlist, role, user) : shortlist, [isExec, shortlist, role, user]);
+  const visibleStaging   = React.useMemo(() => isExec ? filterByScope(staging, role, user) : staging, [isExec, staging, role, user]);
   // "Sites in process" for KPI math = pre-push only. Pushed sites belong to
   // the Payments KPI (Legal ∥ Finance run in parallel after the push).
-  const activeStaging = visibleStaging.filter(s => !s.pushed);
+  const activeStaging = React.useMemo(() => visibleStaging.filter(s => !s.pushed), [visibleStaging]);
 
   // Executives count only their own pushed/launch sites — mirrors the
   // payments tab scoping (backend scopes real exec JWTs; this covers mock
   // mode and the supervisor "View as" switcher).
-  const visibleLaunch = isExec ? filterByScope(launch.rows || [], role, user) : (launch.rows || []);
-  const launchIds = new Set(visibleLaunch.map(r => r.id));
-  const pushedSites = sites.filter(s => PUSHED_STATUSES.includes(s.status));
-  const paymentSites = (isExec ? filterByScope(pushedSites, role, user) : pushedSites).filter(s => !launchIds.has(s.id));
+  const visibleLaunch = React.useMemo(() => isExec ? filterByScope(launch.rows || [], role, user) : (launch.rows || []), [isExec, launch.rows, role, user]);
+  const launchIds = React.useMemo(() => new Set(visibleLaunch.map(r => r.id)), [visibleLaunch]);
+  const pushedSites = React.useMemo(() => sites.filter(s => PUSHED_STATUSES.includes(s.status)), [sites]);
+  const paymentSites = React.useMemo(() => (isExec ? filterByScope(pushedSites, role, user) : pushedSites).filter(s => !launchIds.has(s.id)), [isExec, pushedSites, role, user, launchIds]);
 
-  const totalSites = visibleDrafts.length + visibleShortlist.length + activeStaging.length;
-  const cityCount = new Set([...visibleDrafts.map(d => d.city), ...visibleShortlist.map(s => s.city), ...activeStaging.map(s => s.city)]).size;
+  const totalSites = React.useMemo(() => visibleDrafts.length + visibleShortlist.length + activeStaging.length, [visibleDrafts, visibleShortlist, activeStaging]);
+  const cityCount = React.useMemo(() => new Set([...visibleDrafts.map(d => d.city), ...visibleShortlist.map(s => s.city), ...activeStaging.map(s => s.city)]).size, [visibleDrafts, visibleShortlist, activeStaging]);
   const archivedOnly = archive.filter(a => a.status === SiteStatus.ARCHIVED).length;
   const rejectedOnly = archive.length - archivedOnly;
 
-  const metrics = {
+  const metrics = React.useMemo(() => ({
     total: {
       value: String(totalSites).padStart(2, '0'),
       delta: isExec ? `Your sites · ${ME.split(' ')[0]}` : 'Tenant-wide',
@@ -444,42 +444,44 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
       deltaTone: launch.loading ? 'neutral' : 'pos',
       sub: 'Handed to NSO',
     },
-  };
+  }), [totalSites, isExec, ME, cityCount, archive, archivedOnly, rejectedOnly, paymentSites, launch.loading, visibleLaunch]);
 
   // Rows for the "all files in motion" table (default view) — includes pushed
   // sites so nothing disappears from the default listing.
-  const allMotion = [
+  const allMotion = React.useMemo(() => [
     ...visibleDrafts.map(d => ({ id: d.id, code: d.code, name: d.name, city: d.city, stage: 'draft', days: d.days, owner: d.createdBy, when: d.visitDate, meta: 'Visit ' + d.visitDate })),
     ...visibleShortlist.map(s => ({ id: s.code, code: s.code, name: s.name, city: s.city, stage: s.inReview ? 'inReview' : 'shortlist', days: 3, owner: s.createdBy, when: s.visitDate, meta: s.inReview ? 'In review' : 'Awaiting details' })),
     ...visibleStaging.map(s => { const overdue = s.daysSinceApproval > s.expectedLoiDays && !s.loiUploaded; return { id: s.id, code: s.code, name: s.name, city: s.city, stage: s.pushed ? 'completed' : s.loiUploaded ? 'uploaded' : (overdue ? 'overdue' : 'staging'), days: s.daysSinceApproval, owner: s.createdBy, when: s.draftDate || s.approvedDate, meta: `LOI ${s.daysSinceApproval}/${s.expectedLoiDays}d` }; }),
-  ];
-  // The expanded "Total sites" view counts only pre-push files.
-  const totalMotion = allMotion.filter(r => r.stage !== 'completed');
+  ], [visibleDrafts, visibleShortlist, visibleStaging]);
 
-  const needle = search.trim().toLowerCase();
-  const baseRows = view === 'sites' ? totalMotion : allMotion;
-  const stageFiltered = stage === 'all' ? baseRows : baseRows.filter(r => {
-    if (stage === 'staging') return ['staging','overdue','uploaded','completed'].includes(r.stage);
-    if (stage === 'shortlist') return ['shortlist','inReview'].includes(r.stage);
-    return r.stage === stage;
-  });
-  const subFiltered = (view === 'sites' && subFilter !== 'all')
-    ? stageFiltered.filter(r => {
-        if (stage === 'shortlist') return r.stage === (subFilter === 'pending' ? 'inReview' : 'shortlist');
-        if (stage === 'staging') return subFilter === 'awaiting_loi' ? ['staging', 'overdue'].includes(r.stage) : r.stage === 'uploaded';
-        return true;
-      })
-    : stageFiltered;
-  const filteredMotion = subFiltered
-    .filter(r => matchesAdvanced(r.when, advanced))
-    .filter(r => matchesSearch(needle, r.code || '', r.name || '', r.city || '', r.owner || ''));
+  const filteredMotion = React.useMemo(() => {
+    const base = view === 'sites' ? allMotion.filter(r => r.stage !== 'completed') : allMotion;
+    const stageFiltered = stage === 'all' ? base : base.filter(r => {
+      if (stage === 'staging') return ['staging','overdue','uploaded','completed'].includes(r.stage);
+      if (stage === 'shortlist') return ['shortlist','inReview'].includes(r.stage);
+      return r.stage === stage;
+    });
+    const subFiltered = (view === 'sites' && subFilter !== 'all')
+      ? stageFiltered.filter(r => {
+          if (stage === 'shortlist') return r.stage === (subFilter === 'pending' ? 'inReview' : 'shortlist');
+          if (stage === 'staging') return subFilter === 'awaiting_loi' ? ['staging', 'overdue'].includes(r.stage) : r.stage === 'uploaded';
+          return true;
+        })
+      : stageFiltered;
+    const n = search.trim().toLowerCase();
+    return subFiltered
+      .filter(r => matchesAdvanced(r.when, advanced))
+      .filter(r => matchesSearch(n, r.code || '', r.name || '', r.city || '', r.owner || ''));
+  }, [view, stage, subFilter, advanced, search, allMotion]);
 
   // Archived rows + filters.
-  const archNeedle = archSearch.trim().toLowerCase();
-  const filteredArchive = archive
-    .filter(a => archStatus === 'all' ? true : archStatus === 'archived' ? a.status === SiteStatus.ARCHIVED : REJECTED_STATUSES.includes(a.status))
-    .filter(a => matchesAdvanced(a.archivedAt, archAdvanced))
-    .filter(a => matchesSearch(archNeedle, a.code || '', a.name || '', a.city || '', a.createdBy || ''));
+  const filteredArchive = React.useMemo(() => {
+    const archNeedle = archSearch.trim().toLowerCase();
+    return archive
+      .filter(a => archStatus === 'all' ? true : archStatus === 'archived' ? a.status === SiteStatus.ARCHIVED : REJECTED_STATUSES.includes(a.status))
+      .filter(a => matchesAdvanced(a.archivedAt, archAdvanced))
+      .filter(a => matchesSearch(archNeedle, a.code || '', a.name || '', a.city || '', a.createdBy || ''));
+  }, [archive, archStatus, archAdvanced, archSearch]);
 
   // Row click → owning tab, focused on that exact site (?focus= handled by
   // useFocusSite in the target page).

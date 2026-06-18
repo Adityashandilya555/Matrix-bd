@@ -6,8 +6,7 @@ import { delay, maybeFail } from '../delay.js';
 import { getAllSites, getSiteById, upsertSite } from '../mock/mockSites.js';
 import { MOCK_USERS } from '../mock/mockUsers.js';
 import { DEFAULT_SESSION, mockLogin } from '../mock/mockAuth.js';
-import { SiteStatus } from '../../../lib/stateMachine.js';
-import { assertTransition } from '../../../lib/stateMachine.js';
+import { SiteStatus, assertTransition } from '../../../lib/stateMachine.js';
 
 // ---- Sites ----
 

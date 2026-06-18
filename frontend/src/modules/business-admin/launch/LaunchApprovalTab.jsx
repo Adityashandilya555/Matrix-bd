@@ -136,7 +136,7 @@ function Timeline({ events }) {
               {Array.isArray(e.changes) && e.changes.length > 0 && (
                 <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
                   {e.changes.map((c, j) => (
-                    <div key={j} style={{ fontSize: 11.5, color: T.textMuted, ...TABULAR }}>
+                    <div key={`${c.field ?? c.label ?? j}-${j}`} style={{ fontSize: 11.5, color: T.textMuted, ...TABULAR }}>
                       <span style={{ color: T.textFaint }}>{c.label || c.field}:</span>{' '}
                       <span style={{ textDecoration: c.from != null ? 'line-through' : 'none', color: T.textFaint }}>{c.from ?? '—'}</span>
                       {' → '}<span style={{ color: T.text, fontWeight: 600 }}>{c.to ?? '—'}</span>

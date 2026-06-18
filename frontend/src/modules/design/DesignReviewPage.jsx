@@ -424,7 +424,7 @@ export default function DesignReviewPage() {
       <PageHeader
         file={`Site · ${r.siteCode || ''}`}
         eyebrow="Design module"
-        title={<>{r.siteName}</>}
+        title={r.siteName}
         lede={`${r.city || ''} · stage: ${r.currentStage} · design ${r.designStatus}`}
         right={<HeaderTag icon="box" label={(r.designStatus || '').toUpperCase()}/>}
       />

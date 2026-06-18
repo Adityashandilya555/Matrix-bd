@@ -210,7 +210,10 @@ export default function NsoQueuePage() {
             <div
               key={row.siteId}
               data-site-id={row.siteId}
+              role="button"
+              tabIndex={0}
               onClick={() => open(row)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(row); } }}
               style={{
                 display: 'grid',
                 gridTemplateColumns: COLS,

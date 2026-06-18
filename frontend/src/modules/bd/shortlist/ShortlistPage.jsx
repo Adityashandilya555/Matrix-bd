@@ -448,7 +448,7 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 920 }}>
       <PageHeader
         file="№ 03" eyebrow="Workflow · Shortlist"
-        title={<>Shortlist</>}
+        title="Shortlist"
         lede={`${visibleShortlist.length} site${visibleShortlist.length === 1 ? '' : 's'}`}
         right={<HeaderTag icon="clock" label="OLDEST FIRST"/>}
       />

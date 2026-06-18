@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { DEFAULT_SESSION, me as fetchMe, logout as logoutApi } from '../services/api/authService.js';
 import { can, PERMISSIONS } from '../rbac/permissions.js';
@@ -70,9 +70,9 @@ export function SessionProvider({ children }) {
   const role = session.role;
 
   // setRole: allows role switcher to change role locally in mock mode.
-  const setRole = (newRole) => {
+  const setRole = useCallback((newRole) => {
     setSession(prev => ({ ...prev, role: newRole }));
-  };
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
@@ -153,21 +153,21 @@ export function SessionProvider({ children }) {
     return subscribeAuthToken(hydrate);
   }, []);
 
-  const toggleDark = () => setDark(d => !d);
+  const toggleDark = useCallback(() => setDark(d => !d), []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     try { await logoutApi(); } catch { /* best-effort */ }
     try { await supabaseSignOut(); } catch { /* best-effort */ }
     clearAuthToken();
     setSessionExpired(null);
     setSession(INITIAL_SESSION);
-  };
+  }, []);
 
-  const signInAgain = () => {
+  const signInAgain = useCallback(() => {
     clearAuthToken();
     setSessionExpired(null);
     setSession(INITIAL_SESSION);
-  };
+  }, []);
 
   // Derive permissions from role using the RBAC engine.
   const permissions = useMemo(() => {
@@ -181,30 +181,32 @@ export function SessionProvider({ children }) {
 
   // user object — preserves the exact { name, email, city, tenantId } shape
   // that existing components destructure from useSession().user
-  const user = {
+  const user = useMemo(() => ({
     id: session.userId || session.id || null,
     userId: session.userId || session.id || null,
     name: session.name,
     email: session.email,
     city: session.cityScope || 'Mumbai',
     tenantId: session.tenantId,
-  };
+  }), [session]);
 
-  const value = {
+  const canFn = useCallback((action) => can(role, action), [role]);
+
+  const value = useMemo(() => ({
     user,
     role,
-    setRole: USE_MOCK ? setRole : undefined, // hide switcher in HTTP mode
+    setRole: USE_MOCK ? setRole : undefined,
     session,
     authReady,
     cityScope: session.cityScope || user.city,
     permissions,
     dark,
     toggleDark,
-    can: (action) => can(role, action),
+    can: canFn,
     isMockMode: USE_MOCK,
     signOut,
     sessionExpired,
-  };
+  }), [user, role, setRole, session, authReady, permissions, dark, toggleDark, canFn, signOut, sessionExpired]);
 
   return (
     <SessionContext.Provider value={value}>

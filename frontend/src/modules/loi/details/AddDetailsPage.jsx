@@ -63,12 +63,13 @@ function PhotoPicker({ photos, onAdd, onRemove, onRetry, uploadingIds = new Set(
 const formatINR = (n) => { if (!Number.isFinite(n)) return '—'; return '₹' + Math.round(n).toLocaleString('en-IN'); };
 
 function TextField({ label, value, onChange, placeholder, readOnly, mono, required, span = 1, prefix, suffix, type = 'text', min, max, hint, error }) {
+  const uid = React.useId();
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, gridColumn: `span ${span}` }}>
-      <label style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)' }}>{label}{required && <span style={{ color: 'var(--zm-danger)', fontWeight: 700 }}>*</span>}{readOnly && <span style={{ color: 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-mono)', fontSize: 10, marginLeft: 'auto' }}>read-only</span>}</label>
+      <label htmlFor={uid} style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)' }}>{label}{required && <span style={{ color: 'var(--zm-danger)', fontWeight: 700 }}>*</span>}{readOnly && <span style={{ color: 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-mono)', fontSize: 10, marginLeft: 'auto' }}>read-only</span>}</label>
       <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid ' + (error ? 'var(--zm-danger)' : 'var(--zm-line)'), borderRadius: 6, background: readOnly ? 'var(--zm-surface-sunken)' : 'var(--zm-bg)', overflow: 'hidden' }}>
         {prefix && (<span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderRight: '1px solid var(--zm-line)' }}>{prefix}</span>)}
-        <input type={type} value={value ?? ''} onChange={(e) => onChange?.(e.target.value)} placeholder={placeholder} readOnly={readOnly} min={min} max={max} style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: mono ? 'var(--zm-font-mono)' : 'var(--zm-font-body)', fontFeatureSettings: mono ? "'tnum' 1" : 'normal', fontSize: 13.5, color: readOnly ? 'var(--zm-fg-2)' : 'var(--zm-fg)' }}/>
+        <input id={uid} type={type} value={value ?? ''} onChange={(e) => onChange?.(e.target.value)} placeholder={placeholder} readOnly={readOnly} min={min} max={max} style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: mono ? 'var(--zm-font-mono)' : 'var(--zm-font-body)', fontFeatureSettings: mono ? "'tnum' 1" : 'normal', fontSize: 13.5, color: readOnly ? 'var(--zm-fg-2)' : 'var(--zm-fg)' }}/>
         {suffix && (<span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>{suffix}</span>)}
       </div>
       {hint && !error && <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, color: 'var(--zm-fg-3)' }}>{hint}</span>}
@@ -78,10 +79,11 @@ function TextField({ label, value, onChange, placeholder, readOnly, mono, requir
 }
 
 function SelectField({ label, value, onChange, options, required, span = 1 }) {
+  const uid = React.useId();
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, gridColumn: `span ${span}` }}>
-      <label style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)' }}>{label}{required && <span style={{ color: 'var(--zm-danger)', fontWeight: 700 }}>*</span>}</label>
-      <select value={value || ''} onChange={(e) => onChange(e.target.value)} style={{ height: 38, padding: '0 10px', border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', fontFamily: 'var(--zm-font-body)', fontSize: 13.5, color: 'var(--zm-fg)', outline: 'none' }}><option value="">Select…</option>{options.map(o => <option key={o} value={o}>{o}</option>)}</select>
+      <label htmlFor={uid} style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)' }}>{label}{required && <span style={{ color: 'var(--zm-danger)', fontWeight: 700 }}>*</span>}</label>
+      <select id={uid} value={value || ''} onChange={(e) => onChange(e.target.value)} style={{ height: 38, padding: '0 10px', border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', fontFamily: 'var(--zm-font-body)', fontSize: 13.5, color: 'var(--zm-fg)', outline: 'none' }}><option value="">Select…</option>{options.map(o => <option key={o} value={o}>{o}</option>)}</select>
     </div>
   );
 }
