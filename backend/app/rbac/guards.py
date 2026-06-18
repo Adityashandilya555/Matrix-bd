@@ -55,11 +55,3 @@ def require_module(module_name: str) -> Callable:
         return current_user
 
     return guard
-
-
-def require_scope(kind: str) -> Callable:
-    """Dependency factory: validates scope access."""
-    raise NotImplementedError(
-        f"require_scope('{kind}') is not implemented — "
-        "do not use in production endpoints until JWT scope claims are wired"
-    )

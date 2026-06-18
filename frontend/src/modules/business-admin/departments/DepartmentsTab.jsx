@@ -1,5 +1,5 @@
 import React from 'react';
-import { T, Icon, SectionHeader, ErrorState, Skeleton } from '../ui/kit.jsx';
+import { Icon, SectionHeader, ErrorState, Skeleton } from '../ui/kit.jsx';
 import PendingSupervisorsList from '../PendingSupervisorsList.jsx';
 import OrgModuleCard from './OrgModuleCard.jsx';
 

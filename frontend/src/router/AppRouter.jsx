@@ -18,7 +18,6 @@ import ShortlistPage         from '../modules/bd/shortlist/ShortlistPage.jsx';
 import ExecStagingPage       from '../modules/staging/exec/ExecStagingPage.jsx';
 import SupervisorStagingPage from '../modules/staging/supervisor/SupervisorStagingPage.jsx';
 import ArchivePage           from '../modules/archive/ArchivePage.jsx';
-import AddDetailsPage        from '../modules/loi/details/AddDetailsPage.jsx';
 import TeamPage              from '../modules/team/TeamPage.jsx';
 import LegalQueuePage       from '../modules/legal/LegalQueuePage.jsx';
 import ChangeRequestsPage    from '../modules/legal/ChangeRequestsPage.jsx';
@@ -115,7 +114,7 @@ function LandingRedirectIfAuthed() {
 function IndexRedirect() {
   // The root `/` defaults to the BD overview. Non-BD module members bounce
   // to their own module home on first load.
-  const { role, session } = useSession();
+  const { session } = useSession();
   const module = session?.module;
   if (USE_MOCK) return <OverviewPage/>; // mock mode stays on BD
   if (module === 'legal')   return <Navigate to={ROUTES.LEGAL}   replace/>;

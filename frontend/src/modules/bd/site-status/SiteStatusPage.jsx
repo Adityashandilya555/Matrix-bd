@@ -133,7 +133,7 @@ export default function SiteStatusPage() {
   const { showToast } = usePageContext();
 
   const [state, setState] = React.useState({ status: 'loading', data: null, error: null });
-  const [busyField, setBusyField] = React.useState(null);
+  const [, setBusyField] = React.useState(null);
 
   const load = React.useCallback(() => {
     setState((s) => ({ ...s, status: 'loading', error: null }));
