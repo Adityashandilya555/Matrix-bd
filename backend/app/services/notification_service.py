@@ -48,7 +48,7 @@ async def recipients_for_supervisors(
         models.User.is_active.is_(True),
         models.User.role == Role.SUPERVISOR.value,
     )
-    return [r for r in (await session.execute(stmt)).scalars().all()]
+    return list((await session.execute(stmt)).scalars().all())
 
 
 async def recipients_for_legal_supervisors(
@@ -141,12 +141,16 @@ async def recipients_for_business_admins(
         models.User.is_active.is_(True),
         models.User.role == Role.BUSINESS_ADMIN.value,
     )
-    return [r for r in (await session.execute(stmt)).scalars().all()]
+    return list((await session.execute(stmt)).scalars().all())
 
 
 async def recipients_for_site_owner(
-    session: AsyncSession, *, site: models.Site,
+    _session: AsyncSession, *, site: models.Site,
 ) -> list[UUID]:
+    """Return the site's assignee and submitter as notification recipients."""
+    # _session is unused (recipients are read from the in-memory site) but kept
+    # in the signature for call-site uniformity with the other recipients_*
+    # helpers; underscore-prefixed to mark it intentionally unused (#238).
     ids: list[UUID] = []
     if site.assigned_to:
         ids.append(site.assigned_to)
@@ -278,10 +282,9 @@ async def drain_pending_emails(*, resend_api_key: str, batch_size: int = 20) -> 
                 reason = str(exc)[:200]
 
             # Optimistic update: skip if another drain already processed this row.
-            async with SessionLocal() as upd:
-                async with upd.begin():
-                    await upd.execute(
-                        text("""
+            async with SessionLocal() as upd, upd.begin():
+                await upd.execute(
+                    text("""
                             UPDATE notification_outbox
                                SET status        = :status,
                                    failed_reason = :reason,
@@ -290,8 +293,8 @@ async def drain_pending_emails(*, resend_api_key: str, batch_size: int = 20) -> 
                                                         THEN now() ELSE sent_at END
                              WHERE id = :id AND status = 'pending'
                         """),
-                        {"status": new_status, "reason": reason, "id": str(row["id"])},
-                    )
+                    {"status": new_status, "reason": reason, "id": str(row["id"])},
+                )
 
             if new_status == "failed":
                 log.warning("email_drain: failed to send row=%s reason=%s", row["id"], reason)

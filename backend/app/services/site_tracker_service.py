@@ -4,7 +4,6 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import models
-from app.domain.state_machine import SiteStatus
 from app.domain.schemas.site_tracker import SiteTrackerResponse
 from app.services._common import assert_executive_owns_site, fetch_site_or_404, fetch_user_name
 from app.services.legal_service import (

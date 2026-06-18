@@ -34,13 +34,6 @@ TENANT_ROW = {"id": uuid.uuid4(), "name": "Acme", "seat_limit": 10}
 USER_ID = uuid.uuid4()
 
 
-def _user_row(password_hash=None, is_active=True, role="executive"):
-    return {
-        "id": USER_ID, "email": "a@b.co", "name": "A", "role": role,
-        "is_active": is_active, "assigned_city": None, "password_hash": password_hash,
-    }
-
-
 def _login_row(user_id=USER_ID, is_active=True, password_hash=None, role="executive"):
     """The combined tenant+user row login() now gets from its single LEFT JOIN
     (#234). user_id is None when the workspace exists but the email isn't a
@@ -414,6 +407,45 @@ def test_app_does_not_publish_docs_by_default():
 
     assert app.docs_url is None
     assert app.openapi_url is None
+
+
+# ── #227 — security response headers (+ CORS-on-error preserved) ───────────
+
+def test_security_headers_present_and_cors_survives_500():
+    from fastapi.testclient import TestClient
+
+    from app.core.config import settings as live_settings
+    from app.main import app
+
+    # A test-only route that raises, to force the 500 path. Removed in finally.
+    @app.get("/api/_boom_227")
+    async def _boom_227():  # pragma: no cover - exercised via TestClient below
+        raise RuntimeError("boom")
+
+    try:
+        client = TestClient(app, raise_server_exceptions=False)
+
+        # Every normal response carries the three always-on security headers.
+        r = client.get("/api/health")
+        assert r.status_code == 200
+        assert r.headers["x-content-type-options"] == "nosniff"
+        assert r.headers["x-frame-options"] == "DENY"
+        assert r.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+
+        # A forced 500 with an allowed Origin must STILL carry the CORS header
+        # (the #117 error-path re-application) AND the security headers (#227),
+        # since unhandled 500s are produced outside the middleware stack.
+        origin = (live_settings.cors_origin_list or ["http://localhost:5173"])[0]
+        r = client.get("/api/_boom_227", headers={"origin": origin})
+        assert r.status_code == 500
+        assert r.headers.get("access-control-allow-origin") == origin
+        assert r.headers["x-content-type-options"] == "nosniff"
+        assert r.headers["x-frame-options"] == "DENY"
+    finally:
+        app.router.routes = [
+            rt for rt in app.router.routes
+            if getattr(rt, "path", None) != "/api/_boom_227"
+        ]
 
 
 # ── Onboarding: account_state + self-service first password + no ghost users ──

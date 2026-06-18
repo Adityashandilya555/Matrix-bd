@@ -71,24 +71,27 @@ def _auth_headers(extra: dict | None = None) -> dict:
 # A process-wide client so storage calls reuse pooled keep-alive connections
 # instead of opening a fresh TCP+TLS handshake on every upload/sign (#94).
 # Created lazily (importing this module opens no sockets); closed at app shutdown
-# via aclose_storage_client().
-_client: httpx.AsyncClient | None = None
+# via aclose_storage_client(). Held on a tiny module-level holder so the lazy
+# init / close can rebind it without a `global` statement (#238).
+class _ClientHolder:
+    client: httpx.AsyncClient | None = None
+
+
+_holder = _ClientHolder()
 
 
 def get_storage_client() -> httpx.AsyncClient:
     """Return the shared httpx client, creating it on first use."""
-    global _client
-    if _client is None:
-        _client = httpx.AsyncClient(timeout=httpx.Timeout(30.0))
-    return _client
+    if _holder.client is None:
+        _holder.client = httpx.AsyncClient(timeout=httpx.Timeout(30.0))
+    return _holder.client
 
 
 async def aclose_storage_client() -> None:
     """Close and forget the shared client (call at app shutdown)."""
-    global _client
-    if _client is not None:
-        await _client.aclose()
-        _client = None
+    if _holder.client is not None:
+        await _holder.client.aclose()
+        _holder.client = None
 
 
 async def upload_bytes(*, path: str, body: bytes, content_type: str) -> None:

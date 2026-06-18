@@ -132,7 +132,6 @@ class SaveDetailsRequest(BaseModel):
 
 class SubmitDetailsRequest(SaveDetailsRequest):
     """Submit for review — same fields but all required fields must be present."""
-    pass
 
 
 class ApproveShortlistRequest(BaseModel):

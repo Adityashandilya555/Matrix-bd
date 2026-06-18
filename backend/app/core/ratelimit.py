@@ -35,7 +35,10 @@ from fastapi import HTTPException, Request, status
 # (ip, path) → timestamps of recent requests. Bounded per key by `times`,
 # and stale keys are pruned opportunistically to keep memory flat.
 _WINDOWS: Dict[Tuple[str, str], Deque[float]] = defaultdict(deque)
-_LAST_PRUNE = 0.0
+# Last opportunistic-prune timestamp, held in a one-element list so `_prune` can
+# update it without a module-level `global` rebind (#238). Single event loop, so
+# the read-then-write is effectively atomic per process.
+_PRUNE_STATE: list[float] = [0.0]
 
 
 def _client_ip(request: Request) -> str:
@@ -52,10 +55,9 @@ def _client_ip(request: Request) -> str:
 
 
 def _prune(now: float, horizon: float) -> None:
-    global _LAST_PRUNE
-    if now - _LAST_PRUNE < 60:
+    if now - _PRUNE_STATE[0] < 60:
         return
-    _LAST_PRUNE = now
+    _PRUNE_STATE[0] = now
     stale = [k for k, dq in _WINDOWS.items() if not dq or now - dq[-1] > horizon]
     for k in stale:
         _WINDOWS.pop(k, None)

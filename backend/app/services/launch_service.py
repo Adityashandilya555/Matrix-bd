@@ -49,7 +49,7 @@ from app.domain.schemas.launch import (
     LaunchReviewRequest,
     SiteDetailsSnapshot,
 )
-from app.services._common import fetch_site_or_404, fetch_user_name
+from app.services._common import count_rows, fetch_site_or_404, fetch_user_names
 from app.services.audit_service import write_audit_event
 
 logger = logging.getLogger(__name__)
@@ -216,8 +216,20 @@ async def _build_response(
         .order_by(models.LaunchReviewEvent.created_at)
     )).scalars().all()
 
-    async def name(uid: Optional[UUID]) -> Optional[str]:
-        return await fetch_user_name(session, user_id=uid) if uid else None
+    # Batch the actor-name lookups into ONE query instead of up to 5 sequential
+    # SELECTs to `users` — each a fresh pgBouncer/NullPool round trip (#240/18.6).
+    # fetch_user_names drops falsy ids and omits missing ones, so .get(uid) is
+    # None-safe, preserving the old per-uid `name()` behaviour exactly.
+    names_map = await fetch_user_names(session, [
+        row.admin_sent_for_review_by,
+        row.exec_reviewed_by,
+        row.supervisor_reviewed_by,
+        row.admin_confirmed_by,
+        row.launched_by,
+    ])
+
+    def _name(uid: Optional[UUID]) -> Optional[str]:
+        return names_map.get(uid) if uid else None
 
     details = SiteDetailsSnapshot(
         name=site.name,
@@ -294,21 +306,21 @@ async def _build_response(
         # Stage verdicts / comments
         admin_review_comment=row.admin_review_comment,
         admin_sent_for_review_at=row.admin_sent_for_review_at,
-        admin_sent_for_review_by_name=await name(row.admin_sent_for_review_by),
+        admin_sent_for_review_by_name=_name(row.admin_sent_for_review_by),
         exec_verdict=row.exec_verdict,
         exec_comment=row.exec_comment,
         exec_reviewed_at=row.exec_reviewed_at,
-        exec_reviewed_by_name=await name(row.exec_reviewed_by),
+        exec_reviewed_by_name=_name(row.exec_reviewed_by),
         supervisor_verdict=row.supervisor_verdict,
         supervisor_comment=row.supervisor_comment,
         supervisor_reviewed_at=row.supervisor_reviewed_at,
-        supervisor_reviewed_by_name=await name(row.supervisor_reviewed_by),
+        supervisor_reviewed_by_name=_name(row.supervisor_reviewed_by),
         admin_final_comment=row.admin_final_comment,
         admin_confirmed_at=row.admin_confirmed_at,
-        admin_confirmed_by_name=await name(row.admin_confirmed_by),
+        admin_confirmed_by_name=_name(row.admin_confirmed_by),
         committed_at=row.committed_at,
         launched_at=row.launched_at,
-        launched_by_name=await name(row.launched_by),
+        launched_by_name=_name(row.launched_by),
         events=event_items,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -381,7 +393,11 @@ async def svc_create_launch_approval(
             await session.flush()
     except IntegrityError:
         logger.warning("launch_approval insert lost a race for site %s — returning existing row", site.id)
-        return await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id, required=True)
+        existing_row = await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id, required=True)
+        # required=True raises 404 on a miss, so this is never None — narrow the
+        # Optional for the type checker (TYP-005) without changing behaviour.
+        assert existing_row is not None
+        return existing_row
     return row
 
 
@@ -392,7 +408,16 @@ async def svc_get_launch_queue(
     *,
     tenant_id: str | UUID,
     status_filter: Optional[str] = None,
+    limit: int = 500,
+    offset: int = 0,
 ) -> LaunchQueueResponse:
+    """Return one page of the launch-approval queue, newest-created first.
+
+    Paginated (``limit``/``offset``) so the queue can't grow unbounded with
+    tenant lifetime (#230). The queue previously had no ``ORDER BY``; a
+    deterministic ``created_at DESC`` order is added so paging is stable.
+    ``total`` is the page row count.
+    """
     q = select(models.LaunchApproval, models.Site, models.User.name).join(
         models.Site, models.Site.id == models.LaunchApproval.site_id
     ).join(
@@ -403,6 +428,9 @@ async def svc_get_launch_queue(
         statuses = [s.strip() for s in status_filter.split(",")]
         q = q.where(models.LaunchApproval.status.in_(statuses))
 
+    total = await count_rows(session, q)
+    q = q.order_by(models.LaunchApproval.created_at.desc(), models.LaunchApproval.id).limit(limit).offset(offset)
+    # LaunchApproval.id = deterministic tie-breaker for stable offset paging
     rows = (await session.execute(q)).all()
     items = [
         LaunchQueueItem(
@@ -424,7 +452,7 @@ async def svc_get_launch_queue(
         )
         for approval, site, creator_name in rows
     ]
-    return LaunchQueueResponse(items=items, total=len(items))
+    return LaunchQueueResponse(items=items, total=total)
 
 
 async def svc_get_approval(
@@ -433,6 +461,7 @@ async def svc_get_approval(
     tenant_id: str | UUID,
     site_id: str | UUID,
 ) -> LaunchApprovalResponse:
+    """Return the current launch-approval record for a site."""
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
     row = await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id)
     return await _build_response(session, row=row, site=site)
@@ -456,6 +485,7 @@ async def svc_save_rent_fields(
     site_id: str | UUID,
     body: LaunchRentFieldsRequest,
 ) -> LaunchApprovalResponse:
+    """Save staged rent-term edits, enforcing which role may edit at the current status."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         row = await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id)

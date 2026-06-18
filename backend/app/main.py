@@ -69,24 +69,29 @@ def _warn_if_scaled_out() -> None:
     store is the process-local in-memory dict (#225, 3.2).
 
     The limiter store (app/core/ratelimit.py) is valid ONLY for a single process
-    on a single replica. With >1 worker/replica each process keeps its own
-    windows, so the effective limit is multiplied and load-balanced attackers get
-    a fresh counter per worker. No Redis store exists yet, so scaling out silently
-    weakens brute-force protection — warn loudly rather than fail the boot. Keep
-    WEB_CONCURRENCY unset / replicas = 1 until the store is migrated to Redis.
+    on a single replica. With >1 worker per process each keeps its own windows,
+    so the effective limit is multiplied and load-balanced attackers get a fresh
+    counter per worker. No Redis store exists yet, so scaling out silently weakens
+    brute-force protection — warn loudly rather than fail the boot. Keep
+    WEB_CONCURRENCY unset until the store is migrated to Redis.
+
+    Detectable from inside the container: the worker count
+    (WEB_CONCURRENCY / UVICORN_WORKERS). NOT detectable: horizontal *replica*
+    scaling — Railway exposes per-instance ids (RAILWAY_REPLICA_ID) but no
+    reliable replica *count*, so running multiple replicas can't be warned about
+    here and is operationally unsupported until the store moves to Redis.
     """
     concurrency = max(
         _int_or_zero(os.getenv("WEB_CONCURRENCY")),
         _int_or_zero(os.getenv("UVICORN_WORKERS")),
-        _int_or_zero(os.getenv("RAILWAY_REPLICA_COUNT")),
     )
     if concurrency > 1:
         log.warning(
-            "startup: in-memory rate limiter active but %d workers/replicas are "
-            "configured — windows are NOT shared across processes, so the "
-            "effective per-client limit is multiplied and brute-force protection "
-            "is weakened (#225). Run a single process/replica, or migrate the "
-            "limiter store to Redis before scaling out.",
+            "startup: in-memory rate limiter active but %d workers are configured "
+            "(WEB_CONCURRENCY/UVICORN_WORKERS) — windows are NOT shared across "
+            "processes, so the effective per-client limit is multiplied and "
+            "brute-force protection is weakened (#225). Run a single worker, or "
+            "migrate the limiter store to Redis before scaling out.",
             concurrency,
         )
 
@@ -111,6 +116,38 @@ class _RequestIdMiddleware(BaseHTTPMiddleware):
             return response
         finally:
             _request_id_var.reset(token)
+
+
+# ── Security response headers (#227) ──────────────────────────────────────────
+
+def _security_headers(request: Request) -> dict[str, str]:
+    """The defense-in-depth headers added to every response. HSTS only on HTTPS
+    so local http dev / health checks are unaffected (scheme is proxy-corrected
+    from X-Forwarded-Proto on Railway). No Content-Security-Policy here — a CSP
+    on API JSON adds no value and risks breaking calls; the SPA's CSP is applied
+    at the Vercel edge (frontend/vercel.json)."""
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+    }
+    if request.url.scheme == "https":
+        headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+    return headers
+
+
+async def _security_headers_dispatch(request: Request, call_next):
+    """BaseHTTPMiddleware dispatch (registered via the ``dispatch=`` form, so it's
+    a plain function — no unused ``self``). Adds the security headers to every
+    response that passes through the user middleware stack (2xx/4xx). Only ADDS
+    via setdefault — never strips — so the CORS headers set by CORSMiddleware are
+    preserved. Unhandled 500s are produced by Starlette's outer
+    ServerErrorMiddleware, OUTSIDE this middleware, so the exception handler
+    applies the same headers there (see `_security_headers`)."""
+    response = await call_next(request)
+    for name, value in _security_headers(request).items():
+        response.headers.setdefault(name, value)
+    return response
 
 
 # ── Background email drain (#112) ─────────────────────────────────────────────
@@ -207,6 +244,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Added after CORS (so it wraps it): only adds headers, never strips, so CORS —
+# including the error-path re-application — is preserved (#227).
+app.add_middleware(BaseHTTPMiddleware, dispatch=_security_headers_dispatch)
 app.add_middleware(_RequestIdMiddleware)  # outermost — runs first on ingress
 
 
@@ -248,7 +288,9 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
         # Include request_id in the response body so support can match a
         # user's screenshot to the exact Railway log line.
         content={"detail": "Internal server error", "request_id": rid},
-        headers={**_cors_headers_for(request), "X-Request-Id": rid},
+        # Unhandled 500s are produced outside the user middleware stack, so apply
+        # the security headers (and re-apply CORS, #117) here too (#227).
+        headers={**_cors_headers_for(request), **_security_headers(request), "X-Request-Id": rid},
     )
 
 

@@ -1,7 +1,7 @@
 """LOI service — real queries + Supabase Storage handoff."""
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -104,7 +104,7 @@ async def svc_upload_loi(
     return LOIUploadResponse(
         site_id=str(site.id),
         loi_uploaded=True,
-        loi_uploaded_at=site.loi_uploaded_at.date() if site.loi_uploaded_at else date.today(),
+        loi_uploaded_at=site.loi_uploaded_at.date() if site.loi_uploaded_at else datetime.now(timezone.utc).date(),
         days_to_loi=days_to_loi,
     )
 

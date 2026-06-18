@@ -128,12 +128,13 @@ async def test_project_history_batches_names(make_session, fake_result):
 
     rows = [(_fake_site(i), None) for i in range(4)]
     sess = make_session(
+        fake_result(scalar=4),           # COUNT(*) — accurate total
         fake_result(all_rows=rows),      # outer
         fake_result(all_rows=[]),        # batched names
     )
     out = await project_service.svc_project_history(sess, tenant_id="t1")
-    assert out.total == 4
-    assert len(sess.executed) == 2       # was 1 + N
+    assert out.total == 4                # real COUNT(*), not len(items)
+    assert len(sess.executed) == 3       # count + outer + batched names (was 1 + N)
 
 
 async def test_legal_rejected_sites_batches_lookups(make_session, fake_result):
@@ -155,13 +156,14 @@ async def test_legal_history_batches_lookups(make_session, fake_result):
 
     sites = [_fake_site(i) for i in range(3)]
     sess = make_session(
+        fake_result(scalar=3),            # COUNT(*) — accurate total
         fake_result(scalars_list=sites),
         fake_result(scalars_list=[]),
         fake_result(all_rows=[]),
     )
     out = await legal_service.svc_legal_history(sess, tenant_id="t1")
-    assert out.total == 3
-    assert len(sess.executed) == 3
+    assert out.total == 3                 # real COUNT(*), not len(items)
+    assert len(sess.executed) == 4        # count + outer + batched DD + names
 
 
 async def test_bd_dd_failed_queue_batches_lookups(make_session, fake_result):
@@ -214,7 +216,7 @@ async def test_storage_client_is_shared():
     c2 = storage_service.get_storage_client()
     assert c1 is c2
     await storage_service.aclose_storage_client()
-    assert storage_service._client is None
+    assert storage_service._holder.client is None
 
 
 async def test_site_documents_signs_urls_concurrently(make_session, fake_result, monkeypatch):
@@ -260,7 +262,7 @@ async def test_list_users_is_bounded(make_session, fake_result):
     from app.routers import users
 
     sess = make_session(fake_result(scalars_list=[]))
-    await users.list_users(db=sess, current_user={"role": "supervisor"}, tenant_id="t1", limit=50, offset=0)
+    await users.list_users(db=sess, _auth={"role": "supervisor"}, tenant_id="t1", limit=50, offset=0)
     assert "LIMIT" in sess.sql.upper()
 
 
@@ -268,7 +270,7 @@ async def test_list_pending_users_is_bounded(make_session, fake_result):
     from app.routers import users
 
     sess = make_session(fake_result(scalars_list=[]))
-    await users.list_pending_users(db=sess, current_user={"role": "supervisor"}, tenant_id="t1", limit=50, offset=0)
+    await users.list_pending_users(db=sess, _auth={"role": "supervisor"}, tenant_id="t1", limit=50, offset=0)
     assert "LIMIT" in sess.sql.upper()
 
 
@@ -292,7 +294,7 @@ async def test_list_cities_is_bounded(make_session, fake_result):
     from app.routers import tenancy
 
     sess = make_session(fake_result(all_rows=[]))
-    await tenancy.list_cities(db=sess, current_user={"role": "supervisor"}, tenant_id="t1", limit=200)
+    await tenancy.list_cities(db=sess, _auth={"role": "supervisor"}, tenant_id="t1", limit=200)
     assert "LIMIT" in sess.sql.upper()
 
 
@@ -304,12 +306,13 @@ async def test_design_history_batches_names(make_session, fake_result):
 
     rows = [(_fake_site(i), None) for i in range(4)]
     sess = make_session(
+        fake_result(scalar=4),           # COUNT(*) — accurate total
         fake_result(all_rows=rows),      # outer
         fake_result(all_rows=[]),        # batched names
     )
     out = await design_service.svc_design_history(sess, tenant_id="t1")
-    assert out.total == 4
-    assert len(sess.executed) == 2       # was 1 + N
+    assert out.total == 4                # real COUNT(*), not len(items)
+    assert len(sess.executed) == 3       # count + outer + batched names (was 1 + N)
 
 
 async def test_design_admin_queue_signs_urls_concurrently(make_session, fake_result, monkeypatch):
