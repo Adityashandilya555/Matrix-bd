@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import { useSession } from '../../state/SessionContext.jsx';
+import { usePageContext } from '../../App.jsx';
 import { listMyTeam } from '../../services/api/adapters/httpAdapter.js';
 import {
   allocatePE,
@@ -83,6 +84,7 @@ function FieldRow({ label, children }) {
 export default function ProjectExcellenceReviewPage() {
   const { siteId } = useParams();
   const navigate = useNavigate();
+  const { showToast } = usePageContext();
   const { role } = useSession();
   const isSupervisor = role === 'supervisor';
   const isBusinessAdmin = role === 'business_admin';
@@ -165,6 +167,12 @@ export default function ProjectExcellenceReviewPage() {
       });
       setState(data);
       setBudgetItems(budgetFromState(data));
+      if (action === 'submit') {
+        showToast?.('Budget submitted for review.', 'success');
+        navigate(ROUTES.PROJECT_EXCELLENCE);
+      } else {
+        showToast?.('Budget saved.', 'success');
+      }
     } catch (err) {
       setError(err?.detail || err?.message || 'Save failed');
     } finally {
@@ -192,6 +200,8 @@ export default function ProjectExcellenceReviewPage() {
       setState(data);
       setBudgetItems(budgetFromState(data));
       setReviewComments('');
+      showToast?.(decision === 'approve' ? 'Budget approved — sent to admin.' : 'Budget sent back.', decision === 'approve' ? 'success' : 'danger');
+      navigate(ROUTES.PROJECT_EXCELLENCE);
     } catch (err) {
       setError(err?.detail || err?.message || 'Review failed');
     } finally {

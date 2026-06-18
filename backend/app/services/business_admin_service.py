@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy import desc, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,7 @@ from app.db import models
 from app.db.session import transaction
 from app.domain.schemas.business_admin import Module
 from app.services._common import fetch_user_names
+from app.services.audit_service import write_audit_event
 from app.services.finance_service import svc_finance_approve, svc_finance_reject
 
 
@@ -177,6 +179,58 @@ async def reject_supervisor(
                    AND is_active = false
             """),
             {"uid": user_id, "tid": tenant_id},
+        )
+
+
+async def deactivate_org_user(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+    user_id: str | UUID,
+    actor: dict,
+) -> None:
+    """Revoke an active user's access by deactivating them (is_active=false).
+
+    The per-request is_active recheck (#103) makes this an immediate kill switch
+    for live sessions + login, and list_org filters is_active=true so the user
+    drops out of the Departments view. We deactivate rather than hard-delete to
+    keep the audit trail and avoid FK cascades through sites/delegations/
+    memberships. Idempotent: removing an already-inactive (or unknown) user is a
+    no-op, so a double-click can't error.
+    """
+    async with transaction(session):
+        target = (await session.execute(
+            text("SELECT is_active, role FROM users WHERE id = CAST(:uid AS uuid) AND tenant_id = :tid"),
+            {"uid": user_id, "tid": tenant_id},
+        )).mappings().first()
+        if not target or not target["is_active"]:
+            return
+        # Only org users (supervisors/executives) are removable here. Refuse to
+        # touch business_admins (or any other role) so this endpoint can't be
+        # used to deactivate a peer admin via a crafted UUID.
+        if target["role"] not in ("supervisor", "executive"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only supervisors and executives can be removed.",
+            )
+        # Role is pinned in the predicate too, as a second guard.
+        await session.execute(
+            text("""
+                UPDATE users SET is_active = false
+                 WHERE id = CAST(:uid AS uuid)
+                   AND tenant_id = :tid
+                   AND role IN ('supervisor', 'executive')
+            """),
+            {"uid": user_id, "tid": tenant_id},
+        )
+        await write_audit_event(
+            session,
+            tenant_id=tenant_id,
+            site_id=None,
+            actor_id=actor.get("sub"),
+            actor_name=actor.get("name"),
+            action="user_deactivated",
+            entity_id=user_id,
+            entity_type="user",
         )
 
 

@@ -30,6 +30,7 @@ from app.core.uploads import read_upload_capped
 from app.db import models
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
+from app.services.auth_repo import get_tenant_by_workspace_code
 from app.services.storage_service import safe_object_name, signed_url
 from app.services.storage_service import upload_bytes as storage_upload
 
@@ -702,14 +703,9 @@ class JoinOut(BaseModel):
 async def join_workspace(payload: JoinIn, db: DbDep) -> JoinOut:
     # 1. Resolve the workspace_code → tenant. Case-insensitive lookup matches
     #    the unique index on upper(workspace_code) created by the migration.
-    tenant = (await db.execute(
-        text("""
-            SELECT id, name, seat_limit
-              FROM tenants
-             WHERE upper(workspace_code) = upper(:code)
-        """),
-        {"code": payload.workspace_code},
-    )).mappings().first()
+    tenant = await get_tenant_by_workspace_code(
+        db, payload.workspace_code, columns="id, name, seat_limit"
+    )
 
     # IMPORTANT: same response for "no such code" and "already joined" so an
     # attacker can't enumerate workspace codes. We log the discriminator
@@ -786,10 +782,7 @@ async def join_workspace(payload: JoinIn, db: DbDep) -> JoinOut:
     dependencies=[Depends(rate_limit(times=30, seconds=60))],
 )
 async def public_branding(code: str, db: DbDep) -> dict:
-    row = (await db.execute(
-        text("SELECT name, logo_url FROM tenants WHERE upper(workspace_code) = upper(:code)"),
-        {"code": code},
-    )).mappings().first()
+    row = await get_tenant_by_workspace_code(db, code, columns="name, logo_url")
     if not row:
         # Default branding instead of a 404 — the status-code split made this
         # endpoint a valid-code enumeration oracle that also leaked company

@@ -39,7 +39,7 @@ export default function DepartmentsTab({ org, pendingSupervisors, handlers }) {
         {org.status === 'ready' && (
           <div className="ac-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {modules.map((mod) => (
-              <OrgModuleCard key={mod.module} mod={mod} onRotate={handlers.onRotate} />
+              <OrgModuleCard key={mod.module} mod={mod} onRotate={handlers.onRotate} onRemove={handlers.onRemoveUser} />
             ))}
           </div>
         )}

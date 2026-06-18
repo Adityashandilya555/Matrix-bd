@@ -152,6 +152,8 @@ export default function LicensingPage() {
       const allYes = LICENSING_CHECKS.every((c) => snapshot.coreStatuses[c.id] === 'yes');
       if (allYes) showToast?.('Licensing complete — site auto-approved.', 'success');
       else        showToast?.('Licensing submitted.', 'success');
+      // End of the legal chain → back to the Legal queue for the next site.
+      navigate(ROUTES.LEGAL);
     } catch (err) {
       showToast?.(err?.detail || err?.message || 'Submit failed', 'danger');
     } finally {

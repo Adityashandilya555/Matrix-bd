@@ -176,6 +176,18 @@ export const mockFetchers = {
     return { ok: true };
   },
   listOrg: async () => { await wait(540); return structuredClone(store.org); },
+  removeOrgUser: async (id) => {
+    await wait(420);
+    // Deactivate = drop the user from the org listing (mirrors list_org filtering
+    // out is_active=false), across supervisors, their executives, and unassigned.
+    for (const m of store.org) {
+      m.supervisors = (m.supervisors || [])
+        .filter((s) => s.id !== id)
+        .map((s) => ({ ...s, executives: (s.executives || []).filter((e) => e.id !== id) }));
+      m.unassignedExecutives = (m.unassignedExecutives || []).filter((e) => e.id !== id);
+    }
+    return { ok: true };
+  },
 
   listSites: async () => { await wait(620); return { items: structuredClone(SITES), total: SITES.length }; },
   fetchSiteHistory: async (siteId) => {

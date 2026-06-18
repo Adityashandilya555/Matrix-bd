@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import { useSession } from '../../state/SessionContext.jsx';
+import { usePageContext } from '../../App.jsx';
 import { listMyTeam } from '../../services/api/adapters/httpAdapter.js';
 import {
   getFC,
@@ -107,6 +108,7 @@ function FieldRow({ label, children }) {
 export default function FinancialClosureReviewPage() {
   const { siteId } = useParams();
   const navigate = useNavigate();
+  const { showToast } = usePageContext();
   const { role } = useSession();
   const isSupervisor = role === 'supervisor';
   const isExecutive = role === 'exec' || role === 'executive';
@@ -183,7 +185,13 @@ export default function FinancialClosureReviewPage() {
       });
       setState(data);
       setLines(linesFromState(data));
-      if (action === 'submit') setReviewComments('');
+      if (action === 'submit') {
+        setReviewComments('');
+        showToast?.('Closure budget submitted for review.', 'success');
+        navigate(ROUTES.PROJECT_FINANCIAL_CLOSURE);
+      } else {
+        showToast?.('Closure budget saved.', 'success');
+      }
     } catch (err) {
       setError(err?.detail || err?.message || 'Save failed');
     } finally {
@@ -230,6 +238,8 @@ export default function FinancialClosureReviewPage() {
       setState(data);
       setLines(linesFromState(data));
       setReviewComments('');
+      showToast?.(decision === 'approve' ? 'Closure budget approved — sent to admin.' : 'Closure budget sent back.', decision === 'approve' ? 'success' : 'danger');
+      navigate(ROUTES.PROJECT_FINANCIAL_CLOSURE);
     } catch (err) {
       setError(err?.detail || err?.message || 'Review failed');
     } finally {
@@ -245,6 +255,8 @@ export default function FinancialClosureReviewPage() {
       setState(data);
       setLines(linesFromState(data));
       setReviewComments('');
+      showToast?.(decision === 'approve' ? 'Financial closure complete.' : 'Closure sent back.', decision === 'approve' ? 'success' : 'danger');
+      navigate(ROUTES.PROJECT_FINANCIAL_CLOSURE);
     } catch (err) {
       setError(err?.detail || err?.message || 'Financial closure failed');
     } finally {

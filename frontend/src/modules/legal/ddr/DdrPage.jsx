@@ -428,6 +428,7 @@ export default function DdrPage() {
       setReview(next);
       setOverrideSnapshot(null);
       showToast?.('DDR finalised as negative. BD notified.', 'danger');
+      navigate(ROUTES.LEGAL);
     } catch (err) {
       showToast?.(err?.detail || err?.message || 'Finalise failed', 'danger');
     } finally {

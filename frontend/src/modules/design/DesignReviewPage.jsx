@@ -361,7 +361,12 @@ export default function DesignReviewPage() {
   const onSubmit = async (kind, payload) => {
     setActionError(null);
     setBusy(true);
-    try { const r = await submitDeliverable(siteId, kind, payload); setReview(r); }
+    try {
+      const r = await submitDeliverable(siteId, kind, payload);
+      setReview(r);
+      showToast('Design deliverable submitted for review.');
+      navigate(ROUTES.DESIGN);
+    }
     catch (err) { setActionError(err?.detail || err?.message || 'Submit failed'); }
     finally { setBusy(false); }
   };
@@ -388,9 +393,10 @@ export default function DesignReviewPage() {
     setActionError(null);
     setBusy(true);
     try { 
-      const r = await reviewDeliverable(siteId, kind, payload); 
-      setReview(r); 
-      showToast(payload.decision === 'approve' ? 'Design approved' : 'Design sent back for changes');
+      const r = await reviewDeliverable(siteId, kind, payload);
+      setReview(r);
+      showToast(payload.decision === 'approve' ? 'Design approved.' : 'Design sent back for changes.');
+      navigate(ROUTES.DESIGN);
     }
     catch (err) { setActionError(err?.detail || err?.message || 'Review failed'); }
     finally { setBusy(false); }

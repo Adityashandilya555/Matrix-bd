@@ -105,6 +105,7 @@ export const Icon = {
   check:   (p) => <Svg {...p}><path d="m5 12.5 4.2 4.2L19 7"/></Svg>,
   x:       (p) => <Svg {...p}><path d="M6 6l12 12M18 6 6 18"/></Svg>,
   rotate:  (p) => <Svg {...p}><path d="M20 11A8 8 0 1 0 18 16.5"/><path d="M20 5v6h-6"/></Svg>,
+  trash:   (p) => <Svg {...p}><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><path d="M9 7V4h6v3"/></Svg>,
   refresh: (p) => <Svg {...p}><path d="M20 11A8 8 0 1 0 18 16.5"/><path d="M20 5v6h-6"/></Svg>,
   inbox:   (p) => <Svg {...p}><path d="M3 13h5l2 3h4l2-3h5"/><path d="M5 5h14l2 8v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4L5 5Z"/></Svg>,
   alert:   (p) => <Svg {...p}><path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4"/><path d="M12 17h.01"/></Svg>,

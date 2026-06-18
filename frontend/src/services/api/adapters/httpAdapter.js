@@ -596,6 +596,11 @@ export async function rejectSupervisor(userId) {
   return post(`/business-admin/pending-supervisors/${userId}/reject`);
 }
 
+// Deactivate an org user (supervisor/executive) — revokes their access.
+export async function removeOrgUser(userId) {
+  return post(`/business-admin/org/${userId}/remove`);
+}
+
 export async function listBusinessAdminSites(limit = 80) {
   const data = await get('/business-admin/sites', { limit });
   const items = data?.items || data || [];
