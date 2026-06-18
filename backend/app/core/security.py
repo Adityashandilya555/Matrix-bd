@@ -150,7 +150,13 @@ def _session_from_claims(claims: dict[str, Any]) -> dict[str, Any]:
 # additionally re-checks users.is_active in SQL, so a deactivated or deleted
 # account still cannot refresh. ONLY /auth/refresh uses the grace path below;
 # every normal request still goes through the strict ``decode_token`` above.
-REFRESH_GRACE_SECONDS = 60 * 60 * 24 * 7  # 7 days
+#
+# 48h (was 7 days, #228): keeps the overnight/weekend self-heal for a normally
+# lapsed 24h token while cutting the window in which a leaked/stale token can be
+# exchanged for a fresh session from ~8 days down to ~3. is_active is the only
+# per-account revocation today; a true iat-floor invalidation is a separate
+# follow-up (needs a migration).
+REFRESH_GRACE_SECONDS = 60 * 60 * 24 * 2  # 48 hours
 
 
 def decode_token_for_refresh(token: str) -> dict[str, Any]:
