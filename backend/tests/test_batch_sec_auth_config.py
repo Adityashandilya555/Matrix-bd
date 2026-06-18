@@ -273,6 +273,78 @@ def test_login_route_declares_rate_limit():
     assert "rate_limit(" in src
 
 
+# ── #225 — rate-limit key must not trust a spoofable X-Forwarded-For ───────
+# Railway runs uvicorn with --proxy-headers; once the trusted-proxy set is
+# scoped (not '*'), request.client.host is the real client. The limiter must
+# key on THAT, never on the raw client-supplied X-Forwarded-For header — else
+# an attacker rotating XFF gets a fresh window per request and the limit never
+# trips. These pin both halves: the app-layer key and the railway.json deploy.
+
+class _SpoofRequest:
+    """Same socket peer every call; attacker rotates X-Forwarded-For."""
+
+    def __init__(self, xff: str, path: str = "/api/test/spoof-guard"):
+        self.client = _FakeClient()  # fixed host 203.0.113.7
+        self.headers = {"x-forwarded-for": xff}
+        self.scope = {"path": path}
+
+
+async def test_rate_limit_ignores_spoofable_xff():
+    # PROVE-FIRST: pre-fix _client_ip returns XFF[0], so each rotating value is
+    # a new key and the 4th request slips through (no 429) — the bypass.
+    from app.core.ratelimit import rate_limit
+
+    guard = rate_limit(times=3, seconds=3600)
+    for i in range(3):
+        await guard(_SpoofRequest(xff=f"9.9.9.{i}"))
+    with pytest.raises(HTTPException) as exc:
+        await guard(_SpoofRequest(xff="9.9.9.99"))
+    assert exc.value.status_code == 429
+
+
+async def test_rate_limit_trips_without_xff_header():
+    # Regression: local dev / socket-peer keying (no XFF) must still trip at
+    # times+1, unchanged from today.
+    from app.core.ratelimit import rate_limit
+
+    class _NoXff:
+        client = _FakeClient()
+        headers: dict = {}
+        scope = {"path": "/api/test/no-xff-guard"}
+
+    guard = rate_limit(times=3, seconds=3600)
+    req = _NoXff()
+    for _ in range(3):
+        await guard(req)
+    with pytest.raises(HTTPException) as exc:
+        await guard(req)
+    assert exc.value.status_code == 429
+
+
+def test_railway_deploy_does_not_trust_all_forwarded_ips():
+    # The '*' wildcard makes uvicorn copy the attacker-controlled XFF[0] into
+    # request.client.host, re-opening the bypass at the proxy layer. Parse the
+    # actual --forwarded-allow-ips VALUE (shlex strips any quote style) and assert
+    # it is never '*', so no quoting variant can silently reintroduce the bypass.
+    import json
+    import pathlib
+    import shlex
+
+    railway = pathlib.Path(__file__).resolve().parents[1] / "railway.json"
+    start_cmd = json.loads(railway.read_text())["deploy"]["startCommand"]
+    tokens = shlex.split(start_cmd)
+    values = [
+        tokens[i + 1]
+        for i, tok in enumerate(tokens)
+        if tok == "--forwarded-allow-ips" and i + 1 < len(tokens)
+    ]
+    # If proxy headers are trusted at all, the trusted set must be scoped, never
+    # the wildcard (and no '*' may appear among comma-separated entries).
+    for value in values:
+        assert value != "*", start_cmd
+        assert "*" not in value.split(","), start_cmd
+
+
 # ── #110 — CORS hardening ───────────────────────────────────────────────────
 
 def test_wildcard_cors_origin_is_stripped_not_fatal():
