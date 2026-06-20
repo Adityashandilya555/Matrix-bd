@@ -61,3 +61,50 @@ jobs:
         run: npm run build
       - name: Test
         run: npx vitest run
+
+  # ── Advisory quality checks (NEW) ────────────────────────────────────────────
+  # These run on every PR/push but do NOT block merges yet (continue-on-error +
+  # not in branch-protection required checks). The existing code predates these
+  # tools, so enforcing them today would flag legacy files. To adopt for real:
+  #   frontend:  cd frontend && npm run format     (prettier --write)
+  #   backend:   cd backend  && ruff format app    (+ resolve bandit findings)
+  # then remove the `continue-on-error` lines below and add these to the required
+  # checks on main.
+  frontend-format:
+    name: Frontend · prettier (advisory)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Prettier format check (advisory — run `npm run format` to fix)
+        continue-on-error: true
+        run: npm run format:check
+
+  backend-quality:
+    name: Backend · ruff-format + bandit (advisory)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install ruff + bandit
+        run: pip install ruff bandit
+      - name: Ruff format check (advisory — run `ruff format app` to fix)
+        continue-on-error: true
+        run: ruff format --check app
+      - name: Bandit security scan (advisory, medium+ severity)
+        continue-on-error: true
+        run: bandit -r app -ll
