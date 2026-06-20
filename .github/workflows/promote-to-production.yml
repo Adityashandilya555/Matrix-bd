@@ -1,0 +1,35 @@
+name: Promote to Production
+
+# One-click promote. Advances the `production` branch to the current `main`,
+# which triggers the Railway production deploy. Run it from the Actions tab:
+#   Actions -> "Promote to Production" -> Run workflow -> type "promote" -> Run.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "promote" to deploy current main to production'
+        required: true
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "promote" ]; then
+            echo "::error::You must type 'promote' to confirm. Aborting — nothing was deployed."
+            exit 1
+          fi
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Advance production branch to main
+        run: git push origin HEAD:production
+      - name: Summary
+        run: |
+          echo "Promoted main $(git rev-parse --short HEAD) -> production." >> "$GITHUB_STEP_SUMMARY"
+          echo "Railway will now deploy the production environment from the production branch." >> "$GITHUB_STEP_SUMMARY"
