@@ -18,7 +18,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
 from app.db.session import transaction
-from app.domain.schemas.common import OkResponse
 from app.domain.schemas.nso import (
     NsoHistoryResponse,
     NsoLegalLicensingSnapshot,
@@ -514,12 +513,7 @@ async def _state_response(
 
 
 async def svc_nso_queue(
-    session: AsyncSession,
-    *,
-    tenant_id: str | UUID,
-    restrict_to_site_ids: Optional[list[str]] = None,
-    limit: int = 500,
-    offset: int = 0,
+    session: AsyncSession, *, tenant_id: str | UUID, limit: int = 500, offset: int = 0,
 ) -> NsoQueueResponse:
     """Return one page of finance-approved sites eligible for NSO, oldest-updated first."""
     async with transaction(session):
@@ -532,10 +526,6 @@ async def svc_nso_queue(
             )
             .order_by(models.Site.updated_at.asc())
         )
-        if restrict_to_site_ids is not None:
-            if not restrict_to_site_ids:
-                return NsoQueueResponse(items=[], total=0)
-            stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
         total = await count_rows(session, stmt)
         sites = (await session.execute(stmt.limit(limit).offset(offset))).scalars().all()
         # Batch the child lookups (2 queries regardless of N) and never create
@@ -807,135 +797,3 @@ async def svc_final_approval(
                 "Could not create launch_approval for site %s — NSO approval still committed", site.id,
             )
         return await _state_response(session, site, row, project, licensing)
-
-
-def _is_nso_supervisor(actor: dict) -> bool:
-    return (actor.get("role") or "").lower() == "supervisor"
-
-
-async def svc_list_nso_delegations_for_site(
-    session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
-) -> dict:
-    """List the site's active (non-revoked) NSO delegations with delegate identity."""
-    stmt = (
-        select(models.SiteDelegation, models.User.email, models.User.name)
-        .join(models.User, models.User.id == models.SiteDelegation.delegate_user_id)
-        .where(
-            models.SiteDelegation.site_id == site_id,
-            models.SiteDelegation.tenant_id == tenant_id,
-            models.SiteDelegation.module == "nso",
-            models.SiteDelegation.revoked_at.is_(None),
-        )
-        .order_by(models.SiteDelegation.granted_at.desc())
-    )
-    rows = (await session.execute(stmt)).all()
-    return {
-        "items": [
-            {
-                "id": str(row.id),
-                "site_id": str(row.site_id),
-                "module": row.module,
-                "delegate_user_id": str(row.delegate_user_id),
-                "delegate_email": email,
-                "delegate_name": name,
-                "granted_by": str(row.granted_by),
-                "granted_at": row.granted_at,
-                "notes": row.notes,
-            }
-            for (row, email, name) in rows
-        ],
-        "total": len(rows),
-    }
-
-
-async def svc_allocate_nso(
-    session: AsyncSession,
-    *,
-    tenant_id: str | UUID,
-    actor: dict,
-    site_id: str | UUID,
-    delegate_user_id: str | UUID,
-    notes: Optional[str] = None,
-) -> dict:
-    """Delegate a site's NSO to an active executive; only a supervisor may do so."""
-    if not _is_nso_supervisor(actor):
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only an NSO supervisor can allocate.")
-    if str(delegate_user_id) == str(actor["sub"]):
-        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Cannot allocate to yourself.")
-    async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        delegate = (await session.execute(
-            select(models.User).where(
-                models.User.id == delegate_user_id,
-                models.User.tenant_id == tenant_id,
-                models.User.is_active.is_(True),
-            )
-        )).scalar_one_or_none()
-        if delegate is None or (delegate.role or "").lower() != "executive":
-            raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Active executive not found.")
-        existing = (await session.execute(
-            select(models.SiteDelegation).where(
-                models.SiteDelegation.site_id == site.id,
-                models.SiteDelegation.module == "nso",
-                models.SiteDelegation.delegate_user_id == delegate_user_id,
-                models.SiteDelegation.revoked_at.is_(None),
-            )
-        )).scalar_one_or_none()
-        if existing is not None:
-            raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail="NSO allocation already exists.")
-        row = models.SiteDelegation(
-            tenant_id=tenant_id,
-            site_id=site.id,
-            module="nso",
-            delegate_user_id=delegate_user_id,
-            granted_by=actor["sub"],
-            notes=(notes or "").strip() or None,
-        )
-        session.add(row)
-        await session.flush()
-        await write_audit_event(
-            session,
-            tenant_id=tenant_id,
-            site_id=site.id,
-            actor_id=actor["sub"],
-            actor_name=actor.get("name"),
-            action="nso_allocated",
-            detail=f"delegate={delegate.email}",
-        )
-        return await svc_list_nso_delegations_for_site(session, tenant_id=tenant_id, site_id=site.id)
-
-
-async def svc_revoke_nso_delegation(
-    session: AsyncSession,
-    *,
-    tenant_id: str | UUID,
-    actor: dict,
-    site_id: str | UUID,
-    delegate_user_id: str | UUID,
-) -> OkResponse:
-    """Revoke a site's active NSO delegation; only a supervisor may do so."""
-    if not _is_nso_supervisor(actor):
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only an NSO supervisor can revoke.")
-    async with transaction(session):
-        row = (await session.execute(
-            select(models.SiteDelegation).where(
-                models.SiteDelegation.tenant_id == tenant_id,
-                models.SiteDelegation.site_id == site_id,
-                models.SiteDelegation.module == "nso",
-                models.SiteDelegation.delegate_user_id == delegate_user_id,
-                models.SiteDelegation.revoked_at.is_(None),
-            )
-        )).scalar_one_or_none()
-        if row is None:
-            return OkResponse(message="No active NSO allocation to revoke.")
-        row.revoked_at = datetime.now(timezone.utc)
-        row.revoked_by = actor["sub"]
-        await write_audit_event(
-            session,
-            tenant_id=tenant_id,
-            site_id=row.site_id,
-            actor_id=actor["sub"],
-            actor_name=actor.get("name"),
-            action="nso_allocation_revoked",
-        )
-    return OkResponse(message="NSO allocation revoked.")
