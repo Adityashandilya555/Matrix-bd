@@ -56,6 +56,9 @@ CREATE INDEX IF NOT EXISTS idx_site_budgets_site ON public.site_budgets (site_id
 CREATE INDEX IF NOT EXISTS idx_site_budget_items_site_phase ON public.site_budget_items (site_id, phase);
 CREATE INDEX IF NOT EXISTS idx_site_budget_items_budget ON public.site_budget_items (budget_id);
 
+ALTER TABLE public.site_budgets      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.site_budget_items ENABLE ROW LEVEL SECURITY;
+
 -- 3. sites.financial_closure_status mirror (closure-phase queue / dashboard chip)
 ALTER TABLE public.sites
     ADD COLUMN IF NOT EXISTS financial_closure_status TEXT NOT NULL DEFAULT 'pending';

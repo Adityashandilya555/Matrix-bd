@@ -3,9 +3,14 @@ import { useNavigate, useParams } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import { usePageContext } from '../../App.jsx';
+import { useSession } from '../../state/SessionContext.jsx';
+import { listMyTeam } from '../../services/api/adapters/httpAdapter.js';
 import {
+  allocateNso,
   finalApproveNso,
   getNso,
+  listNsoDelegations,
+  revokeNsoAllocation,
   saveNsoStageOne,
   saveNsoStageThree,
 } from '../../services/api/nsoApi.js';
@@ -441,6 +446,9 @@ export default function NsoReviewPage() {
   const { siteId } = useParams();
   const navigate = useNavigate();
   const { showToast } = usePageContext();
+  const { user } = useSession();
+  const isSupervisor = (user?.role || '').toLowerCase() === 'supervisor';
+
   const [state, setState] = React.useState({ status: 'loading', review: null, error: null });
   const [stageOne, setStageOne] = React.useState({ communicationFloated: null });
   const [stageThree, setStageThree] = React.useState({
@@ -455,6 +463,10 @@ export default function NsoReviewPage() {
   const [busy, setBusy] = React.useState(null);
   const [dirty, setDirty] = React.useState(false);
   const [notice, setNotice] = React.useState(null);
+
+  const [delegations, setDelegations] = React.useState({ items: [], total: 0 });
+  const [team, setTeam] = React.useState([]);
+  const [delegateId, setDelegateId] = React.useState('');
 
   const hydrate = React.useCallback((review) => {
     setStageOne({
@@ -471,6 +483,10 @@ export default function NsoReviewPage() {
     });
     setDirty(false);
   }, []);
+
+  const loadDelegations = React.useCallback(() => {
+    listNsoDelegations(siteId).then(setDelegations).catch(() => {});
+  }, [siteId]);
 
   const load = React.useCallback((silent = false) => {
     let cancelled = false;
@@ -493,6 +509,12 @@ export default function NsoReviewPage() {
   }, [hydrate, siteId]);
 
   React.useEffect(() => load(), [load]);
+  React.useEffect(() => { loadDelegations(); }, [loadDelegations]);
+  React.useEffect(() => {
+    if (!isSupervisor) return;
+    listMyTeam().then((members) => setTeam(members.filter((m) => (m.role || '').toLowerCase() === 'executive'))).catch(() => {});
+  }, [isSupervisor]);
+
   useSiteDataRefresh(() => load(true), {
     siteId,
     sources: ['nso', 'project', 'businessAdmin', 'payment', 'legalApi', 'siteTrackerApi', 'launch'],
@@ -504,7 +526,7 @@ export default function NsoReviewPage() {
   const stageOneUnlocked = Boolean(triggerMap.finance_ca?.unlocked);
   const stageTwoUnlocked = Boolean(triggerMap.project_initiation?.unlocked);
   const stageTwoDone = Boolean(review?.legalLicensingSnapshot?.complete || review?.stageTwoCompletedAt);
-  const stageThreeUnlocked = Boolean(triggerMap.project_completion?.unlocked);
+  const stageThreeUnlocked = review?.currentStage === 'stage_three' || review?.currentStage === 'final';
   const finalUnlocked = Boolean(review?.stageThreeCompletedAt && !review?.finalApprovedAt);
 
   const saveOne = async () => {
@@ -554,6 +576,34 @@ export default function NsoReviewPage() {
       navigate(ROUTES.NSO);
     } catch (err) {
       setNotice(err?.detail || err?.message || 'Could not finalize NSO.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const doAllocate = async () => {
+    if (!delegateId) return;
+    setBusy('allocate');
+    setNotice(null);
+    try {
+      const next = await allocateNso(siteId, delegateId);
+      setDelegations(next);
+      setDelegateId('');
+    } catch (err) {
+      setNotice(err?.detail || err?.message || 'Could not allocate NSO.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const doRevoke = async (userId) => {
+    setBusy(`revoke-${userId}`);
+    setNotice(null);
+    try {
+      await revokeNsoAllocation(siteId, userId);
+      loadDelegations();
+    } catch (err) {
+      setNotice(err?.detail || err?.message || 'Could not revoke allocation.');
     } finally {
       setBusy(null);
     }
@@ -787,40 +837,143 @@ export default function NsoReviewPage() {
           </StageCard>
         </div>
 
-        <aside className="zm-glass" style={{ borderRadius: 12, padding: 18, position: 'sticky', top: 16 }}>
-          <div style={{
-            color: 'var(--zm-fg-3)',
-            fontSize: 10.5,
-            fontWeight: 850,
-            letterSpacing: '0.14em',
-            textTransform: 'uppercase',
-          }}>
-            Readiness summary
+        <aside style={{ display: 'flex', flexDirection: 'column', gap: 16, position: 'sticky', top: 16 }}>
+          <div className="zm-glass" style={{ borderRadius: 12, padding: 18 }}>
+            <div style={{
+              color: 'var(--zm-fg-3)',
+              fontSize: 10.5,
+              fontWeight: 850,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+            }}>
+              Readiness summary
+            </div>
+            <div style={{ display: 'grid', gap: 12, marginTop: 14 }}>
+              <div><strong>Finance</strong><br/><span style={{ color: 'var(--zm-fg-3)' }}>{pretty(review.financeStatus)} · CA {review.caCode || 'Pending'}</span></div>
+              <div><strong>Project</strong><br/><span style={{ color: 'var(--zm-fg-3)' }}>{pretty(review.projectStatus)} · {pretty(review.projectCurrentStage)}</span></div>
+              <div><strong>NSO</strong><br/><span style={{ color: 'var(--zm-fg-3)' }}>{pretty(review.nsoStatus)} · {pretty(review.currentStage)}</span></div>
+            </div>
+            <button
+              type="button"
+              onClick={approveFinal}
+              disabled={!finalUnlocked || Boolean(busy)}
+              style={{
+                width: '100%',
+                height: 40,
+                marginTop: 18,
+                border: 'none',
+                borderRadius: 9,
+                background: finalUnlocked ? 'var(--zm-success)' : 'var(--zm-surface-2)',
+                color: finalUnlocked ? '#fff' : 'var(--zm-fg-3)',
+                cursor: finalUnlocked && !busy ? 'pointer' : 'not-allowed',
+                fontFamily: 'var(--zm-font-body)',
+                fontWeight: 900,
+              }}
+            >
+              {busy === 'final' ? 'Finalising...' : 'Final approval'}
+            </button>
           </div>
-          <div style={{ display: 'grid', gap: 12, marginTop: 14 }}>
-            <div><strong>Finance</strong><br/><span style={{ color: 'var(--zm-fg-3)' }}>{pretty(review.financeStatus)} · CA {review.caCode || 'Pending'}</span></div>
-            <div><strong>Project</strong><br/><span style={{ color: 'var(--zm-fg-3)' }}>{pretty(review.projectStatus)} · {pretty(review.projectCurrentStage)}</span></div>
-            <div><strong>NSO</strong><br/><span style={{ color: 'var(--zm-fg-3)' }}>{pretty(review.nsoStatus)} · {pretty(review.currentStage)}</span></div>
+
+          <div className="zm-glass" style={{ borderRadius: 12, padding: 18 }}>
+            <div style={{
+              color: 'var(--zm-fg-3)',
+              fontSize: 10.5,
+              fontWeight: 850,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              marginBottom: 12,
+            }}>
+              NSO assignments
+            </div>
+            {delegations.items.length === 0 ? (
+              <div style={{ color: 'var(--zm-fg-3)', fontSize: 13 }}>No executives assigned.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {delegations.items.map((d) => (
+                  <div key={d.id} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    padding: '8px 10px',
+                    borderRadius: 8,
+                    border: '1px solid var(--zm-line)',
+                    background: 'var(--zm-surface-2)',
+                  }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 850, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.delegateName || d.delegateEmail}</div>
+                      <div style={{ fontSize: 11, color: 'var(--zm-fg-3)' }}>{d.delegateEmail}</div>
+                    </div>
+                    {isSupervisor && (
+                      <button
+                        type="button"
+                        onClick={() => doRevoke(d.delegateUserId)}
+                        disabled={Boolean(busy)}
+                        style={{
+                          flexShrink: 0,
+                          height: 28,
+                          padding: '0 10px',
+                          border: '1px solid var(--zm-danger)',
+                          borderRadius: 6,
+                          background: 'transparent',
+                          color: 'var(--zm-danger)',
+                          fontSize: 11,
+                          fontWeight: 850,
+                          cursor: busy ? 'not-allowed' : 'pointer',
+                          fontFamily: 'var(--zm-font-body)',
+                        }}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {isSupervisor && team.length > 0 && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
+                <select
+                  value={delegateId}
+                  onChange={(e) => setDelegateId(e.target.value)}
+                  style={{
+                    flex: 1,
+                    height: 34,
+                    border: '1px solid var(--zm-line)',
+                    borderRadius: 7,
+                    padding: '0 8px',
+                    background: 'var(--zm-surface)',
+                    color: 'var(--zm-fg)',
+                    fontFamily: 'var(--zm-font-body)',
+                    fontSize: 13,
+                  }}
+                >
+                  <option value="">Assign executive...</option>
+                  {team.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name || m.email}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={doAllocate}
+                  disabled={!delegateId || Boolean(busy)}
+                  style={{
+                    height: 34,
+                    padding: '0 12px',
+                    border: 'none',
+                    borderRadius: 7,
+                    background: delegateId ? 'var(--zm-accent)' : 'var(--zm-surface-2)',
+                    color: delegateId ? '#fff' : 'var(--zm-fg-3)',
+                    fontFamily: 'var(--zm-font-body)',
+                    fontSize: 12,
+                    fontWeight: 850,
+                    cursor: delegateId && !busy ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  {busy === 'allocate' ? '...' : 'Assign'}
+                </button>
+              </div>
+            )}
           </div>
-          <button
-            type="button"
-            onClick={approveFinal}
-            disabled={!finalUnlocked || Boolean(busy)}
-            style={{
-              width: '100%',
-              height: 40,
-              marginTop: 18,
-              border: 'none',
-              borderRadius: 9,
-              background: finalUnlocked ? 'var(--zm-success)' : 'var(--zm-surface-2)',
-              color: finalUnlocked ? '#fff' : 'var(--zm-fg-3)',
-              cursor: finalUnlocked && !busy ? 'pointer' : 'not-allowed',
-              fontFamily: 'var(--zm-font-body)',
-              fontWeight: 900,
-            }}
-          >
-            {busy === 'final' ? 'Finalising...' : 'Final approval'}
-          </button>
         </aside>
       </div>
 
