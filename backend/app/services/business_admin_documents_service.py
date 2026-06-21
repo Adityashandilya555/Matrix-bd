@@ -60,9 +60,23 @@ async def list_site_documents(
             except Exception:
                 return None
 
+    async def _resolve_deliverable(file_url: Optional[str]) -> Optional[str]:
+        # Mirror design_service._deliverable_download_url: only paths we wrote
+        # under 'design/' are storage objects to sign. A legacy free-text file_url
+        # is NOT an object key — signing it would just fail and drop the Open link.
+        # Pass through legacy http(s) values as-is so historic design uploads stay
+        # openable; anything else (non-URL junk) has no usable link.
+        if not file_url:
+            return None
+        if file_url.startswith("design/"):
+            return await _sign(file_url)
+        if file_url.startswith(("http://", "https://")):
+            return file_url
+        return None
+
     file_urls, deliverable_urls = await asyncio.gather(
         asyncio.gather(*[_sign(f.storage_path) for f in files]),
-        asyncio.gather(*[_sign(d.file_url) for d in deliverables]),
+        asyncio.gather(*[_resolve_deliverable(d.file_url) for d in deliverables]),
     )
 
     items: list[dict[str, Any]] = []
