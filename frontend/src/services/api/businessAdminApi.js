@@ -200,3 +200,16 @@ export async function getSiteHistory(siteId) {
     total: d.total ?? 0,
   };
 }
+
+export async function getAdminSiteDocuments(siteId) {
+  // Aggregated documents (site_files + design deliverables) with signed URLs;
+  // business_admin-gated and works even on closed sites.
+  const d = await client.get(`/business-admin/sites/${siteId}/documents`).then((r) => r.data);
+  return {
+    siteId: d.site_id,
+    documents: (d.documents || []).map((it) => ({
+      id: it.id, fileName: it.file_name, fileType: it.file_type, module: it.module,
+      uploadedAt: it.uploaded_at, uploadedBy: it.uploaded_by, url: it.url,
+    })),
+  };
+}

@@ -22,9 +22,11 @@ from app.domain.schemas.business_admin import (
     ModuleCodeOut,
     OrgResponse,
     PendingSupervisorOut,
+    SiteDocumentsResponse,
 )
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
+from app.services import business_admin_documents_service as docs_svc
 from app.services import business_admin_service as svc
 
 router = APIRouter(prefix="/business-admin", tags=["Business Admin"])
@@ -163,3 +165,16 @@ async def get_org(
 ) -> dict:
     """Per-department code + active supervisors and the executives under them."""
     return await svc.list_org(db, tenant_id)
+
+
+@router.get("/sites/{site_id}/documents", response_model=SiteDocumentsResponse)
+async def list_site_documents(
+    site_id: str,
+    db: DbDep,
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> dict:
+    """Every document uploaded for a site across its lifecycle (LOI, photos,
+    quality-audit, design deliverables), with signed download URLs. Available even
+    after the site is closed, so the admin can review the paperwork later."""
+    return await docs_svc.list_site_documents(db, tenant_id=tenant_id, site_id=site_id)
