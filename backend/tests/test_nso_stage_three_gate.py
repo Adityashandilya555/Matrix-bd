@@ -65,3 +65,19 @@ def test_stage_three_opens_once_pushed():
     assert nso_service._stage_three_unlocked(row, site, licensing, project) is True
     # Stage-three work isn't filled yet, so the stage is 'stage_three' (not 'final').
     assert nso_service._compute_stage(site, row, project, licensing) == "stage_three"
+
+
+def test_stage_three_save_gate_locked_when_pushed_but_legal_incomplete():
+    """Pushed (handover_pushed_at set) but Legal Licensing NOT complete: the stage
+    label is already 'stage_three' (compute only checks the push), yet the SAVE gate
+    stays locked. The UI must read this gate (exposed as stage_three_unlocked), not
+    the stage label — gating on the label alone re-enables a Save the API would 422.
+    """
+    site = _site()
+    site.licensing_status = "in_progress"  # legal NOT complete despite the push
+    licensing = _licensing(site)
+    project = _project_done(site)
+    row = _nso(site, handover_pushed_at=_dt.datetime(2026, 6, 15, 1, 0, 0))
+
+    assert nso_service._compute_stage(site, row, project, licensing) == "stage_three"
+    assert nso_service._stage_three_unlocked(row, site, licensing, project) is False

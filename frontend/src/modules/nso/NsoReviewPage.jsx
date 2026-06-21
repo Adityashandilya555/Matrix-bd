@@ -504,14 +504,12 @@ export default function NsoReviewPage() {
   const stageOneUnlocked = Boolean(triggerMap.finance_ca?.unlocked);
   const stageTwoUnlocked = Boolean(triggerMap.project_initiation?.unlocked);
   const stageTwoDone = Boolean(review?.legalLicensingSnapshot?.complete || review?.stageTwoCompletedAt);
-  // Gate Stage 3 on the backend's real stage, not the project_completion trigger.
-  // `project_completion.unlocked` is only (stage1 ∧ legal ∧ project-done) and omits
-  // the supervisor's handover push (handover_pushed_at) that the save actually
-  // requires (svc_save_stage_three → _stage_three_unlocked). currentStage only
-  // reaches stage_three/final/done once that push has happened, so this keeps the
-  // form non-editable until "Push to NSO" is clicked and never enables a Save that
-  // the backend would 422.
-  const stageThreeUnlocked = ['stage_three', 'final', 'done'].includes(review?.currentStage);
+  // Single source of truth: the backend computes _stage_three_unlocked (handover
+  // push ∧ Stage 1 ∧ Legal Licensing ∧ Project done) and exposes it as
+  // stageThreeUnlocked. Read it directly so the form/Save are editable iff the save
+  // would actually succeed — no client-side re-derivation that can drift from the
+  // real gate (a site pushed before Legal Licensing is complete is still locked).
+  const stageThreeUnlocked = Boolean(review?.stageThreeUnlocked);
   const finalUnlocked = Boolean(review?.stageThreeCompletedAt && !review?.finalApprovedAt);
 
   const saveOne = async () => {
