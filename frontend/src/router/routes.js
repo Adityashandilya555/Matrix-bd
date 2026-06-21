@@ -138,4 +138,4 @@ export function siteTrackerDetailRoute(siteId) {
 
 // App-wide display name. Hosted in this existing constants module (not a new
 // standalone file) so it doesn't trip DeepSource's ESM parse check (#223).
-export const PRODUCT_NAME = 'Retail Expansion';
+export const PRODUCT_NAME = 'Retailexpansion.in';

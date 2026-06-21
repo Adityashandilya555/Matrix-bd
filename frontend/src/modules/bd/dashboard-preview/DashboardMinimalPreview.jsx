@@ -1,5 +1,6 @@
 import React from 'react';
 import Icon from '../../shared/primitives/Icon.jsx';
+import { PRODUCT_NAME } from '../../../router/routes.js';
 
 const FLOW_STAGES = [
   { id: 'loi', label: 'BD LOI Signed', icon: 'file' },
@@ -345,7 +346,7 @@ function PreviewStyles() {
       }
 
       body:has(.minimal-dashboard-preview) .zm-brand-word::after {
-        content: "Retail Expansion";
+        content: "${PRODUCT_NAME}";
         position: absolute;
         inset: 0 auto auto 0;
         color: #F5F2EC;
