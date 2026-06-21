@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import LottiePanel from './LottiePanel.jsx';
+import { PRODUCT_NAME } from '../../constants/brand.js';
 import { getWorkspaceBranding } from '../../services/api/supabaseAuth.js';
 import communityAnim from '../../assets/lottie/workspace-community.json';
 import './branded-auth.css';
@@ -60,7 +61,7 @@ export default function WorkspaceCodeDialog({ open, onClose }) {
             fallbackClassName="wsc-anim wsc-anim-fallback"
           />
           <div className="wsc-left-copy">
-            <span className="wsc-left-brand">Z-Matrix</span>
+            <span className="wsc-left-brand">{PRODUCT_NAME}</span>
             <h3>Find your workspace</h3>
             <p>Your admin shared a workspace code. Enter it to reach your company&#39;s sign-in.</p>
           </div>

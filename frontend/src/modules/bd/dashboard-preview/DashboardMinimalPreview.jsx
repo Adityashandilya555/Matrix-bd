@@ -345,7 +345,7 @@ function PreviewStyles() {
       }
 
       body:has(.minimal-dashboard-preview) .zm-brand-word::after {
-        content: "Scale";
+        content: "Retail Expansion";
         position: absolute;
         inset: 0 auto auto 0;
         color: #F5F2EC;

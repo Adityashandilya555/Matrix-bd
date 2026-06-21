@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import WorkspaceCodeDialog from './WorkspaceCodeDialog.jsx';
 import { useNavigate } from 'react-router-dom';
+import { PRODUCT_NAME } from '../../constants/brand.js';
 import {
   signInWithWorkspaceCode,
   signupAsSupervisor,
@@ -538,7 +539,7 @@ function HeroCopy({ heroOpacity, onHeroSubmit, heroEmail, setHeroEmail }) {
             </button>
           </form>
           <p className="hero-sub-bright">
-            Scale is the operating system that turns every site you open — BD, legal, build,
+            {PRODUCT_NAME} is the operating system that turns every site you open — BD, legal, build,
             handover, ops — into one live digital twin. Get early access.
           </p>
           <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -600,8 +601,7 @@ function Nav({ onRequestMembership, membershipEmail, setMembershipEmail, onSignI
               />
             </svg>
           </span>
-          Scale
-          <span className="sub-mark">Retail Expansion OS</span>
+          {PRODUCT_NAME}
         </div>
         <div className="nav-links">
           <button type="button">Platform</button>
