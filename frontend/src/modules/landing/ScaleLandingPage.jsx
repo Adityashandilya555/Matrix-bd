@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import WorkspaceCodeDialog from './WorkspaceCodeDialog.jsx';
 import { useNavigate } from 'react-router-dom';
+import { PRODUCT_NAME } from '../../router/routes.js';
 import {
   signInWithWorkspaceCode,
   signupAsSupervisor,
@@ -209,7 +210,7 @@ function PhaseLottieOverlay({ progress, path, caption }) {
   useEffect(() => {
     if (!isVisible) return;
     if (loadedRef.current) {
-      try { animRef.current?.play(); } catch (e) {}
+      try { animRef.current?.play(); } catch { /* best-effort animation control */ }
       return;
     }
     let cancelled = false;
@@ -231,11 +232,11 @@ function PhaseLottieOverlay({ progress, path, caption }) {
   useEffect(() => {
     const inst = animRef.current;
     if (!inst) return;
-    try { isVisible ? inst.play() : inst.pause(); } catch (e) {}
+    try { isVisible ? inst.play() : inst.pause(); } catch { /* best-effort animation control */ }
   }, [isVisible]);
 
   useEffect(() => () => {
-    try { animRef.current?.destroy(); } catch (e) {}
+    try { animRef.current?.destroy(); } catch { /* best-effort animation control */ }
   }, []);
 
   return (
@@ -538,7 +539,7 @@ function HeroCopy({ heroOpacity, onHeroSubmit, heroEmail, setHeroEmail }) {
             </button>
           </form>
           <p className="hero-sub-bright">
-            Scale is the operating system that turns every site you open — BD, legal, build,
+            {PRODUCT_NAME} is the operating system that turns every site you open — BD, legal, build,
             handover, ops — into one live digital twin. Get early access.
           </p>
           <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -600,8 +601,7 @@ function Nav({ onRequestMembership, membershipEmail, setMembershipEmail, onSignI
               />
             </svg>
           </span>
-          Scale
-          <span className="sub-mark">Retail Expansion OS</span>
+          {PRODUCT_NAME}
         </div>
         <div className="nav-links">
           <button type="button">Platform</button>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { T, Icon, TABULAR } from './kit.jsx';
+import { PRODUCT_NAME } from '../../../router/routes.js';
 
 // Expandable left rail for the business-admin portal. Collapsed = icon rail with
 // tooltips + a pending dot; expanded = icons + labels + count badges. Brand mark
@@ -17,7 +18,7 @@ const rowBase = (expanded) => ({
 
 export default function Sidebar({
   items, active, onChange, expanded, onToggleExpanded,
-  theme, onToggleTheme, onLogout, brand = 'Scale', sub = 'Business admin',
+  theme, onToggleTheme, onLogout, brand = PRODUCT_NAME, sub = 'Business admin',
 }) {
   return (
     <aside className="ac-sidebar" style={{
