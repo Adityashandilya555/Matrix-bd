@@ -124,7 +124,26 @@ class OrgModuleOut(BaseModel):
     code: Optional[str] = None
     supervisors: list[OrgSupervisorOut] = []
     unassigned_executives: list[OrgExecutiveOut] = []
+    # False for supervisor-only modules (NSO) — the UI hides executive slots/codes.
+    executives_enabled: bool = True
 
 
 class OrgResponse(BaseModel):
     modules: list[OrgModuleOut]
+
+
+# ── Site documents (admin review of all uploaded files, incl. closed sites) ──
+
+class SiteDocumentItem(BaseModel):
+    id: str
+    file_name: str
+    file_type: str
+    module: str
+    uploaded_at: Optional[str] = None
+    uploaded_by: Optional[str] = None
+    url: Optional[str] = None
+
+
+class SiteDocumentsResponse(BaseModel):
+    site_id: str
+    documents: list[SiteDocumentItem] = []
