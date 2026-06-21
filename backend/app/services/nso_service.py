@@ -745,7 +745,7 @@ async def svc_save_stage_three(
         licensing = await _fetch_licensing(session, site_id=site.id)
         row = await _fetch_nso_or_create(session, site=site)
         if not _stage_three_unlocked(row, site, licensing, project):
-            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="NSO Stage 3 is locked until Legal Licensing and Project completion are complete.")
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="NSO Stage 3 is locked until the project supervisor pushes the completed site in from the Project NSO-Handover tab (Legal Licensing and Project completion must be done first).")
         row.dry_stock_order_status = body.dry_stock_order_status
         row.online_delivery_status = body.online_delivery_status
         row.handover_checklist_signed = body.handover_checklist_signed
