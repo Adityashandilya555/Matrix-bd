@@ -187,3 +187,37 @@ export async function finalApproveNso(siteId) {
   notifySiteDataChanged({ source: 'nso', action: 'final_approval', siteId });
   return stateFromServer(data);
 }
+
+function delegationFromServer(row) {
+  return {
+    id: row.id,
+    siteId: row.site_id,
+    module: row.module,
+    delegateUserId: row.delegate_user_id,
+    delegateEmail: row.delegate_email,
+    delegateName: row.delegate_name,
+    grantedBy: row.granted_by,
+    grantedAt: row.granted_at,
+    notes: row.notes,
+  };
+}
+
+export async function listNsoDelegations(siteId) {
+  const data = await client.get(`/nso/${siteId}/delegations`).then((r) => r.data);
+  return { items: (data.items || []).map(delegationFromServer), total: data.total ?? 0 };
+}
+
+export async function allocateNso(siteId, executiveId, notes = null) {
+  const data = await client.post(`/nso/${siteId}/allocate`, {
+    executive_id: executiveId,
+    notes: notes || undefined,
+  }).then((r) => r.data);
+  notifySiteDataChanged({ source: 'nso', action: 'allocate', siteId });
+  return { items: (data.items || []).map(delegationFromServer), total: data.total ?? 0 };
+}
+
+export async function revokeNsoAllocation(siteId, userId) {
+  const data = await client.delete(`/nso/${siteId}/allocate/${userId}`).then((r) => r.data);
+  notifySiteDataChanged({ source: 'nso', action: 'revoke_allocation', siteId });
+  return data;
+}
