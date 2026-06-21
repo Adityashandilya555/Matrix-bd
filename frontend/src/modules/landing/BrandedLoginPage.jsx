@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { PRODUCT_NAME } from '../../constants/brand.js';
+import { PRODUCT_NAME } from '../../router/routes.js';
 import {
   signInWithWorkspaceCode,
   checkAccountState,

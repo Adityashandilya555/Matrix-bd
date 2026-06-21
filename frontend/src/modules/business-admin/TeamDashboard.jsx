@@ -1,6 +1,6 @@
 import React from 'react';
 import './approval-center.css';
-import { PRODUCT_NAME } from '../../constants/brand.js';
+import { PRODUCT_NAME } from '../../router/routes.js';
 import { getAuthToken } from '../../services/api/authToken.js';
 import { decodeJwtPayload } from './jwt.js';
 import {

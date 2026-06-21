@@ -1,5 +1,5 @@
 import React from 'react';
-import { PRODUCT_NAME } from '../../constants/brand.js';
+import { PRODUCT_NAME } from '../../router/routes.js';
 
 // Platform admin portal — the ONLY tenant-less page in the app. Lives outside
 // the workspace auth flow because the people approving workspace requests are

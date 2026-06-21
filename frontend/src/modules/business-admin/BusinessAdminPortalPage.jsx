@@ -1,6 +1,6 @@
 import React from 'react';
 import { clearAuthToken } from '../../services/api/authToken.js';
-import { PRODUCT_NAME } from '../../constants/brand.js';
+import { PRODUCT_NAME } from '../../router/routes.js';
 import { useAuthToken } from '../../state/useAuthToken.js';
 import { decodeJwtPayload } from './jwt.js';
 import GateScreen from './GateScreen.jsx';

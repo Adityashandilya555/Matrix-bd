@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import LottiePanel from './LottiePanel.jsx';
-import { PRODUCT_NAME } from '../../constants/brand.js';
+import { PRODUCT_NAME } from '../../router/routes.js';
 import { getWorkspaceBranding } from '../../services/api/supabaseAuth.js';
 import communityAnim from '../../assets/lottie/workspace-community.json';
 import './branded-auth.css';

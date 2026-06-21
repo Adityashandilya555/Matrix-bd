@@ -1,6 +1,6 @@
 import React from 'react';
 import { signInWithWorkspaceCode } from '../../services/api/supabaseAuth.js';
-import { PRODUCT_NAME } from '../../constants/brand.js';
+import { PRODUCT_NAME } from '../../router/routes.js';
 import { getAuthToken, clearAuthToken } from '../../services/api/authToken.js';
 import { decodeJwtPayload } from './jwt.js';
 

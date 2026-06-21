@@ -1,6 +1,6 @@
 import React from 'react';
 import { T, Icon, TABULAR } from './kit.jsx';
-import { PRODUCT_NAME } from '../../../constants/brand.js';
+import { PRODUCT_NAME } from '../../../router/routes.js';
 
 // Expandable left rail for the business-admin portal. Collapsed = icon rail with
 // tooltips + a pending dot; expanded = icons + labels + count badges. Brand mark
