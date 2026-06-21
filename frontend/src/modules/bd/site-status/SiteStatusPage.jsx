@@ -218,7 +218,7 @@ export default function SiteStatusPage() {
           padding: 16, border: '1px solid var(--zm-danger)',
           borderRadius: 12, background: 'rgba(220,38,38,0.05)',
         }}>
-          <strong style={{ color: 'var(--zm-danger)' }}>Due diligence failed.</strong>
+          <strong style={{ color: 'var(--zm-danger)' }}>DDR negative.</strong>
           {dd.rejection_reason && (
             <div style={{ marginTop: 6, color: 'var(--zm-fg-2)', fontSize: 13 }}>
               Reason: {dd.rejection_reason}

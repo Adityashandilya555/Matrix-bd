@@ -155,7 +155,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
           {role === 'supervisor' && (
             <SidebarItem icon="archiveBox" label="Archive" count={counts.archive} active={activeView === 'archive'} onClick={() => go(ROUTES.ARCHIVE)} collapsed={collapsed}/>
           )}
-          <SidebarItem icon="warning" label="DD failed" active={activeView === 'dd-failed'} onClick={() => go(ROUTES.DD_FAILED)} collapsed={collapsed}/>
+          <SidebarItem icon="warning" label="DDR negative" active={activeView === 'dd-failed'} onClick={() => go(ROUTES.DD_FAILED)} collapsed={collapsed}/>
           <SidebarItem icon="route" label="Process flow" active={activeView === 'site-tracker'} onClick={() => go(ROUTES.SITE_TRACKER)} collapsed={collapsed}/>
           {canSeePayment && (
             <SidebarItem icon="paymentCard" label="Payment" active={activeView === 'payment-licensing'} onClick={() => go(ROUTES.PAYMENT)} collapsed={collapsed}/>
