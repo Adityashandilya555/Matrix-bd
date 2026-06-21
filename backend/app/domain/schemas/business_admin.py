@@ -124,6 +124,8 @@ class OrgModuleOut(BaseModel):
     code: Optional[str] = None
     supervisors: list[OrgSupervisorOut] = []
     unassigned_executives: list[OrgExecutiveOut] = []
+    # False for supervisor-only modules (NSO) — the UI hides executive slots/codes.
+    executives_enabled: bool = True
 
 
 class OrgResponse(BaseModel):

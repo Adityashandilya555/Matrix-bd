@@ -168,6 +168,8 @@ export async function getOrg() {
     code: m.code ?? null,
     supervisors: (m.supervisors || []).map((s) => ({ ...person(s), executives: (s.executives || []).map(person) })),
     unassignedExecutives: (m.unassigned_executives || []).map(person),
+    // Supervisor-only modules (NSO) hide all executive UI.
+    executivesEnabled: m.executives_enabled !== false,
   }));
 }
 

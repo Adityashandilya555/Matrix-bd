@@ -28,7 +28,8 @@ from app.services.nso_service import (
 
 router = APIRouter(prefix="/nso", tags=["NSO"])
 
-NsoMember = Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.EXECUTIVE))]
+# NSO is a supervisor-only module — executives are not part of the NSO flow.
+NsoMember = Annotated[dict, Depends(require_role(Role.SUPERVISOR))]
 InNsoModule = Annotated[dict, Depends(require_module("nso"))]
 
 
