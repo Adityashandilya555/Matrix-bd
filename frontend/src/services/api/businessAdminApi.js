@@ -184,7 +184,7 @@ export async function getAllSites() {
       createdByName: s.submitted_by_name, assignedToName: s.assigned_to_name,
       legalDdStatus: s.legal_dd_status, agreementStatus: s.agreement_status, licensingStatus: s.licensing_status,
       designStatus: s.design_status, projectStatus: s.project_status, financeStatus: s.finance_status,
-      nsoStatus: s.nso_status, launchStatus: s.launch_status, isLaunched: s.is_launched,
+      nsoStatus: s.nso_status, launchStatus: s.launch_status, isLaunched: Boolean(s.is_launched),
     })),
     total: d.total ?? 0,
   };
