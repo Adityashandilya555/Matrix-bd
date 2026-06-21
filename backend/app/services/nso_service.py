@@ -435,6 +435,7 @@ async def _state_response(
         project_completed_at=(project.project_completed_at if project else None),
         nso_status=nso_status,
         current_stage=current_stage,
+        stage_three_unlocked=_stage_three_unlocked(row, site, licensing, project),
         triggers=_triggers(site, row, project, licensing),
         property_snapshot=snapshot,
         legal_licensing_snapshot=legal_snapshot,
@@ -699,7 +700,7 @@ async def svc_save_stage_three(
         licensing = await _fetch_licensing(session, site_id=site.id)
         row = await _fetch_nso_or_create(session, site=site)
         if not _stage_three_unlocked(row, site, licensing, project):
-            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="NSO Stage 3 is locked until Legal Licensing and Project completion are complete.")
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="NSO Stage 3 is locked until Stage 1 is complete, Legal Licensing and Project completion are done, and the project supervisor has pushed the site in from the Project NSO-Handover tab.")
         row.dry_stock_order_status = body.dry_stock_order_status
         row.online_delivery_status = body.online_delivery_status
         row.handover_checklist_signed = body.handover_checklist_signed
