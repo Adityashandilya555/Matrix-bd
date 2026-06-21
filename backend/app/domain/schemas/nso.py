@@ -156,25 +156,3 @@ class NsoStageThreeRequest(BaseModel):
     launch_ready: bool | None = None
     final_approval_signoff_1: bool = False
     final_approval_signoff_2: bool = False
-
-
-class NsoDelegationOut(BaseModel):
-    id: str
-    site_id: str
-    module: str
-    delegate_user_id: str
-    delegate_email: str
-    delegate_name: str
-    granted_by: str
-    granted_at: datetime
-    notes: Optional[str] = None
-
-
-class NsoDelegationsResponse(BaseModel):
-    items: list[NsoDelegationOut]
-    total: int
-
-
-class AllocateNsoRequest(BaseModel):
-    executive_id: str
-    notes: Optional[str] = None
