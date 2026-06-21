@@ -28,13 +28,20 @@ export default function Sidebar({
     }}>
       {/* Brand + collapse toggle (always visible, top) */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 4px 16px', minWidth: 0 }}>
-        <span style={{ width: 36, height: 36, borderRadius: 11, flexShrink: 0, display: 'inline-flex',
-          alignItems: 'center', justifyContent: 'center', background: T.accentSoft, color: T.accent }}>
-          <Icon.scaleLogo size={20} />
-        </span>
+        <Icon.scaleLogo size={36} style={{ borderRadius: 11, flexShrink: 0, display: 'block' }} />
         {expanded && (
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 760, letterSpacing: '-0.02em', color: T.text, lineHeight: 1 }}>{brand}</div>
+            <div style={{
+              fontFamily: 'var(--zm-font-display)',
+              fontSize: 12,
+              fontWeight: 800,
+              letterSpacing: '0.06em',
+              color: T.text,
+              lineHeight: 1,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}>{brand}</div>
             <div style={{ fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: T.textFaint, marginTop: 4 }}>{sub}</div>
           </div>
         )}
