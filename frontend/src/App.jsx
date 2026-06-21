@@ -66,10 +66,7 @@ export default function App() {
     // Find site across all lists
     const all = [...drafts, ...shortlist, ...staging, ...archive];
     const found = all.find(s => s.id === siteId || s.code === siteId);
-    // Clear the drawer when the ?site= id resolves to nothing (e.g. navigating
-    // from a valid site to an invalid/unknown id) instead of leaving the old
-    // site open. Re-runs when the lists load, so deep links still open.
-    setOpenSite(found ? buildDrawerSite(found) : null);
+    if (found) setOpenSite(buildDrawerSite(found));
   }, [location.search, drafts, shortlist, staging, archive]);
 
   const showToast = useCallback((msg, tone = 'success') => setToast({ msg, tone }), []);
@@ -126,9 +123,7 @@ export default function App() {
     pipeline:     visibleDrafts.length,
     shortlist:    visibleShortlist.length,
     staging:      visibleStaging.length,
-    // Scope archive too (was raw `archive.length`) so an executive's sidebar
-    // count reflects only their own archived sites, not the whole tenant's.
-    archive:      filterByScope(archive, role, user).length,
+    archive:      archive.length,
     pendingUsers: pendingUserCount || undefined, // hide the badge at 0
   };
 
