@@ -1,5 +1,6 @@
 import React from 'react';
 import { signInWithWorkspaceCode } from '../../services/api/supabaseAuth.js';
+import { PRODUCT_NAME } from '../../router/routes.js';
 import { getAuthToken, clearAuthToken } from '../../services/api/authToken.js';
 import { decodeJwtPayload } from './jwt.js';
 
@@ -37,7 +38,7 @@ export default function GateScreen({ onAuth }) {
     <div style={{ minHeight: '100vh', background: '#0B0C10', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, overflowY: 'auto' }}>
       <form onSubmit={submit} style={{ width: 420, background: '#13141B', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 14, padding: 28, display: 'flex', flexDirection: 'column', gap: 16, boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
         <div>
-          <div style={{ fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.75)' }}>Scale · Business admin</div>
+          <div style={{ fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.75)' }}>{PRODUCT_NAME} · Business admin</div>
           <h1 style={{ margin: '6px 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', color: '#fff' }}>Workspace controls</h1>
           <p style={{ margin: 0, fontSize: 13, color: 'rgba(255,255,255,0.82)', lineHeight: 1.5 }}>Manage department codes and approve supervisors waiting in the queue.</p>
         </div>

@@ -1,5 +1,6 @@
 import React from 'react';
 import './approval-center.css';
+import { PRODUCT_NAME } from '../../router/routes.js';
 import { getAuthToken } from '../../services/api/authToken.js';
 import { decodeJwtPayload } from './jwt.js';
 import {
@@ -220,7 +221,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
           {/* ── Header ── */}
           <header style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 22, flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: T.textMuted }}>Scale · Business admin</div>
+              <div style={{ fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: T.textMuted }}>{PRODUCT_NAME} · Business admin</div>
               <h1 style={{ margin: '5px 0 0', fontSize: 27, fontWeight: 730, letterSpacing: '-0.025em', color: T.text }}>{company || 'Workspace'}</h1>
               <div style={{ marginTop: 3, fontSize: 13, color: T.textMuted }}>Approval center</div>
             </div>

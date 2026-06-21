@@ -104,6 +104,10 @@ class NsoStateResponse(BaseModel):
 
     nso_status: str
     current_stage: str
+    # Canonical "may Stage 3 be saved now" flag — mirrors svc_save_stage_three's
+    # _stage_three_unlocked gate (handover push ∧ Stage 1 ∧ Legal Licensing ∧
+    # Project done) so the UI never re-derives it and can't drift from the save.
+    stage_three_unlocked: bool = False
     triggers: list[NsoTriggerState] = Field(default_factory=list)
 
     property_snapshot: NsoPropertySnapshot

@@ -317,11 +317,14 @@ body[data-scale-route="true"] {
   color: rgba(255,255,255,0.75);
   font-weight: 500;
 }
-.scale-landing-root .nav-links button {
+.scale-landing-root .nav-links button,
+.scale-landing-root .nav-links a {
   color: inherit; background: transparent; border: 0; cursor: pointer;
   font: inherit; padding: 0; transition: color var(--zm-dur-1);
+  text-decoration: none;
 }
-.scale-landing-root .nav-links button:hover { color: #fff; }
+.scale-landing-root .nav-links button:hover,
+.scale-landing-root .nav-links a:hover { color: #fff; }
 
 /* Membership input replaces "Request access" CTA */
 .scale-landing-root .nav-membership {

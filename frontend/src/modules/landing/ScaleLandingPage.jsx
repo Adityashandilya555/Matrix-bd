@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import WorkspaceCodeDialog from './WorkspaceCodeDialog.jsx';
 import { useNavigate } from 'react-router-dom';
+import { PRODUCT_NAME } from '../../router/routes.js';
 import {
   signInWithWorkspaceCode,
   signupAsSupervisor,
@@ -21,6 +22,11 @@ const HERO_VIDEO_SRC =
   'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260328_115001_bcdaa3b4-03de-47e7-ad63-ae3e392c32d4.mp4';
 
 const ASSET_BASE = '/landing/scale/assets';
+
+// Self-contained scroll-driven "Retail Expansion Pipeline" experience
+// (canvas frame-sequence microsite). Lives in public/, served as a static
+// document so its own <x-dc> runtime + frames load exactly as authored.
+const PIPELINE_EXPERIENCE_URL = '/landing/pipeline/index.html';
 
 const PHASE_DATA = [
   {
@@ -209,7 +215,7 @@ function PhaseLottieOverlay({ progress, path, caption }) {
   useEffect(() => {
     if (!isVisible) return;
     if (loadedRef.current) {
-      try { animRef.current?.play(); } catch (e) {}
+      try { animRef.current?.play(); } catch { /* best-effort animation control */ }
       return;
     }
     let cancelled = false;
@@ -231,11 +237,11 @@ function PhaseLottieOverlay({ progress, path, caption }) {
   useEffect(() => {
     const inst = animRef.current;
     if (!inst) return;
-    try { isVisible ? inst.play() : inst.pause(); } catch (e) {}
+    try { isVisible ? inst.play() : inst.pause(); } catch { /* best-effort animation control */ }
   }, [isVisible]);
 
   useEffect(() => () => {
-    try { animRef.current?.destroy(); } catch (e) {}
+    try { animRef.current?.destroy(); } catch { /* best-effort animation control */ }
   }, []);
 
   return (
@@ -538,7 +544,7 @@ function HeroCopy({ heroOpacity, onHeroSubmit, heroEmail, setHeroEmail }) {
             </button>
           </form>
           <p className="hero-sub-bright">
-            Scale is the operating system that turns every site you open — BD, legal, build,
+            {PRODUCT_NAME} is the operating system that turns every site you open — BD, legal, build,
             handover, ops — into one live digital twin. Get early access.
           </p>
           <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -600,12 +606,10 @@ function Nav({ onRequestMembership, membershipEmail, setMembershipEmail, onSignI
               />
             </svg>
           </span>
-          Scale
-          <span className="sub-mark">Retail Expansion OS</span>
+          {PRODUCT_NAME}
         </div>
         <div className="nav-links">
-          <button type="button">Platform</button>
-          <button type="button">Pipeline</button>
+          <a href={PIPELINE_EXPERIENCE_URL}>Pipeline</a>
           <button type="button">Customers</button>
           <button type="button">Docs</button>
         </div>
