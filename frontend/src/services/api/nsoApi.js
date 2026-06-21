@@ -94,6 +94,7 @@ function stateFromServer(row) {
     projectCompletedAt: row.project_completed_at,
     nsoStatus: row.nso_status,
     currentStage: row.current_stage,
+    stageThreeUnlocked: Boolean(row.stage_three_unlocked),
     triggers: (row.triggers || []).map(triggerFromServer),
     propertySnapshot: propertySnapshotFromServer(row.property_snapshot || {}),
     legalLicensingSnapshot: legalLicensingSnapshotFromServer(row.legal_licensing_snapshot || {}),
