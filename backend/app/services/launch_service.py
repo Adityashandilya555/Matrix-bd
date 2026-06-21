@@ -51,6 +51,7 @@ from app.domain.schemas.launch import (
 )
 from app.services._common import count_rows, fetch_site_or_404, fetch_user_names
 from app.services.audit_service import write_audit_event
+from app.services.licensing_status import stage_two_canonical_status
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +216,14 @@ async def _build_response(
         .where(models.LaunchReviewEvent.launch_approval_id == row.id)
         .order_by(models.LaunchReviewEvent.created_at)
     )).scalars().all()
+    # The 5 NSO-license statuses must come from canonical Legal Licensing — the
+    # NsoReview.*_status columns are never synced and always read "pending"
+    # (#229), which is why this review showed every license as PENDING. Derive
+    # them the same way the NSO module does (shared licensing_status helper).
+    licensing = (await session.execute(
+        select(models.SiteLicensing).where(models.SiteLicensing.site_id == site.id)
+    )).scalar_one_or_none()
+    license_status = stage_two_canonical_status(licensing)
 
     # Batch the actor-name lookups into ONE query instead of up to 5 sequential
     # SELECTs to `users` — each a fresh pgBouncer/NullPool round trip (#240/18.6).
@@ -259,11 +268,13 @@ async def _build_response(
         kyc_verified=bool(site.kyc_verified),
         ca_code=site.ca_code,
         nso_status=nso.nso_status if nso else None,
-        fssai_status=nso.fssai_status if nso else None,
-        health_trade_status=nso.health_trade_status if nso else None,
-        shops_estab_status=nso.shops_estab_status if nso else None,
-        fire_noc_status=nso.fire_noc_status if nso else None,
-        storage_license_status=nso.storage_license_status if nso else None,
+        # Licensing statuses come from canonical Legal Licensing, NOT nso_reviews
+        # (which is never synced and would always read "pending", #229).
+        fssai_status=license_status["fssai_status"],
+        health_trade_status=license_status["health_trade_status"],
+        shops_estab_status=license_status["shops_estab_status"],
+        fire_noc_status=license_status["fire_noc_status"],
+        storage_license_status=license_status["storage_license_status"],
         launch_date=nso.launch_date if nso else None,
         nso_final_approved_at=nso.final_approved_at if nso else None,
     )

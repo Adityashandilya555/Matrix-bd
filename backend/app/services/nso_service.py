@@ -33,30 +33,20 @@ from app.domain.schemas.nso import (
 from app.services._common import count_rows, fetch_site_or_404, fetch_user_name
 from app.services.audit_service import write_audit_event
 from app.services.launch_service import svc_create_launch_approval
+from app.services.licensing_status import (
+    STAGE_TWO_STATUS_TO_LICENSE as _STAGE_TWO_STATUS_TO_LICENSE,
+    legacy_done as _legacy_done,
+    legal_license_values as _legal_license_values,
+    legal_licensing_complete as _legal_licensing_complete,
+    stage_two_canonical_status as _stage_two_canonical_status,
+)
 
 logger = logging.getLogger(__name__)
 
 
-LEGAL_LICENSE_FIELDS = (
-    "fssai",
-    "health_trade",
-    "shops_estab_reg",
-    "fire_noc",
-    "storage_license",
-)
-
-# NSO Stage 2 readiness fields → the canonical Legal Licensing field each one
-# *reflects*. Stage 2 is derived from Legal Licensing (see _state_response and
-# #229); the NsoReview.*_status columns are never synced from licensing, so the
-# Stage 2 contract (and the dropped-body divergence check) must read the licensing
-# snapshot, not the row.
-_STAGE_TWO_STATUS_TO_LICENSE = {
-    "fssai_status": "fssai",
-    "health_trade_status": "health_trade",
-    "shops_estab_status": "shops_estab_reg",
-    "fire_noc_status": "fire_noc",
-    "storage_license_status": "storage_license",
-}
+# LEGAL_LICENSE_FIELDS and _STAGE_TWO_STATUS_TO_LICENSE now live in
+# app.services.licensing_status (shared with the business-admin launch review so
+# the two derive the licensing statuses identically, #229). Imported above.
 _STAGE_TWO_STATUS_FIELDS = tuple(_STAGE_TWO_STATUS_TO_LICENSE)
 
 
@@ -226,25 +216,6 @@ def _stage_one_complete(row: models.NsoReview) -> bool:
     return row.communication_floated is not None
 
 
-def _legal_license_values(licensing: Optional[models.SiteLicensing]) -> dict[str, str]:
-    if licensing is None:
-        return dict.fromkeys(LEGAL_LICENSE_FIELDS, "pending")
-    return {field: (getattr(licensing, field) or "pending") for field in LEGAL_LICENSE_FIELDS}
-
-
-def _legal_licensing_complete(site: models.Site, licensing: Optional[models.SiteLicensing]) -> bool:
-    values = _legal_license_values(licensing)
-    return bool(
-        licensing
-        and (site.licensing_status or "pending") == "complete"
-        and all(value == "yes" for value in values.values())
-    )
-
-
-def _legacy_done(value: str) -> str:
-    return "done" if value == "yes" else "pending"
-
-
 def _legal_licensing_snapshot(
     site: models.Site, licensing: Optional[models.SiteLicensing],
 ) -> NsoLegalLicensingSnapshot:
@@ -259,23 +230,6 @@ def _legal_licensing_snapshot(
         fire_noc=values["fire_noc"],
         storage_license=values["storage_license"],
     )
-
-
-def _stage_two_canonical_status(
-    site: models.Site, licensing: Optional[models.SiteLicensing],
-) -> dict[str, str]:
-    """Stage 2 status fields as derived from canonical Legal Licensing.
-
-    Uses the exact derivation _state_response surfaces to clients
-    (``_legacy_done`` of each licensing field), so callers comparing a submitted
-    body against "canonical" read the real source of truth — NOT the never-synced
-    ``NsoReview.*_status`` columns, which would yield false divergences (#229).
-    """
-    snapshot = _legal_licensing_snapshot(site, licensing)
-    return {
-        field: _legacy_done(getattr(snapshot, license_field))
-        for field, license_field in _STAGE_TWO_STATUS_TO_LICENSE.items()
-    }
 
 
 def _stage_three_complete(row: models.NsoReview) -> bool:
@@ -708,7 +662,7 @@ async def svc_save_stage_two(
             # clients), NOT against row.*_status — those columns are never synced
             # from licensing, so comparing to them would warn on every normal save
             # and log a stale "canonical" value (#229 review).
-            canonical = _stage_two_canonical_status(site, licensing)
+            canonical = _stage_two_canonical_status(licensing)
             ignored = {
                 field: getattr(body, field)
                 for field in _STAGE_TWO_STATUS_FIELDS

@@ -34,7 +34,7 @@ export default function DdFailedPage() {
       <PageHeader
         file="No. 07"
         eyebrow="BD module"
-        title={<>Due diligence <em>failed</em></>}
+        title={<>DDR <em>negative</em></>}
         right={<HeaderTag icon="alert" label="LEGAL_REJECTED"/>}
       />
 
