@@ -203,3 +203,36 @@ async def test_launch_wrong_status_422(make_session, fake_result):
     with pytest.raises(HTTPException) as ei:
         await L.svc_launch(sess, tenant_id=site.tenant_id, actor=_admin(), site_id=site.id)
     assert ei.value.status_code == 422
+
+
+# ── #229: the review's NSO-license block reflects canonical Legal Licensing ───
+
+async def test_build_response_licenses_come_from_legal_not_nso(make_session, fake_result):
+    # The business-admin review showed every license PENDING because it read the
+    # never-synced nso_reviews.*_status columns. It must derive from the legal
+    # site_licensing row instead. Here nso_reviews says all "pending" but legal
+    # licensing has FSSAI granted -> the response must show fssai done.
+    site = _site(licensing_status="complete")
+    appr = _appr(site, status="ready_to_launch")
+    nso = models.NsoReview(
+        site_id=site.id, tenant_id=site.tenant_id,
+        fssai_status="pending", health_trade_status="pending",
+        shops_estab_status="pending", fire_noc_status="pending",
+        storage_license_status="pending",
+    )
+    licensing = models.SiteLicensing(
+        site_id=site.id,
+        fssai="yes", health_trade="pending", shops_estab_reg="pending",
+        fire_noc="pending", storage_license="pending",
+    )
+    sess = make_session(
+        fake_result(scalar=None),       # SiteDetail
+        fake_result(scalar=nso),        # NsoReview (all *_status = "pending")
+        fake_result(scalars_list=[]),   # LaunchReviewEvent
+        fake_result(scalar=licensing),  # SiteLicensing (fssai = "yes")
+    )
+    resp = await L._build_response(sess, row=appr, site=site)
+    dep = resp.departments
+    assert dep.fssai_status == "done"            # from legal "yes", NOT nso "pending"
+    assert dep.health_trade_status == "pending"
+    assert dep.storage_license_status == "pending"

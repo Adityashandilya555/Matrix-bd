@@ -1,5 +1,6 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { PRODUCT_NAME } from '../../router/routes.js';
 import {
   signInWithWorkspaceCode,
   checkAccountState,
@@ -303,7 +304,7 @@ export default function BrandedLoginPage() {
             fallbackClassName="bl-aside-anim bl-aside-fallback"
           />
           <div className="bl-aside-copy">
-            <span className="bl-aside-brand">Z-Matrix</span>
+            <span className="bl-aside-brand">{PRODUCT_NAME}</span>
             <h2>Secure access to your workspace</h2>
             <p>Sign in to continue to {brand.status === 'ready' ? brand.name : 'your workspace'}.</p>
           </div>
@@ -330,7 +331,7 @@ export default function BrandedLoginPage() {
             : <JoinPanel />}
         </div>
       </div>
-      <p className="bl-foot">Powered by Z-Matrix &middot; {code}</p>
+      <p className="bl-foot">Powered by {PRODUCT_NAME} &middot; {code}</p>
     </div>
   );
 }

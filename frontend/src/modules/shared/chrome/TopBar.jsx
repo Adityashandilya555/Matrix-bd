@@ -2,9 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import Icon from '../primitives/Icon.jsx';
 import Avatar from '../primitives/Avatar.jsx';
 import { useSession } from '../../../state/SessionContext.jsx';
+import { PRODUCT_NAME } from '../../../router/routes.js';
 
 // Render body preserved exactly from Chrome.jsx TopBar component.
-export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, onSearch, sidebarCollapsed = false, onToggleSidebar }) {
+export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, sidebarCollapsed = false, onToggleSidebar }) {
   const { signOut, session } = useSession();
   // BD-only action — legal and payment supervisors don't open pipeline drafts.
   // "New pipeline" creates a BD site draft — only the BD surface (or mock/no-module) shows it.
@@ -62,7 +63,7 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
           whiteSpace: 'nowrap', position: 'relative', zIndex: 1,
           display: sidebarCollapsed ? 'none' : 'inline',
           textShadow: '0 1px 0 rgba(0,0,0,0.35), 0 0 24px rgba(122,231,218,0.15)',
-        }}>Scale</span>
+        }}>{PRODUCT_NAME}</span>
         <span style={{
           position: 'absolute', top: 12, right: 12,
           width: 5, height: 5, borderRadius: 999,
