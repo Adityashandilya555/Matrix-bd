@@ -1,4 +1,5 @@
 import React from 'react';
+import { PRODUCT_NAME } from '../../router/routes.js';
 
 // Platform admin portal — the ONLY tenant-less page in the app. Lives outside
 // the workspace auth flow because the people approving workspace requests are
@@ -109,7 +110,7 @@ function GateScreen({ onUnlock }) {
     <div style={{ minHeight: '100vh', background: '#0B0C10', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, overflowY: 'auto' }}>
       <form onSubmit={submit} style={{ width: 420, background: '#13141B', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 14, padding: 28, display: 'flex', flexDirection: 'column', gap: 16, boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
         <div>
-          <div style={{ fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.75)' }}>Scale · Platform admin</div>
+          <div style={{ fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.75)' }}>{PRODUCT_NAME} · Platform admin</div>
           <h1 style={{ margin: '6px 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', color: '#fff' }}>Approval queue</h1>
           <p style={{ margin: 0, fontSize: 13, color: 'rgba(255,255,255,0.82)', lineHeight: 1.5 }}>This portal lets you approve workspace requests and provision tenants. It is not part of any workspace — sign in with the platform admin credentials.</p>
         </div>
@@ -408,7 +409,7 @@ function PortalScreen({ keyValue, onLogout }) {
     <div style={{ minHeight: '100vh', maxHeight: '100vh', overflowY: 'auto', background: '#0B0C10', color: '#fff', padding: '32px 40px' }}>
       <header style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 28, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)' }}>Scale · Platform admin</div>
+          <div style={{ fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.78)' }}>{PRODUCT_NAME} · Platform admin</div>
           <h1 style={{ margin: '4px 0 0', fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', color: '#fff' }}>{view === 'resets' ? 'Password reset queue' : 'Workspace approval queue'}</h1>
         </div>
         <span style={{ flex: 1 }}/>

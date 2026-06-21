@@ -155,7 +155,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
           {role === 'supervisor' && (
             <SidebarItem icon="archiveBox" label="Archive" count={counts.archive} active={activeView === 'archive'} onClick={() => go(ROUTES.ARCHIVE)} collapsed={collapsed}/>
           )}
-          <SidebarItem icon="warning" label="DD failed" active={activeView === 'dd-failed'} onClick={() => go(ROUTES.DD_FAILED)} collapsed={collapsed}/>
+          <SidebarItem icon="warning" label="DDR negative" active={activeView === 'dd-failed'} onClick={() => go(ROUTES.DD_FAILED)} collapsed={collapsed}/>
           <SidebarItem icon="route" label="Process flow" active={activeView === 'site-tracker'} onClick={() => go(ROUTES.SITE_TRACKER)} collapsed={collapsed}/>
           {canSeePayment && (
             <SidebarItem icon="paymentCard" label="Payment" active={activeView === 'payment-licensing'} onClick={() => go(ROUTES.PAYMENT)} collapsed={collapsed}/>
@@ -406,8 +406,8 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
 
       {collapsed ? (
         <div
-          title="Ask Scale"
-          aria-label="Ask Scale"
+          title="Ask Assistant"
+          aria-label="Ask Assistant"
           style={{
             height: 42,
             margin: '0 2px',
@@ -431,7 +431,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--zm-sidebar-accent)' }}>
           <Icon name="chat" size={14}/>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Ask Scale</span>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Ask Assistant</span>
         </div>
         <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-sidebar-fg-muted)', lineHeight: 1.45 }}>
           "Sites in process overdue &gt; 14 days" — Answer in the desktop workspace.

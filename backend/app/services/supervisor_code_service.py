@@ -91,6 +91,14 @@ async def approve_my_pending_exec(
     module: str,
 ) -> None:
     """Activate a pending executive and bind them to this supervisor, enforcing ownership."""
+    # NSO is a supervisor-only module (canonical list:
+    # business_admin_service._SUPERVISOR_ONLY_MODULES) — it has no executive role,
+    # so refuse to activate one there even if a stray pending row exists.
+    if module == "nso":
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="NSO is a supervisor-only module — it has no executive role.",
+        )
     # Ownership re-check (#86): the approve path must enforce the same
     # `notes` marker the list query scopes by — otherwise any supervisor in
     # the tenant can activate ANY pending user and bind them under themself.

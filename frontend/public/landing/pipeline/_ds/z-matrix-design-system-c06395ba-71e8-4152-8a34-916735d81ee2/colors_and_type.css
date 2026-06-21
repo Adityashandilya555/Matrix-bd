@@ -1,0 +1,272 @@
+/* ============================================================
+   Z-MATRIX DESIGN SYSTEM — colors + type tokens
+   For: Blue Tokai internal automation + new-store-opening folder
+   Two themes:
+     :root            → Digital Quartz (light, default)
+     [data-theme=dark]→ Deep Obsidian (high-end command center)
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+/* -------------------------------------------------------------
+   1. Color tokens — Digital Quartz (light) · warm editorial neutrals
+   ------------------------------------------------------------- */
+:root {
+  /* Background plane — warm off-white, never pure */
+  --zm-bg:            #F6F2EA;   /* warm cream */
+  --zm-bg-2:          #EFEAE0;
+  --zm-surface:       #FBF8F1;   /* soft paper card */
+  --zm-surface-2:     #F4F0E6;
+  --zm-surface-hover: #EFEAE0;
+  --zm-surface-sunken:#E7E0D2;
+
+  /* Linework — warm graphite */
+  --zm-line:          #E4DCC9;
+  --zm-line-strong:   #C8BFA9;
+  --zm-line-faint:    #EFE9DA;
+  --zm-grid:          rgba(28, 24, 18, 0.04);
+
+  /* Text — warm near-black */
+  --zm-fg:            #1A1A1F;   /* warm ink */
+  --zm-fg-2:          #3A3A45;
+  --zm-fg-3:          #6E6E78;
+  --zm-fg-4:          #9C9CA4;
+  --zm-fg-inv:        #FBF8F1;
+
+  /* Brand accent — Matrix Teal */
+  --zm-accent:        #0F5D5C;
+  --zm-accent-hover:  #0C4B4A;
+  --zm-accent-press:  #093C3B;
+  --zm-accent-soft:   #E5EEED;
+  --zm-accent-line:   #9CC1C0;
+
+  /* Data highlight — Burnished Copper */
+  --zm-copper:        #B0712E;
+  --zm-copper-hover:  #946028;
+  --zm-copper-soft:   #F4E8D6;
+  --zm-copper-line:   #E3C58E;
+
+  /* Secondary accent — Plum for state */
+  --zm-plum:          #6B4789;
+  --zm-plum-soft:     #ECE3F2;
+
+  /* Semantic */
+  --zm-success:       #2F7A4A;
+  --zm-success-soft:  #DCE9DC;
+  --zm-warning:       #B0712E;
+  --zm-warning-soft:  #F4E8D6;
+  --zm-danger:        #9B2A2A;
+  --zm-danger-soft:   #F0D6D2;
+  --zm-info:          #2A4FA0;
+  --zm-info-soft:     #DDE3F0;
+
+  /* Stage colors */
+  --zm-stage-draft:        #6E6E78;
+  --zm-stage-shortlist:    #2A4FA0;
+  --zm-stage-bd:           #0F5D5C;
+  --zm-stage-loi:          #B0712E;
+  --zm-stage-payment:      #2F7A4A;
+  --zm-stage-legal:        #6B4789;
+  --zm-stage-handover:     #A2407C;
+
+  /* Layered glass shadows */
+  --zm-shadow-1: 0 1px 0 rgba(28,24,18,0.04), 0 1px 3px rgba(28,24,18,0.06);
+  --zm-shadow-2: 0 1px 0 rgba(28,24,18,0.04), 0 4px 14px rgba(28,24,18,0.06), 0 1px 4px rgba(28,24,18,0.04);
+  --zm-shadow-3: 0 12px 32px rgba(28,24,18,0.10), 0 4px 10px rgba(28,24,18,0.06);
+  --zm-shadow-pop: 0 24px 60px rgba(28,24,18,0.18), 0 6px 18px rgba(28,24,18,0.08);
+  --zm-glass: 0 1px 0 rgba(255,255,255,0.6) inset, 0 1px 2px rgba(28,24,18,0.04), 0 8px 24px rgba(28,24,18,0.06);
+  --zm-ring-focus: 0 0 0 3px rgba(15,93,92,0.20);
+
+  /* Glass token — used by frosted surfaces */
+  --zm-glass-bg: rgba(251,248,241,0.66);
+  --zm-glass-border: rgba(255,255,255,0.55);
+  --zm-glass-blur: blur(16px); /* @kind other */
+
+  /* Radii */
+  --zm-r-1: 4px;
+  --zm-r-2: 6px;
+  --zm-r-3: 10px;   /* default card / button */
+  --zm-r-4: 14px;
+  --zm-r-5: 20px;
+  --zm-r-pill: 999px;
+
+  /* Spacing */
+  --zm-s-1: 4px;
+  --zm-s-2: 8px;
+  --zm-s-3: 12px;
+  --zm-s-4: 16px;
+  --zm-s-5: 24px;
+  --zm-s-6: 32px;
+  --zm-s-7: 48px;
+  --zm-s-8: 64px;
+  --zm-s-9: 96px;
+
+  /* Motion */
+  --zm-ease:    cubic-bezier(0.2, 0.7, 0.2, 1); /* @kind other */
+  --zm-ease-out:cubic-bezier(0.16, 1, 0.3, 1); /* @kind other */
+  --zm-ease-emp:cubic-bezier(0.32, 0.72, 0.18, 1); /* @kind other */
+  --zm-dur-1: 120ms; /* @kind other */
+  --zm-dur-2: 200ms; /* @kind other */
+  --zm-dur-3: 360ms; /* @kind other */
+  --zm-dur-4: 520ms; /* @kind other */
+}
+
+/* -------------------------------------------------------------
+   2. Color tokens — Deep Obsidian (dark, "command center")
+   ------------------------------------------------------------- */
+[data-theme="dark"] {
+  --zm-bg:            #0B0B12;   /* deep ink, warm-tinted */
+  --zm-bg-2:          #11111A;
+  --zm-surface:       #16161F;   /* paper card on ink */
+  --zm-surface-2:     #1B1B28;
+  --zm-surface-hover: #1F1F2D;
+  --zm-surface-sunken:#0F0F18;
+
+  --zm-line:          #28283A;
+  --zm-line-strong:   #3A3A50;
+  --zm-line-faint:    #1E1E2C;
+  --zm-grid:          rgba(238, 232, 220, 0.04);
+
+  --zm-fg:            #EDE6D8;   /* warm platinum */
+  --zm-fg-2:          #B8B0A0;
+  --zm-fg-3:          #807868;
+  --zm-fg-4:          #524C40;
+  --zm-fg-inv:        #0B0B12;
+
+  --zm-accent:        #4DD0C1;
+  --zm-accent-hover:  #6FDDD0;
+  --zm-accent-press:  #2EB5A6;
+  --zm-accent-soft:   rgba(77,208,193,0.12);
+  --zm-accent-line:   rgba(77,208,193,0.32);
+
+  --zm-copper:        #E0A659;
+  --zm-copper-hover:  #ECBA77;
+  --zm-copper-soft:   rgba(224,166,89,0.12);
+  --zm-copper-line:   rgba(224,166,89,0.32);
+
+  --zm-plum:          #B197D2;
+  --zm-plum-soft:     rgba(177,151,210,0.14);
+
+  --zm-success:       #5BCB8C;
+  --zm-success-soft:  rgba(91,203,140,0.12);
+  --zm-warning:       #E0A659;
+  --zm-warning-soft:  rgba(224,166,89,0.12);
+  --zm-danger:        #ED7B7B;
+  --zm-danger-soft:   rgba(237,123,123,0.14);
+  --zm-info:          #7BA5F0;
+  --zm-info-soft:     rgba(123,165,240,0.14);
+
+  --zm-stage-draft:        #807868;
+  --zm-stage-shortlist:    #7BA5F0;
+  --zm-stage-bd:           #4DD0C1;
+  --zm-stage-loi:          #E0A659;
+  --zm-stage-payment:      #5BCB8C;
+  --zm-stage-legal:        #B197D2;
+  --zm-stage-handover:     #E090BC;
+
+  --zm-shadow-1: 0 1px 0 rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.5);
+  --zm-shadow-2: 0 1px 0 rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.5);
+  --zm-shadow-3: 0 12px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(238,230,216,0.04);
+  --zm-shadow-pop: 0 24px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(238,230,216,0.06);
+  --zm-glass: 0 1px 0 rgba(255,255,255,0.04) inset, 0 12px 32px rgba(0,0,0,0.5);
+  --zm-ring-focus: 0 0 0 3px rgba(77,208,193,0.25);
+
+  --zm-glass-bg: rgba(22,22,31,0.66);
+  --zm-glass-border: rgba(255,255,255,0.08);
+  --zm-glass-blur: blur(18px); /* @kind other */
+}
+
+/* -------------------------------------------------------------
+   3. Type tokens — three families, one role each
+   ------------------------------------------------------------- */
+:root {
+  --zm-font-display: 'Plus Jakarta Sans', 'Space Grotesk', system-ui, sans-serif;
+  --zm-font-serif:   'Instrument Serif', 'Newsreader', Georgia, serif;
+  --zm-font-body:    'Inter', system-ui, -apple-system, sans-serif;
+  --zm-font-mono:    'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
+
+  /* Display sizes — for hero numbers, page titles */
+  --zm-fs-hero:    56px;
+  --zm-fs-h1:      40px;
+  --zm-fs-h2:      28px;
+  --zm-fs-h3:      20px;
+  --zm-fs-h4:      16px;
+
+  /* Body sizes */
+  --zm-fs-body:    14px;   /* default UI */
+  --zm-fs-lg:      16px;   /* paragraph */
+  --zm-fs-sm:      13px;   /* meta / dense table */
+  --zm-fs-xs:      12px;   /* eyebrow / label */
+  --zm-fs-2xs:     11px;   /* tag / micro */
+
+  /* Mono sizes — for numeric data, ids, code */
+  --zm-fs-num-hero:48px;
+  --zm-fs-num-lg:  22px;
+  --zm-fs-num:     14px;
+  --zm-fs-num-sm:  12px;
+
+  --zm-lh-tight:   1.12; /* @kind font */
+  --zm-lh-snug:    1.28; /* @kind font */
+  --zm-lh-normal:  1.5; /* @kind font */
+  --zm-lh-relaxed: 1.65; /* @kind font */
+
+  /* Display headlines get slight negative tracking; tags get wide tracking */
+  --zm-tracking-tight: -0.02em;
+  --zm-tracking-snug:  -0.01em;
+  --zm-tracking-wide:   0.08em;
+  --zm-tracking-eyebrow:0.14em;
+}
+
+/* -------------------------------------------------------------
+   4. Semantic helpers (use as classes OR copy as inline styles)
+   ------------------------------------------------------------- */
+.zm-hero, .zm-h1, .zm-h2, .zm-h3, .zm-h4 {
+  font-family: var(--zm-font-display);
+  color: var(--zm-fg);
+  letter-spacing: var(--zm-tracking-tight);
+  line-height: var(--zm-lh-tight);
+  font-weight: 700;
+  margin: 0;
+}
+.zm-hero { font-size: var(--zm-fs-hero); font-weight: 800; }
+.zm-h1   { font-size: var(--zm-fs-h1); }
+.zm-h2   { font-size: var(--zm-fs-h2); font-weight: 600; letter-spacing: var(--zm-tracking-snug); }
+.zm-h3   { font-size: var(--zm-fs-h3); font-weight: 600; letter-spacing: var(--zm-tracking-snug); line-height: var(--zm-lh-snug); }
+.zm-h4   { font-size: var(--zm-fs-h4); font-weight: 600; letter-spacing: 0;            line-height: var(--zm-lh-snug); }
+
+.zm-body, .zm-p {
+  font-family: var(--zm-font-body);
+  font-size:   var(--zm-fs-body);
+  line-height: var(--zm-lh-normal);
+  color:       var(--zm-fg-2);
+}
+.zm-p-lg { font-size: var(--zm-fs-lg); line-height: var(--zm-lh-relaxed); }
+.zm-meta { font-family: var(--zm-font-body); font-size: var(--zm-fs-sm); color: var(--zm-fg-3); line-height: var(--zm-lh-normal); }
+
+.zm-eyebrow {
+  font-family: var(--zm-font-body);
+  font-size: var(--zm-fs-2xs);
+  font-weight: 600;
+  letter-spacing: var(--zm-tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--zm-fg-3);
+}
+
+.zm-mono, code, kbd {
+  font-family: var(--zm-font-mono);
+  font-size: var(--zm-fs-num);
+  font-feature-settings: 'tnum' 1, 'ss01' 1;
+  letter-spacing: 0;
+}
+.zm-num         { font-family: var(--zm-font-mono); font-feature-settings: 'tnum' 1; }
+.zm-num-hero    { font-family: var(--zm-font-mono); font-feature-settings: 'tnum' 1; font-size: var(--zm-fs-num-hero); font-weight: 600; letter-spacing: -0.02em; color: var(--zm-fg); }
+.zm-num-lg      { font-family: var(--zm-font-mono); font-feature-settings: 'tnum' 1; font-size: var(--zm-fs-num-lg);   font-weight: 600; color: var(--zm-fg); }
+
+/* -------------------------------------------------------------
+   5. Element-level defaults — opt in by adding .zm-prose
+   ------------------------------------------------------------- */
+.zm-prose h1 { font: 700 var(--zm-fs-h1)/var(--zm-lh-tight) var(--zm-font-display); letter-spacing: var(--zm-tracking-tight); margin: 0 0 var(--zm-s-4); color: var(--zm-fg); }
+.zm-prose h2 { font: 600 var(--zm-fs-h2)/var(--zm-lh-snug)  var(--zm-font-display); letter-spacing: var(--zm-tracking-snug); margin: var(--zm-s-6) 0 var(--zm-s-3); color: var(--zm-fg); }
+.zm-prose h3 { font: 600 var(--zm-fs-h3)/var(--zm-lh-snug)  var(--zm-font-display); margin: var(--zm-s-5) 0 var(--zm-s-2); color: var(--zm-fg); }
+.zm-prose p  { font: 400 var(--zm-fs-lg)/var(--zm-lh-relaxed) var(--zm-font-body);  margin: 0 0 var(--zm-s-4); color: var(--zm-fg-2); }
+.zm-prose code { font-family: var(--zm-font-mono); font-size: 0.92em; background: var(--zm-surface-sunken); padding: 1px 6px; border-radius: var(--zm-r-1); }

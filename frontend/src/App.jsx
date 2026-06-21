@@ -66,10 +66,7 @@ export default function App() {
     // Find site across all lists
     const all = [...drafts, ...shortlist, ...staging, ...archive];
     const found = all.find(s => s.id === siteId || s.code === siteId);
-    // Clear the drawer when the ?site= id resolves to nothing (e.g. navigating
-    // from a valid site to an invalid/unknown id) instead of leaving the old
-    // site open. Re-runs when the lists load, so deep links still open.
-    setOpenSite(found ? buildDrawerSite(found) : null);
+    if (found) setOpenSite(buildDrawerSite(found));
   }, [location.search, drafts, shortlist, staging, archive]);
 
   const showToast = useCallback((msg, tone = 'success') => setToast({ msg, tone }), []);
@@ -126,9 +123,7 @@ export default function App() {
     pipeline:     visibleDrafts.length,
     shortlist:    visibleShortlist.length,
     staging:      visibleStaging.length,
-    // Scope archive too (was raw `archive.length`) so an executive's sidebar
-    // count reflects only their own archived sites, not the whole tenant's.
-    archive:      filterByScope(archive, role, user).length,
+    archive:      archive.length,
     pendingUsers: pendingUserCount || undefined, // hide the badge at 0
   };
 
@@ -236,11 +231,11 @@ export function usePageContext() { return React.useContext(PageContext); }
 // NewPipelineModal — captures pipeline-stage Model · Google pin · Expected rent.
 // Same fields stay editable at shortlist (AddDetailsPage prefills from these values);
 // edits at shortlist are diff-logged into the site Activity tab.
-const PIPELINE_MODELS = ['BTC Cafe', 'BTC Cafe+', 'Blue Tokai Origins', 'Roastries', 'Micro-Cafes & Express Outlets', 'Others'];
+const PIPELINE_MODELS = ['BTC Cafe', 'BTC Cafe+', 'Blue Tokai Origins', 'Roastries', 'Micro-Cafes & Express Outlets', 'GotTea', 'Others'];
 const PIPELINE_RENT_TYPES = [
   { id: 'revshare', label: 'Revenue share', sub: '% of monthly sales' },
   { id: 'fixed', label: 'Fixed + escalation', sub: 'monthly fixed + % per year' },
-  { id: 'mg_revshare', label: 'MG + Revenue share', sub: 'minimum guarantee + % of sales' },
+  { id: 'mg_revshare', label: 'MG or Revshare', sub: 'whichever is higher' },
 ];
 function NewPipelineModal({ onClose, onSubmit, dark }) {
   const idSite = useId();
@@ -463,7 +458,7 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
                 <label htmlFor={idMgRevshare} style={labelBase}>Revenue share</label>
                 <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
                   <input id={idMgRevshare} type="number" min="0" step="any" value={form.expectedRevshare} onChange={set('expectedRevshare')} placeholder="e.g. 12.5" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
-                  <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>% above MG</span>
+                  <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>% (whichever higher)</span>
                 </div>
               </div>
             </div>

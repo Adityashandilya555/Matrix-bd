@@ -89,6 +89,8 @@ export default function OrgModuleCard({ mod, onRotate, onRemove, loading }) {
   };
 
   const totalExecs = (mod.supervisors || []).reduce((n, s) => n + (s.executives?.length || 0), 0) + (mod.unassignedExecutives?.length || 0);
+  // Supervisor-only modules (NSO) have no executive role — hide all executive UI.
+  const execEnabled = mod.executivesEnabled !== false;
 
   return (
     <Card raised style={{ padding: 18 }}>
@@ -98,7 +100,10 @@ export default function OrgModuleCard({ mod, onRotate, onRemove, loading }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14.5, fontWeight: 700, color: T.text }}>{meta.label}</div>
           <div style={{ fontSize: 11.5, color: T.textFaint }}>
-            {(mod.supervisors?.length || 0)} supervisor{mod.supervisors?.length === 1 ? '' : 's'} · {totalExecs} executive{totalExecs === 1 ? '' : 's'}
+            {(mod.supervisors?.length || 0)} supervisor{mod.supervisors?.length === 1 ? '' : 's'}
+            {execEnabled
+              ? ` · ${totalExecs} executive${totalExecs === 1 ? '' : 's'}`
+              : ' · supervisor-only'}
           </div>
         </div>
         <code style={{ fontFamily: T.mono, fontSize: 14, fontWeight: 700, letterSpacing: '0.06em', padding: '8px 12px',
@@ -118,7 +123,7 @@ export default function OrgModuleCard({ mod, onRotate, onRemove, loading }) {
             No one has joined this department yet. Share the code above to onboard a supervisor.
           </div>
         )}
-        {!loading && (mod.supervisors || []).map((s) => (
+        {!loading && execEnabled && (mod.supervisors || []).map((s) => (
           <Disclosure key={s.id} count={s.executives?.length || 0}
             header={<Person p={s} role="supervisor" onRemove={onRemove} />}>
             {(s.executives || []).length === 0
@@ -126,7 +131,12 @@ export default function OrgModuleCard({ mod, onRotate, onRemove, loading }) {
               : (s.executives || []).map((e) => <Person key={e.id} p={e} role="executive" onRemove={onRemove} />)}
           </Disclosure>
         ))}
-        {!loading && (mod.unassignedExecutives || []).length > 0 && (
+        {!loading && !execEnabled && (mod.supervisors || []).map((s) => (
+          <div key={s.id} style={{ border: `1px solid ${T.line}`, borderRadius: T.radiusSm, padding: '4px 8px' }}>
+            <Person p={s} role="supervisor" onRemove={onRemove} />
+          </div>
+        ))}
+        {!loading && execEnabled && (mod.unassignedExecutives || []).length > 0 && (
           <div style={{ marginTop: 4, border: `1px solid ${T.line}`, borderRadius: T.radiusSm, padding: '8px 14px', background: T.surface }}>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.textFaint, margin: '4px 0 2px' }}>
               Unassigned executives
