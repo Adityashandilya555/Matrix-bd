@@ -22,6 +22,11 @@ const HERO_VIDEO_SRC =
 
 const ASSET_BASE = '/landing/scale/assets';
 
+// Self-contained scroll-driven "Retail Expansion Pipeline" experience
+// (canvas frame-sequence microsite). Lives in public/, served as a static
+// document so its own <x-dc> runtime + frames load exactly as authored.
+const PIPELINE_EXPERIENCE_URL = '/landing/pipeline/index.html';
+
 const PHASE_DATA = [
   {
     id: 1,
@@ -604,8 +609,7 @@ function Nav({ onRequestMembership, membershipEmail, setMembershipEmail, onSignI
           <span className="sub-mark">Retail Expansion OS</span>
         </div>
         <div className="nav-links">
-          <button type="button">Platform</button>
-          <button type="button">Pipeline</button>
+          <a href={PIPELINE_EXPERIENCE_URL}>Pipeline</a>
           <button type="button">Customers</button>
           <button type="button">Docs</button>
         </div>
