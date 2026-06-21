@@ -210,7 +210,7 @@ function PhaseLottieOverlay({ progress, path, caption }) {
   useEffect(() => {
     if (!isVisible) return;
     if (loadedRef.current) {
-      try { animRef.current?.play(); } catch (e) {}
+      try { animRef.current?.play(); } catch { /* best-effort animation control */ }
       return;
     }
     let cancelled = false;
@@ -232,11 +232,11 @@ function PhaseLottieOverlay({ progress, path, caption }) {
   useEffect(() => {
     const inst = animRef.current;
     if (!inst) return;
-    try { isVisible ? inst.play() : inst.pause(); } catch (e) {}
+    try { isVisible ? inst.play() : inst.pause(); } catch { /* best-effort animation control */ }
   }, [isVisible]);
 
   useEffect(() => () => {
-    try { animRef.current?.destroy(); } catch (e) {}
+    try { animRef.current?.destroy(); } catch { /* best-effort animation control */ }
   }, []);
 
   return (

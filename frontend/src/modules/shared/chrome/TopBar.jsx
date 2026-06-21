@@ -5,7 +5,7 @@ import { useSession } from '../../../state/SessionContext.jsx';
 import { PRODUCT_NAME } from '../../../constants/brand.js';
 
 // Render body preserved exactly from Chrome.jsx TopBar component.
-export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, onSearch, sidebarCollapsed = false, onToggleSidebar }) {
+export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, sidebarCollapsed = false, onToggleSidebar }) {
   const { signOut, session } = useSession();
   // BD-only action — legal and payment supervisors don't open pipeline drafts.
   // "New pipeline" creates a BD site draft — only the BD surface (or mock/no-module) shows it.
