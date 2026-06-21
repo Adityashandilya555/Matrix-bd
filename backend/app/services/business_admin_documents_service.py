@@ -26,6 +26,19 @@ from app.services._common import fetch_site_or_404
 _SITE_FILE_MODULE = {"loi": "BD", "photo": "BD", "quality_audit": "Project"}
 
 
+def _storage_path(file_url: Optional[str]) -> Optional[str]:
+    """Storage object key to sign for a design deliverable — only paths we wrote
+    under 'design/'. A legacy free-text file_url is not an object key."""
+    return file_url if file_url and file_url.startswith("design/") else None
+
+
+def _legacy_link(file_url: Optional[str]) -> Optional[str]:
+    """A non-'design/' deliverable URL is openable as-is only when it's already an
+    http(s) link (mirrors design_service: legacy free-text values pass through,
+    not signed — signing them just fails and drops the Open link)."""
+    return file_url if file_url and file_url.startswith(("http://", "https://")) else None
+
+
 async def list_site_documents(
     db: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
 ) -> dict[str, Any]:
@@ -60,23 +73,11 @@ async def list_site_documents(
             except Exception:
                 return None
 
-    async def _resolve_deliverable(file_url: Optional[str]) -> Optional[str]:
-        # Mirror design_service._deliverable_download_url: only paths we wrote
-        # under 'design/' are storage objects to sign. A legacy free-text file_url
-        # is NOT an object key — signing it would just fail and drop the Open link.
-        # Pass through legacy http(s) values as-is so historic design uploads stay
-        # openable; anything else (non-URL junk) has no usable link.
-        if not file_url:
-            return None
-        if file_url.startswith("design/"):
-            return await _sign(file_url)
-        if file_url.startswith(("http://", "https://")):
-            return file_url
-        return None
-
     file_urls, deliverable_urls = await asyncio.gather(
         asyncio.gather(*[_sign(f.storage_path) for f in files]),
-        asyncio.gather(*[_resolve_deliverable(d.file_url) for d in deliverables]),
+        # Sign only 'design/' storage objects; legacy http(s) URLs are passed
+        # through unsigned in the item build below (_legacy_link).
+        asyncio.gather(*[_sign(_storage_path(d.file_url)) for d in deliverables]),
     )
 
     items: list[dict[str, Any]] = []
@@ -90,7 +91,7 @@ async def list_site_documents(
             "uploaded_by": str(f.uploaded_by) if f.uploaded_by else None,
             "url": url,
         })
-    for d, url in zip(deliverables, deliverable_urls, strict=False):
+    for d, signed in zip(deliverables, deliverable_urls, strict=False):
         items.append({
             "id": str(d.id),
             "file_name": d.file_name or f"Design · {d.kind}",
@@ -98,7 +99,7 @@ async def list_site_documents(
             "module": "Design",
             "uploaded_at": d.submitted_at.isoformat() if d.submitted_at else None,
             "uploaded_by": str(d.submitted_by) if d.submitted_by else None,
-            "url": url,
+            "url": signed or _legacy_link(d.file_url),
         })
 
     # Newest first across both sources (rows with no timestamp sort last).
