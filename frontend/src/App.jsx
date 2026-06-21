@@ -236,7 +236,7 @@ export function usePageContext() { return React.useContext(PageContext); }
 // NewPipelineModal — captures pipeline-stage Model · Google pin · Expected rent.
 // Same fields stay editable at shortlist (AddDetailsPage prefills from these values);
 // edits at shortlist are diff-logged into the site Activity tab.
-const PIPELINE_MODELS = ['BTC Cafe', 'BTC Cafe+', 'Blue Tokai Origins', 'Roastries', 'Micro-Cafes & Express Outlets', 'Others'];
+const PIPELINE_MODELS = ['BTC Cafe', 'BTC Cafe+', 'Blue Tokai Origins', 'Roastries', 'Micro-Cafes & Express Outlets', 'GotTea', 'Others'];
 const PIPELINE_RENT_TYPES = [
   { id: 'revshare', label: 'Revenue share', sub: '% of monthly sales' },
   { id: 'fixed', label: 'Fixed + escalation', sub: 'monthly fixed + % per year' },
