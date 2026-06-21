@@ -554,6 +554,11 @@ async def reject_finance(
 # dept onboarded via a code, so it is intentionally omitted here.
 _ORG_MODULES: tuple[str, ...] = ("bd", "legal", "design", "project", "nso", "project_excellence")
 
+# Modules that have NO executive role — supervisors only. NSO is reviewed by a
+# supervisor; executives are not part of its flow, so the org view never surfaces
+# executive slots / invite-codes for them and executive sign-ups are refused.
+_SUPERVISOR_ONLY_MODULES: frozenset[str] = frozenset({"nso"})
+
 
 async def list_org(session: AsyncSession, tenant_id: str | UUID) -> dict:
     """Per-department code + the active supervisors and the executives reporting
@@ -603,19 +608,24 @@ async def list_org(session: AsyncSession, tenant_id: str | UUID) -> dict:
 
     modules: list[dict] = []
     for m in _ORG_MODULES:
+        exec_enabled = m not in _SUPERVISOR_ONLY_MODULES
         supervisors = sups_by_mod[m]
         index = {s["id"]: s for s in supervisors}
         unassigned: list[dict] = []
-        for e in execs_by_mod[m]:
-            sid = e.pop("_supervisor_id")
-            if sid and sid in index:
-                index[sid]["executives"].append(e)
-            else:
-                unassigned.append(e)
+        # Supervisor-only modules (NSO) never surface executives — each supervisor's
+        # `executives` stays [] and there are no unassigned execs to show.
+        if exec_enabled:
+            for e in execs_by_mod[m]:
+                sid = e.pop("_supervisor_id")
+                if sid and sid in index:
+                    index[sid]["executives"].append(e)
+                else:
+                    unassigned.append(e)
         modules.append({
             "module": m,
             "code": codes.get(m),
             "supervisors": supervisors,
             "unassigned_executives": unassigned,
+            "executives_enabled": exec_enabled,
         })
     return {"modules": modules}
