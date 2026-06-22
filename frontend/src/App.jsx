@@ -447,7 +447,7 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
           )}
           {form.rentType === 'mg_revshare' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label htmlFor={idMgRent} style={labelBase}>Minimum guarantee</label>
                   <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
@@ -463,6 +463,8 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
                     <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)', whiteSpace: 'nowrap' }}>% above MG</span>
                   </div>
                 </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label htmlFor={idMgEscalation} style={labelBase}>Escalation</label>
                   <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
@@ -470,34 +472,34 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
                     <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>%</span>
                   </div>
                 </div>
+                <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <legend style={{ ...labelBase, padding: 0, marginBottom: 6 }}>Escalation cadence</legend>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {[
+                      { years: 1, label: 'Yearly' },
+                      { years: 3, label: 'Every 3 yrs' },
+                      { years: 5, label: 'Every 5 yrs' },
+                    ].map(opt => {
+                      const selected = String(form.expectedEscalationYears) === String(opt.years);
+                      return (
+                        <button
+                          type="button"
+                          key={opt.years}
+                          onClick={() => setForm(prev => ({ ...prev, expectedEscalationYears: String(opt.years) }))}
+                          style={{
+                            flex: 1, height: 38, borderRadius: 6,
+                            border: '1px solid ' + (selected ? 'var(--zm-accent)' : 'var(--zm-line)'),
+                            background: selected ? 'var(--zm-accent-soft)' : 'var(--zm-bg)',
+                            color: selected ? 'var(--zm-accent)' : 'var(--zm-fg)',
+                            fontFamily: 'var(--zm-font-body)',
+                            fontWeight: 600, fontSize: 13, cursor: 'pointer',
+                          }}
+                        >{opt.label}</button>
+                      );
+                    })}
+                  </div>
+                </fieldset>
               </div>
-              <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <legend style={{ ...labelBase, padding: 0, marginBottom: 6 }}>Escalation cadence</legend>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {[
-                    { years: 1, label: 'Yearly' },
-                    { years: 3, label: 'Every 3 yrs' },
-                    { years: 5, label: 'Every 5 yrs' },
-                  ].map(opt => {
-                    const selected = String(form.expectedEscalationYears) === String(opt.years);
-                    return (
-                      <button
-                        type="button"
-                        key={opt.years}
-                        onClick={() => setForm(prev => ({ ...prev, expectedEscalationYears: String(opt.years) }))}
-                        style={{
-                          flex: 1, height: 38, borderRadius: 6,
-                          border: '1px solid ' + (selected ? 'var(--zm-accent)' : 'var(--zm-line)'),
-                          background: selected ? 'var(--zm-accent-soft)' : 'var(--zm-bg)',
-                          color: selected ? 'var(--zm-accent)' : 'var(--zm-fg)',
-                          fontFamily: 'var(--zm-font-body)',
-                          fontWeight: 600, fontSize: 13, cursor: 'pointer',
-                        }}
-                      >{opt.label}</button>
-                    );
-                  })}
-                </div>
-              </fieldset>
             </div>
           )}
           {!form.rentType && (
