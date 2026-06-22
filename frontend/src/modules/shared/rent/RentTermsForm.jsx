@@ -39,7 +39,7 @@ export const AC_TOKENS = {
 const RENT_TYPES = [
   { id: 'revshare', label: 'Revenue share', sub: '% of monthly sales' },
   { id: 'fixed', label: 'Fixed + escalation', sub: 'monthly fixed + % per year' },
-  { id: 'mg_revshare', label: 'MG + Revenue share', sub: 'minimum guarantee + % of sales' },
+  { id: 'mg_revshare', label: 'MG + Revenue share', sub: 'minimum guarantee + escalation + % of sales' },
 ];
 const CADENCE = [{ years: 1, label: 'Yearly' }, { years: 3, label: 'Every 3 yrs' }, { years: 5, label: 'Every 5 yrs' }];
 
@@ -132,9 +132,27 @@ export default function RentTermsForm({ value = {}, onChange, readOnly = false, 
         <NumField t={t} label="Revenue share" value={v.rev_share_pct} onChange={set('rev_share_pct')} suffix="% of sales" placeholder="e.g. 12.5" readOnly={readOnly} />
       )}
       {rentType === 'mg_revshare' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <NumField t={t} label="Minimum guarantee" value={v.expected_rent} onChange={set('expected_rent')} prefix="₹" suffix="/mo" placeholder="80000" readOnly={readOnly} />
-          <NumField t={t} label="Revenue share" value={v.rev_share_pct} onChange={set('rev_share_pct')} suffix="% above MG" placeholder="e.g. 12.5" readOnly={readOnly} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+            <NumField t={t} label="Minimum guarantee" value={v.expected_rent} onChange={set('expected_rent')} prefix="₹" suffix="/mo" placeholder="80000" readOnly={readOnly} />
+            <NumField t={t} label="Revenue share" value={v.rev_share_pct} onChange={set('rev_share_pct')} suffix="% above MG" placeholder="e.g. 12.5" readOnly={readOnly} />
+            <NumField t={t} label="Escalation" value={v.escalation_pct} onChange={set('escalation_pct')} suffix="%" placeholder="e.g. 4.5" readOnly={readOnly} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <Label t={t}>Escalation cadence</Label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {CADENCE.map((opt) => {
+                const selected = String(v.expected_escalation_years) === String(opt.years);
+                return (
+                  <button
+                    type="button" key={opt.years} disabled={readOnly}
+                    onClick={() => !readOnly && onChange?.('expected_escalation_years', opt.years)}
+                    style={{ flex: 1, height: 38, borderRadius: 6, border: `1px solid ${selected ? t.accent : t.line}`, background: selected ? t.accentSoft : t.bg, color: selected ? t.accent : t.fg, fontFamily: t.fontBody, fontWeight: 600, fontSize: 13, cursor: readOnly ? 'default' : 'pointer', opacity: readOnly && !selected ? 0.6 : 1 }}
+                  >{opt.label}</button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
       {!rentType && (

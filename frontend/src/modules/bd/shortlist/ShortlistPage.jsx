@@ -293,7 +293,65 @@ function AssignDetailsModal({ site, currentUserId, onClose, onAssigned, showToas
   );
 }
 
-function ShortlistCard({ item, role, currentUserId, onView, onAddDetails, onApprove, onDelegate }) {
+function RejectShortlistModal({ site, onClose, onReject }) {
+  const [reason, setReason] = React.useState('Site does not fit expansion criteria');
+  const [comment, setComment] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState(null);
+  if (!site) return null;
+  const reasons = [
+    'Site does not fit expansion criteria',
+    'Commercials are not viable',
+    'Location or catchment is weak',
+    'Duplicate or incorrect pipeline',
+  ];
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onReject(site, [reason], comment.trim() || null);
+      onClose?.();
+    } catch (err) {
+      setError(err?.detail || err?.message || 'Could not reject this site.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)', zIndex: 112, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: 520, maxWidth: '94%', background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 14, boxShadow: 'var(--zm-shadow-pop)', padding: 26, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div style={{ flex: 1 }}>
+            <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 750, fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-danger)' }}>Reject shortlist · {site.code}</span>
+            <h2 style={{ margin: '4px 0 6px', fontFamily: 'var(--zm-font-display)', fontWeight: 750, fontSize: 21, letterSpacing: '-0.02em', color: 'var(--zm-fg)' }}>Send this site out of the shortlist</h2>
+            <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>The site will move to rejected records and the owner will be notified with your reason.</p>
+          </div>
+          <button onClick={onClose} disabled={busy} className="zm-icon-btn" style={{ background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)', borderRadius: 8, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--zm-fg-2)', cursor: busy ? 'wait' : 'pointer' }}><Icon name="x" size={14}/></button>
+        </div>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 750, fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>Reason</span>
+          <select value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy} style={{ height: 42, borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-bg)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13.5, padding: '0 12px', outline: 'none' }}>
+            {reasons.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 750, fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>Comment</span>
+          <textarea value={comment} onChange={(e) => setComment(e.target.value)} disabled={busy} placeholder="Optional context for the BD team..." style={{ minHeight: 88, resize: 'vertical', borderRadius: 9, border: '1px solid var(--zm-line)', background: 'var(--zm-bg)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, padding: 12, outline: 'none' }}/>
+        </label>
+        {error && <div style={{ padding: '9px 12px', borderRadius: 9, background: 'rgba(185,28,28,0.08)', border: '1px solid rgba(185,28,28,0.28)', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5 }}>{error}</div>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button onClick={onClose} disabled={busy} className="zm-btn" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: busy ? 'var(--zm-fg-4)' : 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 650, cursor: busy ? 'wait' : 'pointer' }}>Cancel</button>
+          <button onClick={submit} disabled={busy} className="zm-btn-primary" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: busy ? 'var(--zm-surface-sunken)' : 'var(--zm-danger)', color: busy ? 'var(--zm-fg-4)' : '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 750, cursor: busy ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+            <Icon name="alert" size={13}/>{busy ? 'Rejecting...' : 'Reject site'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShortlistCard({ item, role, currentUserId, onView, onAddDetails, onApprove, onDelegate, onReject }) {
   const supervisor = role === 'supervisor';
   const assignedToId = item.assignedToId || item.assignedTo?.id || '';
   const assignedToName = item.assignedToName || item.assignedTo?.name || '';
@@ -337,6 +395,7 @@ function ShortlistCard({ item, role, currentUserId, onView, onAddDetails, onAppr
         <span style={{ flex: 1 }}/>
         {supervisor ? (
           <>
+            <button onClick={() => onReject(item)} className="zm-btn" title="Reject this shortlisted site" style={{ height: 34, padding: '0 13px', border: '1px solid rgba(155,42,42,0.30)', borderRadius: 7, background: 'rgba(155,42,42,0.06)', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="alert" size={13}/> Reject</button>
             {(needsAssignment || waitingForAssignedDetails) && (
               <button onClick={() => onDelegate(item)} className="zm-btn-primary" title={needsAssignment ? 'Assign this site to a BD executive for Add Details' : 'Change the assigned executive'} style={{ height: 34, padding: '0 13px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', boxShadow: 'var(--zm-shadow-1)', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="user" size={13}/> {needsAssignment ? 'Delegate for details' : 'Reassign'}</button>
             )}
@@ -371,6 +430,7 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
   const [detailSaving, setDetailSaving] = React.useState(false);
   const [detailError, setDetailError] = React.useState(null);
   const [delegating, setDelegating] = React.useState(null);
+  const [rejecting, setRejecting] = React.useState(null);
 
   const ME = user.name;
   const currentUserId = session?.userId || session?.id || session?.sub || user?.id || null;
@@ -444,6 +504,11 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
       setDetailSaving(false);
     }
   };
+  const onRejectShortlist = async (item, reasons, comment) => {
+    await siteService.rejectSite(item.id, reasons, comment);
+    await refresh?.();
+    showToast?.(`Rejected · ${item.name}.`, 'success');
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 920 }}>
@@ -470,7 +535,7 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
       {filteredShortlist.map(item => (
         <ShortlistCard key={item.code} item={item} role={role} currentUserId={currentUserId}
           onView={onOpenSite || (() => {})} onAddDetails={onAddDetails} onApprove={onApprove}
-          onDelegate={setDelegating}/>
+          onDelegate={setDelegating} onReject={setRejecting}/>
       ))}
       {filteredShortlist.length === 0 && (
         <div style={{ padding: 48, textAlign: 'center', background: 'var(--zm-surface)', border: '1px dashed var(--zm-line)', borderRadius: 12 }}>
@@ -482,6 +547,7 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
       )}
       {approving && <LOITimelineModal site={approving} onCancel={() => setApproving(null)} onSubmit={onTimelineSubmit}/>}
       {detailing && <AddDetailsPage key={detailing.id} item={detailing} onClose={() => { if (!detailSaving) setDetailing(null); }} onSubmit={(formData) => onDetailsSubmit(detailing, formData)} onSaveDraft={(formData) => onDetailsSaveDraft(detailing, formData)} savingDraft={detailSaving} saveError={detailError}/>}
+      {rejecting && <RejectShortlistModal site={rejecting} onClose={() => setRejecting(null)} onReject={onRejectShortlist}/>}
       {delegating && (
         <AssignDetailsModal
           site={delegating}

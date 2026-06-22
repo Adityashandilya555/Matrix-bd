@@ -235,7 +235,7 @@ const PIPELINE_MODELS = ['BTC Cafe', 'BTC Cafe+', 'Blue Tokai Origins', 'Roastri
 const PIPELINE_RENT_TYPES = [
   { id: 'revshare', label: 'Revenue share', sub: '% of monthly sales' },
   { id: 'fixed', label: 'Fixed + escalation', sub: 'monthly fixed + % per year' },
-  { id: 'mg_revshare', label: 'MG or Revshare', sub: 'whichever is higher' },
+  { id: 'mg_revshare', label: 'MG + Revenue share', sub: 'minimum guarantee + escalation + % of sales' },
 ];
 function NewPipelineModal({ onClose, onSubmit, dark }) {
   const idSite = useId();
@@ -248,6 +248,7 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
   const idRevshare = useId();
   const idMgRent = useId();
   const idMgRevshare = useId();
+  const idMgEscalation = useId();
   const [form, setForm] = useState({ name: '', visitDate: '', city: '', model: '', googlePin: '', googleMapsUrl: '', rentType: '', expectedRent: '', expectedEscalation: '', expectedEscalationYears: '', expectedRevshare: '' });
   const [pinStatus, setPinStatus] = useState(null); // { tone: 'info'|'ok'|'err', msg: string }
   const [submitting, setSubmitting] = useState(false);
@@ -258,7 +259,7 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
   const rentReady =
     form.rentType === 'revshare' ? !!form.expectedRevshare
     : form.rentType === 'fixed' ? !!form.expectedRent && !!form.expectedEscalation && !!form.expectedEscalationYears
-    : form.rentType === 'mg_revshare' ? !!form.expectedRent && !!form.expectedRevshare
+    : form.rentType === 'mg_revshare' ? !!form.expectedRent && !!form.expectedRevshare && !!form.expectedEscalation && !!form.expectedEscalationYears
     : false;
   const ready = form.name && form.visitDate && form.city && form.model && form.googlePin && form.rentType && rentReady;
 
@@ -445,22 +446,58 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
             </div>
           )}
           {form.rentType === 'mg_revshare' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label htmlFor={idMgRent} style={labelBase}>Minimum guarantee</label>
-                <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
-                  <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderRight: '1px solid var(--zm-line)' }}>₹</span>
-                  <input id={idMgRent} type="number" min="0" step="any" value={form.expectedRent} onChange={set('expectedRent')} placeholder="80000" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
-                  <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>/mo</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label htmlFor={idMgRent} style={labelBase}>Minimum guarantee</label>
+                  <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
+                    <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderRight: '1px solid var(--zm-line)' }}>₹</span>
+                    <input id={idMgRent} type="number" min="0" step="any" value={form.expectedRent} onChange={set('expectedRent')} placeholder="80000" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)', minWidth: 0 }}/>
+                    <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>/mo</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label htmlFor={idMgRevshare} style={labelBase}>Revenue share</label>
+                  <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
+                    <input id={idMgRevshare} type="number" min="0" step="any" value={form.expectedRevshare} onChange={set('expectedRevshare')} placeholder="e.g. 12.5" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)', minWidth: 0 }}/>
+                    <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)', whiteSpace: 'nowrap' }}>% above MG</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label htmlFor={idMgEscalation} style={labelBase}>Escalation</label>
+                  <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
+                    <input id={idMgEscalation} type="number" min="0" step="any" value={form.expectedEscalation} onChange={set('expectedEscalation')} placeholder="e.g. 4.5" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)', minWidth: 0 }}/>
+                    <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>%</span>
+                  </div>
                 </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label htmlFor={idMgRevshare} style={labelBase}>Revenue share</label>
-                <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
-                  <input id={idMgRevshare} type="number" min="0" step="any" value={form.expectedRevshare} onChange={set('expectedRevshare')} placeholder="e.g. 12.5" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
-                  <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)', whiteSpace: 'nowrap' }}>% (whichever higher)</span>
+              <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <legend style={{ ...labelBase, padding: 0, marginBottom: 6 }}>Escalation cadence</legend>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[
+                    { years: 1, label: 'Yearly' },
+                    { years: 3, label: 'Every 3 yrs' },
+                    { years: 5, label: 'Every 5 yrs' },
+                  ].map(opt => {
+                    const selected = String(form.expectedEscalationYears) === String(opt.years);
+                    return (
+                      <button
+                        type="button"
+                        key={opt.years}
+                        onClick={() => setForm(prev => ({ ...prev, expectedEscalationYears: String(opt.years) }))}
+                        style={{
+                          flex: 1, height: 38, borderRadius: 6,
+                          border: '1px solid ' + (selected ? 'var(--zm-accent)' : 'var(--zm-line)'),
+                          background: selected ? 'var(--zm-accent-soft)' : 'var(--zm-bg)',
+                          color: selected ? 'var(--zm-accent)' : 'var(--zm-fg)',
+                          fontFamily: 'var(--zm-font-body)',
+                          fontWeight: 600, fontSize: 13, cursor: 'pointer',
+                        }}
+                      >{opt.label}</button>
+                    );
+                  })}
                 </div>
-              </div>
+              </fieldset>
             </div>
           )}
           {!form.rentType && (
