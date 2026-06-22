@@ -20,7 +20,7 @@ import CitySelect from './modules/shared/primitives/CitySelect.jsx';
 // All view-specific logic lives in the page components.
 
 export default function App() {
-  const { user, role, setRole, dark, toggleDark, authReady } = useSession();
+  const { user, role, setRole, dark, toggleDark, authReady, isBusinessAdmin, adminOverride, switchAs } = useSession();
   const { drafts, shortlist, staging, archive, createDraft, error: sitesError, refresh } = useSites();
   const navigate = useNavigate();
   const location = useLocation();
@@ -209,6 +209,32 @@ export default function App() {
             );
           }}
         />
+      )}
+
+      {isBusinessAdmin && adminOverride && (
+        <div style={{
+          position: 'fixed', top: 12, right: 12, zIndex: 999,
+          display: 'inline-flex', alignItems: 'center', gap: 8,
+          padding: '6px 10px 6px 12px', borderRadius: 22,
+          background: 'var(--zm-accent-soft)', border: '1px solid var(--zm-accent)',
+          fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600,
+          color: 'var(--zm-accent)', boxShadow: 'var(--zm-shadow-1)',
+        }}>
+          <span style={{ width: 7, height: 7, borderRadius: 999, background: 'var(--zm-accent)', flexShrink: 0 }}/>
+          <span>Simulating: {adminOverride.role} · {adminOverride.module}</span>
+          <button
+            type="button"
+            onClick={() => { switchAs(null, null); navigate('/business-admin'); }}
+            style={{
+              marginLeft: 4, padding: '2px 10px', borderRadius: 10,
+              border: '1px solid var(--zm-accent)', background: 'transparent',
+              color: 'var(--zm-accent)', fontSize: 11, fontWeight: 700,
+              cursor: 'pointer', fontFamily: 'var(--zm-font-body)',
+            }}
+          >
+            Exit
+          </button>
+        </div>
       )}
 
       {toast && (

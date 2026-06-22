@@ -21,6 +21,7 @@ import ApprovalCenter from './approval/ApprovalCenter.jsx';
 import DepartmentsTab from './departments/DepartmentsTab.jsx';
 import SitesTab from './sites/SitesTab.jsx';
 import LaunchApprovalTab from './launch/LaunchApprovalTab.jsx';
+import WorkspaceSwitcherPanel from './WorkspaceSwitcherPanel.jsx';
 
 // Real API wiring. Injectable so the dev preview (and tests) can drive the whole
 // portal with mock data — see ./_preview/ApprovalCenterPreview.jsx.
@@ -71,10 +72,11 @@ function useQueue(fetcher) {
 }
 
 const TABS = [
-  { key: 'approvals',   label: 'Approval Center', icon: Icon.check },
+  { key: 'approvals',   label: 'Approval Center',  icon: Icon.check },
   { key: 'launch',      label: 'Launch Approvals', icon: Icon.flag },
-  { key: 'departments', label: 'Departments',      icon: Icon.key },
-  { key: 'sites',       label: 'Sites',            icon: Icon.pin },
+  { key: 'departments', label: 'Departments',       icon: Icon.key },
+  { key: 'sites',       label: 'Sites',             icon: Icon.pin },
+  { key: 'workspace',   label: 'Workspace Access',  icon: Icon.external },
 ];
 
 export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, workspaceName }) {
@@ -268,6 +270,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
             {tab === 'sites' && (
               <SitesTab data={sites} fetchHistory={fetchers.fetchSiteHistory} onRetry={loadSites} />
             )}
+            {tab === 'workspace' && <WorkspaceSwitcherPanel />}
           </div>
         </div>
       </main>
