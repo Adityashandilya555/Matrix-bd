@@ -62,14 +62,14 @@ function PhotoPicker({ photos, onAdd, onRemove, onRetry, uploadingIds = new Set(
 
 const formatINR = (n) => { if (!Number.isFinite(n)) return '—'; return '₹' + Math.round(n).toLocaleString('en-IN'); };
 
-function TextField({ label, value, onChange, placeholder, readOnly, mono, required, span = 1, prefix, suffix, type = 'text', min, max, step, inputMode, hint, error }) {
+function TextField({ label, value, onChange, onBlur, placeholder, readOnly, mono, required, span = 1, prefix, suffix, type = 'text', min, max, step, inputMode, hint, error }) {
   const uid = React.useId();
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, gridColumn: `span ${span}` }}>
       <label htmlFor={uid} style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)' }}>{label}{required && <span style={{ color: 'var(--zm-danger)', fontWeight: 700 }}>*</span>}{readOnly && <span style={{ color: 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-mono)', fontSize: 10, marginLeft: 'auto' }}>read-only</span>}</label>
       <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid ' + (error ? 'var(--zm-danger)' : 'var(--zm-line)'), borderRadius: 6, background: readOnly ? 'var(--zm-surface-sunken)' : 'var(--zm-bg)', overflow: 'hidden' }}>
         {prefix && (<span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderRight: '1px solid var(--zm-line)' }}>{prefix}</span>)}
-        <input id={uid} type={type} value={value ?? ''} onChange={(e) => onChange?.(e.target.value)} placeholder={placeholder} readOnly={readOnly} min={min} max={max} step={step} inputMode={inputMode} style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: mono ? 'var(--zm-font-mono)' : 'var(--zm-font-body)', fontFeatureSettings: mono ? "'tnum' 1" : 'normal', fontSize: 13.5, color: readOnly ? 'var(--zm-fg-2)' : 'var(--zm-fg)' }}/>
+        <input id={uid} type={type} value={value ?? ''} onChange={(e) => onChange?.(e.target.value)} onBlur={onBlur} placeholder={placeholder} readOnly={readOnly} min={min} max={max} step={step} inputMode={inputMode} style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: mono ? 'var(--zm-font-mono)' : 'var(--zm-font-body)', fontFeatureSettings: mono ? "'tnum' 1" : 'normal', fontSize: 13.5, color: readOnly ? 'var(--zm-fg-2)' : 'var(--zm-fg)' }}/>
         {suffix && (<span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>{suffix}</span>)}
       </div>
       {hint && !error && <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, color: 'var(--zm-fg-3)' }}>{hint}</span>}
@@ -218,8 +218,20 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
       setF(prev => ({ ...prev, score: '' }));
       return;
     }
-    const n = Number(String(v).replace(/[^\d.]/g, ''));
-    if (!Number.isFinite(n)) return; // ignore garbage
+    const cleaned = String(v).replace(/[^\d.]/g, '');
+    setF(prev => ({ ...prev, score: cleaned }));
+  };
+  const handleScoreBlur = () => {
+    if (f.score === '' || f.score === null || f.score === undefined) {
+      setF(prev => ({ ...prev, score: '' }));
+      return;
+    }
+    const cleaned = String(f.score).replace(/[^\d.]/g, '');
+    const n = parseFloat(cleaned);
+    if (isNaN(n)) {
+      setF(prev => ({ ...prev, score: '' }));
+      return;
+    }
     const clamped = Math.max(1, Math.min(5, n));
     setF(prev => ({ ...prev, score: String(clamped) }));
   };
@@ -257,7 +269,10 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
   const lastSavedAt = item.details?._savedAt;
   const payloadWithoutSpoc = () => {
     const { spocName, spoc_name, ...rest } = f;
-    return { ...rest, totalOpCost };
+    const cleaned = String(f.score).replace(/[^\d.]/g, '');
+    const n = parseFloat(cleaned);
+    const scoreVal = isNaN(n) ? '' : String(Math.max(1, Math.min(5, n)));
+    return { ...rest, score: scoreVal, totalOpCost };
   };
   const handleSubmit = () => { if (!filled || savingDraft) return; onSubmit(payloadWithoutSpoc()); };
   const handleSaveDraft = () => {
@@ -281,7 +296,7 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
             <FormSection n="1·3" title="Identity"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}><TextField label="Name" value={f.name} onChange={upd('name')} required hint="Editable from draft"/><TextField label="Visit date" value={f.visitDate} mono readOnly hint="Locked from pipeline"/><TextField label="City" value={f.city} onChange={upd('city')} required/></div></FormSection>
             <FormSection n="4·5" title="Model · Google pin"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}><SelectField label="Model" value={f.model} onChange={upd('model')} required options={MODELS}/><TextField label="Google pin" value={f.googlePin} onChange={upd('googlePin')} required mono placeholder="19.1183, 72.9089"/></div></FormSection>
             <FormSection n="7" title="Storefront photos"><PhotoPicker photos={f.photos} onAdd={handlePhotoAdd} onRetry={handlePhotoRetry} onRemove={(id) => setF(prev => ({ ...prev, photos: prev.photos.filter(x => x.id !== id) }))} uploadingIds={uploadingPhotoIds}/></FormSection>
-            <FormSection n="8·11" title="Score + adjacency sales"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}><TextField label="Score" value={f.score} onChange={updScore} required type="number" min="1" max="5" step="0.1" inputMode="decimal" hint="1–5 footfall + visibility · decimals allowed" error={f.score !== '' && (Number(f.score) > 5 || Number(f.score) < 1) ? '1–5 only' : undefined}/><TextField label="Estimated sales" value={f.estSales} onChange={upd('estSales')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 1250000" hint="Full rupees · no commas"/><TextField label="Nearest Starbucks sales" value={f.nearestStarbucks} onChange={upd('nearestStarbucks')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 900000" hint="Full rupees"/><TextField label="Nearest TWC sales" value={f.nearestTWC} onChange={upd('nearestTWC')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 700000" hint="Third-Wave Coffee · full rupees"/></div></FormSection>
+            <FormSection n="8·11" title="Score + adjacency sales"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}><TextField label="Score" value={f.score} onChange={updScore} onBlur={handleScoreBlur} required type="number" min="1" max="5" step="0.1" inputMode="decimal" hint="1–5 footfall + visibility · decimals allowed" error={f.score !== '' && (isNaN(parseFloat(f.score)) || parseFloat(f.score) > 5 || parseFloat(f.score) < 1) ? '1–5 only' : undefined}/><TextField label="Estimated sales" value={f.estSales} onChange={upd('estSales')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 1250000" hint="Full rupees · no commas"/><TextField label="Nearest Starbucks sales" value={f.nearestStarbucks} onChange={upd('nearestStarbucks')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 900000" hint="Full rupees"/><TextField label="Nearest TWC sales" value={f.nearestTWC} onChange={upd('nearestTWC')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 700000" hint="Third-Wave Coffee · full rupees"/></div></FormSection>
             <FormSection n="12·14" title="Carpet · CAM · rent">
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}><TextField label="Carpet / covered area" value={f.carpet} onChange={upd('carpet')} required mono suffix="sqft" placeholder="e.g. 850"/><TextField label="CAM" value={f.cam} onChange={upd('cam')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 25000" hint="Full rupees · no commas"/><div/></div>
               <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
