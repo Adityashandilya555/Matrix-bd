@@ -25,7 +25,7 @@ function relativeTime(iso) {
 }
 
 const hasValue = (value) => value !== undefined && value !== null && value !== '';
-const display = (value, fallback = 'Not captured yet') => hasValue(value) ? value : fallback;
+const display = (value, fallback = 'NA') => hasValue(value) ? value : fallback;
 const numberValue = (value) => {
   if (!hasValue(value)) return null;
   const n = Number(String(value).replace(/[,\s₹]/g, ''));
@@ -33,18 +33,18 @@ const numberValue = (value) => {
 };
 const formatNumber = (value, suffix = '') => {
   const n = numberValue(value);
-  return n === null ? 'Not captured yet' : `${n.toLocaleString('en-IN')}${suffix}`;
+  return n === null ? 'NA' : `${n.toLocaleString('en-IN')}${suffix}`;
 };
 const formatINR = (value, suffix = '') => {
   const n = numberValue(value);
-  return n === null ? 'Not captured yet' : `₹${Math.round(n).toLocaleString('en-IN')}${suffix}`;
+  return n === null ? 'NA' : `₹${Math.round(n).toLocaleString('en-IN')}${suffix}`;
 };
 const formatPercent = (value, suffix = '') => {
   const n = numberValue(value);
-  return n === null ? 'Not captured yet' : `${n.toLocaleString('en-IN')}%${suffix}`;
+  return n === null ? 'NA' : `${n.toLocaleString('en-IN')}%${suffix}`;
 };
 const formatDate = (value) => {
-  if (!hasValue(value)) return 'Not captured yet';
+  if (!hasValue(value)) return 'NA';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -204,7 +204,7 @@ function SiteOverviewTab({ site }) {
   }, [site.id]);
   const escalationValue = hasValue(site.escalation)
     ? `${formatPercent(site.escalation)}${hasValue(site.escalationYears) ? ` every ${site.escalationYears} yr` : ' / yr'}`
-    : 'Not captured yet';
+    : 'NA';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -233,7 +233,7 @@ function SiteOverviewTab({ site }) {
           <Field label="Est. monthly sales" value={formatINR(site.estSales, '/mo')} mono/>
           <Field label="Nearest Starbucks sales" value={formatINR(site.nearestStarbucks, '/mo')} mono/>
           <Field label="Nearest TWC sales" value={formatINR(site.nearestTWC, '/mo')} mono/>
-          <Field label="Cadex / Capex" value={formatINR(site.cadex)} mono/>
+          <Field label="Capex" value={formatINR(site.cadex)} mono/>
           <Field label="Brokerage" value={formatINR(site.brokerage)} mono/>
           <Field label="Visit date" value={formatDate(site.createdAt)} mono/>
         </div>

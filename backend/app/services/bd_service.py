@@ -456,7 +456,11 @@ async def svc_reject_site(
     """Reject a site with reasons, blocking self-rejection and notifying the site owners."""
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        _assert_not_self_approval(actor, site)
+        # Supervisors need a safe "No" path while curating Shortlisted sites,
+        # including rows they created themselves before delegation. Keep the
+        # stricter self-approval/rejection guard for draft/detail reviews.
+        if site.status != SiteStatus.SHORTLISTED.value:
+            _assert_not_self_approval(actor, site)
         assert_transition(SiteStatus(site.status), SiteStatus.REJECTED)
         site.status = SiteStatus.REJECTED.value
         site.rejected_at = datetime.now(timezone.utc)
