@@ -15,6 +15,26 @@ from app.services.legal_service import (
     _licensing_to_response,
 )
 
+def _is_published(row) -> bool:
+    try:
+        stage = getattr(row, "stage", "published")
+    except Exception:
+        stage = "published"
+    return stage in (None, "", "published")
+
+
+def _visible(row, bd_caller: bool) -> bool:
+    return row is not None and (not bd_caller or _is_published(row))
+
+
+def _resolve_project_status(project, site):
+    if project:
+        return project.project_status, project.current_stage
+    if getattr(site, "design_status", None) == "approved":
+        return "pending", "budget"
+    return None, None
+
+
 async def build_tracker_response(
     db: AsyncSession,
     *,
@@ -33,23 +53,13 @@ async def build_tracker_response(
     if bd_caller:
         assert_executive_owns_site(current_user, site)
 
-    def _is_published(row) -> bool:
-        try:
-            stage = getattr(row, "stage", "published")
-        except Exception:
-            stage = "published"
-        return stage in (None, "", "published")
-
-    def _visible(row) -> bool:
-        return row is not None and (not bd_caller or _is_published(row))
-
     dd  = await _fetch_dd_or_none(db, site_id=site.id)
     ag  = await _fetch_agreement_or_none(db, site_id=site.id)
     lic = await _fetch_licensing_or_none(db, site_id=site.id)
 
-    dd_resp        = _dd_to_response(dd)         if dd is not None and _visible(dd)  else None
-    agreement_resp = _agreement_to_response(ag)  if ag is not None and _visible(ag)  else None
-    licensing_resp = _licensing_to_response(lic) if lic is not None and _visible(lic) else None
+    dd_resp        = _dd_to_response(dd)         if dd is not None and _visible(dd, bd_caller)  else None
+    agreement_resp = _agreement_to_response(ag)  if ag is not None and _visible(ag, bd_caller)  else None
+    licensing_resp = _licensing_to_response(lic) if lic is not None and _visible(lic, bd_caller) else None
 
     submitted_by_name = await fetch_user_name(db, site.submitted_by)
     project = (
@@ -62,6 +72,8 @@ async def build_tracker_response(
         await db.execute(select(models.LaunchApproval).where(models.LaunchApproval.site_id == site.id))
     ).scalar_one_or_none()
 
+    project_status, project_current_stage = _resolve_project_status(project, site)
+
     return SiteTrackerResponse(
         site_id=str(site.id),
         site_code=site.code or "",
@@ -72,16 +84,8 @@ async def build_tracker_response(
         agreement_status=site.agreement_status,
         licensing_status=site.licensing_status,
         design_status=getattr(site, "design_status", "pending") or "pending",
-        project_status=(
-            project.project_status
-            if project
-            else ("pending" if getattr(site, "design_status", None) == "approved" else None)
-        ),
-        project_current_stage=(
-            project.current_stage
-            if project
-            else ("budget" if getattr(site, "design_status", None) == "approved" else None)
-        ),
+        project_status=project_status,
+        project_current_stage=project_current_stage,
         # Budget moved to Project Excellence (site_budgets); not on project_reviews.
         project_budget_status=None,
         nso_status=nso.nso_status if nso else None,
