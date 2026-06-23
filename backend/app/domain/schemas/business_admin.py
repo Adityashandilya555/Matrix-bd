@@ -36,6 +36,17 @@ class ApproveSupervisorIn(BaseModel):
     module: Module
 
 
+class ExecutiveRequestOut(BaseModel):
+    id: str
+    supervisor_id: str
+    supervisor_email: str
+    supervisor_name: str
+    module: Module
+    status: str
+    created_at: datetime
+
+
+
 class FinanceApprovalOut(BaseModel):
     site_id: str
     site_code: str

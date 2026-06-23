@@ -23,6 +23,7 @@ from app.domain.schemas.business_admin import (
     OrgResponse,
     PendingSupervisorOut,
     SiteDocumentsResponse,
+    ExecutiveRequestOut,
 )
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
@@ -86,6 +87,42 @@ async def reject_supervisor(
     tenant_id: TenantId,
 ) -> None:
     await svc.reject_supervisor(db, tenant_id, user_id)
+
+
+@router.get("/executive-requests", response_model=list[ExecutiveRequestOut])
+async def list_executive_requests(
+    db: DbDep,
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> list[dict]:
+    return await svc.list_executive_requests(db, tenant_id)
+
+
+@router.post(
+    "/executive-requests/{request_id}/approve",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def approve_executive_request(
+    request_id: str,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> None:
+    await svc.approve_executive_request(db, tenant_id, request_id, current_user["sub"])
+
+
+@router.post(
+    "/executive-requests/{request_id}/reject",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def reject_executive_request(
+    request_id: str,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> None:
+    await svc.reject_executive_request(db, tenant_id, request_id, current_user["sub"])
+
 
 
 @router.post(

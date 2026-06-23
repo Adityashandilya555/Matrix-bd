@@ -11,6 +11,7 @@ import {
   getFinanceQueue, approveFinance, rejectFinance, getBudgetQueue, reviewBudget, fetchBudgetDetail,
   getQualityAuditQueue, confirmQualityAudit, getClosureAdminQueue, finalizeClosure,
   getOrg, getAllSites, getSiteHistory,
+  getExecutiveRequests, approveExecutiveRequest, rejectExecutiveRequest,
 } from '../../services/api/businessAdminApi.js';
 import {
   rotateDeptCode, listPendingSupervisors, approveSupervisor, rejectSupervisor, removeOrgUser,
@@ -45,6 +46,9 @@ export const REAL_FETCHERS = {
   listSupervisors:   listPendingSupervisors,
   approveSupervisor,
   rejectSupervisor,
+  listExecutiveReqs: getExecutiveRequests,
+  approveExecutiveReq: approveExecutiveRequest,
+  rejectExecutiveReq: rejectExecutiveRequest,
   removeOrgUser,
   rotateDeptCode,
   listOrg:           getOrg,
@@ -108,6 +112,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   const [closure, loadClosure] = useQueue(fetchers.listClosure);
   // Departments
   const [supervisors, loadSupervisors] = useQueue(fetchers.listSupervisors);
+  const [executiveRequests, loadExecutiveRequests] = useQueue(fetchers.listExecutiveReqs);
   const [org, loadOrg] = useQueue(fetchers.listOrg);
   // Sites
   const [sites, loadSites] = useQueue(fetchers.listSites);
@@ -190,22 +195,25 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     // departments
     onApproveSupervisor: async (u) => { await fetchers.approveSupervisor(u.id, u.module); await loadSupervisors(true); await loadOrg(true); },
     onRejectSupervisor: async (u) => { await fetchers.rejectSupervisor(u.id); await loadSupervisors(true); },
+    onApproveExecutiveReq: async (reqId) => { await fetchers.approveExecutiveReq(reqId); await loadExecutiveRequests(true); await loadOrg(true); },
+    onRejectExecutiveReq: async (reqId) => { await fetchers.rejectExecutiveReq(reqId); await loadExecutiveRequests(true); },
     onRotate: async (moduleKey) => { await fetchers.rotateDeptCode(moduleKey); await loadOrg(true); },
     onRemoveUser: async (u) => { if (!fetchers.removeOrgUser) return; await fetchers.removeOrgUser(u.id); await loadOrg(true); },
     reloadPendingSupervisors: loadSupervisors,
+    reloadExecutiveRequests: loadExecutiveRequests,
     reloadOrg: loadOrg,
   };
 
   const refreshAll = async () => {
     setRefreshingAll(true);
-    try { await Promise.all([reloadApprovals(true), loadSupervisors(true), loadOrg(true), loadSites(true)]); }
+    try { await Promise.all([reloadApprovals(true), loadSupervisors(true), loadExecutiveRequests(true), loadOrg(true), loadSites(true)]); }
     finally { setRefreshingAll(false); }
   };
 
   const navItems = [
     { ...TABS[0], count: approvalSites.length },
     { ...TABS[1] }, // Launch Approvals — count fetched inside the tab
-    { ...TABS[2], count: supCount },
+    { ...TABS[2], count: supCount + executiveRequests.items.length },
     { ...TABS[3] },
     { ...TABS[4] }, // Workspace Access tab
   ];
@@ -243,6 +251,17 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
                 <Icon.alert size={15} /> Some queues couldn’t load — use Retry below.</span>)
             : (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: T.successText }}>
                 <Icon.check size={16} /> You’re all caught up — nothing awaiting approval.</span>)}
+
+          {supCount > 0 && (
+            <span style={{ marginLeft: 10, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              · <Icon.users size={14} style={{ color: T.warnText }} /> <span style={{ color: T.warnText }}>{supCount} pending {supCount === 1 ? 'supervisor' : 'supervisors'}</span>
+            </span>
+          )}
+          {executiveRequests.items.length > 0 && (
+            <span style={{ marginLeft: 10, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              · <Icon.document size={14} style={{ color: T.warnText }} /> <span style={{ color: T.warnText }}>{executiveRequests.items.length} executive {executiveRequests.items.length === 1 ? 'request' : 'requests'}</span>
+            </span>
+          )}
         </div>
 
         {/* ── Overview tiles ── */}
@@ -267,7 +286,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
               <LaunchApprovalTab />
             )}
             {tab === 'departments' && (
-              <DepartmentsTab org={org} pendingSupervisors={supervisors} handlers={handlers} />
+              <DepartmentsTab org={org} pendingSupervisors={supervisors} executiveRequests={executiveRequests} handlers={handlers} />
             )}
             {tab === 'sites' && (
               <SitesTab data={sites} fetchHistory={fetchers.fetchSiteHistory} onRetry={loadSites} />
