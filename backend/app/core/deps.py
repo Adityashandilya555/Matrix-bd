@@ -72,23 +72,42 @@ async def get_current_user(
 
     claims = decode_token(token)
 
+    module_to_check = x_override_module or claims.get("module")
+    q = """
+        SELECT u.role, u.is_active, 
+               COALESCE(umm.has_executive_access, false) AS has_executive_access,
+               EXISTS(
+                 SELECT 1 FROM supervisor_executive_requests req
+                 WHERE req.supervisor_id = u.id 
+                   AND req.module = :mod 
+                   AND req.status = 'pending'
+               ) AS has_pending_executive_request
+        FROM users u 
+        LEFT JOIN user_module_memberships umm ON u.id = umm.user_id AND umm.module = :mod
+        WHERE u.id = :uid
+    """
     row = (await db.execute(
-        text("SELECT role, is_active FROM users WHERE id = :uid"),
-        {"uid": claims["sub"]},
+        text(q),
+        {"uid": claims["sub"], "mod": module_to_check},
     )).mappings().first()
     if not row or not row["is_active"]:
         raise AuthError("Account is inactive or no longer exists. Sign in again.")
     
-    # Check if the database role is business_admin. If so, allow headers to override
-    # the effective role/module returned to downstream endpoints and guards.
+    # Check if the database role is business_admin or if supervisor has executive access.
+    # If so, allow headers to override the effective role/module returned to downstream endpoints.
     db_role = row["role"]
     claims["role"] = db_role
     claims["real_role"] = db_role
+    claims["has_executive_access"] = row["has_executive_access"]
+    claims["has_pending_executive_request"] = row["has_pending_executive_request"]
     if db_role == "business_admin":
         if x_override_role:
             claims["role"] = x_override_role
         if x_override_module:
             claims["module"] = x_override_module
+    elif db_role == "supervisor" and row["has_executive_access"]:
+        if x_override_role == "executive":
+            claims["role"] = "executive"
 
     # The is_active SELECT above AUTO-BEGAN a transaction on the request-scoped
     # session (SQLAlchemy 2.0 autobegin). If left open, the service-layer

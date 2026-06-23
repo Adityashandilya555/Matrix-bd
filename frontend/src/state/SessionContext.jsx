@@ -83,14 +83,19 @@ export function SessionProvider({ children }) {
     setSession(prev => ({ ...prev, role: newRole }));
   }, []);
 
-  // switchAs: lets business_admin simulate a different role+module. Pass null to reset.
+  // switchAs: lets business_admin simulate a different role+module, 
+  // or lets a dual-role supervisor switch between supervisor/executive in their module. Pass null to reset.
   const switchAs = useCallback((overrideRole, overrideModule) => {
-    if (session.realRole !== 'business_admin') return;
-    const next = overrideRole ? { role: overrideRole, module: overrideModule } : null;
+    const isDualRoleSupervisor = session.realRole === 'supervisor' && session.hasExecutiveAccess;
+    if (session.realRole !== 'business_admin' && !isDualRoleSupervisor) return;
+    
+    // Supervisors can only switch their role, not their module
+    const nextModule = isDualRoleSupervisor ? session.module : overrideModule;
+    const next = overrideRole ? { role: overrideRole, module: nextModule } : null;
     _setAdminOverride(next);
     if (next) activateOverride(next);
     else deactivateOverride();
-  }, [session.realRole]);
+  }, [session.realRole, session.hasExecutiveAccess, session.module]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
@@ -126,6 +131,8 @@ export function SessionProvider({ children }) {
           email:     claims.email || INITIAL_SESSION.email,
           role:      claims.role || INITIAL_SESSION.role,
           realRole:  claims.real_role || claims.role || INITIAL_SESSION.role,
+          hasExecutiveAccess: claims.has_executive_access || false,
+          pendingExecutiveRequest: claims.has_pending_executive_request || false,
           tenantId:  claims.tenant_id || INITIAL_SESSION.tenantId,
           cityScope: claims.city || INITIAL_SESSION.cityScope,
           module:    claims.module || null,

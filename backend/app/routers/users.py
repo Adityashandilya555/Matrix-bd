@@ -240,3 +240,47 @@ async def assign_role(
             "They can sign in with their email + the workspace code."
         ),
     )
+
+
+@router.post(
+    "/me/request-executive-access",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Supervisor requests dual-role executive access",
+)
+async def request_executive_access(
+    db: DbDep,
+    current_user: CurrentUser,
+    tenant_id: TenantId,
+) -> None:
+    """Creates a pending request for the Business Admin to approve executive access."""
+    if current_user.get("real_role") != "supervisor":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only supervisors can request executive access.",
+        )
+    
+    module = current_user.get("module")
+    if not module:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is not assigned to a module.",
+        )
+
+    if current_user.get("has_executive_access"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="You already have executive access.",
+        )
+
+    # Insert request
+    q = """
+        INSERT INTO supervisor_executive_requests (tenant_id, supervisor_id, module)
+        VALUES (:tid, :uid, :mod)
+        ON CONFLICT (supervisor_id, module) WHERE status = 'pending' DO NOTHING
+    """
+    await db.execute(text(q), {
+        "tid": tenant_id,
+        "uid": current_user["sub"],
+        "mod": module,
+    })
+    await db.commit()
