@@ -71,12 +71,16 @@ export function SessionProvider({ children }) {
 
   // isBusinessAdmin: true when the true underlying JWT role is business_admin (regardless of override).
   const isBusinessAdmin = session.realRole === 'business_admin';
+  // isDualRoleSupervisor: true when the user is a supervisor with executive access.
+  const isDualRoleSupervisor = session.realRole === 'supervisor' && session.hasExecutiveAccess;
   // effectiveModule: the module being simulated, or the real session module.
-  const effectiveModule = (isBusinessAdmin && adminOverride?.module) || session.module;
+  const effectiveModule = ((isBusinessAdmin || isDualRoleSupervisor) && adminOverride?.module) || session.module;
   // role: the display/canonical string used by existing components. For business_admin
   // with an active override this returns the simulated role so RequireAuth and all UI
   // adapt automatically. realRole always returns the true JWT role.
-  const role = (isBusinessAdmin && adminOverride?.role) || session.role;
+  const role = isBusinessAdmin ? (adminOverride?.role || session.role)
+             : isDualRoleSupervisor ? (['supervisor', 'executive'].includes(adminOverride?.role) ? adminOverride.role : session.role)
+             : session.role;
 
   // setRole: allows role switcher to change role locally in mock mode.
   const setRole = useCallback((newRole) => {
