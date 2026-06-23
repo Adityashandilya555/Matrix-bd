@@ -186,7 +186,7 @@ export default function DraftsPage({ onOpenSite: onOpenSiteProp, showToast: show
           <span>Code</span><span>Pipeline name</span><span>Created by</span><span>City</span><span>Visit date</span><span>Days</span><span style={{ textAlign: 'right' }}>{can(role, 'shortlist') ? 'Decision' : 'Action'}</span>
         </div>
         {filtered.map(d => {
-          const canDecideHere = role === 'supervisor';
+          const canDecideHere = role === 'supervisor' || role === 'business_admin';
           return (
             <DraftRow key={d.id} draft={d} role={role} canDecide={canDecideHere} onApprove={onApprove} onReject={onReject} onArchive={onArchive} onOpen={onOpenSite || (() => {})}/>
           );

@@ -70,11 +70,11 @@ export default function WorkspaceSwitcherPanel() {
             </span>
           </div>
           <button onClick={handleExit} style={{
-            padding: '4px 12px', borderRadius: 8,
-            border: `1px solid ${T.accent}`, background: 'transparent',
-            color: T.accentText, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+            padding: '5px 14px', borderRadius: 8,
+            border: 'none', background: '#C62828',
+            color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
           }}>
-            Exit
+            ✕ Exit Simulation
           </button>
         </div>
       )}
@@ -95,11 +95,16 @@ export default function WorkspaceSwitcherPanel() {
       </div>
 
       <button onClick={handleEnter} style={{
-        alignSelf: 'flex-start', height: 38, padding: '0 20px', borderRadius: 10, border: 'none',
-        background: T.accent, color: T.accentText, fontSize: 13, fontWeight: 700,
+        alignSelf: 'flex-start', height: 40, padding: '0 24px', borderRadius: 10, border: 'none',
+        background: '#1B5E20', color: '#fff', fontSize: 13.5, fontWeight: 700,
         cursor: 'pointer', fontFamily: 'inherit',
         display: 'inline-flex', alignItems: 'center', gap: 8,
-      }}>
+        boxShadow: '0 2px 8px rgba(27,94,32,0.3)',
+        transition: 'background 160ms ease, box-shadow 160ms ease',
+      }}
+        onMouseEnter={e => { e.currentTarget.style.background = '#2E7D32'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(27,94,32,0.4)'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = '#1B5E20'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(27,94,32,0.3)'; }}
+      >
         Enter Workspace
         <Icon.caret size={14} style={{ transform: 'rotate(-90deg)' }} />
       </button>
