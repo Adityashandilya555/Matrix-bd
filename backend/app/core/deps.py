@@ -32,6 +32,8 @@ _DEMO_USER = {
 async def get_current_user(
     db: Annotated[AsyncSession, Depends(get_db)],
     authorization: Annotated[Optional[str], Header()] = None,
+    x_override_role: Annotated[Optional[str], Header(alias="X-Override-Role")] = None,
+    x_override_module: Annotated[Optional[str], Header(alias="X-Override-Module")] = None,
 ) -> dict:
     """Extract + verify the current user from the Authorization header.
 
@@ -76,7 +78,17 @@ async def get_current_user(
     )).mappings().first()
     if not row or not row["is_active"]:
         raise AuthError("Account is inactive or no longer exists. Sign in again.")
-    claims["role"] = row["role"]
+    
+    # Check if the database role is business_admin. If so, allow headers to override
+    # the effective role/module returned to downstream endpoints and guards.
+    db_role = row["role"]
+    claims["role"] = db_role
+    if db_role == "business_admin":
+        if x_override_role:
+            claims["role"] = x_override_role
+        if x_override_module:
+            claims["module"] = x_override_module
+
     # The is_active SELECT above AUTO-BEGAN a transaction on the request-scoped
     # session (SQLAlchemy 2.0 autobegin). If left open, the service-layer
     # transaction() helper sees in_transaction()==True and opens a SAVEPOINT

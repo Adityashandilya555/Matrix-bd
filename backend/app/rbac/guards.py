@@ -19,10 +19,9 @@ def require_role(*roles: Role) -> Callable:
     """
     async def guard(current_user: dict = Depends(get_current_user)) -> dict:
         user_role = current_user.get("role")
-        # business_admin bypasses role guards — they simulate any role via X-Override-Role header
-        if user_role == Role.BUSINESS_ADMIN.value:
-            return current_user
-        if user_role not in [r.value for r in roles]:
+        # If the user has been overridden or bypassed, verify they match the roles
+        # Note: business_admin can simulate any role, but they might also be verified as business_admin.
+        if user_role not in [r.value for r in roles] and user_role != "business_admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Role '{user_role}' not allowed. Required: {[r.value for r in roles]}",
@@ -50,11 +49,8 @@ def require_module(module_name: str) -> Callable:
     """
     async def guard(current_user: dict = Depends(get_current_user)) -> dict:
         user_role = current_user.get("role")
-        # business_admin bypasses module guards — they simulate any module via X-Override-Module header
-        if user_role == Role.BUSINESS_ADMIN.value:
-            return current_user
         user_module = current_user.get("module")
-        if user_module != module_name:
+        if user_module != module_name and user_role != "business_admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Module '{user_module}' not allowed on this route. Required: '{module_name}'",
