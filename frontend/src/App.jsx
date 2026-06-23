@@ -258,7 +258,7 @@ export default function App() {
           </select>
           <button
             type="button"
-            onClick={() => { switchAs(null, null); navigate('/team'); }}
+            onClick={() => { switchAs(null, null); navigate('/business-admin'); }}
             style={{
               marginLeft: 2, padding: '4px 12px', borderRadius: 8,
               border: 'none', background: '#C62828',
