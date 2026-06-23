@@ -175,6 +175,49 @@ async def _email_drain_loop() -> None:
         await asyncio.sleep(interval)
 
 
+# ── Startup migrations ────────────────────────────────────────────────────────
+
+_MIGRATION_DIR = os.path.join(
+    os.path.dirname(__file__), os.pardir, "database", "migrations"
+)
+
+
+async def _apply_pending_migrations() -> None:
+    """Run idempotent SQL migration files on startup.
+
+    Each statement is executed inside its own transaction so that
+    already-applied DDL (guarded by IF NOT EXISTS / IF EXISTS) succeeds
+    silently without rolling back other work.  Errors are logged but do NOT
+    crash the application — the migration file uses IF NOT EXISTS guards,
+    so partial application is safe and a retry on the next deploy will
+    converge.
+    """
+    migration_file = os.path.join(
+        _MIGRATION_DIR, "202606231_supervisor_executive_requests.sql"
+    )
+    resolved = os.path.normpath(migration_file)
+    if not os.path.isfile(resolved):
+        log.info("startup-migrations: %s not found, skipping", resolved)
+        return
+
+    with open(resolved, encoding="utf-8") as fh:
+        raw_sql = fh.read()
+
+    statements = [s.strip() for s in raw_sql.split(";") if s.strip()]
+    applied = 0
+    for stmt in statements:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(stmt))
+            applied += 1
+        except Exception:
+            log.exception(
+                "startup-migrations: statement failed (may already be applied): %.120s",
+                stmt,
+            )
+    log.info("startup-migrations: %d/%d statements applied", applied, len(statements))
+
+
 # ── Application lifespan ──────────────────────────────────────────────────────
 
 @asynccontextmanager
@@ -184,24 +227,17 @@ async def lifespan(app: FastAPI):
     # meaning a deploy with a bad DATABASE_URL would boot, pass Railway's port
     # check, and then 500 on every authenticated request indefinitely.
     try:
-        async with engine.begin() as conn:
+        async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-            
-            migration_path = os.path.join("database", "migrations", "202606231_supervisor_executive_requests.sql")
-            if os.path.exists(migration_path):
-                with open(migration_path, "r", encoding="utf-8") as f:
-                    migration_sql = f.read()
-                for stmt in migration_sql.split(";"):
-                    stmt = stmt.strip()
-                    if stmt:
-                        await conn.execute(text(stmt))
-                        
-            log.info("startup: database connection OK and pending migrations applied")
+            log.info("startup: database connection OK")
     except Exception as exc:
         log.exception(
-            "startup: database connection or migration failed — exiting so Railway restarts: %s", exc
+            "startup: database connection failed — exiting so Railway restarts: %s", exc
         )
         raise SystemExit(1) from exc  # triggers ON_FAILURE restart
+
+    # ── Apply pending migrations idempotently.
+    await _apply_pending_migrations()
 
     # Warn (don't fail) if the deployment scales out past the single-process
     # invariant the in-memory rate limiter relies on (#225, 3.2).
