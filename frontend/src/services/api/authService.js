@@ -16,6 +16,10 @@ export async function logout() {
   return adapter.logout();
 }
 
+export async function requestExecutiveAccess() {
+  return adapter.requestExecutiveAccess();
+}
+
 // `login` is intentionally absent in HTTP mode: the user signs in directly
 // against Supabase (see supabaseAuth.signInWithPassword). The mock adapter
 // still exposes a `login` for offline UI dev.
