@@ -187,7 +187,6 @@ async def lifespan(app: FastAPI):
         async with engine.begin() as conn:
             await conn.execute(text("SELECT 1"))
             
-            import os
             migration_path = os.path.join("database", "migrations", "202606231_supervisor_executive_requests.sql")
             if os.path.exists(migration_path):
                 with open(migration_path, "r") as f:
