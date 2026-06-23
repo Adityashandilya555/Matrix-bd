@@ -152,21 +152,18 @@ export function SessionProvider({ children }) {
             // blocking "session expired" modal over a public page is wrong,
             // there is no session to pause. (Restores pre-#173 #130 behavior for
             // the stale-token case.)
-            // eslint-disable-next-line no-console
             console.warn('[session] /auth/whoami unauthorized on first load — clearing stale token', err);
             clearAuthToken();
           } else {
             // A session WAS live this page-load and just expired mid-use. Keep
             // the token + mounted route and surface the modal so in-progress
             // forms are preserved. (#130 / #173 intent)
-            // eslint-disable-next-line no-console
             console.warn('[session] /auth/whoami unauthorized mid-session — preserving route', err);
             notifySessionExpired({ reason: 'whoami_unauthorized', error: err });
           }
         } else {
           // Transient (timeout / network / 5xx). Keep the token so the user
           // isn't logged out by a slow backend; a refresh re-hydrates. (#128)
-          // eslint-disable-next-line no-console
           console.warn('[session] /auth/whoami failed transiently — keeping token', err);
         }
       } finally {
