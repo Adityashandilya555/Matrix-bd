@@ -1,9 +1,9 @@
 -- Add has_executive_access to user_module_memberships
 ALTER TABLE public.user_module_memberships
-  ADD COLUMN has_executive_access boolean NOT NULL DEFAULT false;
+  ADD COLUMN IF NOT EXISTS has_executive_access boolean NOT NULL DEFAULT false;
 
 -- Create supervisor_executive_requests table
-CREATE TABLE public.supervisor_executive_requests (
+CREATE TABLE IF NOT EXISTS public.supervisor_executive_requests (
   id            uuid NOT NULL DEFAULT uuid_generate_v4(),
   tenant_id     uuid NOT NULL,
   supervisor_id uuid NOT NULL,
@@ -19,10 +19,10 @@ CREATE TABLE public.supervisor_executive_requests (
 );
 
 -- Ensure a supervisor can only have one pending request per module at a time
-CREATE UNIQUE INDEX idx_supervisor_executive_requests_pending
+CREATE UNIQUE INDEX IF NOT EXISTS idx_supervisor_executive_requests_pending
   ON public.supervisor_executive_requests (supervisor_id, module)
   WHERE status = 'pending';
 
 -- Index for querying requests efficiently
-CREATE INDEX idx_supervisor_executive_requests_tenant_status
+CREATE INDEX IF NOT EXISTS idx_supervisor_executive_requests_tenant_status
   ON public.supervisor_executive_requests (tenant_id, status);

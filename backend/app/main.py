@@ -184,12 +184,23 @@ async def lifespan(app: FastAPI):
     # meaning a deploy with a bad DATABASE_URL would boot, pass Railway's port
     # check, and then 500 on every authenticated request indefinitely.
     try:
-        async with engine.connect() as conn:
+        async with engine.begin() as conn:
             await conn.execute(text("SELECT 1"))
-            log.info("startup: database connection OK")
+            
+            import os
+            migration_path = os.path.join("database", "migrations", "202606231_supervisor_executive_requests.sql")
+            if os.path.exists(migration_path):
+                with open(migration_path, "r") as f:
+                    migration_sql = f.read()
+                for stmt in migration_sql.split(";"):
+                    stmt = stmt.strip()
+                    if stmt:
+                        await conn.execute(text(stmt))
+                        
+            log.info("startup: database connection OK and pending migrations applied")
     except Exception as exc:
         log.exception(
-            "startup: database connection failed — exiting so Railway restarts: %s", exc
+            "startup: database connection or migration failed — exiting so Railway restarts: %s", exc
         )
         raise SystemExit(1) from exc  # triggers ON_FAILURE restart
 
