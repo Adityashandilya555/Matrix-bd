@@ -208,26 +208,66 @@ export default function App() {
 
       {isBusinessAdmin && adminOverride && (
         <div style={{
-          position: 'fixed', top: 12, right: 12, zIndex: 999,
-          display: 'inline-flex', alignItems: 'center', gap: 8,
-          padding: '6px 10px 6px 12px', borderRadius: 22,
-          background: 'var(--zm-accent-soft)', border: '1px solid var(--zm-accent)',
+          position: 'fixed', top: 12, left: `calc(${sidebarWidth}px + 24px)`, zIndex: 999,
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '7px 14px 7px 14px', borderRadius: 12,
+          background: dark ? '#1a1a2e' : '#fff',
+          border: '1px solid ' + (dark ? '#333' : '#ddd'),
           fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600,
-          color: 'var(--zm-accent)', boxShadow: 'var(--zm-shadow-1)',
+          color: dark ? '#f5f5f5' : '#1a1a2e',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+          transition: 'left 200ms ease',
         }}>
-          <span style={{ width: 7, height: 7, borderRadius: 999, background: 'var(--zm-accent)', flexShrink: 0 }}/>
-          <span>Simulating: {adminOverride.role} · {adminOverride.module}</span>
-          <button
-            type="button"
-            onClick={() => { switchAs(null, null); navigate('/business-admin'); }}
+          <span style={{ width: 8, height: 8, borderRadius: 999, background: '#4CAF50', flexShrink: 0, animation: 'zm-pulse 2s infinite' }}/>
+          <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>Simulating</span>
+          <select
+            value={adminOverride.role}
+            onChange={(e) => { switchAs(e.target.value, adminOverride.module); }}
             style={{
-              marginLeft: 4, padding: '2px 10px', borderRadius: 10,
-              border: '1px solid var(--zm-accent)', background: 'transparent',
-              color: 'var(--zm-accent)', fontSize: 11, fontWeight: 700,
-              cursor: 'pointer', fontFamily: 'var(--zm-font-body)',
+              height: 28, padding: '0 6px', borderRadius: 6, fontSize: 11.5, fontWeight: 600,
+              border: '1px solid ' + (dark ? '#444' : '#ccc'),
+              background: dark ? '#2a2a3e' : '#f5f5f5',
+              color: dark ? '#f5f5f5' : '#1a1a2e',
+              fontFamily: 'var(--zm-font-body)', cursor: 'pointer',
             }}
           >
-            Exit
+            <option value="supervisor">Supervisor</option>
+            <option value="executive">Executive</option>
+          </select>
+          <select
+            value={adminOverride.module}
+            onChange={(e) => {
+              switchAs(adminOverride.role, e.target.value);
+              const routes = { bd: '/', legal: '/legal', design: '/design', project_excellence: '/project-excellence', project: '/project', nso: '/nso' };
+              navigate(routes[e.target.value] || '/');
+            }}
+            style={{
+              height: 28, padding: '0 6px', borderRadius: 6, fontSize: 11.5, fontWeight: 600,
+              border: '1px solid ' + (dark ? '#444' : '#ccc'),
+              background: dark ? '#2a2a3e' : '#f5f5f5',
+              color: dark ? '#f5f5f5' : '#1a1a2e',
+              fontFamily: 'var(--zm-font-body)', cursor: 'pointer',
+            }}
+          >
+            <option value="bd">BD</option>
+            <option value="legal">Legal</option>
+            <option value="design">Design</option>
+            <option value="project_excellence">Project Excellence</option>
+            <option value="project">Project</option>
+            <option value="nso">NSO</option>
+          </select>
+          <button
+            type="button"
+            onClick={() => { switchAs(null, null); navigate('/team'); }}
+            style={{
+              marginLeft: 2, padding: '4px 12px', borderRadius: 8,
+              border: 'none', background: '#C62828',
+              color: '#fff', fontSize: 11, fontWeight: 700,
+              cursor: 'pointer', fontFamily: 'var(--zm-font-body)',
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+            }}
+          >
+            ✕ Exit
           </button>
         </div>
       )}
