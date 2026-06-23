@@ -69,8 +69,8 @@ export function SessionProvider({ children }) {
     } catch { return false; }
   });
 
-  // isBusinessAdmin: true when the JWT role is business_admin (regardless of override).
-  const isBusinessAdmin = session.role === 'business_admin';
+  // isBusinessAdmin: true when the true underlying JWT role is business_admin (regardless of override).
+  const isBusinessAdmin = session.realRole === 'business_admin';
   // effectiveModule: the module being simulated, or the real session module.
   const effectiveModule = (isBusinessAdmin && adminOverride?.module) || session.module;
   // role: the display/canonical string used by existing components. For business_admin
@@ -85,12 +85,12 @@ export function SessionProvider({ children }) {
 
   // switchAs: lets business_admin simulate a different role+module. Pass null to reset.
   const switchAs = useCallback((overrideRole, overrideModule) => {
-    if (session.role !== 'business_admin') return;
+    if (session.realRole !== 'business_admin') return;
     const next = overrideRole ? { role: overrideRole, module: overrideModule } : null;
     _setAdminOverride(next);
     if (next) activateOverride(next);
     else deactivateOverride();
-  }, [session.role]);
+  }, [session.realRole]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
@@ -125,6 +125,7 @@ export function SessionProvider({ children }) {
           name:      claims.email ? claims.email.split('@')[0] : INITIAL_SESSION.name,
           email:     claims.email || INITIAL_SESSION.email,
           role:      claims.role || INITIAL_SESSION.role,
+          realRole:  claims.real_role || claims.role || INITIAL_SESSION.role,
           tenantId:  claims.tenant_id || INITIAL_SESSION.tenantId,
           cityScope: claims.city || INITIAL_SESSION.cityScope,
           module:    claims.module || null,
