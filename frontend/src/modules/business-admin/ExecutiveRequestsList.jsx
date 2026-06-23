@@ -45,7 +45,7 @@ export default function ExecutiveRequestsList({ data, onApprove, onReject, onRet
       )}
 
       {!loading && items.length === 0 && (
-        <EmptyState icon={Icon.document}
+        <EmptyState icon={Icon.doc}
           title="No executive access requests"
           hint="When supervisors request dual-role executive access, they will appear here." />
       )}
