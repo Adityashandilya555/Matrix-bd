@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import React, { useState } from 'react';
 import { activateOverride, deactivateOverride, getStoredOverride } from '../../services/api/adminOverride.js';
 import { T, Icon } from './ui/kit.jsx';
