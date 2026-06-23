@@ -7,6 +7,7 @@ from typing import Annotated, Optional
 from fastapi import Depends, Header
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
 from app.core.security import AuthError, decode_token
@@ -103,7 +104,7 @@ async def get_current_user(
     params = {"uid": claims["sub"], "mod": module_to_check, "tid": claims["tenant_id"]}
     try:
         row = (await db.execute(text(_FULL_QUERY), params)).mappings().first()
-    except Exception:
+    except SQLAlchemyError:
         _log.warning(
             "executive-access query failed (migration not yet applied?), "
             "falling back to basic user lookup"

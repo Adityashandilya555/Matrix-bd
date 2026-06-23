@@ -14,6 +14,7 @@ from fastapi import Depends, FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import settings
@@ -198,7 +199,7 @@ async def _apply_pending_migrations() -> None:
     resolved = os.path.normpath(migration_file)
     if not os.path.isfile(resolved):
         log.error("startup-migrations: %s not found. Failing startup to prevent inconsistent schema state.", resolved)
-        raise RuntimeError(f"Missing required migration file: {resolved}")
+        raise FileNotFoundError(f"Missing required migration file: {resolved}")
 
     with open(resolved, encoding="utf-8") as fh:
         raw_sql = fh.read()
@@ -210,7 +211,7 @@ async def _apply_pending_migrations() -> None:
             async with engine.begin() as conn:
                 await conn.execute(text(stmt))
             applied += 1
-        except Exception:
+        except SQLAlchemyError:
             log.exception(
                 "startup-migrations: statement failed (may already be applied): %.120s",
                 stmt,
