@@ -189,7 +189,7 @@ async def lifespan(app: FastAPI):
             
             migration_path = os.path.join("database", "migrations", "202606231_supervisor_executive_requests.sql")
             if os.path.exists(migration_path):
-                with open(migration_path, "r") as f:
+                with open(migration_path, "r", encoding="utf-8") as f:
                     migration_sql = f.read()
                 for stmt in migration_sql.split(";"):
                     stmt = stmt.strip()
