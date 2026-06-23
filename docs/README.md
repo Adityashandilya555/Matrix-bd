@@ -16,6 +16,8 @@ This documentation explains the codebase in the order a new developer needs it. 
 | 10 | [Developer setup](08-running-locally/developer-setup.md) | How do I run the application? |
 | 11 | [Testing and errors](09-testing/testing-and-errors.md) | How is correctness checked and how do failures surface? |
 | 12 | [Change rules](10-change-management/change-rules.md) | Which files must change together? |
+| 13 | [Business admin portal](12-business-admin-portal/business-admin-portal.md) | How does the separate admin portal authenticate and render? |
+| 14 | [Admin role simulation](13-admin-role-simulation/admin-role-simulation.md) | How can a business admin simulate another role and module? |
 
 ## Documentation rule
 

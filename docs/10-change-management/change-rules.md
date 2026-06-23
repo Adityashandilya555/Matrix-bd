@@ -58,6 +58,28 @@ Do not make page components aware of snake_case wire fields.
 > - `backend/database/migrations/202606144_shared_site_budgets.sql:1-13` — additive migration pattern.
 > - `backend/database/migrations/202606145_drop_legacy_project_budget.sql:1-9` — isolated destructive pattern.
 
+### Regenerating `verified.sql`
+
+After confirming that migrations have been applied to the live Supabase database and the schema is stable, regenerate the file with:
+
+```bash
+pg_dump "$DATABASE_URL" \
+  --schema-only \
+  --no-owner \
+  --no-acl \
+  --schema=public \
+  -f backend/database/verified.sql
+```
+
+Prepend the context warning comment that prevents accidental execution:
+
+```sql
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+```
+
+Commit the updated `verified.sql` in the same PR as the migration and ORM model change so the three files remain in sync. Never regenerate from a local development database — only from the live Supabase instance whose schema migrations have been fully applied.
+
 ## Changing auth or RBAC
 
 Check all layers:
