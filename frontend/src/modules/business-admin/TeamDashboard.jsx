@@ -259,7 +259,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
           )}
           {executiveRequests.items.length > 0 && (
             <span style={{ marginLeft: 10, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-              · <Icon.document size={14} style={{ color: T.warnText }} /> <span style={{ color: T.warnText }}>{executiveRequests.items.length} executive {executiveRequests.items.length === 1 ? 'request' : 'requests'}</span>
+              · <Icon.doc size={14} style={{ color: T.warnText }} /> <span style={{ color: T.warnText }}>{executiveRequests.items.length} executive {executiveRequests.items.length === 1 ? 'request' : 'requests'}</span>
             </span>
           )}
         </div>
