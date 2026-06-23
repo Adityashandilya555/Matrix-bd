@@ -51,6 +51,40 @@ Frontend route guards improve navigation but are not security controls.
 > - `backend/app/services/_common.py:38-83,129-143` — tenant/object/list scope.
 > - `frontend/src/router/guards.jsx:18-59` — client navigation guards.
 
+## Multi-tenancy scope flow
+
+Tenant isolation is enforced at the database-query layer. The JWT carries `tenant_id`; every service lookup adds `tenant_id = :tenant_id` to the WHERE clause. Executive reads additionally restrict to `submitted_by`, `assigned_to`, or an active module delegation.
+
+```mermaid
+sequenceDiagram
+  actor User
+  participant Browser
+  participant Router as FastAPI router
+  participant Deps as deps.py
+  participant Service as domain service
+  participant Common as _common.py
+  participant DB as PostgreSQL
+
+  User->>Browser: click / submit
+  Browser->>Router: Bearer JWT
+  Router->>Deps: decode token, check active user
+  Deps-->>Router: actor dict {sub, role, tenant_id, module, ...}
+  Router->>Service: validated request + actor
+  Service->>Common: tenant-scoped query + row lock
+  Common->>DB: SELECT ... WHERE tenant_id = :tenant_id
+  DB-->>Common: rows
+  Common-->>Service: site / list
+  Service-->>Router: response
+  Router-->>Browser: JSON
+```
+
+City scope exists in the session for display filtering, but it is not a hard authorization boundary. The backend site list scopes executives by ownership/assignment and supervisors by tenant.
+
+> **Source of Truth**
+> - `backend/app/core/deps.py:32-89` — actor extraction and current-account recheck.
+> - `backend/app/services/_common.py:38-83,129-143` — tenant and executive list scope.
+> - `frontend/src/rbac/scope.js:11-38` — client-side city/scope display filter.
+
 ## Role and module model
 
 Top-level role answers **what level of authority** a user has. Module membership answers **where that authority applies**. Business admins use a separate portal. Supervisors and executives enter the tenant shell and are routed to their module home from the JWT `module` claim.

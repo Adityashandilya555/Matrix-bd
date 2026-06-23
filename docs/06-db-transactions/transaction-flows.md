@@ -118,4 +118,43 @@ Project Excellence owns the `gfc` workflow but stores budget data in shared `sit
 > **Source of Truth**
 > - `backend/app/services/budget_service.py:1-165` — shared data operations.
 > - `backend/app/services/financial_closure_service.py:1-174,348-469` — closure workflow.
-> - `backend/database/migrations/202606144_shared_site_budgets.sql:15-61` — storage.
+> - `backend/database/verified.sql:637-677` — shared budget storage.
+
+## Cross-module site journey
+
+A site does not stay in one table. Each module creates or updates its own rows and stamps a mirror status back onto `sites` so downstream modules and dashboards can decide whether the site is ready.
+
+```mermaid
+flowchart LR
+  BD["BD / Sites<br/>sites, site_details, approvals"]
+  LOI["LOI upload<br/>site_files"]
+  Legal["Legal<br/>legal_dd_checklist<br/>site_agreement<br/>site_licensing"]
+  Finance["Finance / CA<br/>sites.finance_*"]
+  Design["Design<br/>design_reviews<br/>design_deliverables"]
+  PE["Project Excellence<br/>site_budgets phase=gfc"]
+  Project["Project Execution<br/>project_reviews"]
+  NSO["NSO<br/>nso_reviews"]
+  Launch["Launch<br/>launch_approvals"]
+  FC["Financial Closure<br/>site_budgets phase=closure"]
+
+  BD -->|draft → approved| LOI
+  LOI -->|status=legal_review| Legal
+  Legal -->|legal_dd_status=positive<br/>agreement_status<br/>licensing_status| Finance
+  Finance -->|finance_status=approved| Design
+  Design -->|design_status=approved| PE
+  PE -->|budget approved| Project
+  Project -->|project_status=done<br/>pushed to NSO Handover| NSO
+  NSO -->|nso_status=complete| Launch
+  Launch -->|is_launched=true| FC
+```
+
+Each arrow is a gate: the downstream module refuses to open until the upstream mirror status is set. This is why `sites` carries so many module summary columns.
+
+> **Source of Truth**
+> - `backend/app/services/legal_service.py:1-13` — legal module unlock.
+> - `backend/app/services/design_service.py:232-246` — design unlock gate.
+> - `backend/app/services/project_service.py:49-55` — project unlock gate.
+> - `backend/app/services/project_excellence_service.py:49-54` — PE unlock gate.
+> - `backend/app/services/nso_service.py:167-197` — NSO handoff push.
+> - `backend/app/services/launch_service.py:1-23` — launch trigger.
+> - `backend/app/services/financial_closure_service.py:51-64` — closure unlock gate.

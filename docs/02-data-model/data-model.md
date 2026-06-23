@@ -166,6 +166,31 @@ When adding a mapped class, also add the corresponding migration if the table is
 > - `backend/app/db/models.py:1052-1053` — `eager_defaults = True` applied to all mappers.
 > - `backend/database/verified.sql:4-677` — live schema the models must track.
 
+## Module ownership map
+
+Every module owns a small set of tables and writes a summary status back to `sites`. BD dashboards read the mirror columns so list views do not fan out across every module table.
+
+| Module | Tables it owns | Mirror columns on `sites` | Unlocks when |
+| --- | --- | --- | --- |
+| BD / Sites | `sites`, `site_details`, `approvals`, `site_files`, `shortlist_delegations` | `status`, `code`, `assigned_to`, `expected_rent`, `rent_type`, etc. | — |
+| Finance / CA | (uses `sites` + `site_details` directly) | `finance_status`, `kyc_verified`, `ca_code`, `finance_amount` | `legal_dd_status='positive'` and agreement/licensing cleared |
+| Legal | `legal_dd_checklist`, `site_agreement`, `site_licensing`, `legal_change_requests`, `site_delegations` | `legal_dd_status`, `agreement_status`, `licensing_status` | `sites.status` reaches `legal_review` |
+| Design | `design_reviews`, `design_deliverables`, `site_delegations` | `design_status`, `design_approved_at` | `legal_dd_status='positive'` and `finance_status='approved'` |
+| Project Excellence | `site_budgets` (phase `gfc`), `site_budget_items`, `site_delegations` | `project_excellence_status` | `design_status='approved'` |
+| Project Execution | `project_reviews`, `site_delegations` | `project_status`, `project_completed_at` | `design_status='approved'` |
+| NSO | `nso_reviews` | `project_reviews.nso_status` (also `sites` read) | Project completed and pushed from NSO Handover |
+| Launch | `launch_approvals`, `launch_review_events` | `is_launched`, `launched_at` | NSO final approval complete |
+| Financial Closure | `site_budgets` (phase `closure`), `site_budget_items`, `site_delegations` | `financial_closure_status` | `is_launched=true` |
+
+This is why a BD queue can be built from `sites` alone, while a module detail view joins the module's own tables.
+
+> **Source of Truth**
+> - `backend/app/db/models.py:72-178` — sites mirror columns.
+> - `backend/app/services/design_service.py:232-246` — design unlock gate.
+> - `backend/app/services/project_service.py:49-55` — project unlock gate.
+> - `backend/app/services/financial_closure_service.py:51-64` — closure unlock gate.
+> - `backend/app/services/launch_service.py:1-23` — launch trigger summary.
+
 ## Stored versus derived
 
 Stored fields come from SQL rows. The API additionally derives:

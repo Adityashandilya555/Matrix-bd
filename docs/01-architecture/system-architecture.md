@@ -86,6 +86,26 @@ Routers are intentionally thin. Some older or administrative routers still conta
 > - `backend/app/services/_common.py:38-67` — tenant-scoped reads and row locks.
 > - `backend/tests/test_write_persistence_regression.py:45-86` — commit/rollback regression coverage.
 
+## Deployment view
+
+```mermaid
+flowchart LR
+  U["Browser / Mobile"] --> V["Vercel<br/>Static React SPA"]
+  V --> R["Railway<br/>FastAPI + asyncpg"]
+  R --> P[("Supabase PostgreSQL")]
+  R --> S["Supabase Storage<br/>signed URLs"]
+  R --> N["Resend / Slack<br/>outbox drain"]
+```
+
+The frontend is a static Vite-built SPA served by Vercel. The backend is a long-running FastAPI process on Railway that talks to Supabase PostgreSQL and Supabase Storage. Notifications are written to the `notification_outbox` table and drained in-process via Resend (email) or Slack webhooks.
+
+> **Source of Truth**
+> - `frontend/vercel.json:1-21` — SPA rewrite rules.
+> - `backend/railway.json:1-13` — backend deployment runtime.
+> - `backend/app/core/config.py:21-115` — environment wiring.
+> - `backend/app/services/storage_service.py:49-141` — storage client.
+> - `backend/app/services/notification_service.py:164-212` — outbox drain.
+
 ## Sources of truth by layer
 
 | Concern | Canonical source |
@@ -97,5 +117,6 @@ Routers are intentionally thin. Some older or administrative routers still conta
 | BD site status vocabulary | `backend/app/domain/state_machine.py` |
 | Database change | Ordered migration in `backend/database/migrations/` |
 | Runtime table mapping | `backend/app/db/models.py` |
+| Structural schema | `backend/database/verified.sql` |
 | Global frontend session/sites | `frontend/src/state/` |
 | Wire conversion | `frontend/src/services/api/adapters/httpAdapter.js` |
