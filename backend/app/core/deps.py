@@ -7,6 +7,7 @@ from typing import Annotated, Optional
 from fastapi import Depends, Header
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
 from app.core.security import AuthError, decode_token
@@ -73,30 +74,47 @@ async def get_current_user(
     claims = decode_token(token)
 
     module_to_check = x_override_module or claims.get("module")
-    q = """
-        SELECT u.role, u.is_active, 
+
+    # Full query including supervisor executive access fields.
+    # Falls back to a simpler query if the migration adding
+    # supervisor_executive_requests / has_executive_access hasn't been
+    # applied yet — prevents 500s during the migration window.
+    _FULL_QUERY = """\
+        SELECT u.role, u.is_active,
                COALESCE(umm.has_executive_access, false) AS has_executive_access,
                EXISTS(
                  SELECT 1 FROM supervisor_executive_requests req
-                 WHERE req.supervisor_id = u.id 
+                 WHERE req.supervisor_id = u.id
                    AND req.tenant_id = :tid
-                   AND req.module = :mod 
+                   AND req.module = :mod
                    AND req.status = 'pending'
                ) AS has_pending_executive_request
-        FROM users u 
-        LEFT JOIN user_module_memberships umm 
-          ON u.id = umm.user_id 
+        FROM users u
+        LEFT JOIN user_module_memberships umm
+          ON u.id = umm.user_id
          AND umm.module = :mod
          AND umm.tenant_id = :tid
         WHERE u.id = :uid
     """
-    row = (await db.execute(
-        text(q),
-        {"uid": claims["sub"], "mod": module_to_check, "tid": claims["tenant_id"]},
-    )).mappings().first()
+    _FALLBACK_QUERY = """\
+        SELECT u.role, u.is_active
+        FROM users u
+        WHERE u.id = :uid
+    """
+    params = {"uid": claims["sub"], "mod": module_to_check, "tid": claims["tenant_id"]}
+    try:
+        row = (await db.execute(text(_FULL_QUERY), params)).mappings().first()
+    except SQLAlchemyError:
+        _log.warning(
+            "executive-access query failed (migration not yet applied?), "
+            "falling back to basic user lookup"
+        )
+        await db.rollback()
+        row = (await db.execute(text(_FALLBACK_QUERY), params)).mappings().first()
+
     if not row or not row["is_active"]:
         raise AuthError("Account is inactive or no longer exists. Sign in again.")
-    
+
     # Check if the database role is business_admin or if supervisor has executive access.
     # If so, allow headers to override the effective role/module returned to downstream endpoints.
     db_role = row["role"]
