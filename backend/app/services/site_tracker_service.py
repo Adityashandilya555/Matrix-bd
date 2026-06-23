@@ -47,9 +47,9 @@ async def build_tracker_response(
     ag  = await _fetch_agreement_or_none(db, site_id=site.id)
     lic = await _fetch_licensing_or_none(db, site_id=site.id)
 
-    dd_resp        = _dd_to_response(dd)         if _visible(dd)  else None
-    agreement_resp = _agreement_to_response(ag)  if _visible(ag)  else None
-    licensing_resp = _licensing_to_response(lic) if _visible(lic) else None
+    dd_resp        = _dd_to_response(dd)         if dd is not None and _visible(dd)  else None
+    agreement_resp = _agreement_to_response(ag)  if ag is not None and _visible(ag)  else None
+    licensing_resp = _licensing_to_response(lic) if lic is not None and _visible(lic) else None
 
     submitted_by_name = await fetch_user_name(db, site.submitted_by)
     project = (
