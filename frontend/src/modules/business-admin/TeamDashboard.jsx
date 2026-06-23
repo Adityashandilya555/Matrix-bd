@@ -207,6 +207,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     { ...TABS[1] }, // Launch Approvals — count fetched inside the tab
     { ...TABS[2], count: supCount },
     { ...TABS[3] },
+    { ...TABS[4] }, // Workspace Access tab
   ];
 
   return (
