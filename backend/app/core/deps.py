@@ -98,14 +98,14 @@ async def get_current_user(
     db_role = row["role"]
     claims["role"] = db_role
     claims["real_role"] = db_role
-    claims["has_executive_access"] = row["has_executive_access"]
-    claims["has_pending_executive_request"] = row["has_pending_executive_request"]
+    claims["has_executive_access"] = row.get("has_executive_access", False)
+    claims["has_pending_executive_request"] = row.get("has_pending_executive_request", False)
     if db_role == "business_admin":
         if x_override_role:
             claims["role"] = x_override_role
         if x_override_module:
             claims["module"] = x_override_module
-    elif db_role == "supervisor" and row["has_executive_access"]:
+    elif db_role == "supervisor" and row.get("has_executive_access"):
         if x_override_role == "executive":
             claims["role"] = "executive"
 
