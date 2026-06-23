@@ -151,21 +151,36 @@ async def approve_my_pending_exec(
 
 
 async def list_my_team(
-    session: AsyncSession, supervisor_id: str, module: str,
+    session: AsyncSession, current_user: dict, module: str,
 ) -> list[dict]:
-    """Active executives bound to this supervisor in this module."""
-    rows = (await session.execute(
-        text(
-            "SELECT u.id, u.email, u.name, umm.joined_at "
-            "FROM user_module_memberships umm "
-            "JOIN users u ON u.id = umm.user_id "
-            "WHERE umm.supervisor_id = :sid "
-            "  AND umm.module = :m "
-            "  AND umm.role_in_module = 'executive' "
-            "  AND u.is_active = true"
-        ),
-        {"sid": supervisor_id, "m": module},
-    )).mappings().all()
+    """Active executives bound to this supervisor in this module.
+    Business admins simulating a supervisor see all active executives in the module."""
+    if current_user.get("real_role") == "business_admin":
+        rows = (await session.execute(
+            text(
+                "SELECT u.id, u.email, u.name, umm.joined_at "
+                "FROM user_module_memberships umm "
+                "JOIN users u ON u.id = umm.user_id "
+                "WHERE umm.module = :m "
+                "  AND umm.role_in_module = 'executive' "
+                "  AND umm.tenant_id = :tid "
+                "  AND u.is_active = true"
+            ),
+            {"m": module, "tid": current_user["tenant_id"]},
+        )).mappings().all()
+    else:
+        rows = (await session.execute(
+            text(
+                "SELECT u.id, u.email, u.name, umm.joined_at "
+                "FROM user_module_memberships umm "
+                "JOIN users u ON u.id = umm.user_id "
+                "WHERE umm.supervisor_id = :sid "
+                "  AND umm.module = :m "
+                "  AND umm.role_in_module = 'executive' "
+                "  AND u.is_active = true"
+            ),
+            {"sid": current_user["sub"], "m": module},
+        )).mappings().all()
     return [
         {
             "id": str(r["id"]),
