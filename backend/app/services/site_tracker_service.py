@@ -35,6 +35,12 @@ def _resolve_project_status(project, site):
     return None, None
 
 
+def _format_tracker(tracker, formatter, bd_caller: bool):
+    if tracker is not None and _visible(tracker, bd_caller):
+        return formatter(tracker)
+    return None
+
+
 async def build_tracker_response(
     db: AsyncSession,
     *,
@@ -57,9 +63,9 @@ async def build_tracker_response(
     ag  = await _fetch_agreement_or_none(db, site_id=site.id)
     lic = await _fetch_licensing_or_none(db, site_id=site.id)
 
-    dd_resp        = _dd_to_response(dd)         if dd is not None and _visible(dd, bd_caller)  else None
-    agreement_resp = _agreement_to_response(ag)  if ag is not None and _visible(ag, bd_caller)  else None
-    licensing_resp = _licensing_to_response(lic) if lic is not None and _visible(lic, bd_caller) else None
+    dd_resp        = _format_tracker(dd, _dd_to_response, bd_caller)
+    agreement_resp = _format_tracker(ag, _agreement_to_response, bd_caller)
+    licensing_resp = _format_tracker(lic, _licensing_to_response, bd_caller)
 
     submitted_by_name = await fetch_user_name(db, site.submitted_by)
     project = (
