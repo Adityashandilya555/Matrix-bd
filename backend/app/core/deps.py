@@ -83,6 +83,7 @@ async def get_current_user(
     # the effective role/module returned to downstream endpoints and guards.
     db_role = row["role"]
     claims["role"] = db_role
+    claims["real_role"] = db_role
     if db_role == "business_admin":
         if x_override_role:
             claims["role"] = x_override_role
