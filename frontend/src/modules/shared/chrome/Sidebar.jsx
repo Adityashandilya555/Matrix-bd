@@ -73,7 +73,7 @@ const SECTION_HEADING_STYLE = {
 export default function Sidebar({ counts, role, onRole, collapsed = false }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { session } = useSession();
+  const { session, effectiveModule } = useSession();
   // Prefer the JWT-borne module claim when it exists — that's the authoritative
   // signal of which module a user actually belongs to. Only fall back to the
   // current URL when the session has no module claim (mock-mode previews, where
@@ -86,7 +86,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
     path.startsWith('/project')            ? 'project'            :
     path.startsWith('/nso')                ? 'nso'                :
     'bd';
-  const userModule = session?.module || routeModule;
+  const userModule = effectiveModule || routeModule;
   const isModuleSurface = userModule === 'legal'
     || userModule === 'design' || userModule === 'project' || userModule === 'nso'
     || userModule === 'project_excellence';
