@@ -2,6 +2,7 @@
 import axios from 'axios';
 import { getAuthToken, setAuthToken, notifySessionExpired } from './authToken.js';
 import { ApiError, ensureFreshAuthToken, requestCarriedToken } from './adapters/httpAdapter.js';
+import { getActiveOverride } from './adminOverride.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
 const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
@@ -39,6 +40,9 @@ export function createApiClient() {
   client.interceptors.request.use(async (cfg) => {
     const token = await ensureFreshAuthToken() || getAuthToken();
     if (token) cfg.headers.Authorization = `Bearer ${token}`;
+    const override = getActiveOverride();
+    if (override?.role) cfg.headers['X-Override-Role'] = override.role;
+    if (override?.module) cfg.headers['X-Override-Module'] = override.module;
     return cfg;
   });
 

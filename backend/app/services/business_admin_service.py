@@ -187,6 +187,95 @@ async def reject_supervisor(
         )
 
 
+async def list_executive_requests(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+) -> list[dict]:
+    """List pending supervisor executive access requests."""
+    res = await session.execute(
+        text("""
+            SELECT r.id, r.supervisor_id, u.email, u.name, r.module, r.status, r.created_at
+              FROM supervisor_executive_requests r
+              JOIN users u ON u.id = r.supervisor_id
+             WHERE r.tenant_id = :tid
+               AND r.status = 'pending'
+             ORDER BY r.created_at ASC
+        """),
+        {"tid": tenant_id},
+    )
+    return [
+        {
+            "id": str(r["id"]),
+            "supervisor_id": str(r["supervisor_id"]),
+            "supervisor_email": r["email"],
+            "supervisor_name": r["name"],
+            "module": r["module"],
+            "status": r["status"],
+            "created_at": r["created_at"],
+        }
+        for r in res.mappings()
+    ]
+
+
+async def approve_executive_request(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+    request_id: str | UUID,
+    admin_id: str | UUID,
+) -> None:
+    """Approve a supervisor executive request and grant access."""
+    async with transaction(session):
+        row = (await session.execute(
+            text("""
+                UPDATE supervisor_executive_requests
+                   SET status = 'approved',
+                       decided_at = now(),
+                       decided_by = CAST(:aid AS uuid)
+                 WHERE id = CAST(:rid AS uuid)
+                   AND tenant_id = :tid
+                   AND status = 'pending'
+             RETURNING supervisor_id, module
+            """),
+            {"rid": request_id, "tid": tenant_id, "aid": admin_id},
+        )).mappings().first()
+        
+        if not row:
+            return  # Already decided or not found
+            
+        await session.execute(
+            text("""
+                UPDATE user_module_memberships
+                   SET has_executive_access = true
+                 WHERE user_id = :uid
+                   AND module = :module
+            """),
+            {"uid": row["supervisor_id"], "module": row["module"]},
+        )
+
+
+async def reject_executive_request(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+    request_id: str | UUID,
+    admin_id: str | UUID,
+) -> None:
+    """Reject a supervisor executive request."""
+    async with transaction(session):
+        await session.execute(
+            text("""
+                UPDATE supervisor_executive_requests
+                   SET status = 'rejected',
+                       decided_at = now(),
+                       decided_by = CAST(:aid AS uuid)
+                 WHERE id = CAST(:rid AS uuid)
+                   AND tenant_id = :tid
+                   AND status = 'pending'
+            """),
+            {"rid": request_id, "tid": tenant_id, "aid": admin_id},
+        )
+
+
+
 async def deactivate_org_user(
     session: AsyncSession,
     tenant_id: str | UUID,

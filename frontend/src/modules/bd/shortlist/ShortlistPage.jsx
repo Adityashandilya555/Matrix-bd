@@ -236,8 +236,9 @@ function AssignDetailsModal({ site, currentUserId, onClose, onAssigned, showToas
     setBusy(true);
     setError(null);
     try {
-      await siteService.assignSite(site.id, pickedUserId);
-      const exec = candidates.find((u) => String(u.id) === String(pickedUserId));
+      const targetUserId = pickedUserId === '__self__' ? currentUserId : pickedUserId;
+      await siteService.assignSite(site.id, targetUserId);
+      const exec = pickedUserId === '__self__' ? { name: 'myself' } : candidates.find((u) => String(u.id) === String(pickedUserId));
       showToast?.(`Delegated · ${site.name} assigned to ${exec?.name || 'executive'}.`, 'success');
       await onAssigned?.();
       onClose?.();
@@ -276,6 +277,7 @@ function AssignDetailsModal({ site, currentUserId, onClose, onAssigned, showToas
           <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 750, fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>Executive</span>
           <select value={pickedUserId} onChange={(e) => setPickedUserId(e.target.value)} disabled={busy || loading} style={{ height: 42, padding: '0 12px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-bg)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13.5, outline: 'none' }}>
             <option value="">{loading ? 'Loading executives...' : 'Pick an executive...'}</option>
+            {!loading && <option value="__self__">Delegate to self</option>}
             {candidates.map((u) => (
               <option key={u.id} value={u.id}>{u.name} · {u.email}{u.assignedCity ? ` · ${u.assignedCity}` : ''}</option>
             ))}
@@ -352,7 +354,7 @@ function RejectShortlistModal({ site, onClose, onReject }) {
 }
 
 function ShortlistCard({ item, role, currentUserId, onView, onAddDetails, onApprove, onDelegate, onReject }) {
-  const supervisor = role === 'supervisor';
+  const supervisor = can(role, 'shortlist') || role === 'supervisor' || role === 'business_admin';
   const assignedToId = item.assignedToId || item.assignedTo?.id || '';
   const assignedToName = item.assignedToName || item.assignedTo?.name || '';
   const supervisorCreatedShortlist =

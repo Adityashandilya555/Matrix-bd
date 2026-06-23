@@ -349,6 +349,14 @@ export async function listUsers() {
   return [...MOCK_USERS];
 }
 
+export async function requestExecutiveAccess() {
+  await delay(300, 600);
+  // Just simulate success. The frontend reloads the page on success anyway,
+  // but to correctly reflect it in mock mode without a backend, we'd theoretically
+  // modify the mock session. But for now, returning success is enough.
+  return null;
+}
+
 // ---- Delegations (mock) ----
 // In-memory store keyed by siteId. Mock mode doesn't need to persist these
 // across reloads — the page just needs the grant/revoke loop to be visible.

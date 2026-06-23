@@ -17,6 +17,7 @@ import {
   setAuthToken,
 } from '../authToken.js';
 import { notifySiteDataChanged } from '../siteEvents.js';
+import { getActiveOverride } from '../adminOverride.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
 const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
@@ -94,6 +95,9 @@ export async function ensureFreshAuthToken() {
 client.interceptors.request.use(async cfg => {
   const token = await ensureFreshAuthToken();
   if (token) cfg.headers.Authorization = `Bearer ${token}`;
+  const override = getActiveOverride();
+  if (override?.role) cfg.headers['X-Override-Role'] = override.role;
+  if (override?.module) cfg.headers['X-Override-Module'] = override.module;
   return cfg;
 });
 
@@ -476,6 +480,10 @@ export async function me() {
 }
 
 export async function logout() { return post('/auth/logout'); }
+
+export async function requestExecutiveAccess() {
+  return post('/users/me/request-executive-access');
+}
 
 // `login` is intentionally NOT exported. With Supabase the sign-in happens on
 // the client via the Supabase JS SDK; the resulting token is fed to

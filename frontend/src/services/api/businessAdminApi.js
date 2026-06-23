@@ -216,3 +216,30 @@ export async function getAdminSiteDocuments(siteId) {
     })),
   };
 }
+
+// ── Supervisor Executive Access Requests ─────────────────────────────────────
+
+export async function getExecutiveRequests() {
+  const d = await client.get('/business-admin/executive-requests').then((r) => r.data);
+  return (d || []).map((r) => ({
+    id: r.id,
+    supervisorId: r.supervisor_id,
+    supervisorEmail: r.supervisor_email,
+    supervisorName: r.supervisor_name,
+    module: r.module,
+    status: r.status,
+    createdAt: r.created_at,
+  }));
+}
+
+export async function approveExecutiveRequest(requestId) {
+  const result = await client.post(`/business-admin/executive-requests/${requestId}/approve`).then((r) => r.data);
+  notifySiteDataChanged({ source: 'businessAdmin', action: 'executive_request_approved' });
+  return result;
+}
+
+export async function rejectExecutiveRequest(requestId) {
+  const result = await client.post(`/business-admin/executive-requests/${requestId}/reject`).then((r) => r.data);
+  notifySiteDataChanged({ source: 'businessAdmin', action: 'executive_request_rejected' });
+  return result;
+}
