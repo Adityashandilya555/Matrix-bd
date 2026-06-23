@@ -60,7 +60,7 @@ The current login selects the first membership ordered by module when a user has
 > **Source of Truth**
 > - `backend/app/routers/auth.py:226-253` — deterministic membership selection.
 > - `frontend/src/router/AppRouter.jsx:67-125` — module home routing.
-> - `backend/database/schema.sql:362-374` — membership persistence.
+> - `backend/database/verified.sql:331-342` — membership persistence.
 
 ## City and ownership scope
 

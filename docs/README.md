@@ -21,6 +21,7 @@ This documentation explains the codebase in the order a new developer needs it. 
 Every section contains a **Source of Truth** block. A statement that cannot be traced to code, configuration, schema, migration, or tests does not belong here. Line ranges are navigation aids; use the named symbol when normal edits shift a range.
 
 > **Source of Truth**
-> - `backend/database/schema.sql:1-9` — defines the SQL file as an onboarding reference, not an executable bootstrap.
-> - `backend/database/migrations/` — ordered database changes.
+> - `backend/database/verified.sql:1-3` — defines the SQL file as a context-only schema reference, not an executable bootstrap.
+> - `backend/app/db/models.py:1-33` — runtime ORM mappings.
+> - `backend/database/migrations/` — ordered database change history.
 > - `backend/app/` and `frontend/src/` — runtime behavior.

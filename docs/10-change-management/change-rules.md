@@ -44,16 +44,17 @@ Do not make page components aware of snake_case wire fields.
 
 1. Add a new ordered migration; never edit history that may already be applied.
 2. Make additive changes first.
-3. Update ORM models.
+3. Update ORM models to match the new live schema.
 4. Update services and Pydantic responses.
-5. Refresh `schema.sql` as a readable snapshot after the live schema is confirmed.
-6. Keep destructive cleanup separate and explicitly authorized.
-7. Test both upgraded data and fresh expected constraints.
+5. Refresh `verified.sql` from the live database after the schema is confirmed.
+6. Keep `schema.sql` as a historical snapshot only; do not treat it as executable truth.
+7. Keep destructive cleanup separate and explicitly authorized.
+8. Test both upgraded data and fresh expected constraints.
 
-`schema.sql` is documentation, not the migration mechanism.
+`verified.sql` is the structural source of truth; `schema.sql` is a stale historical snapshot.
 
 > **Source of Truth**
-> - `backend/database/schema.sql:1-9`.
+> - `backend/database/verified.sql:1-3` — context-only dump, not executable.
 > - `backend/database/migrations/202606144_shared_site_budgets.sql:1-13` — additive migration pattern.
 > - `backend/database/migrations/202606145_drop_legacy_project_budget.sql:1-9` — isolated destructive pattern.
 

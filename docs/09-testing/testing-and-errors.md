@@ -60,7 +60,7 @@ Backend and database validation remain mandatory even when the UI disables an ac
 > - `frontend/src/services/api/siteService.js:8-72,137-158` — numeric normalization.
 > - `backend/app/domain/schemas/site.py:8-48,53-159` — input validation.
 > - `backend/app/services/bd_service.py:47-84` — domain authorization.
-> - `backend/database/schema.sql:25-40,102-113` — database constraints.
+> - `backend/database/verified.sql:15-90` — role, status, rent type, and module constraints.
 
 ## Failure propagation
 

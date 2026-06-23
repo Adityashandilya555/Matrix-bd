@@ -56,12 +56,12 @@ Frontend:
 
 ## Database setup
 
-Do not execute `schema.sql` as a bootstrap script. It is an onboarding snapshot. Apply numbered migrations in order to the target database and verify whether held destructive migrations are authorized before running them.
+Do not execute `verified.sql` or `schema.sql` as bootstrap scripts. Both are context-only references. To recreate a local database, apply the same ordered migrations that produced the verified schema, and verify whether held destructive migrations are authorized before running them.
 
 For Supabase’s transaction pooler, use port `6543` and the `postgresql+asyncpg` scheme. The engine disables asyncpg prepared-statement caching and SQLAlchemy pooling for pooler URLs.
 
 > **Source of Truth**
-> - `backend/database/schema.sql:1-9`.
+> - `backend/database/verified.sql:1-3` — context-only dump.
 > - `backend/database/migrations/202606145_drop_legacy_project_budget.sql:1-9` — held migration example.
 > - `backend/app/db/session.py:31-66` — direct vs pooler configuration.
 

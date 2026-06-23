@@ -15,7 +15,7 @@ Module membership is separate from role. A user can be a `supervisor` or `execut
 > **Source of Truth**
 > - `backend/app/rbac/roles.py:1-16` — canonical three-role model.
 > - `backend/app/rbac/guards.py:8-57` — role and module guards.
-> - `backend/database/schema.sql:362-374` — persisted module memberships.
+> - `backend/database/verified.sql:331-342` — persisted module memberships.
 
 ## Main modules
 
