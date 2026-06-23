@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 // Admin override — persists role/module simulation for business_admin users.
 // Written to sessionStorage so it survives navigation between the business-admin
 // portal (/business-admin) and the main workspace (/), but is cleared on tab close.

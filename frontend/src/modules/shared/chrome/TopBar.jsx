@@ -2,9 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import Icon from '../primitives/Icon.jsx';
 import Avatar from '../primitives/Avatar.jsx';
 import { useSession } from '../../../state/SessionContext.jsx';
+import { PRODUCT_NAME } from '../../../router/routes.js';
 
 // Render body preserved exactly from Chrome.jsx TopBar component.
-export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, onSearch, sidebarCollapsed = false, onToggleSidebar }) {
+export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, sidebarCollapsed = false, onToggleSidebar }) {
   const { signOut, session, effectiveModule } = useSession();
   // BD-only action — legal and payment supervisors don't open pipeline drafts.
   // "New pipeline" creates a BD site draft — only the BD surface (or mock/no-module) shows it.
@@ -47,23 +48,31 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
         transition: 'width 220ms var(--zm-ease), flex-basis 220ms var(--zm-ease), padding 220ms var(--zm-ease)',
       }}>
         <svg className="zm-brand-cube" width={sidebarCollapsed ? 28 : 34} height={sidebarCollapsed ? 28 : 34} viewBox="0 0 64 64" fill="none" style={{ display: 'block', flex: '0 0 auto', position: 'relative', zIndex: 1 }}>
-          <g stroke="var(--zm-sidebar-icon)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.55">
-            <path d="M22 10 L58 10 L58 46 L22 46 Z"/>
-            <path d="M6 22 L22 10"/><path d="M42 22 L58 10"/>
-            <path d="M6 58 L22 46"/><path d="M42 58 L58 46"/>
-            <path d="M6 22 L42 22 L42 58 L6 58 Z"/>
-          </g>
-          <g stroke="var(--zm-sidebar-accent)" strokeWidth="3.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M6 22 L58 10"/><path d="M58 10 L6 58"/><path d="M6 58 L58 46"/>
-          </g>
+          <defs>
+            <linearGradient id="re-logo-g" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+              <stop offset="0%" stopColor="#D040C8"/>
+              <stop offset="20%" stopColor="#F04090"/>
+              <stop offset="38%" stopColor="#FF6020"/>
+              <stop offset="55%" stopColor="#FFB020"/>
+              <stop offset="72%" stopColor="#3060F8"/>
+              <stop offset="88%" stopColor="#20D0F8"/>
+              <stop offset="100%" stopColor="#7030D8"/>
+            </linearGradient>
+          </defs>
+          <rect width="64" height="64" rx="12" fill="#150920"/>
+          <path
+            d="M32 4C40 4 42 14 42 22C42 30 52 32 60 32C52 32 42 34 42 42C42 50 40 60 32 60C24 60 22 50 22 42C22 34 12 32 4 32C12 32 22 30 22 22C22 14 24 4 32 4Z"
+            fill="url(#re-logo-g)"
+          />
+          <path d="M32 22L42 32L32 42L22 32Z" fill="#150920"/>
         </svg>
         <span className="zm-brand-word" style={{
           fontFamily: 'var(--zm-font-display)', fontStyle: 'normal', fontWeight: 800,
-          fontSize: 24, color: 'var(--zm-sidebar-fg)', letterSpacing: '-0.03em', lineHeight: 1,
+          fontSize: 12, color: 'var(--zm-sidebar-fg)', letterSpacing: '0.06em', lineHeight: 1,
           whiteSpace: 'nowrap', position: 'relative', zIndex: 1,
           display: sidebarCollapsed ? 'none' : 'inline',
           textShadow: '0 1px 0 rgba(0,0,0,0.35), 0 0 24px rgba(122,231,218,0.15)',
-        }}>Scale</span>
+        }}>{PRODUCT_NAME}</span>
         <span style={{
           position: 'absolute', top: 12, right: 12,
           width: 5, height: 5, borderRadius: 999,
