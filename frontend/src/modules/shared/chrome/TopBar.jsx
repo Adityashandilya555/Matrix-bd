@@ -3,7 +3,7 @@ import Icon from '../primitives/Icon.jsx';
 import Avatar from '../primitives/Avatar.jsx';
 import { useSession } from '../../../state/SessionContext.jsx';
 import { PRODUCT_NAME } from '../../../router/routes.js';
-import { requestExecutiveAccess } from '../../../services/api/adapters/httpAdapter.js';
+import { requestExecutiveAccess } from '../../../services/api/authService.js';
 
 // Render body preserved exactly from Chrome.jsx TopBar component.
 export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, sidebarCollapsed = false, onToggleSidebar }) {
