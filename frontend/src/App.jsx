@@ -183,7 +183,7 @@ export default function App() {
             </div>
           )}
           <PageContext.Provider value={pageContextValue}>
-            <Outlet/>
+            <Outlet key={role}/>
           </PageContext.Provider>
         </main>
 
