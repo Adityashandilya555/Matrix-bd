@@ -1,6 +1,6 @@
 # Matrix developer guide
 
-This documentation explains the codebase in the order a new developer needs it. Read the first seven pages in sequence; use the remaining pages while changing or running the system.
+This documentation explains the codebase in the order a new developer needs it. Read the first eight pages in sequence; use the remaining pages while changing or running the system.
 
 | Order | Page | Question answered |
 | --- | --- | --- |
@@ -11,10 +11,11 @@ This documentation explains the codebase in the order a new developer needs it. 
 | 5 | [Frontend state](04-frontend-state/frontend-state.md) | What is global, local, stored, or derived? |
 | 6 | [API layer](05-api-contracts/api-layer.md) | How does the browser call the backend? |
 | 7 | [Transaction flows](06-db-transactions/transaction-flows.md) | What happens after a user clicks an action? |
-| 8 | [Authentication and RBAC](07-auth-rbac/authentication-and-authorization.md) | How are identity, role, module, tenant, and ownership enforced? |
-| 9 | [Developer setup](08-running-locally/developer-setup.md) | How do I run the application? |
-| 10 | [Testing and errors](09-testing/testing-and-errors.md) | How is correctness checked and how do failures surface? |
-| 11 | [Change rules](10-change-management/change-rules.md) | Which files must change together? |
+| 8 | [Request lifecycle](11-request-lifecycle/request-lifecycle-deep-dive.md) | How do the adapter, FastAPI, dependencies, and services fit together? |
+| 9 | [Authentication and RBAC](07-auth-rbac/authentication-and-authorization.md) | How are identity, role, module, tenant, and ownership enforced? |
+| 10 | [Developer setup](08-running-locally/developer-setup.md) | How do I run the application? |
+| 11 | [Testing and errors](09-testing/testing-and-errors.md) | How is correctness checked and how do failures surface? |
+| 12 | [Change rules](10-change-management/change-rules.md) | Which files must change together? |
 
 ## Documentation rule
 
