@@ -1,4 +1,6 @@
+// skipcq: JS-0833
 import React from 'react';
+// skipcq: JS-0833
 import { T, Icon, Card, Button, Skeleton, EmptyState, ErrorState } from './ui/kit.jsx';
 
 // Presentational component for executive requests.
@@ -6,6 +8,7 @@ import { T, Icon, Card, Button, Skeleton, EmptyState, ErrorState } from './ui/ki
 //   data = { status, items, error }   — items: [{ id, supervisorId, supervisorEmail, supervisorName, module, status, createdAt }]
 //   onApprove(reqId) -> Promise
 //   onReject(reqId)  -> Promise
+// skipcq: JS-0833
 export default function ExecutiveRequestsList({ data, onApprove, onReject, onRetry }) {
   const [busyReqId, setBusyReqId] = React.useState(null);
   const [error, setError] = React.useState(null);

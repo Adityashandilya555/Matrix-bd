@@ -79,16 +79,20 @@ async def get_current_user(
                EXISTS(
                  SELECT 1 FROM supervisor_executive_requests req
                  WHERE req.supervisor_id = u.id 
+                   AND req.tenant_id = :tid
                    AND req.module = :mod 
                    AND req.status = 'pending'
                ) AS has_pending_executive_request
         FROM users u 
-        LEFT JOIN user_module_memberships umm ON u.id = umm.user_id AND umm.module = :mod
+        LEFT JOIN user_module_memberships umm 
+          ON u.id = umm.user_id 
+         AND umm.module = :mod
+         AND umm.tenant_id = :tid
         WHERE u.id = :uid
     """
     row = (await db.execute(
         text(q),
-        {"uid": claims["sub"], "mod": module_to_check},
+        {"uid": claims["sub"], "mod": module_to_check, "tid": claims["tenant_id"]},
     )).mappings().first()
     if not row or not row["is_active"]:
         raise AuthError("Account is inactive or no longer exists. Sign in again.")
