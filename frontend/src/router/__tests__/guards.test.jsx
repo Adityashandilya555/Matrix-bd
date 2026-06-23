@@ -24,7 +24,7 @@ describe('RequireModule (#114)', () => {
   });
 
   it('renders children once authReady and the module matches', () => {
-    mockSession.value = { authReady: true, role: 'supervisor', session: { module: 'legal' } };
+    mockSession.value = { authReady: true, role: 'supervisor', effectiveModule: 'legal', isBusinessAdmin: false, session: { module: 'legal' } };
     wrap(<RequireModule modules={['legal']}><div>module-page</div></RequireModule>);
     expect(screen.getByText('module-page')).toBeInTheDocument();
   });

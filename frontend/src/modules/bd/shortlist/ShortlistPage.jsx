@@ -354,7 +354,7 @@ function RejectShortlistModal({ site, onClose, onReject }) {
 }
 
 function ShortlistCard({ item, role, currentUserId, onView, onAddDetails, onApprove, onDelegate, onReject }) {
-  const supervisor = role === 'supervisor' || role === 'business_admin';
+  const supervisor = can(role, 'shortlist') || role === 'supervisor' || role === 'business_admin';
   const assignedToId = item.assignedToId || item.assignedTo?.id || '';
   const assignedToName = item.assignedToName || item.assignedTo?.name || '';
   const supervisorCreatedShortlist =
