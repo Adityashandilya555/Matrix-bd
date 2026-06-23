@@ -197,8 +197,8 @@ async def _apply_pending_migrations() -> None:
     )
     resolved = os.path.normpath(migration_file)
     if not os.path.isfile(resolved):
-        log.info("startup-migrations: %s not found, skipping", resolved)
-        return
+        log.error("startup-migrations: %s not found. Failing startup to prevent inconsistent schema state.", resolved)
+        raise RuntimeError(f"Missing required migration file: {resolved}")
 
     with open(resolved, encoding="utf-8") as fh:
         raw_sql = fh.read()
