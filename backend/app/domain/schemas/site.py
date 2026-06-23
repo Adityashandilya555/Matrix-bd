@@ -70,16 +70,16 @@ class CreateDraftRequest(BaseModel):
     rent_type: Optional[RentType] = None
     # Conditional, depending on rent_type. None for the rest.
     expected_escalation_pct: Optional[float] = None
-    # Cadence in YEARS (1 = yearly, 3 = every 3 yrs …). The live column is a
+    # Cadence in YEARS (1 = yearly, 3 = every 3 yrs). The live column is a
     # smallint (int2); an unbounded int >32767 raised an asyncpg DataError that
     # surfaced as an opaque 500. Bound to a sane lease horizon so a fat-fingered
     # value (e.g. pasting a year/rent) returns a clean 422 instead. (#135)
     expected_escalation_years: Optional[int] = Field(default=None, ge=0, le=99)
     expected_revshare_pct: Optional[float] = None
-    # Site score is a 1–5 rating (footfall + visibility). Bounded so an
+    # Site score is a decimal 1-5 rating (footfall + visibility). Bounded so an
     # out-of-range value returns a clean 422 instead of persisting. Output
-    # (SiteResponse) stays unconstrained — legacy rows may hold the old 0–100.
-    score: Optional[int] = Field(default=None, ge=1, le=5)
+    # (SiteResponse) stays unconstrained; legacy rows may hold the old 0-100.
+    score: Optional[float] = Field(default=None, ge=1, le=5)
     est_sales: Optional[float] = None
     nearest_starbucks: Optional[float] = None
     nearest_twc: Optional[float] = None
@@ -110,8 +110,8 @@ class SaveDetailsRequest(BaseModel):
     model: Optional[str] = None
     spoc_name: Optional[str] = Field(default=None, validation_alias=AliasChoices("spoc_name", "spocName"))
     google_pin: Optional[str] = Field(default=None, validation_alias=AliasChoices("google_pin", "googlePin"))
-    # 1–5 rating (see CreateDraftRequest.score). Bounded on input only.
-    score: Optional[int] = Field(default=None, ge=1, le=5)
+    # Decimal 1-5 rating (see CreateDraftRequest.score). Bounded on input only.
+    score: Optional[float] = Field(default=None, ge=1, le=5)
     est_sales: Optional[float] = Field(default=None, validation_alias=AliasChoices("est_sales", "estSales"))
     nearest_starbucks: Optional[float] = Field(default=None, validation_alias=AliasChoices("nearest_starbucks", "nearestStarbucks"))
     nearest_twc: Optional[float] = Field(default=None, validation_alias=AliasChoices("nearest_twc", "nearestTWC"))

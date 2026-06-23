@@ -68,7 +68,7 @@ def _patch_stage_two(monkeypatch, *, row, canonical=None):
     monkeypatch.setattr(nso_service, "_fetch_nso_or_create", _row)
     monkeypatch.setattr(nso_service, "_stage_two_unlocked", lambda *a, **k: True)
     monkeypatch.setattr(nso_service, "_sync_rollups", lambda *a, **k: None)
-    monkeypatch.setattr(nso_service, "_stage_two_canonical_status", lambda site, licensing: dict(canonical))
+    monkeypatch.setattr(nso_service, "_stage_two_canonical_status", lambda licensing: dict(canonical))
     monkeypatch.setattr(nso_service, "write_audit_event", _audit)
     monkeypatch.setattr(nso_service, "_state_response", _state)
     return site
@@ -154,11 +154,10 @@ async def test_body_is_optional(monkeypatch, session):
 
 def test_canonical_status_derives_from_licensing_not_row():
     """_stage_two_canonical_status reads Legal Licensing (`yes` → `done`), not row."""
-    site = SimpleNamespace(licensing_status="complete")
     licensing = SimpleNamespace(
         stage="published", fssai="yes", health_trade=None,
         shops_estab_reg=None, fire_noc=None, storage_license=None,
     )
-    canonical = nso_service._stage_two_canonical_status(site, licensing)
+    canonical = nso_service._stage_two_canonical_status(licensing)
     assert canonical["fssai_status"] == "done"            # licensing 'yes' → done
     assert canonical["health_trade_status"] == "pending"  # absent → pending

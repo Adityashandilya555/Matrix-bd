@@ -28,14 +28,14 @@ export async function shortlistSite(siteId, by) {
 
 export async function submitDetails(siteId, formData, by) {
   // Forms collect raw rupee amounts (estSales, rent, cam, deposit, brokerage,
-  // cadex…) — store them as entered. No unit conversion. The backend column
+  // capex…) — store them as entered. No unit conversion. The backend column
   // types are NUMERIC and a higher-up renderer is responsible for "₹ X.XX L"
   // / "₹ X k" presentation. Anything else corrupts the data going in.
   // Coerce every numeric field in the form payload before sending. Without
   // this, the backend's status-patch dispatcher (which reads payload.details
   // as a raw dict and skips Pydantic) ends up writing string values straight
   // into NUMERIC columns — which silently fails for some optional-field
-  // shapes (cadex/deposit/brokerage/escalation/revshare) and surfaces as
+  // shapes (capex/deposit/brokerage/escalation/revshare) and surfaces as
   // "details not getting submitted" once any optional field is filled in.
   const coercedDetails = {
     ...formData,
@@ -49,7 +49,8 @@ export async function submitDetails(siteId, formData, by) {
     escalation:       toNumber(formData.escalation),
     revshare:         toNumber(formData.revshare),
     rentFreeDays:     toNumber(formData.rentFreeDays),
-    cadex:            toNumber(formData.cadex),
+    cadex:            toNumber(formData.cadex ?? formData.capex),
+    capex:            toNumber(formData.capex ?? formData.cadex),
     deposit:          toNumber(formData.deposit),
     brokerage:        toNumber(formData.brokerage),
     lockin:           toNumber(formData.lockin),
@@ -136,7 +137,7 @@ export async function assignSite(siteId, execId) {
 // Save partial details (stays in current status, does not transition).
 // Coerce every numeric field on the way out so the backend's site_details
 // upsert writes proper NUMERIC values instead of strings — without this,
-// some columns (cadex/deposit/brokerage/lockin/tenure/escalation/revshare)
+// some columns (capex/deposit/brokerage/lockin/tenure/escalation/revshare)
 // would round-trip back to the UI as empty after a draft save, because the
 // FE→BE string write only succeeds opportunistically depending on column
 // type and PG version.
@@ -144,7 +145,7 @@ export async function saveDraftDetails(siteId, formData) {
   const NUMERIC_FIELDS = [
     'score', 'estSales', 'nearestStarbucks', 'nearestTWC',
     'carpet', 'cam', 'rent', 'escalation', 'revshare',
-    'rentFreeDays', 'cadex', 'deposit', 'brokerage',
+    'rentFreeDays', 'cadex', 'capex', 'deposit', 'brokerage',
     'lockin', 'tenure', 'totalOpCost',
   ];
   const coerced = { ...formData };
