@@ -6,10 +6,11 @@ import { PRODUCT_NAME } from '../../../router/routes.js';
 
 // Render body preserved exactly from Chrome.jsx TopBar component.
 export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, sidebarCollapsed = false, onToggleSidebar }) {
-  const { signOut, session } = useSession();
+  const { signOut, session, effectiveModule } = useSession();
   // BD-only action — legal and payment supervisors don't open pipeline drafts.
   // "New pipeline" creates a BD site draft — only the BD surface (or mock/no-module) shows it.
-  const showNewPipeline = !session?.module || session?.module === 'bd';
+  // effectiveModule reflects any admin role simulation, falling back to the JWT module claim.
+  const showNewPipeline = !effectiveModule || effectiveModule === 'bd';
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
