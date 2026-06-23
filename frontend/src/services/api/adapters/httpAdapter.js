@@ -481,6 +481,10 @@ export async function me() {
 
 export async function logout() { return post('/auth/logout'); }
 
+export async function requestExecutiveAccess() {
+  return post('/users/me/request-executive-access');
+}
+
 // `login` is intentionally NOT exported. With Supabase the sign-in happens on
 // the client via the Supabase JS SDK; the resulting token is fed to
 // authToken.setAuthToken(token). See frontend/src/services/api/supabaseAuth.js.

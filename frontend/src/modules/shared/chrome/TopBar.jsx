@@ -3,6 +3,7 @@ import Icon from '../primitives/Icon.jsx';
 import Avatar from '../primitives/Avatar.jsx';
 import { useSession } from '../../../state/SessionContext.jsx';
 import { PRODUCT_NAME } from '../../../router/routes.js';
+import { requestExecutiveAccess } from '../../../services/api/adapters/httpAdapter.js';
 
 // Render body preserved exactly from Chrome.jsx TopBar component.
 export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, sidebarCollapsed = false, onToggleSidebar }) {
@@ -256,10 +257,7 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
                       type="button"
                       onClick={async () => {
                         try {
-                          await fetch('/api/users/me/request-executive-access', {
-                            method: 'POST',
-                            headers: { 'Authorization': `Bearer ${session.token}` }
-                          });
+                          await requestExecutiveAccess();
                           window.location.reload();
                         } catch (e) { console.error(e); }
                       }}
