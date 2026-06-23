@@ -26,7 +26,7 @@ export default function DepartmentsTab({ org, pendingSupervisors, executiveReque
       </section>
 
       <section>
-        <SectionHeader icon={Icon.document} title="Executive Access Requests" count={execReqCount} tone="warn"
+        <SectionHeader icon={Icon.doc} title="Executive Access Requests" count={execReqCount} tone="warn"
           description="Supervisors requesting dual-role access to also act as executives in their module."
           onRefresh={() => handlers.reloadExecutiveRequests(true)} refreshing={executiveRequests.refreshing} />
         <ExecutiveRequestsList
