@@ -1,5 +1,5 @@
 import React from 'react';
-import { T, Icon, Card, Button, Skeleton, EmptyState, ErrorState, TABULAR } from './ui/kit.jsx';
+import { T, Icon, Card, Button, Skeleton, EmptyState, ErrorState } from './ui/kit.jsx';
 
 // Presentational component for executive requests.
 // The shell owns fetching and passes:

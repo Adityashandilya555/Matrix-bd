@@ -239,7 +239,7 @@ export function SessionProvider({ children }) {
     isMockMode: USE_MOCK,
     signOut,
     sessionExpired,
-  }), [user, role, session.role, isBusinessAdmin, effectiveModule, adminOverride, switchAs, setRole, session, authReady, permissions, dark, toggleDark, canFn, signOut, sessionExpired]);
+  }), [user, role, isBusinessAdmin, effectiveModule, adminOverride, switchAs, setRole, session, authReady, permissions, dark, toggleDark, canFn, signOut, sessionExpired]);
 
   return (
     <SessionContext.Provider value={value}>
