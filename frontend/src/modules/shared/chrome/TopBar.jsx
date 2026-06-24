@@ -217,7 +217,7 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
                       type="button"
                       onClick={() => {
                         setMenuOpen(false);
-                        if (session.role === 'executive') {
+                        if (role === 'executive') {
                           switchAs(null, null);
                         } else {
                           switchAs('executive', session.module);
@@ -235,8 +235,8 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
                       onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zm-surface-hover)'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                     >
-                      <Icon name={session.role === 'executive' ? "arrow" : "document"} size={14} style={{ color: 'var(--zm-fg-3)' }}/>
-                      {session.role === 'executive' ? 'Switch to Supervisor' : 'Switch to Executive'}
+                      <Icon name={role === 'executive' ? "arrow" : "document"} size={14} style={{ color: 'var(--zm-fg-3)' }}/>
+                      {role === 'executive' ? 'Switch to Supervisor' : 'Switch to Executive'}
                     </button>
                   ) : session.pendingExecutiveRequest ? (
                     <div
