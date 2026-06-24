@@ -19,8 +19,6 @@ def require_role(*roles: Role) -> Callable:
     """
     async def guard(current_user: dict = Depends(get_current_user)) -> dict:
         user_role = current_user.get("role")
-        # If the user has been overridden or bypassed, verify they match the roles
-        # Note: business_admin can simulate any role, but they might also be verified as business_admin.
         if user_role not in [r.value for r in roles] and user_role != "business_admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
