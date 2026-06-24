@@ -68,11 +68,8 @@ def _auth_headers(extra: dict | None = None) -> dict:
     return h
 
 
-# A process-wide client so storage calls reuse pooled keep-alive connections
-# instead of opening a fresh TCP+TLS handshake on every upload/sign (#94).
-# Created lazily (importing this module opens no sockets); closed at app shutdown
-# via aclose_storage_client(). Held on a tiny module-level holder so the lazy
-# init / close can rebind it without a `global` statement (#238).
+# Process-wide shared httpx client — reuses keep-alive connections across uploads/signs.
+# Created lazily; closed at shutdown via aclose_storage_client().
 class _ClientHolder:
     client: httpx.AsyncClient | None = None
 
@@ -106,8 +103,6 @@ async def upload_bytes(*, path: str, body: bytes, content_type: str) -> None:
             timeout=30.0,
         )
     except httpx.HTTPError as exc:
-        # Network timeout / DNS failure / connection reset — would otherwise be
-        # an unhandled 500 (CORS-masked "Network Error") (#92).
         logger.warning("storage upload transport error for %s: %s", path, exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

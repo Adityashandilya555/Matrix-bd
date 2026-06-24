@@ -68,10 +68,7 @@ async def fetch_site_for_update_or_404(
 
 
 def assert_executive_owns_site(actor: dict, site: models.Site) -> None:
-    """Object-level authorization (#104): executives may only act on sites they
-    submitted or are assigned. Mirrors the check `get_site` and the LOI upload
-    already enforce; non-executive roles pass through (tenant scoping applies).
-    """
+    """Raise 403 if the caller is an executive who doesn't own or isn't assigned to the site."""
     if (actor.get("role") or "").lower() != Role.EXECUTIVE.value:
         return
     actor_id = str(actor["sub"])
@@ -91,14 +88,7 @@ async def fetch_user_name(session: AsyncSession, user_id: str | UUID | None) -> 
 
 
 async def fetch_user_names(session: AsyncSession, user_ids) -> dict:
-    """Batch-resolve ``user_id -> name`` for many ids in a single query.
-
-    Calling ``fetch_user_name`` per row in a list endpoint is an N+1 — one
-    connection round trip per row through the pgBouncer/NullPool transaction
-    pooler (#91). Build the map once and ``.get(uid)`` in the loop. Falsy ids are
-    dropped; missing ids are simply absent from the map (``.get`` → None, same as
-    the single-row helper).
-    """
+    """Batch-resolve ``user_id -> name`` for many ids in a single query. Falsy ids are dropped."""
     ids = {uid for uid in user_ids if uid}
     if not ids:
         return {}

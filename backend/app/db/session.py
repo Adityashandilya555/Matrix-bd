@@ -29,20 +29,13 @@ from app.core.config import settings
 
 
 def _build_engine_kwargs(database_url: str) -> dict:
-    # Supabase's transaction pooler is pgBouncer in transaction mode, which
-    # does NOT support prepared statements. The documented fix when going
-    # through pgBouncer is:
-    #   1. Disable asyncpg's statement cache (statement_cache_size=0)
-    #   2. Use SQLAlchemy NullPool so we don't reuse connections across
-    #      transactions (pgBouncer assigns a different backend per txn anyway,
-    #      and SQLAlchemy's own pool would hand out connections that
-    #      already-cached statements at the asyncpg layer).
+    # Supabase's transaction pooler (pgBouncer, transaction mode) does not support
+    # prepared statements. Disable the asyncpg statement cache and use NullPool
+    # when connecting through the pooler URL.
     is_pooler = ":6543/" in database_url or "pooler.supabase.com" in database_url
 
-    # asyncpg connect_args. `command_timeout` caps any single query and
-    # `timeout` caps connection establishment — both pgBouncer-safe. asyncpg's
-    # defaults are *wait forever*, so without these one stuck query holds its
-    # connection (and pooler slot) indefinitely and the app stalls under load.
+    # asyncpg defaults are wait-forever; cap both query and connection establishment
+    # so a stuck query doesn't hold a pooler slot indefinitely.
     connect_args: dict = {
         "command_timeout": settings.db_command_timeout_seconds,
         "timeout": settings.db_connect_timeout_seconds,
@@ -79,18 +72,10 @@ SessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency yielding an `AsyncSession`.
 
-    The session is rolled back if an exception escapes the route and is closed
-    in all cases. Services either commit at their own boundary or use the
-    `transaction()` helper below.
-
-    On a SUCCESSFUL request we also commit any transaction still open on the
-    session. Normally `transaction()` already committed, so this is a no-op —
-    but a read performed earlier in the request (notably the per-request
-    is_active check in get_current_user) auto-begins a transaction, and
-    `transaction()` then nests a SAVEPOINT inside it that does NOT commit the
-    outer txn. Without this commit those writes were silently rolled back on
-    close — the bug that froze every write. Committing here is the durable,
-    all-modules safety net; an errored request still rolls back via `except`.
+    Commits any open transaction on success; rolls back on exception.
+    The explicit commit is a safety net for read transactions auto-begun by
+    per-request middleware (e.g. is_active check) that `transaction()` wraps
+    in a SAVEPOINT, which does not commit the outer transaction on its own.
     """
     session = SessionLocal()
     try:

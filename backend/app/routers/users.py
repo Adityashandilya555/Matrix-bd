@@ -72,8 +72,7 @@ async def list_users(
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
 ) -> dict:
-    # Bounded like notifications.py/audit.py — an unbounded scan + multi-MB JSON
-    # per request degrades as a tenant accumulates users (#95).
+    # Bounded query — unbounded scans degrade as a tenant accumulates users.
     stmt = (
         select(models.User)
         .where(models.User.tenant_id == tenant_id, models.User.is_active.is_(True))
@@ -184,10 +183,7 @@ async def assign_role(
             detail="User already has an assigned role.",
         )
 
-    # 2. Activate the public.users row. The user's next /auth/login call will
-    #    see is_active=true and the new role, and a JWT will be minted with
-    #    those claims. Clear the pending-signup marker so it doesn't linger in
-    #    `notes` and confuse the module approval queues (#121).
+    # 2. Activate the user row; clear the pending-signup marker from notes.
     await db.execute(
         text("""
             UPDATE users
@@ -201,11 +197,7 @@ async def assign_role(
         {"role": body.role, "city": body.city, "name": body.name, "uid": user_id, "tid": tenant_id},
     )
 
-    # 2b. If this pending user came from a module-/supervisor-code signup, its
-    #     intended module lived in `notes`. The module-gated routes and queues
-    #     key off user_module_memberships, so provision that row here too —
-    #     otherwise the login JWT carries module=None and the user is stranded
-    #     (can act in no module AND has vanished from the module queues). (#121)
+    # 2b. Provision module membership when the signup came from a module/supervisor code.
     membership = _membership_from_notes(user_row["notes"])
     if membership is not None:
         module, role_in_module, supervisor_id = membership
@@ -272,7 +264,6 @@ async def request_executive_access(
             detail="You already have executive access.",
         )
 
-    # Insert request
     q = """
         INSERT INTO supervisor_executive_requests (tenant_id, supervisor_id, module)
         VALUES (:tid, :uid, :mod)

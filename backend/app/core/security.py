@@ -142,20 +142,8 @@ def _session_from_claims(claims: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-# How long AFTER expiry a token may still be exchanged for a fresh one at
-# POST /auth/refresh. A 24h token that lapsed while a tab was left open can then
-# re-mint silently instead of bouncing the user to re-login — without letting a
-# long-dead (e.g. stolen) token be resurrected indefinitely. Signature,
-# audience and required claims are still fully verified; the refresh handler
-# additionally re-checks users.is_active in SQL, so a deactivated or deleted
-# account still cannot refresh. ONLY /auth/refresh uses the grace path below;
-# every normal request still goes through the strict ``decode_token`` above.
-#
-# 48h (was 7 days, #228): keeps the overnight/weekend self-heal for a normally
-# lapsed 24h token while cutting the window in which a leaked/stale token can be
-# exchanged for a fresh session from ~8 days down to ~3. is_active is the only
-# per-account revocation today; a true iat-floor invalidation is a separate
-# follow-up (needs a migration).
+# Bounded grace window during which a lapsed token can be exchanged at POST /auth/refresh.
+# All signatures and claims are verified; deactivated accounts cannot refresh.
 REFRESH_GRACE_SECONDS = 60 * 60 * 24 * 2  # 48 hours
 
 

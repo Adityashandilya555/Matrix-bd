@@ -216,19 +216,13 @@ async def _build_response(
         .where(models.LaunchReviewEvent.launch_approval_id == row.id)
         .order_by(models.LaunchReviewEvent.created_at)
     )).scalars().all()
-    # The 5 NSO-license statuses must come from canonical Legal Licensing — the
-    # NsoReview.*_status columns are never synced and always read "pending"
-    # (#229), which is why this review showed every license as PENDING. Derive
-    # them the same way the NSO module does (shared licensing_status helper).
+    # License statuses must come from canonical Legal Licensing.
     licensing = (await session.execute(
         select(models.SiteLicensing).where(models.SiteLicensing.site_id == site.id)
     )).scalar_one_or_none()
     license_status = stage_two_canonical_status(licensing)
 
-    # Batch the actor-name lookups into ONE query instead of up to 5 sequential
-    # SELECTs to `users` — each a fresh pgBouncer/NullPool round trip (#240/18.6).
-    # fetch_user_names drops falsy ids and omits missing ones, so .get(uid) is
-    # None-safe, preserving the old per-uid `name()` behaviour exactly.
+    # Batch actor-name lookups.
     names_map = await fetch_user_names(session, [
         row.admin_sent_for_review_by,
         row.exec_reviewed_by,
@@ -268,8 +262,7 @@ async def _build_response(
         kyc_verified=bool(site.kyc_verified),
         ca_code=site.ca_code,
         nso_status=nso.nso_status if nso else None,
-        # Licensing statuses come from canonical Legal Licensing, NOT nso_reviews
-        # (which is never synced and would always read "pending", #229).
+        # Licensing statuses come from canonical Legal Licensing.
         fssai_status=license_status["fssai_status"],
         health_trade_status=license_status["health_trade_status"],
         shops_estab_status=license_status["shops_estab_status"],
@@ -384,8 +377,8 @@ async def svc_create_launch_approval(
         row.capex = _num(detail.capex)
         row.score = _num(detail.score)
 
-    # Insert + baseline event in one SAVEPOINT so a duplicate/constraint failure
-    # rolls back ONLY this savepoint and never poisons the NSO transaction (#141).
+    # SAVEPOINT so a duplicate-key failure on the launch_approvals row rolls back
+    # only this savepoint and never poisons the caller's NSO transaction.
     try:
         async with session.begin_nested():
             session.add(row)

@@ -55,7 +55,6 @@ async def svc_upload_loi(
     assert_transition(SiteStatus(status_now), SiteStatus.LOI_UPLOADED)
 
     # Sanitise the storage key — Supabase rejects non-ASCII keys (400).
-    # The original name is kept on the file_name column for display.
     storage_path = f"loi/{tenant_id}/{site_id}/{safe_object_name(filename, fallback='loi.pdf')}"
     await upload_bytes(
         path=storage_path, body=file_bytes, content_type=content_type or "application/pdf",

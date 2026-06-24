@@ -1,3 +1,5 @@
+// Agreement status helpers — normalises the several ways agreement state arrives
+// (string, object with .signed/.registered) into 'pending' | 'executed' | 'registered'.
 export function normalizeAgreementStatus(input) {
   const status = typeof input === 'string' ? input : input?.agreementStatus;
   const agreement = typeof input === 'object' ? input?.agreement : null;
