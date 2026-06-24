@@ -3,6 +3,7 @@
 // sessionStorage so it survives portal navigation but is cleared on tab close.
 const STORAGE_KEY = 'zm:admin-override';
 
+// skipcq: JS-0833
 export function getStoredOverride() {
   try {
     const raw = window.sessionStorage.getItem(STORAGE_KEY);
@@ -16,6 +17,7 @@ export function getStoredOverride() {
 // In-memory mirror for the axios interceptor — avoids sessionStorage I/O per request.
 let _active = (typeof window !== 'undefined') ? getStoredOverride() : null;
 
+// skipcq: JS-0833
 export function activateOverride(override) {
   _active = override || null;
   try {
@@ -24,10 +26,12 @@ export function activateOverride(override) {
   } catch { /* ignore */ }
 }
 
+// skipcq: JS-0833
 export function deactivateOverride() {
   activateOverride(null);
 }
 
+// skipcq: JS-0833
 export function getActiveOverride() {
   return _active;
 }
