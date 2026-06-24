@@ -49,7 +49,7 @@ stateDiagram-v2
 
 ## Enforcement
 
-Backend services lock the site row, convert the current string to `SiteStatus`, call `assert_transition`, then mutate. Invalid transitions return HTTP `422`. The universal status endpoint also blocks supervisor-only target states before entering a service.
+Backend services lock the site row, convert the current string to `SiteStatus`, call `assert_transition`, then mutate. Invalid transitions return HTTP `422`. The universal status endpoint also blocks impossible updates before persisting.
 
 Mock mode calls the frontend `assertTransition` and throws an `Error`. HTTP mode does not trust the frontend mirror; the backend revalidates.
 
@@ -99,14 +99,17 @@ A parallel track gated on `legal_dd_status='positive'` and `finance_status='appr
 ```mermaid
 stateDiagram-v2
   [*] --> recce : supervisor allocates
-  recce --> "2d" : approved
-  "2d" --> "3d" : supervisor + admin approved
-  "3d" --> gfc : 3D approved
+  recce --> stage_2d : approved
+  stage_2d --> stage_3d : supervisor + admin approved
+  stage_3d --> gfc : 3D approved
   gfc --> boq : admin GFC approved
   boq --> done : supervisor + admin approved
-  "2d" --> recce : rejected / re-upload
-  "3d" --> "2d" : rejected / re-upload
+  stage_2d --> recce : rejected / re-upload
+  stage_3d --> stage_2d : rejected / re-upload
   boq --> gfc : rejected / re-upload
+
+  state "2d" as stage_2d
+  state "3d" as stage_3d
 ```
 
 `design_status` mirror: `pending → allocated → in_progress → gfc_pending → approved`.
