@@ -20,18 +20,12 @@ from app.services._common import apply_role_scope, fetch_site_or_404, site_to_re
 logger = logging.getLogger(__name__)
 
 
-# Slice U3 adds a `stage` column on legal_dd_checklist + site_licensing
-# (draft / pending_review / published). Read it via getattr with a 'published'
-# default so we keep working pre-U3.
-
-
 def _row_stage(row) -> str:
+    """Read the `stage` attribute, defaulting to 'published' if absent or on error."""
     try:
         return getattr(row, "stage", "published") or "published"
-    except Exception:  # pragma: no cover — defensive
-        logger.exception(
-            "query_service._row_stage: unexpected error reading stage — defaulting to 'published'",
-        )
+    except Exception:  # pragma: no cover
+        logger.exception("_row_stage: unexpected error reading stage — defaulting to 'published'")
         return "published"
 
 
@@ -73,8 +67,7 @@ async def _gather_site_sources(
         select(models.ProjectReview).where(models.ProjectReview.site_id.in_(site_ids))
     )).scalars().all()
     project_by_site = {p.site_id: p for p in projects}
-    # Latest approval per site (desc created_at → first seen is newest) carries
-    # expected_loi_days + the approver for the LOI SLA tracker (#115).
+    # Latest approval per site (newest first) carries expected_loi_days for the LOI SLA tracker.
     for a in (await session.execute(
         select(models.Approval)
         .where(models.Approval.site_id.in_(site_ids))
@@ -191,7 +184,7 @@ async def get_site(
     details = (await session.execute(detail_stmt)).scalar_one_or_none()
     project_stmt = select(models.ProjectReview).where(models.ProjectReview.site_id == site.id)
     project = (await session.execute(project_stmt)).scalar_one_or_none()
-    # Latest approval → expected_loi_days + approver name for the SLA view (#115).
+    # Latest approval → expected_loi_days + approver name for the LOI SLA view.
     approval_stmt = (
         select(models.Approval)
         .where(models.Approval.site_id == site.id)

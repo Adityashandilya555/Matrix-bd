@@ -263,7 +263,6 @@ async def svc_finance_approve(
             action = "finance_supervisor_approved"
             detail = f"Supervisor approved — forwarded to admin. ca_code={site.ca_code}"
 
-            # Notify business_admin users
             from sqlalchemy import select
             from app.db import models as _m
             admin_ids = (await session.execute(
@@ -319,7 +318,6 @@ async def svc_finance_approve(
                     detail="Finance admin approval completed CA / Commercial Code.",
                 )
 
-            # Notify site owner and supervisors
             owners = await recipients_for_site_owner(session, site=site)
             supervisors = await recipients_for_supervisors(session, tenant_id=tenant_id)
             all_recipients = list({*owners, *supervisors})

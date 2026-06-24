@@ -78,9 +78,7 @@ async def _fetch_dd_or_404(
 
 
 async def _batch_dd_by_site(session: AsyncSession, site_ids) -> dict:
-    """Batch DD checklists into a ``site_id -> checklist`` map in one query, vs
-    ``_fetch_dd_or_none`` per row (an N+1 round trip each through the pooler) (#91).
-    Mirrors the batching ``svc_legal_queue`` already uses."""
+    """Batch DD checklists into a ``site_id -> checklist`` map in one query."""
     ids = [sid for sid in site_ids if sid]
     if not ids:
         return {}
@@ -194,11 +192,6 @@ async def _executive_has_legal_delegation(
     Returns False (rather than raising) if the site_delegations table doesn't
     exist yet — keeps this slice independent of the U2 delegation slice.
     """
-    # SAVEPOINT so a missing-table probe failure rolls back ONLY this probe —
-    # the old `session.rollback()` nuked the caller's whole transaction, and
-    # the bare `except Exception` (no rollback) left the connection in a
-    # failed-transaction state for the rest of the request. Mirrors
-    # _find_legal_delegate below.
     try:
         async with session.begin_nested():
             result = await session.execute(
@@ -339,8 +332,7 @@ async def svc_legal_queue(
     total = await count_rows(session, stmt)
     sites = (await session.execute(stmt.limit(limit).offset(offset))).scalars().all()
 
-    # Batch the per-site lookups: 2 queries total instead of 2 per site
-    # (N+1 costs a full round trip each through pgBouncer/NullPool).
+    # Batch the per-site lookups: 2 queries total instead of 2 per site.
     site_ids = [site.id for site in sites]
     dd_by_site: dict = {}
     names: dict = {}
@@ -401,8 +393,7 @@ async def svc_legal_rejected_sites(
         stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
     sites = (await session.execute(stmt)).scalars().all()
 
-    # Batch DD checklists + submitter names (2 queries total) instead of 2 per
-    # site (#91).
+    # Batch DD checklists + submitter names (2 queries total) instead of 2 per site.
     dd_by_site = await _batch_dd_by_site(session, [s.id for s in sites])
     names = await fetch_user_names(session, [s.submitted_by for s in sites])
     items: list[LegalRejectedSiteItem] = []
@@ -501,8 +492,7 @@ async def svc_legal_history(
     total = await count_rows(session, stmt)
     sites = (await session.execute(stmt.limit(limit).offset(offset))).scalars().all()
 
-    # Batch DD checklists + submitter names (2 queries total) instead of 2 per
-    # site (#91).
+    # Batch DD checklists + submitter names (2 queries total) instead of 2 per site.
     dd_by_site = await _batch_dd_by_site(session, [s.id for s in sites])
     names = await fetch_user_names(session, [s.submitted_by for s in sites])
     items: list[LegalHistoryItem] = []
@@ -587,8 +577,6 @@ async def svc_save_verification(
             )
 
         # Delegation check applies only when the site is in LEGAL_REVIEW.
-        # On a LEGAL_REJECTED site only supervisors reach this point (blocked above),
-        # and _require_executive_legal_delegation is a no-op for supervisors.
         is_executive = await _require_executive_legal_delegation(
             session, site_id=site.id, actor=actor,
         )
@@ -596,9 +584,6 @@ async def svc_save_verification(
         dd = await _fetch_dd_or_none(session, site_id=site.id)
         if dd is None:
             dd = models.LegalDdChecklist(site_id=site.id)
-            # Item saves are drafts regardless of who starts them. Only
-            # svc_save_due_diligence publishes DDR, so Save Draft never locks
-            # the checklist or exposes a final BD-visible verdict.
             dd.stage = "draft"
             session.add(dd)
         elif _row_stage(dd) == "published" and dd.approved_by is None:
@@ -617,13 +602,6 @@ async def svc_save_verification(
         elif is_executive:
             _assert_executive_can_edit_stage(_row_stage(dd))
         else:
-            # Supervisor path: blocked from editing items once the row is
-            # published — BD reads published rows as the source of truth, so
-            # any post-publish change must flow through the change-request
-            # path (where the request + approval are explicitly logged).
-            # Draft and pending_review rows remain freely editable so the
-            # supervisor can adjust items either before the executive submits
-            # or after reviewing what they sent.
             _assert_supervisor_can_edit_stage(_row_stage(dd))
 
         # Only overwrite fields that were explicitly supplied
@@ -650,9 +628,8 @@ async def svc_save_verification(
 
         dd.reviewed_by = actor["sub"]
 
-        # Save Draft is not a legal verdict. Keep the BD-visible mirror in
-        # review until the supervisor explicitly finalizes positive/negative
-        # via svc_save_due_diligence, which also publishes the row.
+        # Save Draft is not a legal verdict; keep the BD-visible mirror in review
+        # until the supervisor explicitly finalizes via svc_save_due_diligence.
         if dd.final_verdict == "pending":
             site.legal_dd_status = "in_review"
 

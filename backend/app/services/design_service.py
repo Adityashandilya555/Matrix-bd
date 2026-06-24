@@ -77,8 +77,7 @@ logger = logging.getLogger(__name__)
 _KIND_ORDER = {"recce": 0, "2d": 1, "3d": 2}
 _NEXT_STAGE = {"recce": "2d", "2d": "3d", "3d": "gfc"}
 _DELIVERABLE_KINDS = ("recce", "2d", "3d")
-# Deliverables that require a SECOND-tier business_admin approval (on top of the
-# supervisor's) before the stage advances.
+# Deliverables that require business_admin approval before the stage advances.
 _NEEDS_ADMIN = frozenset({"2d", "3d"})
 
 
@@ -201,9 +200,7 @@ async def _build_design_response(
     review = await _fetch_review_or_none(session, site_id=site.id)
     deliverables = await _fetch_deliverables(session, site_id=site.id)
     submitted_by_name = await fetch_user_name(session, site.submitted_by)
-    # Each signed URL is an HTTP round-trip to Supabase Storage; doing them
-    # sequentially stacked 4+ round-trips onto every design read/upload and
-    # pushed responses past the frontend's timeout. Fan out instead.
+    # Fan out signed-URL requests concurrently to avoid stacking round-trips to Supabase Storage.
     download_urls = await asyncio.gather(
         *(_deliverable_download_url(d) for d in deliverables)
     )
@@ -284,8 +281,7 @@ async def svc_design_queue(
     total = await count_rows(session, stmt)
     sites = (await session.execute(stmt.limit(limit).offset(offset))).scalars().all()
 
-    # Batch the per-site lookups: 3 queries total instead of 3 per site
-    # (each N+1 round trip costs real latency through pgBouncer/NullPool).
+    # Batch: 3 queries total instead of 3 per site.
     site_ids = [site.id for site in sites]
     reviews: dict = {}
     delegates: dict = {}
@@ -470,10 +466,6 @@ async def svc_allocate_design(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Delegate user not found in this workspace, or not active.",
             )
-        # Design executives are a separate pool, but at the user level they are
-        # still role='executive' (module='design' is the discriminator). The UI
-        # scopes the candidate list to design-module execs; here we only assert
-        # the coarse role, mirroring the Legal allocation guard.
         if (delegate.role or "").lower() != "executive":
             raise HTTPException(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -541,9 +533,6 @@ async def svc_list_design_delegations_for_site(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
 ) -> dict:
     """Active design allocations for a single site (supervisor view)."""
-    # NOTE: no `except Exception → empty list` here. The old swallow had no
-    # rollback (leaving the session in a failed-transaction state) and made DB
-    # errors indistinguishable from "no delegations" in the UI.
     stmt = (
         select(models.SiteDelegation, models.User.email, models.User.name)
         .join(models.User, models.User.id == models.SiteDelegation.delegate_user_id)

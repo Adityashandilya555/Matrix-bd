@@ -3,8 +3,7 @@ or field edit, and co-writes a `stage_events` row whenever a status
 transition is present (from_status / to_status).
 
 `stage_events` is the immutable event ledger that SLA / analytics queries
-read.  Previously it was declared in the schema but never written — fixed
-here (issue #119).
+read.
 """
 from __future__ import annotations
 
@@ -58,10 +57,7 @@ async def write_audit_event(
     session.add(row)
     await session.flush()  # ensure id is populated
 
-    # ── Co-write stage_events whenever a status transition is recorded ────────
-    # stage_events is the immutable ledger for SLA / analytics pipelines.
-    # We only emit it for transitions (at least one of from/to_status set) and
-    # only when the event is scoped to a site (site_id required by the FK).
+    # Co-write stage_events for status transitions — the immutable SLA/analytics ledger.
     if site_id is not None and (from_status is not None or to_status is not None):
         stage = models.StageEvent(
             tenant_id=tenant_id,

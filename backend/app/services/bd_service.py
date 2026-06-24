@@ -356,12 +356,8 @@ async def svc_approve_shortlist(
         site.status = SiteStatus.APPROVED.value
         site.approved_at = approved_at
 
-        # Pre-compute the LOI deadline. The product spec calls for a soft
-        # countdown / highlight on overdue sites — the cheapest source of
-        # truth is a stored DATE column on the approval row rather than
-        # recomputing in every read. Stored as DATE (not timestamp) because
-        # business deadlines are end-of-day in local time, not a precise
-        # instant.
+        # Pre-compute the LOI deadline as a DATE (business deadlines are end-of-day, not a precise instant).
+        # Stored on the approval row for efficient reads.
         from datetime import timedelta
         loi_deadline = (approved_at + timedelta(days=int(expected_loi_days))).date()
 
@@ -411,8 +407,7 @@ async def svc_push_to_payments(
         site.status = SiteStatus.LEGAL_REVIEW.value
         site.legal_review_at = datetime.now(timezone.utc)
 
-        # Seed the DD checklist row so legal team can start filling items immediately.
-        # Retried requests or legacy partial transitions must not duplicate it.
+        # Seed the DD checklist row so legal can start immediately; idempotent on retry.
         existing_legal_dd = (await session.execute(
             select(models.LegalDdChecklist).where(models.LegalDdChecklist.site_id == site.id)
         )).scalar_one_or_none()
@@ -426,7 +421,7 @@ async def svc_push_to_payments(
             from_status=SiteStatus.LOI_UPLOADED.value,
             to_status=SiteStatus.LEGAL_REVIEW.value,
         )
-        # Notify all legal supervisors in the tenant
+        # Notify all legal supervisors in the tenant.
         legal_recipients = await recipients_for_legal_supervisors(session, tenant_id=tenant_id)
         await notify_enqueue(
             session, tenant_id=tenant_id, event="site_sent_to_legal",
@@ -439,7 +434,7 @@ async def svc_push_to_payments(
                 f"submitted for legal review. Please open your Legal Dashboard to proceed."
             ),
         )
-        # Acknowledge to BD exec/supervisor that it has been sent
+        # Acknowledge to BD exec/supervisor that it has been sent.
         owners = await recipients_for_site_owner(session, site=site)
         await notify_enqueue(
             session, tenant_id=tenant_id, event="site_sent_to_legal_ack",
@@ -459,9 +454,7 @@ async def svc_reject_site(
     """Reject a site with reasons, blocking self-rejection and notifying the site owners."""
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        # Supervisors need a safe "No" path while curating Shortlisted sites,
-        # including rows they created themselves before delegation. Keep the
-        # stricter self-approval/rejection guard for draft/detail reviews.
+        # Supervisors need a safe rejection path for shortlisted sites they created or received via delegation.
         if site.status != SiteStatus.SHORTLISTED.value:
             _assert_not_self_approval(actor, site)
         assert_transition(SiteStatus(site.status), SiteStatus.REJECTED)
@@ -494,8 +487,7 @@ async def svc_archive_site(
     """Archive a site, requiring a non-empty note so the Archive tab stays browsable."""
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        # Archive note is mandatory — see Todo #9. Per the product spec every
-        # archived site must carry a reason so the Archive tab is browsable.
+        # Archive note is mandatory — every archived site must carry a reason so the Archive tab is browsable.
         clean_note = (note or "").strip()
         if not clean_note:
             raise HTTPException(
@@ -503,8 +495,7 @@ async def svc_archive_site(
                 detail="An archive note is required so the archived site stays browsable.",
             )
         assert_transition(SiteStatus(site.status), SiteStatus.ARCHIVED)
-        # Remember the status we came from so Revive (Todo #11) can restore
-        # the site to its prior stage rather than dumping it into drafts.
+        # Store pre-archive status so Revive can restore it to the prior stage.
         site.archived_from_status = site.status
         site.status = SiteStatus.ARCHIVED.value
         site.archived_at = datetime.now(timezone.utc)
@@ -548,8 +539,7 @@ async def svc_revive_site(
         site.status = prev
         site.archived_at = None
         site.archived_from_status = None
-        # Keep the archive_note as historical context — Revive doesn't erase
-        # the reason a site was once archived.
+        # Keep the archive_note as historical context — Revive doesn't erase the reason a site was once archived.
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor["name"],

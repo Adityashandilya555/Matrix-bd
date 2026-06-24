@@ -75,16 +75,14 @@ async def svc_grant_delegation(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Delegate user not found in this workspace, or not active.",
             )
-        # Only executives are eligible delegates. Other supervisors already
-        # have full power, so delegating to them would be a no-op.
+        # Only executives are eligible delegates.
         if (delegate.role or "").lower() != "executive":
             raise HTTPException(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="Delegations can only be granted to executive users.",
             )
 
-        # If an active delegation for the same (site, delegate) already
-        # exists, refuse rather than silently double-granting.
+        # Refuse rather than silently double-granting an active delegation for the same (site, delegate).
         existing = (await session.execute(
             select(models.ShortlistDelegation).where(
                 models.ShortlistDelegation.site_id == site.id,
@@ -248,12 +246,7 @@ async def actor_has_delegation_for_site(
 
 
 # ── Module-aware delegations (site_delegations table) ──────────────────────
-# Used by the Legal module today; Payment will reuse the same surface.
-#
-# Defensive default: every reader (`svc_assigned_sites`, `svc_is_delegated`)
-# returns an empty / False result instead of raising when the table is empty
-# or absent. This keeps executive flows usable even before the migration has
-# landed in every environment.
+# Used by Legal, Design, Project, NSO, and Project Excellence.
 
 _VALID_MODULES = {"bd", "legal", "payment", "design", "project", "nso", "project_excellence", "financial_closure"}
 
