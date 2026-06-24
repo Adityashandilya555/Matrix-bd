@@ -93,7 +93,7 @@ sequenceDiagram
     DEPS-->>API: current_user, tenant_id
     API->>API: Enforce supervisor-only targets (#102)
     API->>SVC: svc_shortlist_draft / svc_approve_shortlist / ...
-    SVC->>DB: BEGIN; SELECT ... FOR UPDATE<br/>validate transition; UPDATE sites<br/>INSERT audit, stage event, outbox<br/>COMMIT
+    SVC->>DB: "BEGIN; SELECT ... FOR UPDATE<br/>validate transition; UPDATE sites<br/>INSERT audit, stage event, outbox<br/>COMMIT"
     DB-->>SVC: updated row
     SVC-->>API: domain response (snake_case)
     API-->>HA: 200 OK + site JSON
