@@ -19,8 +19,11 @@ _PRUNE_STATE: list[float] = [0.0]
 
 
 def _client_ip(request: Request) -> str:
-    # Use the socket peer resolved by uvicorn. uvicorn's --proxy-headers handles
-    # walking X-Forwarded-For past trusted hops securely.
+    # Use the socket peer resolved by uvicorn — NEVER the raw X-Forwarded-For header,
+    # which is fully attacker-controlled. uvicorn's --proxy-headers rewrites
+    # request.client.host from XFF only when --forwarded-allow-ips is scoped to
+    # trusted upstreams (Railway's private-network ranges). Never set it to '*' —
+    # that lets an attacker spoof XFF[0] and mint a fresh rate-limit window per call.
     return request.client.host if request.client else "unknown"
 
 

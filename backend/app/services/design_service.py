@@ -532,7 +532,12 @@ async def svc_allocate_design(
 async def svc_list_design_delegations_for_site(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
 ) -> dict:
-    """Active design allocations for a single site (supervisor view)."""
+    """Active design allocations for a single site (supervisor view).
+
+    No try/except here by design — the old swallow had no rollback and left the
+    session in a failed-transaction state, making DB errors indistinguishable from
+    'no delegations' in the UI. Let real errors propagate.
+    """
     stmt = (
         select(models.SiteDelegation, models.User.email, models.User.name)
         .join(models.User, models.User.id == models.SiteDelegation.delegate_user_id)

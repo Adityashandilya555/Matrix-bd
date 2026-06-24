@@ -246,7 +246,9 @@ async def actor_has_delegation_for_site(
 
 
 # ── Module-aware delegations (site_delegations table) ──────────────────────
-# Used by Legal, Design, Project, NSO, and Project Excellence.
+# Used by BD, Legal, Payment, Design, Project, NSO, Project Excellence, and Financial Closure
+# (see _VALID_MODULES below). Every reader returns empty/False instead of raising when the
+# table is absent — keeps executive flows usable before the migration has landed everywhere.
 
 _VALID_MODULES = {"bd", "legal", "payment", "design", "project", "nso", "project_excellence", "financial_closure"}
 

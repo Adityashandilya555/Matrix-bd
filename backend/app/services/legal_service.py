@@ -191,6 +191,10 @@ async def _executive_has_legal_delegation(
 
     Returns False (rather than raising) if the site_delegations table doesn't
     exist yet — keeps this slice independent of the U2 delegation slice.
+
+    begin_nested() (SAVEPOINT) is intentional: a missing-table error rolls back
+    only this probe, not the caller's outer transaction. session.rollback() would
+    nuke the entire transaction — do not substitute it here.
     """
     try:
         async with session.begin_nested():
