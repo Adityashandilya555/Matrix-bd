@@ -148,7 +148,7 @@ sequenceDiagram
   WS->>AO: activateOverride({role:'supervisor', module:'bd'})
   AO->>SS: write zm:admin-override
   WS->>WS: window.location.href = '/'
-  Note over SC: main workspace mounts; SessionContext hydrates
+  Note over SC: main workspace mounts — SessionContext hydrates
   SC->>AO: getStoredOverride() → {role:'supervisor', module:'bd'}
   SC->>SC: adminOverride = {role:'supervisor', module:'bd'}
   SC->>SC: role = 'supervisor' (overrides 'business_admin')
