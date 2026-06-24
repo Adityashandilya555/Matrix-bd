@@ -1,3 +1,6 @@
+// Lightweight custom-event bus for cross-context site data invalidation.
+// SitesContext broadcasts after every mutation; other contexts or tabs listen
+// and re-fetch without needing a shared React state or prop drilling.
 export const SITE_DATA_CHANGED_EVENT = 'matrix:sites-changed';
 
 export function notifySiteDataChanged(detail = {}) {
