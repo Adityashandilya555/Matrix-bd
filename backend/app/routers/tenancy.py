@@ -66,8 +66,14 @@ def _parse_seat_limit(team_size: Optional[str]) -> int:
 
 
 def _generate_workspace_code(slug_hint: Optional[str] = None) -> str:
-    # Format: <SLUGFRAG>-<RAND16>. The prefix is derived from the company name.
-    # The random suffix provides collision safety. Collisions are retried on insert.
+    """Generate a human-shareable workspace code.
+
+    Format: <SLUGFRAG>-<RAND16>. The prefix is derived from the company name
+    (guessable for a targeted org), so the random suffix carries ALL the
+    secret material — token_hex(8) = 64 bits (#84; the old token_hex(2) gave
+    only 65,536 possibilities). Collisions are improbable but the insert path
+    retries on a unique-violation just in case.
+    """
     base = re.sub(r"[^A-Za-z0-9]", "", (slug_hint or ""))[:6].upper()
     if not base:
         base = secrets.token_hex(3).upper()
@@ -465,13 +471,17 @@ async def approve_workspace_request(
             detail=f"Request already {req_row['status']}.",
         )
 
-    # Cache the fields needed after retries — the rollback path drops the row's mapping.
+    # Cache the fields we'll need after retries — the rollback path drops the
+    # row's mapping, and we don't want to re-SELECT each time.
     req_company     = req_row["company"]
     req_admin_email = req_row["admin_email"]
     req_seat_limit  = req_row["seat_limit"]
 
-    # 2. Create the tenant. Both `slug` and `workspace_code` have unique constraints,
-    #    so the retry path mutates both.
+    # 2. Create the tenant. Both `slug` and `workspace_code` have unique
+    #    constraints, so the retry path MUST mutate both — earlier versions
+    #    only re-rolled the workspace_code and got stuck in an infinite slug
+    #    collision when an existing tenant shared the company-derived slug
+    #    (e.g. Shrey's seed data).
     slug_base = re.sub(r"[^a-z0-9]+", "-", req_company.lower()).strip("-") or "tenant"
     tenant_row = None
     last_error: Optional[str] = None
@@ -522,7 +532,9 @@ async def approve_workspace_request(
     workspace_code = tenant_row["workspace_code"]
     seat_limit     = tenant_row["seat_limit"]
 
-    # 3. Insert the business_admin row directly into public.users (sign in via email + workspace code).
+    # 3. Insert the business_admin row directly into public.users. No Supabase
+    #    Auth dance — the user will sign in with their email + the workspace
+    #    code (which the platform admin shares with them out-of-band).
     business_admin_id = uuid.uuid4()
     await db.execute(
         text("""
@@ -541,7 +553,11 @@ async def approve_workspace_request(
         },
     )
 
-    # 3b. Seed a pre-approved, token-bound reset request so the admin can set their first password.
+    # 3b. The admin ships with NO password and cannot log in until one is set
+    #     (#83 closed the passwordless fall-through). Seed a pre-approved,
+    #     token-bound reset request so they can set their first password via
+    #     /auth/password-reset/complete; the platform admin relays the token
+    #     out-of-band together with the workspace code.
     admin_setup_token = secrets.token_urlsafe(24)
     await db.execute(
         text("""
@@ -582,7 +598,11 @@ async def approve_workspace_request(
         {"tid": tenant_id, "rid": request_id},
     )
 
-    # 6. Enqueue a "workspace_provisioned" outbox row. The workspace_code travels in the payload.
+    # 6. Enqueue a "workspace_provisioned" outbox row. The email worker drains
+    #    notification_outbox and ships the credentials email out-of-band; the
+    #    workspace_code travels in the payload (NOT the body) so a future
+    #    template change can re-render without re-issuing the secret. This is
+    #    the only place workspace_code appears outside the tenants table.
     outbox_subject = f"Your {req_company} workspace is ready — sign into the admin portal"
     outbox_body = (
         f"Hi {payload.admin_name or req_admin_email.split('@')[0]},\n\n"
@@ -607,7 +627,11 @@ async def approve_workspace_request(
             "email":   req_admin_email,
             "subject": outbox_subject,
             "body":    outbox_body,
-            # Serialise with json.dumps to escape special characters correctly in the payload.
+            # Serialise with json.dumps rather than hand-splicing the JSON
+            # template (#240/18.5): a company/city containing a quote, backslash
+            # or other escapable char produced malformed JSON, and
+            # CAST(:payload AS jsonb) then threw at runtime. json.dumps escapes
+            # every field correctly in all cases.
             "payload": json.dumps({
                 "tenant_id": str(tenant_id),
                 "workspace_code": workspace_code,
@@ -681,7 +705,9 @@ async def join_workspace(payload: JoinIn, db: DbDep) -> JoinOut:
         db, payload.workspace_code, columns="id, name, seat_limit"
     )
 
-    # Same response for unknown and already-joined workspace codes to prevent user enumeration.
+    # IMPORTANT: same response for "no such code" and "already joined" so an
+    # attacker can't enumerate workspace codes. We log the discriminator
+    # server-side for debugging.
     soft_ack = JoinOut(
         status="pending_assignment",
         message=(
@@ -706,7 +732,8 @@ async def join_workspace(payload: JoinIn, db: DbDep) -> JoinOut:
         logger.info("join: already in tenant tenant_id=%s email=%s", tenant["id"], payload.email)
         return soft_ack
 
-    # 3. Seat-limit check (count active users only).
+    # 3. Seat-limit check — count only ACTIVE users (#125: pending rows must not
+    #    block legitimate onboarding).
     used = (await db.execute(
         text("SELECT COUNT(*) AS n FROM users WHERE tenant_id=:tid AND is_active=true"),
         {"tid": tenant["id"]},
@@ -721,7 +748,8 @@ async def join_workspace(payload: JoinIn, db: DbDep) -> JoinOut:
             ),
         )
 
-    # 4. Insert pending row (is_active=false).
+    # 4. Insert a pending row directly. is_active=false → user will see the
+    #    "pending" message on login until the supervisor assigns a role.
     await db.execute(
         text("""
             INSERT INTO users (id, tenant_id, role, email, name, is_active, password_hash)
@@ -754,10 +782,13 @@ async def join_workspace(payload: JoinIn, db: DbDep) -> JoinOut:
 async def public_branding(code: str, db: DbDep) -> dict:
     row = await get_tenant_by_workspace_code(db, code, columns="name, logo_url")
     if not row:
-        # Default branding instead of 404 to avoid enumeration / info leak.
+        # Default branding instead of a 404 — the status-code split made this
+        # endpoint a valid-code enumeration oracle that also leaked company
+        # names/logos for harvested codes (#84).
         return {"name": None, "logo_url": None}
     logo = row["logo_url"]
-    # Fresh signed URL so the link never goes stale in the database.
+    # logo_url stores the storage object path; hand back a fresh signed URL so
+    # the link never goes stale in the database.
     if logo and not logo.startswith("http"):
         try:
             logo = await signed_url(logo, expires_in=3600)
@@ -787,8 +818,12 @@ async def set_tenant_branding(
     if not tenant:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found.")
 
-    # Release read transaction before external storage I/O to avoid connection exhaustion.
-    # Last-write-wins is acceptable on branding metadata.
+    # The SELECT above auto-began a read transaction on the session. Release it
+    # BEFORE the (up-to-30s) storage upload so we don't hold a connection / scarce
+    # pgBouncer slot across slow external I/O (#235; mirrors the #89 LOI/photo/
+    # design fix). Only plain values are carried across the rollback; the UPDATE
+    # below targets WHERE id = :id and does not depend on the released read. No
+    # FOR UPDATE is needed — last-write-wins on branding metadata is acceptable.
     new_name = (name or "").strip() or tenant["name"]
     logo_path = tenant["logo_url"]
     await db.rollback()
@@ -872,7 +907,9 @@ async def confirm_password_reset_request(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Request has no matching user in the workspace.",
         )
-    # Bind approval to a single-use token; return plaintext once, store hash.
+    # Bind the approval to a single-use token (#85). The plaintext is returned
+    # ONCE to the platform admin, who relays it to the requester out-of-band
+    # (same trust channel as workspace codes); only its hash is stored.
     reset_token = secrets.token_urlsafe(24)
     token_hash = hashlib.sha256(reset_token.encode()).hexdigest()
     await db.execute(
