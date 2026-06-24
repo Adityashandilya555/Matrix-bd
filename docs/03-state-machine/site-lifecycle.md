@@ -108,8 +108,8 @@ stateDiagram-v2
   stage_3d --> stage_2d : rejected / re-upload
   boq --> gfc : rejected / re-upload
 
-  state stage_2d as "2d"
-  state stage_3d as "3d"
+  state "2d" as stage_2d
+  state "3d" as stage_3d
 ```
 
 `design_status` mirror: `pending → allocated → in_progress → gfc_pending → approved`.
