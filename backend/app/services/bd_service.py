@@ -56,6 +56,9 @@ def _assert_not_self_approval(actor: dict, site: models.Site) -> None:
     """Self-approval guard. The submitter cannot also be the approver/rejecter
     of the same draft. A supervisor draft never reaches here because it
     auto-promotes — see svc_create_draft."""
+    if actor.get("real_role") == "business_admin":
+        return
+
     delegated_supervisor_created_site = (
         (actor.get("role") or "").lower() == "supervisor"
         and site.status == SiteStatus.DETAILS_SUBMITTED.value
@@ -585,7 +588,8 @@ async def svc_reassign_site(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Executive not found in this workspace.",
             )
-        if (assignee.role or "").lower() != "executive":
+        assignee_role = (assignee.role or "").lower()
+        if assignee_role not in ("executive", "business_admin"):
             raise HTTPException(
                 status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Sites can only be assigned to an executive.",

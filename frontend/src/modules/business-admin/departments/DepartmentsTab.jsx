@@ -1,13 +1,15 @@
 import React from 'react';
 import { Icon, SectionHeader, ErrorState, Skeleton } from '../ui/kit.jsx';
 import PendingSupervisorsList from '../PendingSupervisorsList.jsx';
+import ExecutiveRequestsList from '../ExecutiveRequestsList.jsx';
 import OrgModuleCard from './OrgModuleCard.jsx';
 
 // Department codes + org in one place: who's awaiting approval, then each
 // department's invite code with the supervisors and executives under them.
 
-export default function DepartmentsTab({ org, pendingSupervisors, handlers }) {
+export default function DepartmentsTab({ org, pendingSupervisors, executiveRequests, handlers }) {
   const pendingCount = pendingSupervisors.items?.length || 0;
+  const execReqCount = executiveRequests.items?.length || 0;
   const modules = org.items || [];
 
   return (
@@ -21,6 +23,17 @@ export default function DepartmentsTab({ org, pendingSupervisors, handlers }) {
           onApprove={handlers.onApproveSupervisor}
           onReject={handlers.onRejectSupervisor}
           onRetry={() => handlers.reloadPendingSupervisors(false)} />
+      </section>
+
+      <section>
+        <SectionHeader icon={Icon.doc} title="Executive Access Requests" count={execReqCount} tone="warn"
+          description="Supervisors requesting dual-role access to also act as executives in their module."
+          onRefresh={() => handlers.reloadExecutiveRequests(true)} refreshing={executiveRequests.refreshing} />
+        <ExecutiveRequestsList
+          data={executiveRequests}
+          onApprove={handlers.onApproveExecutiveReq}
+          onReject={handlers.onRejectExecutiveReq}
+          onRetry={() => handlers.reloadExecutiveRequests(false)} />
       </section>
 
       <section>

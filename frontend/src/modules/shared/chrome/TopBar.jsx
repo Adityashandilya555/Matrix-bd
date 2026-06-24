@@ -3,10 +3,11 @@ import Icon from '../primitives/Icon.jsx';
 import Avatar from '../primitives/Avatar.jsx';
 import { useSession } from '../../../state/SessionContext.jsx';
 import { PRODUCT_NAME } from '../../../router/routes.js';
+import { requestExecutiveAccess } from '../../../services/api/authService.js';
 
 // Render body preserved exactly from Chrome.jsx TopBar component.
 export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, sidebarCollapsed = false, onToggleSidebar }) {
-  const { signOut, session, effectiveModule } = useSession();
+  const { signOut, session, effectiveModule, switchAs } = useSession();
   // BD-only action — legal and payment supervisors don't open pipeline drafts.
   // "New pipeline" creates a BD site draft — only the BD surface (or mock/no-module) shows it.
   // effectiveModule reflects any admin role simulation, falling back to the JWT module claim.
@@ -208,6 +209,78 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
                 <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--zm-fg)' }}>{user.name}</span>
                 <span style={{ fontSize: 11, color: 'var(--zm-fg-3)' }}>{user.email}</span>
               </div>
+              
+              {session.realRole === 'supervisor' && (
+                <>
+                  {session.hasExecutiveAccess ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        if (session.role === 'executive') {
+                          switchAs(null, null);
+                        } else {
+                          switchAs('executive', session.module);
+                        }
+                      }}
+                      style={{
+                        width: '100%', textAlign: 'left',
+                        padding: '8px 10px', borderRadius: 8,
+                        border: 'none', background: 'transparent',
+                        color: 'var(--zm-fg)', fontSize: 13, fontWeight: 500,
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        marginBottom: 4,
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zm-surface-hover)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      <Icon name={session.role === 'executive' ? "arrow" : "document"} size={14} style={{ color: 'var(--zm-fg-3)' }}/>
+                      {session.role === 'executive' ? 'Switch to Supervisor' : 'Switch to Executive'}
+                    </button>
+                  ) : session.pendingExecutiveRequest ? (
+                    <div
+                      style={{
+                        width: '100%', textAlign: 'left',
+                        padding: '8px 10px', borderRadius: 8,
+                        color: 'var(--zm-fg-3)', fontSize: 13, fontWeight: 500,
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        marginBottom: 4,
+                        opacity: 0.7,
+                      }}
+                    >
+                      <Icon name="clock" size={14} style={{ color: 'var(--zm-fg-3)' }}/>
+                      Executive Access (Pending)
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await requestExecutiveAccess();
+                          window.location.reload();
+                        } catch (e) { console.error(e); }
+                      }}
+                      style={{
+                        width: '100%', textAlign: 'left',
+                        padding: '8px 10px', borderRadius: 8,
+                        border: 'none', background: 'transparent',
+                        color: 'var(--zm-accent)', fontSize: 13, fontWeight: 500,
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        marginBottom: 4,
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zm-surface-hover)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      <Icon name="document" size={14} style={{ color: 'var(--zm-accent)' }}/>
+                      Request Executive Access
+                    </button>
+                  )}
+                  <div style={{ height: 1, background: 'var(--zm-line)', margin: '4px 0' }} />
+                </>
+              )}
+
               <button
                 type="button"
                 onClick={handleSignOut}

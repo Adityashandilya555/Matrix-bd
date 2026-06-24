@@ -69,28 +69,37 @@ export function SessionProvider({ children }) {
     } catch { return false; }
   });
 
-  // isBusinessAdmin: true when the JWT role is business_admin (regardless of override).
-  const isBusinessAdmin = session.role === 'business_admin';
+  // isBusinessAdmin: true when the true underlying JWT role is business_admin (regardless of override).
+  const isBusinessAdmin = session.realRole === 'business_admin';
+  // isDualRoleSupervisor: true when the user is a supervisor with executive access.
+  const isDualRoleSupervisor = session.realRole === 'supervisor' && session.hasExecutiveAccess;
   // effectiveModule: the module being simulated, or the real session module.
-  const effectiveModule = (isBusinessAdmin && adminOverride?.module) || session.module;
+  const effectiveModule = ((isBusinessAdmin || isDualRoleSupervisor) && adminOverride?.module) || session.module;
   // role: the display/canonical string used by existing components. For business_admin
   // with an active override this returns the simulated role so RequireAuth and all UI
   // adapt automatically. realRole always returns the true JWT role.
-  const role = (isBusinessAdmin && adminOverride?.role) || session.role;
+  const role = isBusinessAdmin ? (adminOverride?.role || session.role)
+             : isDualRoleSupervisor ? (['supervisor', 'executive'].includes(adminOverride?.role) ? adminOverride.role : session.role)
+             : session.role;
 
   // setRole: allows role switcher to change role locally in mock mode.
   const setRole = useCallback((newRole) => {
     setSession(prev => ({ ...prev, role: newRole }));
   }, []);
 
-  // switchAs: lets business_admin simulate a different role+module. Pass null to reset.
+  // switchAs: lets business_admin simulate a different role+module, 
+  // or lets a dual-role supervisor switch between supervisor/executive in their module. Pass null to reset.
   const switchAs = useCallback((overrideRole, overrideModule) => {
-    if (session.role !== 'business_admin') return;
-    const next = overrideRole ? { role: overrideRole, module: overrideModule } : null;
+    const isDualRoleSupervisor = session.realRole === 'supervisor' && session.hasExecutiveAccess;
+    if (session.realRole !== 'business_admin' && !isDualRoleSupervisor) return;
+    
+    // Supervisors can only switch their role, not their module
+    const nextModule = isDualRoleSupervisor ? session.module : overrideModule;
+    const next = overrideRole ? { role: overrideRole, module: nextModule } : null;
     _setAdminOverride(next);
     if (next) activateOverride(next);
     else deactivateOverride();
-  }, [session.role]);
+  }, [session.realRole, session.hasExecutiveAccess, session.module]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
@@ -125,6 +134,9 @@ export function SessionProvider({ children }) {
           name:      claims.email ? claims.email.split('@')[0] : INITIAL_SESSION.name,
           email:     claims.email || INITIAL_SESSION.email,
           role:      claims.role || INITIAL_SESSION.role,
+          realRole:  claims.real_role || claims.role || INITIAL_SESSION.role,
+          hasExecutiveAccess: claims.has_executive_access || false,
+          pendingExecutiveRequest: claims.has_pending_executive_request || false,
           tenantId:  claims.tenant_id || INITIAL_SESSION.tenantId,
           cityScope: claims.city || INITIAL_SESSION.cityScope,
           module:    claims.module || null,
@@ -144,21 +156,18 @@ export function SessionProvider({ children }) {
             // blocking "session expired" modal over a public page is wrong,
             // there is no session to pause. (Restores pre-#173 #130 behavior for
             // the stale-token case.)
-            // eslint-disable-next-line no-console
             console.warn('[session] /auth/whoami unauthorized on first load — clearing stale token', err);
             clearAuthToken();
           } else {
             // A session WAS live this page-load and just expired mid-use. Keep
             // the token + mounted route and surface the modal so in-progress
             // forms are preserved. (#130 / #173 intent)
-            // eslint-disable-next-line no-console
             console.warn('[session] /auth/whoami unauthorized mid-session — preserving route', err);
             notifySessionExpired({ reason: 'whoami_unauthorized', error: err });
           }
         } else {
           // Transient (timeout / network / 5xx). Keep the token so the user
           // isn't logged out by a slow backend; a refresh re-hydrates. (#128)
-          // eslint-disable-next-line no-console
           console.warn('[session] /auth/whoami failed transiently — keeping token', err);
         }
       } finally {
@@ -231,7 +240,7 @@ export function SessionProvider({ children }) {
     isMockMode: USE_MOCK,
     signOut,
     sessionExpired,
-  }), [user, role, session.role, isBusinessAdmin, effectiveModule, adminOverride, switchAs, setRole, session, authReady, permissions, dark, toggleDark, canFn, signOut, sessionExpired]);
+  }), [user, role, isBusinessAdmin, effectiveModule, adminOverride, switchAs, setRole, session, authReady, permissions, dark, toggleDark, canFn, signOut, sessionExpired]);
 
   return (
     <SessionContext.Provider value={value}>

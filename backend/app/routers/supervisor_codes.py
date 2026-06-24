@@ -53,7 +53,7 @@ async def list_my_team(
     current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    return await svc.list_my_team(db, current_user["sub"], module)
+    return await svc.list_my_team(db, current_user, module)
 
 
 @router.post("/me/pending-executives/{user_id}/approve", status_code=status.HTTP_204_NO_CONTENT)
