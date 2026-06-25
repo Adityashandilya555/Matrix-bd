@@ -258,7 +258,7 @@ async def svc_send_for_financial_closure(
         return await _build_fc_state(session, site, closure)
 
 
-async def svc_fc_queue(
+async def svc_fc_queue(  # skipcq: PY-R1000
     session: AsyncSession, *, tenant_id: str | UUID,
     restrict_to_site_ids: Optional[list[str]] = None,
     limit: int = 500,
