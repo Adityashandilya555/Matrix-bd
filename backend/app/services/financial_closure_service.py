@@ -32,7 +32,7 @@ from app.domain.schemas.financial_closure import (
     SaveFCBudgetRequest,
 )
 from app.services import budget_service
-from app.services._common import count_rows, fetch_site_or_404, fetch_user_name
+from app.services._common import count_rows, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_is_delegated
 
@@ -79,6 +79,90 @@ async def _active_fc_delegate(
         .limit(1)
     )).first()
     return (row[0], row[1], row[2]) if row else None
+
+
+def _compute_variation(gfc_items: list, closure_items: list) -> dict[int, float]:
+    """Per-idx closure-amount minus gfc-amount (missing side counts as 0). Pure Python — no DB."""
+    gfc_amts = {i.idx: float(i.amount) if i.amount is not None else 0.0 for i in gfc_items}
+    closure_amts = {i.idx: float(i.amount) if i.amount is not None else 0.0 for i in closure_items}
+    return {
+        idx: round(closure_amts.get(idx, 0.0) - gfc_amts.get(idx, 0.0), 2)
+        for idx in range(1, len(budget_service.BUDGET_LABELS) + 1)
+    }
+
+
+async def _batch_fc_prefetch(
+    session: AsyncSession, *,
+    rows: list,
+    tenant_id: str | UUID,
+) -> tuple[dict, dict, dict, dict, dict]:
+    """Batch all per-site lookups for an FC queue page into 5 queries instead of 7×N.
+
+    Returns (gfc_by_site, gfc_items_by_budget, closure_items_by_budget,
+             delegates_by_site, names_by_uid). Mirrors the batching pattern used
+    in svc_legal_queue, svc_design_queue, and svc_project_queue.
+    """
+    site_ids = [site.id for site, _ in rows]
+
+    # GFC budget headers for the whole page
+    gfc_by_site: dict = {
+        b.site_id: b for b in (await session.execute(
+            select(models.SiteBudget).where(
+                models.SiteBudget.site_id.in_(site_ids),
+                models.SiteBudget.phase == budget_service.GFC,
+                models.SiteBudget.tenant_id == tenant_id,
+            )
+        )).scalars()
+    }
+
+    # GFC line items for those budgets (one query for all)
+    gfc_items_by_budget: dict = {}
+    gfc_ids = [b.id for b in gfc_by_site.values()]
+    if gfc_ids:
+        for item in (await session.execute(
+            select(models.SiteBudgetItem).where(
+                models.SiteBudgetItem.budget_id.in_(gfc_ids),
+                models.SiteBudgetItem.tenant_id == tenant_id,
+            )
+        )).scalars():
+            gfc_items_by_budget.setdefault(item.budget_id, []).append(item)
+
+    # Closure line items — closure headers are already in rows from the JOIN
+    closure_items_by_budget: dict = {}
+    closure_ids = [c.id for _, c in rows if c is not None]
+    if closure_ids:
+        for item in (await session.execute(
+            select(models.SiteBudgetItem).where(
+                models.SiteBudgetItem.budget_id.in_(closure_ids),
+                models.SiteBudgetItem.tenant_id == tenant_id,
+            )
+        )).scalars():
+            closure_items_by_budget.setdefault(item.budget_id, []).append(item)
+
+    # Active FC delegates — newest grant wins per site (mirrors _active_fc_delegate)
+    delegates_by_site: dict = {}
+    for drow in (await session.execute(
+        select(
+            models.SiteDelegation.site_id,
+            models.SiteDelegation.delegate_user_id,
+            models.User.name,
+            models.User.email,
+        )
+        .join(models.User, models.User.id == models.SiteDelegation.delegate_user_id)
+        .where(
+            models.SiteDelegation.site_id.in_(site_ids),
+            models.SiteDelegation.module == _MODULE,
+            models.SiteDelegation.revoked_at.is_(None),
+        )
+        .order_by(models.SiteDelegation.granted_at.desc())
+    )).all():
+        if drow.site_id not in delegates_by_site:
+            delegates_by_site[drow.site_id] = (drow.delegate_user_id, drow.name, drow.email)
+
+    # Submitter names — one query for all unique user ids on this page
+    names = await fetch_user_names(session, [site.submitted_by for site, _ in rows])
+
+    return gfc_by_site, gfc_items_by_budget, closure_items_by_budget, delegates_by_site, names
 
 
 async def _build_fc_state(
@@ -207,11 +291,21 @@ async def svc_fc_queue(
             stmt.order_by(models.Site.launched_at.desc(), models.Site.id).limit(limit).offset(offset)
         )).all()
 
+        if not rows:
+            return FCQueueResponse(items=[], total=total)
+
+        gfc_by_site, gfc_items_by_budget, closure_items_by_budget, delegates_by_site, names = (
+            await _batch_fc_prefetch(session, rows=rows, tenant_id=tenant_id)
+        )
+
         items: list[FCQueueItem] = []
         for site, closure in rows:
-            variation = await budget_service.variation_vs_gfc(session, site_id=site.id, tenant_id=tenant_id)
-            gfc = await budget_service.fetch_budget(session, site_id=site.id, phase=budget_service.GFC, tenant_id=tenant_id)
-            delegate = await _active_fc_delegate(session, site_id=site.id)
+            gfc = gfc_by_site.get(site.id)
+            variation = _compute_variation(
+                gfc_items_by_budget.get(gfc.id, []) if gfc else [],
+                closure_items_by_budget.get(closure.id, []) if closure else [],
+            )
+            delegate = delegates_by_site.get(site.id)
             items.append(FCQueueItem(
                 site_id=str(site.id),
                 site_code=site.ca_code or site.code or "",
@@ -220,7 +314,7 @@ async def svc_fc_queue(
                 closure_status=(closure.status if closure else "draft"),
                 financial_closure_status=site.financial_closure_status or "pending",
                 allocated_to_name=(delegate[1] if delegate else None),
-                submitted_by_name=await fetch_user_name(session, site.submitted_by),
+                submitted_by_name=names.get(str(site.submitted_by)),
                 gfc_budget_total=float(gfc.budget_total) if gfc and gfc.budget_total is not None else None,
                 closure_budget_total=float(closure.budget_total) if closure and closure.budget_total is not None else None,
                 variation_total=round(sum(variation.values()), 2),
@@ -422,18 +516,29 @@ async def svc_fc_admin_queue(
     )
     total = await count_rows(session, stmt)
     rows = (await session.execute(stmt.limit(limit).offset(offset))).all()
+
+    if not rows:
+        return FCQueueResponse(items=[], total=total)
+
+    gfc_by_site, gfc_items_by_budget, closure_items_by_budget, delegates_by_site, names = (
+        await _batch_fc_prefetch(session, rows=rows, tenant_id=tenant_id)
+    )
+
     items: list[FCQueueItem] = []
     for site, closure in rows:
-        variation = await budget_service.variation_vs_gfc(session, site_id=site.id, tenant_id=tenant_id)
-        gfc = await budget_service.fetch_budget(session, site_id=site.id, phase=budget_service.GFC, tenant_id=tenant_id)
-        delegate = await _active_fc_delegate(session, site_id=site.id)
+        gfc = gfc_by_site.get(site.id)
+        variation = _compute_variation(
+            gfc_items_by_budget.get(gfc.id, []) if gfc else [],
+            closure_items_by_budget.get(closure.id, []) if closure else [],
+        )
+        delegate = delegates_by_site.get(site.id)
         items.append(FCQueueItem(
             site_id=str(site.id), site_code=site.ca_code or site.code or "",
             site_name=site.name, city=site.city,
             closure_status=closure.status,
             financial_closure_status=site.financial_closure_status or "pending",
             allocated_to_name=(delegate[1] if delegate else None),
-            submitted_by_name=await fetch_user_name(session, site.submitted_by),
+            submitted_by_name=names.get(str(site.submitted_by)),
             gfc_budget_total=float(gfc.budget_total) if gfc and gfc.budget_total is not None else None,
             closure_budget_total=float(closure.budget_total) if closure.budget_total is not None else None,
             variation_total=round(sum(variation.values()), 2),
