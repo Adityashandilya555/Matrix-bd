@@ -525,7 +525,7 @@ function HeroCopy({ heroOpacity, onHeroSubmit, heroEmail, setHeroEmail }) {
           transform: `translate(-50%, calc(-50% - ${(1 - heroOpacity) * 24}px))`,
         }}
       >
-        <h1 className="hero-title-serif">
+         <h1 className="hero-title-serif">
           Built for <em>retail expansion.</em>
         </h1>
         <div style={{ maxWidth: 480, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -543,34 +543,30 @@ function HeroCopy({ heroOpacity, onHeroSubmit, heroEmail, setHeroEmail }) {
               </svg>
             </button>
           </form>
-          <p className="hero-sub-bright">
-            {PRODUCT_NAME} is the operating system that turns every site you open — BD, legal, build,
-            handover, ops — into one live digital twin. Get early access.
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <a href="#manifesto" className="hero-manifesto liquid-glass">
-              Read the manifesto
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
+            <a href="#manifesto" className="hero-manifesto">
+              <span className="hero-manifesto-text">Read the manifesto</span>
+              <svg className="hero-manifesto-arrow" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
             </a>
           </div>
         </div>
         <div className="hero-social">
-          <a href="#" className="liquid-glass" aria-label="LinkedIn">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <a href="#" aria-label="LinkedIn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4v-7a6 6 0 0 1 6-6z"/>
               <rect x="2" y="9" width="4" height="12"/>
               <circle cx="4" cy="4" r="2"/>
             </svg>
           </a>
-          <a href="#" className="liquid-glass" aria-label="X">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <a href="#" aria-label="X">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 4l16 16M20 4L4 20"/>
             </svg>
           </a>
-          <a href="#" className="liquid-glass" aria-label="GitHub">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <a href="#" aria-label="GitHub">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
             </svg>
           </a>
@@ -596,29 +592,44 @@ function Nav({ onRequestMembership, membershipEmail, setMembershipEmail, onSignI
   return (
     <nav className="nav">
       <div className="nav-pill liquid-glass">
+        {/* ── Brand ── */}
         <div className="nav-brand">
           <span className="mark">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
               <path
                 d="M4 7 L 20 7 L 12 12 L 20 17 L 4 17 L 12 12 Z"
                 stroke="var(--scale-accent)" strokeWidth="1.4" strokeLinejoin="round"
-                style={{ filter: 'drop-shadow(0 0 4px var(--scale-glow))' }}
+                style={{ filter: 'drop-shadow(0 0 6px var(--scale-glow))' }}
               />
             </svg>
           </span>
-          {PRODUCT_NAME}
+          <span className="nav-brand-text">{PRODUCT_NAME}</span>
+          <span className="nav-brand-dot" />
         </div>
+
+        {/* ── Links ── */}
         <div className="nav-links">
-          <a href={PIPELINE_EXPERIENCE_URL}>Pipeline</a>
-          <button type="button">Customers</button>
-          <button type="button">Docs</button>
+          <a href={PIPELINE_EXPERIENCE_URL}><span>Pipeline</span></a>
+          <button type="button"><span>Customers</span></button>
+          <button type="button"><span>Docs</span></button>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <button type="button" className="nav-signin" onClick={onSignIn}>Sign in</button>
+
+        {/* ── Divider ── */}
+        <span className="nav-divider" />
+
+        {/* ── Auth actions ── */}
+        <div className="nav-actions">
+          <button type="button" className="nav-signin" onClick={onSignIn}>
+            Sign in
+          </button>
           <form
             className="nav-membership"
             onSubmit={(e) => { e.preventDefault(); onRequestMembership(); }}
           >
+            <svg className="nav-membership-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="5" width="18" height="14" rx="2" />
+              <path d="M3 7l9 6 9-6" />
+            </svg>
             <input
               type="email"
               placeholder="Enter your email"
@@ -627,8 +638,8 @@ function Nav({ onRequestMembership, membershipEmail, setMembershipEmail, onSignI
               onChange={(e) => setMembershipEmail(e.target.value)}
             />
             <button type="submit">
-              Request membership
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <span>Request membership</span>
+              <svg className="nav-cta-arrow" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
             </button>
