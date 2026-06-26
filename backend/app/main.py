@@ -23,10 +23,9 @@ from app.db.session import engine
 from app.routers import audit, auth, bd, business_admin, delegations, design, financial_closure, launch_approval, legal, loi, notifications, nso, project, project_excellence, sites, staging, supervisor_codes, tenancy, users
 
 
-# ── Structured / JSON logging (#117) ─────────────────────────────────────────
-# One JSON object per log line.  Each line carries:
-#   ts, level, logger, request_id, msg  (+ exc on exceptions)
-# This makes Railway log streams grep/filter-friendly and correlatable.
+# ── Structured / JSON logging ─────────────────────────────────────────
+# One JSON object per log line: ts, level, logger, request_id, msg (+ exc on exceptions).
+# Correlation makes log streams grep/filter-friendly.
 
 _request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar(
     "request_id", default="-"
@@ -67,14 +66,12 @@ def _int_or_zero(value: str | None) -> int:
 
 def _warn_if_scaled_out() -> None:
     """Warn at startup if >1 worker/replica is configured while the rate-limiter
-    store is the process-local in-memory dict (#225, 3.2).
+    store is the process-local in-memory dict.
 
     The limiter store (app/core/ratelimit.py) is valid ONLY for a single process
-    on a single replica. With >1 worker per process each keeps its own windows,
-    so the effective limit is multiplied and load-balanced attackers get a fresh
-    counter per worker. No Redis store exists yet, so scaling out silently weakens
-    brute-force protection — warn loudly rather than fail the boot. Keep
-    WEB_CONCURRENCY unset until the store is migrated to Redis.
+    on a single replica. With >1 worker per process each keeps its own windows.
+    No Redis store exists yet, so scaling out silently weakens brute-force protection.
+    Keep WEB_CONCURRENCY unset until the store is migrated to Redis.
 
     Detectable from inside the container: the worker count
     (WEB_CONCURRENCY / UVICORN_WORKERS). NOT detectable: horizontal *replica*
@@ -97,7 +94,7 @@ def _warn_if_scaled_out() -> None:
         )
 
 
-# ── Request ID middleware (#117) ──────────────────────────────────────────────
+# ── Request ID middleware ──────────────────────────────────────────────
 
 class _RequestIdMiddleware(BaseHTTPMiddleware):
     """Generate a UUID per request; expose it via X-Request-Id response header.
@@ -119,7 +116,7 @@ class _RequestIdMiddleware(BaseHTTPMiddleware):
             _request_id_var.reset(token)
 
 
-# ── Security response headers (#227) ──────────────────────────────────────────
+# ── Security response headers ──────────────────────────────────────────
 
 def _security_headers(request: Request) -> dict[str, str]:
     """The defense-in-depth headers added to every response. HSTS only on HTTPS
@@ -151,7 +148,7 @@ async def _security_headers_dispatch(request: Request, call_next):
     return response
 
 
-# ── Background email drain (#112) ─────────────────────────────────────────────
+# ── Background email drain ─────────────────────────────────────────────
 
 async def _email_drain_loop() -> None:
     """Poll notification_outbox for pending email rows and dispatch via Resend.
@@ -223,10 +220,8 @@ async def _apply_pending_migrations() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ── Smoke-test the DB — FAIL FAST so Railway ON_FAILURE can restart (#116).
-    # Previously the except block only logged and fell through to `yield`,
-    # meaning a deploy with a bad DATABASE_URL would boot, pass Railway's port
-    # check, and then 500 on every authenticated request indefinitely.
+    # Smoke-test the DB — FAIL FAST so health-checks can detect a failure early.
+    # Previously, a deploy with a bad DATABASE_URL would boot but fail on requests.
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
@@ -272,7 +267,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
-    # Swagger + the machine-readable schema are an attacker's site map (#111).
     # Off unless explicitly enabled (ENABLE_DOCS=true for local dev).
     docs_url="/api/docs" if settings.enable_docs else None,
     redoc_url=None,
@@ -354,7 +348,7 @@ async def health() -> dict:
 @app.get("/api/health/db", dependencies=[Depends(rate_limit(times=30, seconds=60))])
 async def health_db() -> dict:
     """Deep health check — round-trips a SELECT 1 against Supabase.
-    Rate-limited (#109): each call burns a pgBouncer slot round-trip."""
+    Rate-limited: each call burns a pgBouncer slot round-trip."""
     async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))
     return {"status": "ok"}

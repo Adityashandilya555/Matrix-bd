@@ -53,10 +53,8 @@ async def list_supervisor_staging(
 async def push_to_payments(
     site_id: str,
     db: DbDep,
-    # SUPERVISOR ONLY (Todo #7). Pushing into Payments hands off ownership to
-    # Finance and stops the BD pipeline from being able to revise anything on
-    # the site. The product owner asked that this final hand-off be reserved
-    # to the supervisor, regardless of who set up the LOI.
+    # Pushing into Payments hands off ownership to Finance and freezes the BD pipeline.
+    # This final hand-off is reserved to the supervisor.
     current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
     tenant_id: TenantId,
 ) -> OkResponse:

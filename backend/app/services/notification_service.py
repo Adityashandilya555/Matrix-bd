@@ -197,7 +197,6 @@ async def enqueue(
                 tenant_id=tenant_id,
                 site_id=site_id,
                 recipient_id=rid,
-                # Populated for email rows so the drain has a deliverable address.
                 recipient_email=email_map.get(str(rid)) if ch == "email" else None,
                 type=event,
                 channel=ch,
@@ -231,9 +230,6 @@ async def drain_pending_emails(*, resend_api_key: str, batch_size: int = 20) -> 
     """
     import httpx
 
-    # Import here to avoid a module-level circular import (notification_service
-    # is imported by many services; session + config sit above them in the dep
-    # graph, but the import is safe inside a function body).
     from app.core.config import settings as _cfg
     from app.db.session import SessionLocal
 

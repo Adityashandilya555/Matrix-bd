@@ -45,8 +45,7 @@ logger = logging.getLogger(__name__)
 
 
 # LEGAL_LICENSE_FIELDS and _STAGE_TWO_STATUS_TO_LICENSE now live in
-# app.services.licensing_status (shared with the business-admin launch review so
-# the two derive the licensing statuses identically, #229). Imported above.
+# app.services.licensing_status (shared with the business-admin launch review).
 _STAGE_TWO_STATUS_FIELDS = tuple(_STAGE_TWO_STATUS_TO_LICENSE)
 
 
@@ -92,10 +91,6 @@ def _property_summary(snapshot: NsoPropertySnapshot) -> str:
     return " | ".join(parts)
 
 
-# A None-valued stand-in for a missing SiteDetail, so _property_snapshot can read
-# attributes uniformly without a per-field `if details else None` branch (which
-# DeepSource PY-R1000 counts as cyclomatic complexity). _num(None) is None and
-# `x or fallback` / `x if x is not None` behave exactly as the old guards did.
 _NO_SITE_DETAIL = SimpleNamespace(
     rent_type=None, rev_share_pct=None, escalation_pct=None, score=None,
     estimated_monthly_sales=None, carpet_area_sqft=None, cam_charges=None,
@@ -107,8 +102,7 @@ _NO_SITE_DETAIL = SimpleNamespace(
 async def _property_snapshot(
     session: AsyncSession, *, site: models.Site,
 ) -> NsoPropertySnapshot:
-    # Substitute an all-None stand-in when there is no SiteDetail so each field
-    # below reads uniformly (behaviour-identical to the old per-field guards).
+    # Use an all-None stand-in when SiteDetail is absent (identical behaviour to per-field guards).
     details = await _fetch_site_detail(session, site_id=site.id) or _NO_SITE_DETAIL
     return NsoPropertySnapshot(
         site_name=site.name,
@@ -271,8 +265,7 @@ def _compute_stage(
     _project: Optional[models.ProjectReview],
     _licensing: Optional[models.SiteLicensing],
 ) -> str:
-    # _site/_project/_licensing kept for a uniform call signature with
-    # _sync_rollups/_display_rollups; not read here (#238, PYL-W0613).
+    # Unused params kept for a uniform call signature with _sync_rollups / _display_rollups.
     if row.nso_status == "complete":
         return "done"
     # Handed over from the Project module's NSO-Handover tab → opens directly at
@@ -376,7 +369,6 @@ async def _queue_item(
     project: Optional[models.ProjectReview],
     licensing: Optional[models.SiteLicensing],
 ) -> NsoQueueItem:
-    # _session kept for a uniform queue-item signature; not read here (#238, PYL-W0613).
     nso_status = row.nso_status if row else "pending"
     current_stage = row.current_stage if row else "stage_one"
     if row is not None:
