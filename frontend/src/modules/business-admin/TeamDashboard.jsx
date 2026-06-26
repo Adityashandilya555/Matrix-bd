@@ -1,5 +1,6 @@
 import React from 'react';
 import './approval-center.css';
+import { GRID_LAYERS, GRID_ATTACH, stageVignette, canvasBase } from '../../lib/surfaces.js';
 import { PRODUCT_NAME } from '../../router/routes.js';
 import { getAuthToken } from '../../services/api/authToken.js';
 import { decodeJwtPayload } from './jwt.js';
@@ -220,13 +221,16 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
 
   return (
     <div className="ac-root" data-theme={theme}
-      style={{ height: '100vh', background: T.bg, color: T.text, display: 'flex', gap: 14, padding: 14, boxSizing: 'border-box' }}>
+      style={{ height: '100vh', background: 'var(--zm-bg)', color: 'var(--zm-fg)', display: 'flex', boxSizing: 'border-box' }}>
       <Sidebar items={navItems} active={tab} onChange={setTab}
         expanded={navExpanded} onToggleExpanded={toggleNav}
         theme={theme} onToggleTheme={toggleTheme} onLogout={onLogout} />
 
-      <main style={{ flex: 1, minWidth: 0, height: '100%', overflowY: 'auto', borderRadius: 22,
-        background: T.panel, border: `1px solid ${T.line}`, boxShadow: T.cardShadow }}>
+      <main className="zm-app-main" style={{ flex: 1, minWidth: 0, height: '100%', overflowY: 'auto',
+          backgroundColor: canvasBase(theme === 'dark'),
+          backgroundImage: stageVignette(theme === 'dark') + ', ' + GRID_LAYERS,
+          backgroundAttachment: 'fixed, fixed, ' + GRID_ATTACH,
+      }}>
         <div style={{ maxWidth: 1080, margin: '0 auto', padding: '30px 34px 60px' }}>
 
           {/* ── Header ── */}
@@ -266,14 +270,14 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
 
         {/* ── Overview tiles ── */}
         <div className="ac-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(212px, 1fr))', gap: 14, marginBottom: 24 }}>
-          <StatTile icon={Icon.pin} label="Total sites" count={sitesCount} tone="neutral"
+          <StatTile icon={Icon.pin} label="Total sites" count={sitesCount} tone="peach"
             loading={sites.status === 'loading'} caption="in the system" onClick={() => setTab('sites')} />
-          <StatTile icon={Icon.check} label="Awaiting approval" count={approvalSites.length} tone="warn"
+          <StatTile icon={Icon.check} label="Awaiting approval" count={approvalSites.length} tone="slate"
             loading={approvalStatus === 'loading'} caption={approvalSites.length ? `${designSites} design · ${paymentSites} payment` : 'all clear'}
             onClick={() => setTab('approvals')} />
-          <StatTile icon={Icon.flag} label="Completed sites" count={completedSites} tone="success"
+          <StatTile icon={Icon.flag} label="Completed sites" count={completedSites} tone="mint"
             loading={sites.status === 'loading'} caption={completedSites ? 'project done' : 'none yet'} onClick={() => setTab('sites')} />
-          <StatTile icon={Icon.users} label="Pending requests" count={supCount} tone="accent"
+          <StatTile icon={Icon.users} label="Pending requests" count={supCount} tone="blue"
             loading={supervisors.status === 'loading'} caption="workspace access" onClick={() => setTab('departments')} />
         </div>
 
