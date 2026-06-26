@@ -289,42 +289,96 @@ export function StatusPill({ status }) {
 
 // ── Stat tile (overview) ────────────────────────────────────────────────────────
 
-export function StatTile({ icon: TileIcon, label, count, caption, tone = 'accent', loading = false, onClick }) {
-  const active = count > 0;
-  const tones = {
-    accent:  { fg: T.accentText,  chip: T.accentSoft },
-    warn:    { fg: T.warnText,    chip: T.warnSoft },
-    success: { fg: T.successText, chip: T.successSoft },
-    neutral: { fg: T.text,        chip: T.chip },
-  };
-  const c = tones[tone] || tones.accent;
+function CornerTicks() {
   return (
-    <Card
-      as="button"
-      interactive
-      raised
+    <>
+      {[
+        { top: 0, left: 0, rot: 0 },
+        { top: 0, right: 0, rot: 90 },
+        { bottom: 0, right: 0, rot: 180 },
+        { bottom: 0, left: 0, rot: -90 },
+      ].map((p, i) => (
+        <span key={i} style={{
+          position: 'absolute', width: 8, height: 8, ...p,
+          borderTop: '1px solid var(--zm-fg-3)', borderLeft: '1px solid var(--zm-fg-3)',
+          opacity: 0.35, transform: `rotate(${p.rot}deg)`, margin: 6,
+        }}/>
+      ))}
+    </>
+  );
+}
+
+const TONE_FILL = {
+  peach: 'var(--zm-brand-peach)',
+  blue:  'var(--zm-brand-blue)',
+  mint:  'var(--zm-brand-mint)',
+  slate: 'var(--zm-brand-slate)',
+};
+
+export function StatTile({ icon: TileIcon, label, count, caption, tone, loading = false, onClick }) {
+  const fill = TONE_FILL[tone];
+  const toned = !!fill;
+  const onColor = tone === 'slate' ? 'var(--zm-brand-on-slate)' : 'var(--zm-brand-on-pastel)';
+  const ruleColor = toned ? onColor : 'var(--zm-copper)';
+  const valueColor = toned ? onColor : 'var(--zm-fg)';
+  const metaColor = toned ? onColor : 'var(--zm-fg-3)';
+  const noColor = toned ? onColor : 'var(--zm-fg-4)';
+  
+  return (
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
+    <div className="zm-glass"
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
       style={{
-        textAlign: 'left', padding: 20, display: 'flex', flexDirection: 'column', gap: 16,
-        cursor: 'pointer', minWidth: 0,
+        borderRadius: 16, padding: '24px 26px 26px',
+        display: 'flex', flexDirection: 'column', gap: 12,
+        position: 'relative', overflow: 'hidden',
+        ...(toned ? { background: fill } : {}),
+        cursor: onClick ? 'pointer' : 'default',
+        outline: 'none',
+        outlineOffset: -2,
+        transition: 'transform 200ms cubic-bezier(0.22,1,0.36,1), box-shadow 200ms cubic-bezier(0.22,1,0.36,1)',
       }}
+      onMouseEnter={(e) => { if (onClick) { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--zm-shadow-3)'; } }}
+      onMouseLeave={(e) => { if (onClick) { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'var(--zm-glass)'; } }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ width: 42, height: 42, borderRadius: 12, display: 'inline-flex', alignItems: 'center',
-          justifyContent: 'center', background: c.chip, color: c.fg }}>
-          <TileIcon size={21} />
+      <span aria-hidden="true" style={{
+        position: 'absolute', inset: '0 0 auto 0', height: 1,
+        background: 'linear-gradient(90deg, transparent, ' + ruleColor + ', transparent)', opacity: toned ? 0.35 : 0.6,
+      }}/>
+      {!toned && <CornerTicks/>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+        <span style={{ color: noColor, display: 'inline-flex', flex: '0 0 auto', opacity: toned ? 0.7 : 1 }}>
+          {TileIcon && <TileIcon size={14}/>}
         </span>
-        <Icon.caret size={16} style={{ color: T.textFaint }} />
+        <span style={{
+          fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9.5,
+          letterSpacing: '0.22em', textTransform: 'uppercase', color: metaColor,
+          lineHeight: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1,
+          opacity: toned ? 0.8 : 1,
+        }}>{label}</span>
+        {onClick && (
+          <span style={{ color: noColor, display: 'inline-flex', flex: '0 0 auto' }}>
+            <Icon.chevron size={12}/>
+          </span>
+        )}
       </div>
-      <div>
-        {loading
-          ? <div className="ac-skel" style={{ width: 52, height: 40, borderRadius: 8 }} />
-          : <div style={{ fontSize: 40, lineHeight: 1, fontWeight: 760, letterSpacing: '-0.03em',
-              color: active ? c.fg : T.textFaint, ...TABULAR }}>{count}</div>}
-        <div style={{ marginTop: 9, fontSize: 14, fontWeight: 650, color: T.text }}>{label}</div>
-        <div style={{ marginTop: 3, fontSize: 12, color: T.textFaint }}>{loading ? '—' : caption}</div>
-      </div>
-    </Card>
+      
+      {loading ? (
+        <div className="ac-skel" style={{ width: 52, height: 40, borderRadius: 8, marginTop: 10, marginBottom: 10 }} />
+      ) : (
+        <span style={{
+          fontFamily: 'var(--zm-font-display)', fontWeight: 800, fontStyle: 'normal',
+          fontSize: 64, letterSpacing: '-0.035em', color: valueColor, lineHeight: 0.95,
+          fontVariantNumeric: 'tabular-nums', fontFeatureSettings: "'tnum' 1",
+        }}>{count}</span>
+      )}
+      
+      <span style={{ width: 36, height: 1, background: ruleColor, opacity: 0.7 }}/>
+      
+      {caption && <span style={{ fontFamily: 'var(--zm-font-body)', fontStyle: 'normal', fontSize: 12.5, color: metaColor, lineHeight: 1.35, opacity: toned ? 0.78 : 1 }}>{caption}</span>}
+    </div>
   );
 }
 

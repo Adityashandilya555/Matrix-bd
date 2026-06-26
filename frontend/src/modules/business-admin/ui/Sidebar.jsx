@@ -23,7 +23,7 @@ export default function Sidebar({
   return (
     <aside className="ac-sidebar" style={{
       width: expanded ? W_EXPANDED : W_COLLAPSED, flexShrink: 0, height: '100%', boxSizing: 'border-box',
-      background: T.panel, border: `1px solid ${T.line}`, borderRadius: 22, boxShadow: T.cardShadow,
+      background: 'var(--zm-sidebar-bg)', borderRight: `1px solid var(--zm-sidebar-line)`,
       display: 'flex', flexDirection: 'column', padding: '18px 14px', overflow: 'hidden',
     }}>
       {/* Brand + collapse toggle (always visible, top) */}
@@ -94,7 +94,7 @@ export default function Sidebar({
               )}
               {hasCount && !expanded && (
                 <span style={{ position: 'absolute', top: 9, right: 13, width: 8, height: 8, borderRadius: 999,
-                  background: T.warn, border: `2px solid ${T.panel}` }} />
+                  background: T.warn, border: `2px solid var(--zm-sidebar-bg)` }} />
               )}
             </button>
           );
