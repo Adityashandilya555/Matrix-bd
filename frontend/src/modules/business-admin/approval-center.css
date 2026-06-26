@@ -1,170 +1,32 @@
-/* Approval Center — theme tokens + interaction layer.
+/* Approval Center — Interaction layer and portal-specific layout.
  *
- * The portal is inline-styled (kit.jsx) for layout/colour, but :hover /
- * :focus-visible / keyframes / theming can't live in inline styles. This file
- * owns those. Colour tokens are CSS custom properties so light/dark is a pure
- * `data-theme` swap on the `.ac-root` element — every contrast pair is tuned in
- * both themes. The drawer is a DOM descendant of `.ac-root`, so it inherits the
- * resolved tokens automatically.
+ * Colour tokens have been migrated to the global zm- design system.
  */
 
-/* ── DARK (default) ──────────────────────────────────────────────────────── */
-.ac-root {
-  --ac-bg: #08090C;                        /* outermost page (behind the floating panels) */
-  --ac-panel: #0E0F14;                      /* the big rounded sidebar / main panels */
-  --ac-surface: rgba(255, 255, 255, 0.03);  /* subtle card fill on a panel */
-  --ac-surface-raised: #181B23;             /* raised cards (KPIs, rows) */
-  --ac-surface-inset: rgba(0, 0, 0, 0.35);
-  --ac-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
-  --ac-line: rgba(255, 255, 255, 0.10);
-  --ac-line-strong: rgba(255, 255, 255, 0.16);
-  --ac-chip: rgba(255, 255, 255, 0.06);
-
-  --ac-text: #F4F5F7;
-  --ac-text-muted: rgba(255, 255, 255, 0.64);
-  --ac-text-faint: rgba(255, 255, 255, 0.42);
-
-  --ac-inv-bg: #F4F5F7;
-  --ac-inv-text: #0B0C10;
-  --ac-inv-soft: rgba(11, 12, 16, 0.12);
-
-  --ac-drawer-bg: #0E0F15;
-
-  --ac-accent: #3B6EF0;
-  --ac-accent-text: #8FB0FF;
-  --ac-accent-soft: rgba(59, 110, 240, 0.16);
-  --ac-success: #2FA160;
-  --ac-success-text: #7FD1A8;
-  --ac-success-soft: rgba(47, 161, 96, 0.15);
-  --ac-danger: #C0413F;
-  --ac-danger-text: #F4A6A4;
-  --ac-danger-soft: rgba(192, 65, 63, 0.16);
-  --ac-warn: #E0A23C;
-  --ac-warn-text: #F2C879;
-  --ac-warn-soft: rgba(224, 162, 60, 0.15);
-  --ac-project: #B083E8;
-  --ac-project-text: #C9A6F2;
-  --ac-project-soft: rgba(176, 131, 232, 0.16);
-
-  --ac-hover: rgba(255, 255, 255, 0.08);
-  --ac-press: rgba(0, 0, 0, 0.12);
-  --ac-tab-hover: rgba(255, 255, 255, 0.05);
-  --ac-card-hover-border: rgba(255, 255, 255, 0.22);
-  --ac-card-hover-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  --ac-skel-base: rgba(255, 255, 255, 0.04);
-  --ac-skel-hi: rgba(255, 255, 255, 0.10);
-  --ac-placeholder: rgba(255, 255, 255, 0.38);
-  --ac-overlay: rgba(5, 6, 9, 0.62);
-  --ac-drawer-shadow: -24px 0 70px rgba(0, 0, 0, 0.5);
-}
-
-/* ── LIGHT ───────────────────────────────────────────────────────────────── */
-.ac-root[data-theme="light"] {
-  --ac-bg: #E9EBEF;
-  --ac-panel: #FFFFFF;
-  --ac-surface: #F6F7F9;
-  --ac-surface-raised: #FFFFFF;
-  --ac-surface-inset: #EEF0F4;
-  --ac-card-shadow: 0 1px 2px rgba(17, 21, 30, 0.05), 0 6px 16px -10px rgba(17, 21, 30, 0.16);
-  --ac-line: rgba(17, 21, 30, 0.10);
-  --ac-line-strong: rgba(17, 21, 30, 0.15);
-  --ac-chip: rgba(17, 21, 30, 0.05);
-
-  --ac-text: #161922;
-  --ac-text-muted: rgba(22, 25, 34, 0.62);
-  --ac-text-faint: rgba(22, 25, 34, 0.45);
-
-  --ac-inv-bg: #1B1E27;
-  --ac-inv-text: #FFFFFF;
-  --ac-inv-soft: rgba(255, 255, 255, 0.22);
-
-  --ac-drawer-bg: #FFFFFF;
-
-  --ac-accent: #3B6EF0;
-  --ac-accent-text: #2D5BD6;
-  --ac-accent-soft: rgba(59, 110, 240, 0.10);
-  --ac-success: #1F9D57;
-  --ac-success-text: #157F44;
-  --ac-success-soft: rgba(31, 157, 87, 0.12);
-  --ac-danger: #C73B39;
-  --ac-danger-text: #B23230;
-  --ac-danger-soft: rgba(199, 59, 57, 0.10);
-  --ac-warn: #C9821A;
-  --ac-warn-text: #9A630B;
-  --ac-warn-soft: rgba(224, 162, 60, 0.18);
-  --ac-project: #8B5CD6;
-  --ac-project-text: #7A45C9;
-  --ac-project-soft: rgba(139, 92, 214, 0.12);
-
-  --ac-hover: rgba(17, 21, 30, 0.05);
-  --ac-press: rgba(17, 21, 30, 0.10);
-  --ac-tab-hover: rgba(17, 21, 30, 0.04);
-  --ac-card-hover-border: rgba(17, 21, 30, 0.18);
-  --ac-card-hover-shadow: 0 10px 26px rgba(17, 21, 30, 0.10);
-  --ac-skel-base: rgba(17, 21, 30, 0.05);
-  --ac-skel-hi: rgba(17, 21, 30, 0.10);
-  --ac-placeholder: rgba(22, 25, 34, 0.40);
-  --ac-overlay: rgba(20, 24, 33, 0.40);
-  --ac-drawer-shadow: -24px 0 70px rgba(17, 21, 30, 0.18);
-}
-
-/* Smooth the theme swap (but not on first paint / reduced-motion). */
-.ac-root, .ac-card, .ac-btn, .ac-iconbtn, .ac-drawer, .ac-input {
+.ac-root, .ac-drawer, .ac-input {
   transition: background-color .2s ease, color .2s ease, border-color .2s ease;
 }
-
-/* ── Buttons ──────────────────────────────────────────────────────────────
- * One translucent inset overlay gives every variant a consistent hover/press. */
-.ac-btn {
-  position: relative; display: inline-flex; align-items: center; justify-content: center;
-  gap: 7px; white-space: nowrap; user-select: none;
-  transition: box-shadow .15s ease, transform .12s ease, opacity .15s ease, background-color .2s ease, color .2s ease;
-  -webkit-tap-highlight-color: transparent;
-}
-.ac-btn:hover:not(:disabled)  { transform: translateY(-1px); box-shadow: inset 0 0 0 999px var(--ac-hover); }
-.ac-btn:active:not(:disabled) { transform: translateY(0) scale(.99); box-shadow: inset 0 0 0 999px var(--ac-press); }
-.ac-btn:focus-visible { outline: 2px solid var(--ac-accent); outline-offset: 2px; }
-.ac-btn:disabled { opacity: .5; cursor: not-allowed; }
-
-/* Per-variant depth — a resting colour shadow that grows on hover (combined with
-   the inset overlay so both apply). Ghost / subtle stay flat. */
-.ac-btn.v-solid   { box-shadow: 0 4px 14px -8px rgba(0, 0, 0, .45); }
-.ac-btn.v-success { box-shadow: 0 5px 16px -8px var(--ac-success); }
-.ac-btn.v-danger  { box-shadow: 0 5px 16px -8px var(--ac-danger); }
-.ac-btn.v-accent  { box-shadow: 0 5px 16px -8px var(--ac-accent); }
-.ac-btn.v-solid:hover:not(:disabled)   { box-shadow: inset 0 0 0 999px var(--ac-hover), 0 7px 20px -8px rgba(0, 0, 0, .5); }
-.ac-btn.v-success:hover:not(:disabled) { box-shadow: inset 0 0 0 999px var(--ac-hover), 0 9px 24px -8px var(--ac-success); }
-.ac-btn.v-danger:hover:not(:disabled)  { box-shadow: inset 0 0 0 999px var(--ac-hover), 0 9px 24px -8px var(--ac-danger); }
-.ac-btn.v-accent:hover:not(:disabled)  { box-shadow: inset 0 0 0 999px var(--ac-hover), 0 9px 24px -8px var(--ac-accent); }
 
 /* ── Sidebar ──────────────────────────────────────────────────────────────── */
 .ac-sidebar { transition: width .24s cubic-bezier(.4, 0, .2, 1); }
 .ac-navitem { transition: background-color .15s ease, color .15s ease, box-shadow .15s ease; }
-.ac-navitem:hover:not(.is-active) { background: var(--ac-chip) !important; }
-.ac-navitem:focus-visible { outline: 2px solid var(--ac-accent); outline-offset: 2px; }
+.ac-navitem:hover:not(.is-active) { background: var(--zm-surface-hover) !important; }
+.ac-navitem:focus-visible { outline: 2px solid var(--zm-accent); outline-offset: 2px; }
 
-.ac-iconbtn { transition: box-shadow .15s ease, transform .12s ease, color .15s ease, background-color .2s ease, border-color .2s ease; }
-.ac-iconbtn:hover:not(:disabled)  { box-shadow: inset 0 0 0 999px var(--ac-hover); }
-.ac-iconbtn:active:not(:disabled) { transform: scale(.92); }
-.ac-iconbtn:focus-visible { outline: 2px solid var(--ac-accent); outline-offset: 2px; }
-.ac-iconbtn.is-spinning svg { animation: ac-spin .9s linear infinite; }
-
-/* ── Cards / interactive surfaces ─────────────────────────────────────────── */
-.ac-card { transition: border-color .16s ease, background-color .2s ease, box-shadow .16s ease, transform .16s ease; }
-.ac-card.is-raised { box-shadow: var(--ac-card-shadow); }   /* resting depth (matters most in light mode) */
-.ac-interactive { cursor: pointer; }
+/* ── Interactive Cards ────────────────────────────────────────────────────── */
+.ac-interactive { cursor: pointer; transition: border-color .16s ease, background-color .2s ease, box-shadow .16s ease, transform .16s ease; }
 .ac-interactive:hover {
   transform: translateY(-1px);
-  border-color: var(--ac-card-hover-border) !important;
-  box-shadow: var(--ac-card-hover-shadow);
+  border-color: var(--zm-line-strong) !important;
+  box-shadow: var(--zm-shadow-2);
 }
-.ac-interactive:focus-visible { outline: 2px solid var(--ac-accent); outline-offset: 2px; }
+.ac-interactive:focus-visible { outline: 2px solid var(--zm-accent); outline-offset: 2px; }
 .ac-interactive:active { transform: translateY(0); }
 
 /* ── Tabs ──────────────────────────────────────────────────────────────── */
 .ac-tab { transition: background-color .16s ease, color .16s ease, box-shadow .16s ease; }
-.ac-tab:hover:not(.is-active) { box-shadow: inset 0 0 0 999px var(--ac-tab-hover); }
-.ac-tab:focus-visible { outline: 2px solid var(--ac-accent); outline-offset: 2px; }
+.ac-tab:hover:not(.is-active) { box-shadow: inset 0 0 0 999px var(--zm-surface-hover); }
+.ac-tab:focus-visible { outline: 2px solid var(--zm-accent); outline-offset: 2px; }
 
 /* ── Links ─────────────────────────────────────────────────────────────── */
 .ac-link { transition: color .14s ease, text-decoration-color .14s ease; text-decoration-color: transparent; }
@@ -172,12 +34,12 @@
 
 /* ── Inputs ────────────────────────────────────────────────────────────── */
 .ac-input { transition: border-color .14s ease, box-shadow .14s ease, background-color .2s ease, color .2s ease; }
-.ac-input:focus { outline: none; border-color: var(--ac-accent) !important; box-shadow: 0 0 0 3px rgba(59, 110, 240, .22); }
-.ac-input::placeholder { color: var(--ac-placeholder); }
+.ac-input:focus { outline: none; border-color: var(--zm-accent) !important; box-shadow: var(--zm-ring-focus); }
+.ac-input::placeholder { color: var(--zm-fg-4); }
 
 /* ── Skeleton shimmer ──────────────────────────────────────────────────── */
 .ac-skel {
-  background: linear-gradient(90deg, var(--ac-skel-base) 25%, var(--ac-skel-hi) 37%, var(--ac-skel-base) 63%);
+  background: linear-gradient(90deg, rgba(128,128,128,0.05) 25%, rgba(128,128,128,0.1) 37%, rgba(128,128,128,0.05) 63%);
   background-size: 200% 100%;
   animation: ac-shimmer 1.4s ease-in-out infinite;
 }
@@ -203,7 +65,7 @@
 }
 .ac-overlay {
   position: fixed; inset: 0; z-index: 4000;
-  background: var(--ac-overlay);
+  background: rgba(0,0,0,0.5);
   animation: ac-overlay-in .2s ease both;
   display: flex; justify-content: flex-end;
   pointer-events: auto;
@@ -212,8 +74,8 @@
 .ac-drawer {
   height: 100dvh; max-height: 100dvh; width: min(720px, calc(100vw - 24px));
   box-sizing: border-box; min-width: 0;
-  background: var(--ac-drawer-bg); border-left: 1px solid var(--ac-line);
-  box-shadow: var(--ac-drawer-shadow);
+  background: var(--zm-surface); border-left: 1px solid var(--zm-line);
+  box-shadow: var(--zm-shadow-pop);
   display: flex; flex-direction: column; overflow: hidden;
   animation: ac-drawer-in .26s cubic-bezier(.22, .61, .36, 1) both;
 }
@@ -235,18 +97,16 @@
 
 /* ── Pipeline nodes (Sites tab) ────────────────────────────────────────── */
 .ac-node { transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease; }
-.ac-pipeline-row.ac-interactive:hover .ac-node-active { box-shadow: 0 0 0 4px var(--ac-warn-soft); }
+.ac-pipeline-row.ac-interactive:hover .ac-node-active { box-shadow: 0 0 0 4px var(--zm-warning-soft); }
 
 /* ── Disclosure (org tree) ─────────────────────────────────────────────── */
 .ac-caret { transition: transform .18s ease; }
 .ac-caret.is-open { transform: rotate(90deg); }
 
 @media (prefers-reduced-motion: reduce) {
-  .ac-root, .ac-card, .ac-btn, .ac-iconbtn, .ac-drawer, .ac-input,
-  .ac-tab, .ac-link { transition: none; }
+  .ac-root, .ac-drawer, .ac-input, .ac-tab, .ac-link { transition: none; }
   .ac-overlay, .ac-drawer, .ac-fade-in, .ac-stagger > * { animation: none; }
   .ac-skel { animation: none; }
-  .ac-iconbtn.is-spinning svg { animation-duration: 1.6s; }
   .ac-interactive:hover { transform: none; }
   .ac-caret { transition: none; }
 }

@@ -16,46 +16,46 @@ import { createPortal } from 'react-dom';
 // names in both themes means components never hardcode a colour — light/dark is a
 // pure data-theme swap on the portal root, with contrast tuned in both.
 export const T = {
-  bg:            'var(--ac-bg)',
-  panel:         'var(--ac-panel)',        // big rounded sidebar / main panels
-  surface:       'var(--ac-surface)',
-  surfaceRaised: 'var(--ac-surface-raised)',
-  surfaceInset:  'var(--ac-surface-inset)',
-  cardShadow:    'var(--ac-card-shadow)',
-  line:          'var(--ac-line)',
-  lineStrong:    'var(--ac-line-strong)',
-  chip:          'var(--ac-chip)',        // subtle neutral fill (icon chips, ghost buttons)
+  bg:            'var(--zm-bg)',
+  panel:         'var(--zm-surface)',        // big rounded sidebar / main panels
+  surface:       'var(--zm-surface-2)',
+  surfaceRaised: 'var(--zm-surface)',
+  surfaceInset:  'rgba(0,0,0,0.1)',
+  cardShadow:    'var(--zm-shadow-1)',
+  line:          'var(--zm-line)',
+  lineStrong:    'var(--zm-line-strong, var(--zm-line))',
+  chip:          'var(--zm-surface-2)',
 
-  text:      'var(--ac-text)',
-  textMuted: 'var(--ac-text-muted)',
-  textFaint: 'var(--ac-text-faint)',
+  text:      'var(--zm-fg)',
+  textMuted: 'var(--zm-fg-2)',
+  textFaint: 'var(--zm-fg-3)',
 
   // Inverted surface — near-white on dark, near-black on light (solid buttons / active pills).
-  invBg:   'var(--ac-inv-bg)',
-  invText: 'var(--ac-inv-text)',
-  invSoft: 'var(--ac-inv-soft)',          // subtle fill that reads on the inverted surface
+  invBg:   'var(--zm-fg)',
+  invText: 'var(--zm-bg)',
+  invSoft: 'var(--zm-fg-4)',
 
-  drawerBg: 'var(--ac-drawer-bg)',
+  drawerBg: 'var(--zm-surface)',
 
-  accent:     'var(--ac-accent)',
-  accentText: 'var(--ac-accent-text)',
-  accentSoft: 'var(--ac-accent-soft)',
+  accent:     'var(--zm-accent)',
+  accentText: 'var(--zm-accent)',
+  accentSoft: 'var(--zm-accent-soft)',
 
-  success:     'var(--ac-success)',
-  successText: 'var(--ac-success-text)',
-  successSoft: 'var(--ac-success-soft)',
+  success:     'var(--zm-success)',
+  successText: 'var(--zm-success)',
+  successSoft: 'var(--zm-success-soft)',
 
-  danger:     'var(--ac-danger)',
-  dangerText: 'var(--ac-danger-text)',
-  dangerSoft: 'var(--ac-danger-soft)',
+  danger:     'var(--zm-danger)',
+  dangerText: 'var(--zm-danger)',
+  dangerSoft: 'var(--zm-danger-soft)',
 
-  warn:     'var(--ac-warn)',
-  warnText: 'var(--ac-warn-text)',
-  warnSoft: 'var(--ac-warn-soft)',
+  warn:     'var(--zm-warning)',
+  warnText: 'var(--zm-warning)',
+  warnSoft: 'var(--zm-warning-soft)',
 
-  project:     'var(--ac-project)',       // purple — project / budget category
-  projectText: 'var(--ac-project-text)',
-  projectSoft: 'var(--ac-project-soft)',
+  project:     'var(--zm-plum)',       // purple — project / budget category
+  projectText: 'var(--zm-plum)',
+  projectSoft: 'var(--zm-plum-soft)',
 
   mono: 'ui-monospace, SFMono-Regular, Menlo, monospace',
 
@@ -170,7 +170,7 @@ export function Avatar({ name, email, size = 30 }) {
 // ── Card ──────────────────────────────────────────────────────────────────────
 
 export function Card({ as: Tag = 'div', interactive = false, raised = false, style, className = '', ...rest }) {
-  const cls = ['ac-card', interactive ? 'ac-interactive' : '', raised ? 'is-raised' : '', className].filter(Boolean).join(' ');
+  const cls = ['zm-glass', interactive ? 'ac-interactive' : '', className].filter(Boolean).join(' ');
   return (
     <Tag
       className={cls}
@@ -202,9 +202,13 @@ const BTN_SIZES = {
 
 export function Button({ variant = 'subtle', size = 'sm', loading = false, icon, children, style, disabled, ...rest }) {
   const isDisabled = disabled || loading;
+  let cls = 'zm-btn';
+  if (variant === 'solid' || variant === 'accent' || variant === 'success') cls = 'zm-btn-primary';
+  if (variant === 'danger') cls = 'zm-btn-danger';
+
   return (
     <button
-      className={`ac-btn v-${variant}`}
+      className={cls}
       disabled={isDisabled}
       // Disabled/in-flight buttons must LOOK non-clickable — otherwise an admin
       // who clicks (e.g. Financial Closure) sees no state change. The disabled
@@ -221,7 +225,7 @@ export function Button({ variant = 'subtle', size = 'sm', loading = false, icon,
 export function IconButton({ label, loading = false, size = 32, children, style, ...rest }) {
   return (
     <button
-      className={`ac-iconbtn${loading ? ' is-spinning' : ''}`}
+      className={`zm-icon-btn${loading ? ' is-spinning' : ''}`}
       aria-label={label}
       title={label}
       style={{
