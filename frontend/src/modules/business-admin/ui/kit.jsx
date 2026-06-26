@@ -178,6 +178,7 @@ export function Card({ as: Tag = 'div', interactive = false, raised = false, sty
         border: `1px solid ${T.line}`,
         borderRadius: T.radius,
         background: raised ? T.surfaceRaised : T.surface,
+        boxShadow: T.cardShadow,
         ...style,
       }}
       {...rest}
