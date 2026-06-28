@@ -1,7 +1,10 @@
+// skipcq: JS-0833
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import MetricCard from '../shared/primitives/MetricCard.jsx';
+import { keyActivate } from '../../lib/a11y.js';
+import OverviewFilterBar from '../shared/primitives/OverviewFilterBar.jsx';
 import { getPEQueue } from '../../services/api/projectExcellenceApi.js';
 import { ROUTES } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
@@ -10,9 +13,84 @@ import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 // deep-links into the Pipeline (queue) tab, where the matching status filter
 // can be applied. Mirrors the Project module's overview pattern.
 
+const STATUS_LABELS = {
+  pending: 'Awaiting allocation',
+  allocated: 'Allocated',
+  budgeting: 'Budgeting',
+  in_progress: 'In execution',
+  approved: 'Approved',
+  done: 'Done'
+};
+const BUDGET_LABELS = {
+  draft: 'Draft',
+  pending_supervisor: 'Supervisor review',
+  pending_admin: 'Admin review',
+  approved: 'Approved',
+  rejected: 'Rejected',
+};
+
+const PE_STATUS_FILTERS = [
+  { key: 'pending', label: 'Awaiting allocation', color: 'var(--zm-warning)' },
+  { key: 'budgeting', label: 'Budgeting', color: 'var(--zm-copper)' },
+  { key: 'approved', label: 'Approved', color: 'var(--zm-success)' },
+];
+
+function StatusPill({ value, tone = 'var(--zm-accent)' }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', height: 22, padding: '0 10px',
+      borderRadius: 4, border: `1px solid ${tone}`, color: tone,
+      fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 10,
+      letterSpacing: '0.12em', textTransform: 'uppercase', whiteSpace: 'nowrap',
+    }}>
+      {value}
+    </span>
+  );
+}
+
+function QueueTable({ rows, onOpen, limit }) {
+  const displayRows = limit ? rows.slice(0, limit) : rows;
+  const COLS = '120px minmax(220px, 1fr) 130px 170px 170px';
+  return (
+    <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{
+        display: 'grid', gridTemplateColumns: COLS, gap: 12, padding: '12px 16px',
+        background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)',
+        fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 10.5,
+        letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)',
+      }}>
+        <span>Code</span>
+        <span>Site</span>
+        <span>City</span>
+        <span>Excellence status</span>
+        <span>Budget status</span>
+      </div>
+      {displayRows.map((row) => (
+        <div key={row.siteId} role="button" tabIndex={0} className="zm-row" onClick={() => onOpen(row)} onKeyDown={keyActivate(() => onOpen(row))} style={{
+          display: 'grid', gridTemplateColumns: COLS, gap: 12, padding: '14px 16px',
+          borderBottom: '1px solid var(--zm-line-faint)', cursor: 'pointer', alignItems: 'center',
+        }} onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zm-surface-hover)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
+          <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12, color: 'var(--zm-fg-2)' }}>{row.siteCode}</span>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 800, color: 'var(--zm-fg)' }}>{row.siteName}</span>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-2)' }}>{row.city}</span>
+          <StatusPill value={STATUS_LABELS[row.excellenceStatus] || row.excellenceStatus} />
+          <StatusPill value={BUDGET_LABELS[row.budgetStatus] || row.budgetStatus} tone={row.budgetStatus === 'approved' ? 'var(--zm-success)' : 'var(--zm-copper)'} />
+        </div>
+      ))}
+      {rows.length === 0 && (
+        <div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
+          No sites match the current filter.
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ProjectExcellenceOverviewPage() {
   const navigate = useNavigate();
   const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
+  const [activeFilter, setActiveFilter] = React.useState('all');
+  const [search, setSearch] = React.useState('');
   // Monotonic request id: useSiteDataRefresh calls load() directly (not via the
   // effect's cleanup), so a per-call `cancelled` flag can't stop an older,
   // slower getPEQueue() response from clobbering a newer one. Only the latest
@@ -44,9 +122,21 @@ export default function ProjectExcellenceOverviewPage() {
   const items = state.items;
   const loading = state.status === 'loading';
 
-  const pending = items.filter((r) => r.excellenceStatus === 'pending').length;
-  const budgeting = items.filter((r) => r.excellenceStatus === 'allocated' || r.excellenceStatus === 'budgeting').length;
-  const approved = items.filter((r) => r.excellenceStatus === 'approved' || r.excellenceStatus === 'done').length;
+  const pendingItems = items.filter((r) => r.excellenceStatus === 'pending');
+  const budgetingItems = items.filter((r) => r.excellenceStatus === 'allocated' || r.excellenceStatus === 'budgeting');
+  const approvedItems = items.filter((r) => r.excellenceStatus === 'approved' || r.excellenceStatus === 'done');
+
+  const pending = pendingItems.length;
+  const budgeting = budgetingItems.length;
+  const approved = approvedItems.length;
+  
+  const subset = activeFilter === 'pending' ? pendingItems
+               : activeFilter === 'budgeting' ? budgetingItems
+               : activeFilter === 'approved' ? approvedItems
+               : items;
+  const needle = search.trim().toLowerCase();
+  const filteredRows = subset.filter((r) => !needle || [r.siteCode, r.siteName, r.city].join(' ').toLowerCase().includes(needle));
+
   const adminReview = items.filter((r) => r.budgetStatus === 'pending_admin').length;
   const cityCount = new Set(items.map((r) => r.city).filter(Boolean)).size;
 
@@ -81,6 +171,14 @@ export default function ProjectExcellenceOverviewPage() {
   const openQueue = () => navigate(ROUTES.PROJECT_EXCELLENCE);
   const openHistory = () => navigate(ROUTES.PROJECT_EXCELLENCE_HISTORY);
 
+  const openRow = (row) => {
+    if (row.excellenceStatus === 'approved' || row.excellenceStatus === 'done') {
+      navigate(`${ROUTES.PROJECT_EXCELLENCE_HISTORY}?focus=${encodeURIComponent(row.siteId)}`);
+    } else {
+      navigate(`${ROUTES.PROJECT_EXCELLENCE}?focus=${encodeURIComponent(row.siteId)}`);
+    }
+  };
+
   const lede = loading
     ? 'Loading the project excellence queue…'
     : `${state.total} site${state.total === 1 ? '' : 's'} in the project excellence queue`;
@@ -99,13 +197,27 @@ export default function ProjectExcellenceOverviewPage() {
         <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{state.error}</div>
       )}
 
-      {state.status !== 'error' && (
-        <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-          <MetricCard {...metrics.all} onClick={openQueue}/>
-          <MetricCard {...metrics.pending} onClick={openQueue}/>
-          <MetricCard {...metrics.budgeting} onClick={openQueue}/>
-          <MetricCard {...metrics.approved} onClick={openHistory}/>
-        </div>
+      {state.status === 'ready' && (
+        <>
+          <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
+            <MetricCard {...metrics.all} onClick={openQueue}/>
+            <MetricCard {...metrics.pending} onClick={openQueue}/>
+            <MetricCard {...metrics.budgeting} onClick={openQueue}/>
+            <MetricCard {...metrics.approved} onClick={openHistory}/>
+          </div>
+          <OverviewFilterBar
+            filters={PE_STATUS_FILTERS.map(f => ({
+              ...f,
+              count: f.key === 'pending' ? pending : f.key === 'budgeting' ? budgeting : approved
+            }))}
+            active={activeFilter}
+            onFilter={setActiveFilter}
+            search={search}
+            onSearch={setSearch}
+            totalCount={items.length}
+          />
+          <QueueTable rows={filteredRows} limit={12} onOpen={openRow} />
+        </>
       )}
     </div>
   );

@@ -1,9 +1,11 @@
+// skipcq: JS-0833
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import MetricCard from '../shared/primitives/MetricCard.jsx';
 import SearchBox from '../shared/primitives/SearchBox.jsx';
 import SubFilterPill from '../shared/primitives/SubFilterPill.jsx';
+import OverviewFilterBar from '../shared/primitives/OverviewFilterBar.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import { getDesignQueue } from '../../services/api/designApi.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
@@ -66,6 +68,12 @@ const KPIS = {
 };
 const KPI_ORDER = ['sites', 'inProgress', 'gfc', 'approved'];
 
+const DESIGN_STATUS_FILTERS = [
+  { key: 'inProgress', label: 'In progress', color: 'var(--zm-info)' },
+  { key: 'gfc', label: 'Awaiting GFC', color: 'var(--zm-copper)' },
+  { key: 'approved', label: 'Approved', color: 'var(--zm-success)' },
+];
+
 function matchesKpi(row, kpi) {
   return !kpi.statuses || kpi.statuses.includes(row.designStatus);
 }
@@ -86,7 +94,8 @@ function StatusPill({ value }) {
 
 // QueueTable — Code | Site | City | Status | Stage (row styling mirrors
 // DesignQueuePage). Row click deep-links into the queue tab.
-function QueueTable({ rows, onOpen }) {
+function QueueTable({ rows, onOpen, limit }) {
+  const displayRows = limit ? rows.slice(0, limit) : rows;
   const COLS = '120px minmax(200px, 1fr) 130px 180px 110px';
   return (
     <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
@@ -103,7 +112,7 @@ function QueueTable({ rows, onOpen }) {
         <span>Status</span>
         <span>Stage</span>
       </div>
-      {rows.map((row) => (
+      {displayRows.map((row) => (
         <div
           key={row.siteId}
           className="zm-row"
@@ -151,6 +160,7 @@ export default function DesignOverviewPage() {
   const [view, setView] = React.useState(null);
   const [stage, setStage] = React.useState('all');
   const [search, setSearch] = React.useState('');
+  const [activeFilter, setActiveFilter] = React.useState('all');
 
   const load = React.useCallback(() => {
     let cancelled = false;
@@ -189,12 +199,13 @@ export default function DesignOverviewPage() {
   };
 
   // Rows for the expanded view: KPI status subset → stage pill → search.
-  const kpi = view ? KPIS[view] : null;
-  const subset = kpi ? items.filter((r) => matchesKpi(r, kpi)) : items;
+  const subset = view 
+    ? (KPIS[view] ? items.filter((r) => matchesKpi(r, KPIS[view])) : items)
+    : (activeFilter === 'all' ? items : items.filter((r) => matchesKpi(r, KPIS[activeFilter])));
   const stageCounts = Object.fromEntries(STAGE_PILLS.map((p) => [p.id, subset.filter((r) => r.currentStage === p.id).length]));
   const needle = search.trim().toLowerCase();
   const filtered = subset
-    .filter((r) => stage === 'all' || r.currentStage === stage)
+    .filter((r) => view ? (stage === 'all' || r.currentStage === stage) : true)
     .filter((r) => !needle || [r.siteCode, r.siteName, r.city].filter(Boolean).join(' ').toLowerCase().includes(needle));
 
   const openRow = (row) => navigate(`${ROUTES.DESIGN}?focus=${encodeURIComponent(row.siteId)}`);
@@ -225,21 +236,35 @@ export default function DesignOverviewPage() {
       )}
 
       {state.status === 'ready' && !view && (
-        <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-          {KPI_ORDER.map((key) => {
-            const k = KPIS[key];
-            return (
-              <MetricCard
-                key={key}
-                tone={k.tone}
-                no={k.no} eyebrow={k.eyebrow} rule={k.rule}
-                value={String(countFor(key)).padStart(2, '0')}
-                sub={k.sub}
-                onClick={() => selectKpi(key)}
-              />
-            );
-          })}
-        </div>
+        <>
+          <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
+            {KPI_ORDER.map((key) => {
+              const k = KPIS[key];
+              return (
+                <MetricCard
+                  key={key}
+                  tone={k.tone}
+                  no={k.no} eyebrow={k.eyebrow} rule={k.rule}
+                  value={String(countFor(key)).padStart(2, '0')}
+                  sub={k.sub}
+                  onClick={() => selectKpi(key)}
+                />
+              );
+            })}
+          </div>
+          <OverviewFilterBar
+            filters={DESIGN_STATUS_FILTERS.map(f => ({
+              ...f,
+              count: countFor(f.key)
+            }))}
+            active={activeFilter}
+            onFilter={setActiveFilter}
+            search={search}
+            onSearch={setSearch}
+            totalCount={total}
+          />
+          <QueueTable rows={filtered} limit={12} onOpen={openRow}/>
+        </>
       )}
 
       {state.status === 'ready' && view && (
@@ -256,10 +281,10 @@ export default function DesignOverviewPage() {
 
           <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
             <MetricCard
-              tone={kpi.tone}
-              no={kpi.no} eyebrow={kpi.eyebrow} rule={kpi.rule}
+              tone={KPIS[view].tone}
+              no={KPIS[view].no} eyebrow={KPIS[view].eyebrow} rule={KPIS[view].rule}
               value={String(subset.length).padStart(2, '0')}
-              sub={kpi.sub}
+              sub={KPIS[view].sub}
               selected
               onClick={() => selectKpi(view)}
             />

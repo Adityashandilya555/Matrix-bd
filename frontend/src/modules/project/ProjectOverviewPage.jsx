@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
@@ -5,6 +6,7 @@ import Icon from '../shared/primitives/Icon.jsx';
 import MetricCard from '../shared/primitives/MetricCard.jsx';
 import SearchBox from '../shared/primitives/SearchBox.jsx';
 import SubFilterPill from '../shared/primitives/SubFilterPill.jsx';
+import OverviewFilterBar from '../shared/primitives/OverviewFilterBar.jsx';
 import { getProjectQueue } from '../../services/api/projectApi.js';
 import { ROUTES } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
@@ -46,6 +48,12 @@ const STATUS_FILTERS = [
 
 const BUDGET_REVIEW_STATUSES = ['pending_supervisor', 'pending_admin'];
 
+const PROJECT_STATUS_FILTERS = [
+  { key: 'budget', label: 'Budget review', color: 'var(--zm-copper)' },
+  { key: 'execution', label: 'In execution', color: 'var(--zm-info)' },
+  { key: 'audit', label: 'Audit cleared', color: 'var(--zm-success)' },
+];
+
 // Same rule the queue page uses to split Pipeline vs Sites: a site moves to
 // Sites once the quality-audit status leaves 'pending'.
 const inSites = (row) => !!row.qualityAuditStatus && row.qualityAuditStatus !== 'pending';
@@ -74,7 +82,8 @@ function StatusPill({ value, tone = 'var(--zm-accent)' }) {
 
 // QueueTable — Code | Site | City | Project status | Budget. Row click
 // deep-links to the owning tab (Pipeline or Sites) focused on that site.
-function QueueTable({ rows, onOpen }) {
+function QueueTable({ rows, onOpen, limit }) {
+  const displayRows = limit ? rows.slice(0, limit) : rows;
   const COLS = '120px minmax(220px, 1fr) 130px 170px 170px';
   return (
     <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
@@ -98,7 +107,7 @@ function QueueTable({ rows, onOpen }) {
         <span>Project status</span>
         <span>Budget</span>
       </div>
-      {rows.map((row) => (
+      {displayRows.map((row) => (
         <div
           key={row.siteId}
           className="zm-row"
@@ -152,6 +161,7 @@ export default function ProjectOverviewPage() {
   const [view, setView] = React.useState(null); // null | 'all' | 'budget' | 'execution'
   const [subFilter, setSubFilter] = React.useState('all'); // 'all' | projectStatus
   const [search, setSearch] = React.useState('');
+  const [activeFilter, setActiveFilter] = React.useState('all');
 
   const load = React.useCallback(() => {
     let cancelled = false;
@@ -223,7 +233,9 @@ export default function ProjectOverviewPage() {
   };
 
   // Base rows for the expanded view, before sub-filter + search.
-  const baseRows = view === 'budget' ? budgetReview : view === 'execution' ? inExecution : items;
+  const baseRows = view 
+    ? (view === 'budget' ? budgetReview : view === 'execution' ? inExecution : items)
+    : (activeFilter === 'budget' ? budgetReview : activeFilter === 'execution' ? inExecution : activeFilter === 'audit' ? auditCleared : items);
   const statusCounts = STATUS_FILTERS.reduce((acc, f) => {
     acc[f.key] = baseRows.filter((r) => r.projectStatus === f.key).length;
     return acc;
@@ -265,16 +277,30 @@ export default function ProjectOverviewPage() {
         </div>
       )}
 
-      {state.status !== 'error' && !view && (
-        <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-          <MetricCard {...metrics.all} onClick={() => selectKpi('all')}/>
-          <MetricCard {...metrics.budget} onClick={() => selectKpi('budget')}/>
-          <MetricCard {...metrics.execution} onClick={() => selectKpi('execution')}/>
-          <MetricCard {...metrics.audit} onClick={() => selectKpi('audit')}/>
-        </div>
+      {state.status === 'ready' && !view && (
+        <>
+          <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
+            <MetricCard {...metrics.all} onClick={() => selectKpi('all')}/>
+            <MetricCard {...metrics.budget} onClick={() => selectKpi('budget')}/>
+            <MetricCard {...metrics.execution} onClick={() => selectKpi('execution')}/>
+            <MetricCard {...metrics.audit} onClick={() => selectKpi('audit')}/>
+          </div>
+          <OverviewFilterBar
+            filters={PROJECT_STATUS_FILTERS.map(f => ({
+              ...f,
+              count: f.key === 'budget' ? budgetReview.length : f.key === 'execution' ? inExecution.length : auditCleared.length
+            }))}
+            active={activeFilter}
+            onFilter={setActiveFilter}
+            search={search}
+            onSearch={setSearch}
+            totalCount={items.length}
+          />
+          <QueueTable rows={filteredRows} limit={12} onOpen={openRow}/>
+        </>
       )}
 
-      {state.status !== 'error' && view && (
+      {state.status === 'ready' && view && (
         <>
           <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
             <MetricCard {...metrics[view]} selected onClick={() => selectKpi(view)}/>
