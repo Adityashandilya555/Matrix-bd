@@ -1,0 +1,70 @@
+# ============================================================
+#  Qodo PR-Agent — Automated AI Code Review Pipeline
+#  Action source: the-pr-agent/pr-agent@main (official OSS)
+#  Triggers: pull_request events + issue_comment (slash cmds)
+#  Keys:  GITHUB_TOKEN (auto)  |  QODO_API_KEY (repo secret)
+# ============================================================
+
+name: "Qodo AI Code Review"
+
+on:
+  pull_request:
+    types:
+      - opened            # fires when a PR is first created
+      - reopened          # fires when a closed PR is re-opened
+      - ready_for_review  # fires when draft → ready
+  issue_comment:
+    types:
+      - created           # enables slash-commands: /review /ask /improve etc.
+
+jobs:
+  pr_agent_job:
+    # Skip bot-originated events to avoid infinite loops
+    if: ${{ github.event.sender.type != 'Bot' }}
+    runs-on: ubuntu-latest
+    name: "Run Qodo PR-Agent"
+
+    # ── Permissions ──────────────────────────────────────────
+    # write access is required so the agent can post comments,
+    # add review suggestions, and update PR descriptions.
+    permissions:
+      pull-requests: write   # post review comments & suggestions
+      issues: write          # respond to issue_comment events
+      contents: read         # read repository source code
+
+    steps:
+      - name: "Qodo PR-Agent · AI Review Step"
+        id: qodo_pr_agent
+        uses: the-pr-agent/pr-agent@main
+
+        env:
+          # ── Authentication ──────────────────────────────────
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Qodo uses an OpenAI-compatible endpoint; the API key
+          # is forwarded via OPENAI_KEY inside the container.
+          OPENAI_KEY: ${{ secrets.QODO_API_KEY }}
+
+          # ── Automatic tool activation ───────────────────────
+          # auto_review   → posts a comprehensive code-review comment
+          # auto_describe → rewrites the PR description with a summary
+          # auto_improve  → suggests concrete code-improvement patches
+          github_action_config.auto_review: "true"
+          github_action_config.auto_describe: "true"
+          github_action_config.auto_improve: "true"
+
+          # Which PR lifecycle events should re-trigger the agent
+          github_action_config.pr_actions: '["opened", "reopened", "ready_for_review", "review_requested"]'
+
+          # ── Reviewer configuration ──────────────────────────
+          # Produce a thorough, structured review comment in Markdown
+          PR_REVIEWER.REQUIRE_FOCUSED_REVIEW: "false"
+          PR_REVIEWER.REQUIRE_SCORE_REVIEW: "true"
+          PR_REVIEWER.REQUIRE_TESTS_REVIEW: "true"
+          PR_REVIEWER.REQUIRE_ESTIMATE_EFFORT_TO_REVIEW: "true"
+          PR_REVIEWER.REQUIRE_SECURITY_REVIEW: "true"
+          PR_REVIEWER.NUM_CODE_SUGGESTIONS: "4"
+          PR_REVIEWER.INLINE_CODE_COMMENTS: "true"
+
+          # ── Code-improvement suggestions ────────────────────
+          PR_CODE_SUGGESTIONS.NUM_CODE_SUGGESTIONS: "6"
+          PR_CODE_SUGGESTIONS.RANK_SUGGESTIONS: "true"
