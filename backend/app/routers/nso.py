@@ -28,17 +28,18 @@ from app.services.nso_service import (
 
 router = APIRouter(prefix="/nso", tags=["NSO"])
 
-NsoMember = Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.EXECUTIVE))]
+# NSO is a supervisor-only module — executives are not part of the NSO flow.
+NsoMember = Annotated[dict, Depends(require_role(Role.SUPERVISOR))]
 InNsoModule = Annotated[dict, Depends(require_module("nso"))]
 
 
 @router.get("/queue", response_model=NsoQueueResponse)
 async def nso_queue(
     db: DbDep,
-    current_user: NsoMember,
+    _auth: NsoMember,
     _module: InNsoModule,
     tenant_id: TenantId,
-    limit: int = Query(50, le=200),
+    limit: int = Query(500, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> NsoQueueResponse:
     return await svc_nso_queue(db, tenant_id=tenant_id, limit=limit, offset=offset)
@@ -47,19 +48,23 @@ async def nso_queue(
 @router.get("/history", response_model=NsoHistoryResponse)
 async def nso_history(
     db: DbDep,
-    current_user: NsoMember,
+    _auth: NsoMember,
     _module: InNsoModule,
     tenant_id: TenantId,
     status_filter: str = "all",
+    limit: int = Query(500, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
 ) -> NsoHistoryResponse:
-    return await svc_nso_history(db, tenant_id=tenant_id, status_filter=status_filter)
+    return await svc_nso_history(
+        db, tenant_id=tenant_id, status_filter=status_filter, limit=limit, offset=offset,
+    )
 
 
 @router.get("/history/{site_id}", response_model=NsoStateResponse)
 async def nso_history_detail(
     site_id: str,
     db: DbDep,
-    current_user: NsoMember,
+    _auth: NsoMember,
     _module: InNsoModule,
     tenant_id: TenantId,
 ) -> NsoStateResponse:
@@ -70,7 +75,7 @@ async def nso_history_detail(
 async def get_nso_site(
     site_id: str,
     db: DbDep,
-    current_user: NsoMember,
+    _auth: NsoMember,
     _module: InNsoModule,
     tenant_id: TenantId,
 ) -> NsoStateResponse:

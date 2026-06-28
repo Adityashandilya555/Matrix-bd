@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
-from typing import Optional
+from typing import ClassVar, Optional
 
 from sqlalchemy import (
     Boolean,
@@ -22,13 +22,12 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
-    String,
     Text,
     UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
@@ -675,7 +674,7 @@ class ProjectReview(Base):
     # which raises MissingGreenlet and surfaces to the client as a CORS-masked
     # 500 ("Network Error"). eager_defaults fetches server defaults/onupdates
     # back via RETURNING during flush, so the attribute stays populated.
-    __mapper_args__ = {"eager_defaults": True}
+    __mapper_args__: ClassVar[dict] = {"eager_defaults": True}
 
     site_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True,
@@ -756,7 +755,7 @@ class ProjectReview(Base):
 class SiteBudget(Base):
     """One row per (site, phase). phase ∈ {gfc, closure}."""
     __tablename__ = "site_budgets"
-    __mapper_args__ = {"eager_defaults": True}
+    __mapper_args__: ClassVar[dict] = {"eager_defaults": True}
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)

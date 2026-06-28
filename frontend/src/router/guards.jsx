@@ -34,36 +34,46 @@ export function RequireRole({ roles, children }) {
 // mode the session must carry the matching `module` claim. Business admins and
 // any user with a missing/mismatched module get bounced back to their home —
 // never silently shown a page that 403s on every request.
+//
+// When a business_admin is simulating a role+module via the admin override, we
+// use the effectiveModule (the simulated module) instead of the raw JWT module
+// so that switching to e.g. Legal doesn't bounce the admin back to /business-admin.
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true;
 
-function homeForSession(role, module) {
-  if (role === 'business_admin') return '/business-admin';
-  if (module === 'legal')        return ROUTES.LEGAL;
-  if (module === 'design')       return ROUTES.DESIGN;
-  if (module === 'project')      return ROUTES.PROJECT;
-  if (module === 'nso')          return ROUTES.NSO;
+function homeForSession(effectiveRole, effectiveModule) {
+  // When a business_admin is actively simulating, effectiveRole will be
+  // 'supervisor' or 'executive' — route them like that role, not to the
+  // admin portal.  Only route to /business-admin when they are NOT simulating.
+  if (effectiveRole === 'business_admin') return '/business-admin';
+  if (effectiveModule === 'legal')        return ROUTES.LEGAL;
+  if (effectiveModule === 'design')       return ROUTES.DESIGN;
+  if (effectiveModule === 'project')      return ROUTES.PROJECT;
+  if (effectiveModule === 'nso')          return ROUTES.NSO;
   return ROUTES.OVERVIEW;
 }
 
 export function RequireModule({ modules, children }) {
-  const { role, session, authReady } = useSession();
+  const { role, effectiveModule, isBusinessAdmin, authReady } = useSession();
   if (USE_MOCK) return children;
   // Wait for hydration — pre-hydration `session.module` is undefined, which
   // would bounce every module user off their deep link on refresh. (#114)
   if (!authReady) return <HydratingGate />;
-  const module = session?.module;
+  // Business admins simulating a module can access any module route that
+  // matches their current override — effectiveModule already reflects the
+  // override when active.
+  const module = effectiveModule;
+  // A business_admin with no active override has effectiveModule = null;
+  // allow them through if they *are* business_admin (they can browse freely).
+  if (isBusinessAdmin && !module) return children;
   if (!module || !modules.includes(module)) {
     return <Navigate to={homeForSession(role, module)} replace />;
   }
   return children;
 }
 
-export function RequireScope({ kind, children }) {
-  // TODO(auth): enforce scope from session claims — currently logs a warning
-  // and passes through. When the identity service ships JWT scope claims,
-  // replace the console.warn with a Navigate to UNAUTHORIZED.
-  if (import.meta.env.DEV) {
-    console.warn(`[RequireScope] kind="${kind}" — not yet enforced`);
-  }
-  return children;
-}
+// NOTE (#188): the former `RequireScope` guard was removed. It was a pass-through
+// no-op (it only console.warned and returned children), wired to no route, and
+// the backend JWT emits no scope claim to enforce — a guard that *looks* like it
+// protects but doesn't is worse than none. Re-introduce real scope enforcement
+// here (Navigate to UNAUTHORIZED on a failed claim check) only when the identity
+// service actually ships JWT scope claims to check against.

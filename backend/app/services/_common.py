@@ -7,12 +7,12 @@ from __future__ import annotations
 
 import secrets
 import string
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -68,10 +68,7 @@ async def fetch_site_for_update_or_404(
 
 
 def assert_executive_owns_site(actor: dict, site: models.Site) -> None:
-    """Object-level authorization (#104): executives may only act on sites they
-    submitted or are assigned. Mirrors the check `get_site` and the LOI upload
-    already enforce; non-executive roles pass through (tenant scoping applies).
-    """
+    """Raise 403 if the caller is an executive who doesn't own or isn't assigned to the site."""
     if (actor.get("role") or "").lower() != Role.EXECUTIVE.value:
         return
     actor_id = str(actor["sub"])
@@ -91,21 +88,30 @@ async def fetch_user_name(session: AsyncSession, user_id: str | UUID | None) -> 
 
 
 async def fetch_user_names(session: AsyncSession, user_ids) -> dict:
-    """Batch-resolve ``user_id -> name`` for many ids in a single query.
-
-    Calling ``fetch_user_name`` per row in a list endpoint is an N+1 — one
-    connection round trip per row through the pgBouncer/NullPool transaction
-    pooler (#91). Build the map once and ``.get(uid)`` in the loop. Falsy ids are
-    dropped; missing ids are simply absent from the map (``.get`` → None, same as
-    the single-row helper).
-    """
+    """Batch-resolve ``user_id -> name`` for many ids in a single query. Falsy ids are dropped."""
     ids = {uid for uid in user_ids if uid}
     if not ids:
         return {}
     rows = (await session.execute(
         select(models.User.id, models.User.name).where(models.User.id.in_(ids))
     )).all()
-    return {uid: name for uid, name in rows}
+    return dict(rows)
+
+
+async def count_rows(session: AsyncSession, stmt) -> int:
+    """Real ``COUNT(*)`` for a (pre-pagination) SELECT — the accurate result-set total.
+
+    List/queue/history services cap rows at a safety ceiling (#230) so the
+    response can't grow unbounded, but the UI still derives KPI counts from the
+    set, so ``total`` must be the true count of the filtered query rather than
+    ``len(items)`` (which would cap at the page size). Pass the fully-filtered
+    statement *before* ``.limit()/.offset()``; ORDER BY is stripped because it is
+    irrelevant to a count (and rejected inside some count subqueries).
+    """
+    result = await session.execute(
+        select(func.count()).select_from(stmt.order_by(None).subquery())
+    )
+    return result.scalar() or 0
 
 
 # ── Scope filter for list queries ─────────────────────────────────────────
@@ -228,7 +234,7 @@ def site_to_response(
 def _days_since(d: Optional[date]) -> Optional[int]:
     if d is None:
         return None
-    return max(0, (date.today() - d).days)
+    return max(0, (datetime.now(timezone.utc).date() - d).days)
 
 
 def _legacy_stage_for(status: str) -> str:

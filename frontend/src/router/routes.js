@@ -135,3 +135,6 @@ export function bdSiteStatusRoute(siteId) {
 export function siteTrackerDetailRoute(siteId) {
   return ROUTES.SITE_TRACKER_DETAIL.replace(':siteId', siteId);
 }
+
+// App-wide display name — import from here, never hardcode in components.
+export const PRODUCT_NAME = 'RETAILEXPANSION.IN';

@@ -21,7 +21,7 @@ router = APIRouter(prefix="/audit", tags=["Audit"])
 )
 async def list_audit_events(
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.BUSINESS_ADMIN))],
+    _auth: Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
     page: int = Query(1, ge=1),
     limit: int = Query(50, le=200),

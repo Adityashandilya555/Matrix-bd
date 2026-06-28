@@ -1,40 +1,8 @@
-import axios from 'axios';
-import { getAuthToken, notifySessionExpired } from './authToken.js';
-import { ApiError, ensureFreshAuthToken, requestCarriedToken } from './adapters/httpAdapter.js';
+import { createApiClient } from './axiosClient.js';
 import { notifySiteDataChanged } from './siteEvents.js';
+import { toNumberOrNull } from './_utils.js';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
-const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
-// Quality-audit uploads relay to Supabase Storage server-side; the default 20s
-// client timeout aborts successful uploads on slow links → duplicate retries.
-// Match designApi's longer upload budget. (#127)
-const UPLOAD_TIMEOUT_MS = Number(import.meta.env.VITE_API_UPLOAD_TIMEOUT_MS ?? 120000);
-
-const client = axios.create({ baseURL: BASE_URL, timeout: TIMEOUT_MS });
-
-client.interceptors.request.use(async (cfg) => {
-  const token = await ensureFreshAuthToken() || getAuthToken();
-  if (token) cfg.headers.Authorization = `Bearer ${token}`;
-  return cfg;
-});
-
-client.interceptors.response.use(
-  (r) => r,
-  (err) => {
-    if (err.code === 'ECONNABORTED') {
-      throw new ApiError({ status: 0, code: 'TIMEOUT', detail: 'Request timed out', cause: err });
-    }
-    const status = err.response?.status ?? 0;
-    const raw = err.response?.data?.detail || err.message || 'Request failed';
-    // A bare axios "Network Error" (no HTTP response) almost always means CORS
-    // or the backend being unreachable — surface that instead of a cryptic string.
-    const detail = status === 0 && raw === 'Network Error'
-      ? `Network Error contacting API at ${BASE_URL}. Check backend deployment, CORS (Railway CORS_ORIGINS must include this site's domain), and that the backend is running.`
-      : raw;
-    if (status === 401 && requestCarriedToken(err.config)) notifySessionExpired({ reason: 'unauthorized', detail });
-    throw new ApiError({ status, detail, code: err.response?.data?.code, cause: err });
-  },
-);
+const client = createApiClient();
 
 function budgetItemFromServer(row) {
   return {
@@ -137,13 +105,20 @@ function delegationFromServer(row) {
   };
 }
 
-export async function getProjectQueue() {
-  const data = await client.get('/project/queue').then((r) => r.data);
+export async function getProjectQueue({ limit, offset } = {}) {
+  // limit/offset only travel when the caller supplies them (default page intact).
+  const params = {};
+  if (limit != null) params.limit = limit;
+  if (offset != null) params.offset = offset;
+  const data = await client.get('/project/queue', { params }).then((r) => r.data);
   return { items: (data.items || []).map(queueItemFromServer), total: data.total ?? 0 };
 }
 
-export async function listProjectHistory(statusFilter = 'all') {
-  const data = await client.get('/project/history', { params: { status_filter: statusFilter } }).then((r) => r.data);
+export async function listProjectHistory(statusFilter = 'all', { limit, offset } = {}) {
+  const params = { status_filter: statusFilter };
+  if (limit != null) params.limit = limit;
+  if (offset != null) params.offset = offset;
+  const data = await client.get('/project/history', { params }).then((r) => r.data);
   return { items: (data.items || []).map(historyItemFromServer), total: data.total ?? 0 };
 }
 
@@ -169,9 +144,6 @@ export async function allocateProject(siteId, executiveId, notes) {
   notifySiteDataChanged({ source: 'project', action: 'allocate', siteId });
   return stateFromServer(data);
 }
-
-const toNumberOrNull = (value) =>
-  value === '' || value == null ? null : Number(value);
 
 export async function saveProjectBudget(
   siteId,

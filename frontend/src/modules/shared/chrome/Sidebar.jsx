@@ -1,7 +1,6 @@
 import React from 'react';
-import { useNavigate, useLocation, NavLink } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Icon from '../primitives/Icon.jsx';
-import Avatar from '../primitives/Avatar.jsx';
 import { ROUTES } from '../../../router/routes.js';
 import { useSession } from '../../../state/SessionContext.jsx';
 
@@ -65,13 +64,6 @@ function SidebarItem({ icon, label, count, active, onClick, collapsed = false })
   );
 }
 
-// Role display labels for the <select>
-const ROLE_LABELS = {
-  supervisor: 'Supervisor',
-  business_admin: 'Business Admin',
-  exec: 'BD exec',
-};
-
 const SECTION_HEADING_STYLE = {
   fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10,
   letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-sidebar-fg-faint)',
@@ -81,7 +73,7 @@ const SECTION_HEADING_STYLE = {
 export default function Sidebar({ counts, role, onRole, collapsed = false }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { session } = useSession();
+  const { session, effectiveModule } = useSession();
   // Prefer the JWT-borne module claim when it exists — that's the authoritative
   // signal of which module a user actually belongs to. Only fall back to the
   // current URL when the session has no module claim (mock-mode previews, where
@@ -94,7 +86,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
     path.startsWith('/project')            ? 'project'            :
     path.startsWith('/nso')                ? 'nso'                :
     'bd';
-  const userModule = session?.module || routeModule;
+  const userModule = effectiveModule || routeModule;
   const isModuleSurface = userModule === 'legal'
     || userModule === 'design' || userModule === 'project' || userModule === 'nso'
     || userModule === 'project_excellence';
@@ -163,7 +155,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
           {role === 'supervisor' && (
             <SidebarItem icon="archiveBox" label="Archive" count={counts.archive} active={activeView === 'archive'} onClick={() => go(ROUTES.ARCHIVE)} collapsed={collapsed}/>
           )}
-          <SidebarItem icon="warning" label="DD failed" active={activeView === 'dd-failed'} onClick={() => go(ROUTES.DD_FAILED)} collapsed={collapsed}/>
+          <SidebarItem icon="warning" label="DDR negative" active={activeView === 'dd-failed'} onClick={() => go(ROUTES.DD_FAILED)} collapsed={collapsed}/>
           <SidebarItem icon="route" label="Process flow" active={activeView === 'site-tracker'} onClick={() => go(ROUTES.SITE_TRACKER)} collapsed={collapsed}/>
           {canSeePayment && (
             <SidebarItem icon="paymentCard" label="Payment" active={activeView === 'payment-licensing'} onClick={() => go(ROUTES.PAYMENT)} collapsed={collapsed}/>
@@ -414,8 +406,8 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
 
       {collapsed ? (
         <div
-          title="Ask Scale"
-          aria-label="Ask Scale"
+          title="Ask Assistant"
+          aria-label="Ask Assistant"
           style={{
             height: 42,
             margin: '0 2px',
@@ -439,7 +431,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--zm-sidebar-accent)' }}>
           <Icon name="chat" size={14}/>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Ask Scale</span>
+          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Ask Assistant</span>
         </div>
         <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-sidebar-fg-muted)', lineHeight: 1.45 }}>
           "Sites in process overdue &gt; 14 days" — Answer in the desktop workspace.

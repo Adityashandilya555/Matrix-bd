@@ -67,13 +67,12 @@ async def get_me(current_user: CurrentUser) -> dict:
 @router.get("", summary="List users in tenant (supervisor only)")
 async def list_users(
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
+    _auth: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
     tenant_id: TenantId,
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
 ) -> dict:
-    # Bounded like notifications.py/audit.py — an unbounded scan + multi-MB JSON
-    # per request degrades as a tenant accumulates users (#95).
+    # Bounded query — unbounded scans degrade as a tenant accumulates users.
     stmt = (
         select(models.User)
         .where(models.User.tenant_id == tenant_id, models.User.is_active.is_(True))
@@ -126,7 +125,7 @@ class AssignRoleOut(BaseModel):
 @router.get("/pending", summary="Supervisor: list pending (unassigned) users in tenant")
 async def list_pending_users(
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
+    _auth: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
     tenant_id: TenantId,
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
@@ -184,10 +183,7 @@ async def assign_role(
             detail="User already has an assigned role.",
         )
 
-    # 2. Activate the public.users row. The user's next /auth/login call will
-    #    see is_active=true and the new role, and a JWT will be minted with
-    #    those claims. Clear the pending-signup marker so it doesn't linger in
-    #    `notes` and confuse the module approval queues (#121).
+    # 2. Activate the user row; clear the pending-signup marker from notes.
     await db.execute(
         text("""
             UPDATE users
@@ -201,11 +197,7 @@ async def assign_role(
         {"role": body.role, "city": body.city, "name": body.name, "uid": user_id, "tid": tenant_id},
     )
 
-    # 2b. If this pending user came from a module-/supervisor-code signup, its
-    #     intended module lived in `notes`. The module-gated routes and queues
-    #     key off user_module_memberships, so provision that row here too —
-    #     otherwise the login JWT carries module=None and the user is stranded
-    #     (can act in no module AND has vanished from the module queues). (#121)
+    # 2b. Provision module membership when the signup came from a module/supervisor code.
     membership = _membership_from_notes(user_row["notes"])
     if membership is not None:
         module, role_in_module, supervisor_id = membership
@@ -240,3 +232,46 @@ async def assign_role(
             "They can sign in with their email + the workspace code."
         ),
     )
+
+
+@router.post(
+    "/me/request-executive-access",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Supervisor requests dual-role executive access",
+)
+async def request_executive_access(
+    db: DbDep,
+    current_user: CurrentUser,
+    tenant_id: TenantId,
+) -> None:
+    """Creates a pending request for the Business Admin to approve executive access."""
+    if current_user.get("real_role") != "supervisor":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only supervisors can request executive access.",
+        )
+    
+    module = current_user.get("module")
+    if not module:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is not assigned to a module.",
+        )
+
+    if current_user.get("has_executive_access"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="You already have executive access.",
+        )
+
+    q = """
+        INSERT INTO supervisor_executive_requests (tenant_id, supervisor_id, module)
+        VALUES (:tid, :uid, :mod)
+        ON CONFLICT (supervisor_id, module) WHERE status = 'pending' DO NOTHING
+    """
+    await db.execute(text(q), {
+        "tid": tenant_id,
+        "uid": current_user["sub"],
+        "mod": module,
+    })
+    await db.commit()

@@ -1,7 +1,7 @@
 # Role: Matrix Architecture & Knowledge Engine
 
 ## System Data Flow
-- **Immutable Knowledge Inputs:** `docs/api/*.md`, `backend/app/`, `backend/database/schema.sql`, `frontend/`, `z-matrix-design-system/`, `Matrix_dev/00_Sources/`
+- **Immutable Knowledge Inputs:** `docs/**/*.md`, `backend/app/`, `backend/database/schema.sql`, `frontend/`, `z-matrix-design-system/`, `Matrix_dev/00_Sources/`
 - **Holding Zone:** `Matrix_dev/inbox/`
 - **LLM Managed Vault (Wiki Root):** `Matrix_dev/`
 - **Project Memory Protocol:** `Matrix_dev/claude.md` — **READ THIS FIRST every session.** It defines folder access rules, the Tombstone Protocol, the Change_BL workflow, and the Dataview dashboard. All operations below must comply with it.

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/z-matrix-design-system-c06395ba-71e8-4152-8a34-916735d81ee2/colors_and_type.css">
+<style>
+  html,body{margin:0;padding:0;background:#05070b;}
+  *{box-sizing:border-box;}
+  @keyframes pxBlink{0%,100%{opacity:1;}50%{opacity:.25;}}
+  @keyframes pxFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-4px);}}
+</style>
+</helmet>
+<div class="px-root" data-theme="dark" data-screen-label="retailexpansion.in journey" ref="{{ rootRef }}" style="position:relative;height:1240vh;background:#05070b;font-family:var(--zm-font-body);">
+
+  <div class="stage" style="position:sticky;top:0;height:100vh;width:100%;overflow:hidden;background:#05070b;">
+
+    <!-- ===== STATION FRAME LAYERS ===== -->
+    <div ref="{{ layersRef }}" style="position:absolute;inset:0;">
+      <sc-for list="{{ stations }}" as="s" hint-placeholder-count="7">
+        <div class="vlayer" data-i="{{ s.i }}" style="position:absolute;inset:0;opacity:0;will-change:opacity;">
+          <canvas class="seqcanvas" width="900" height="506" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;"></canvas>
+          <div style="position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg, rgba(5,7,11,0.28), transparent 22%, transparent 66%, rgba(5,7,11,0.5));"></div>
+        </div>
+      </sc-for>
+    </div>
+
+    <!-- dark fade between stations -->
+    <div ref="{{ fadeRef }}" style="position:absolute;inset:0;z-index:42;background:#04060a;opacity:0;pointer-events:none;"></div>
+    <!-- vignette -->
+    <div style="position:absolute;inset:0;pointer-events:none;z-index:40;background:radial-gradient(120% 85% at 50% 46%, transparent 56%, rgba(2,3,6,0.6) 100%);"></div>
+
+    <!-- ===== HUD ===== -->
+    <div style="position:absolute;top:0;left:0;right:0;height:3px;z-index:80;background:rgba(77,208,193,0.12);">
+      <div ref="{{ barRef }}" style="height:100%;width:0%;background:linear-gradient(90deg,var(--zm-copper),var(--zm-accent));box-shadow:0 0 10px var(--zm-accent);"></div>
+    </div>
+
+    <div ref="{{ hudRef }}" style="position:absolute;inset:0;z-index:70;pointer-events:none;opacity:0;transition:opacity .5s ease;">
+      <div style="position:absolute;top:20px;left:28px;display:flex;align-items:center;gap:11px;">
+        <div style="width:30px;height:30px;border-radius:7px;background:rgba(10,16,22,0.8);border:1px solid var(--zm-accent-line);display:flex;align-items:center;justify-content:center;box-shadow:0 0 12px rgba(77,208,193,0.25);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--zm-accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h4l2-6 4 12 2-6h4"/></svg>
+        </div>
+        <div>
+          <div style="font-family:var(--zm-font-display);font-weight:700;font-size:14px;color:var(--zm-fg);">retailexpansion<span style="color:var(--zm-accent);">.in</span></div>
+          <div style="font-family:var(--zm-font-mono);font-size:9px;letter-spacing:.16em;color:var(--zm-fg-3);">STORE-OPENING LINE</div>
+        </div>
+      </div>
+      <div style="position:absolute;top:20px;right:28px;text-align:right;">
+        <div ref="{{ tagRef }}" style="font-family:var(--zm-font-mono);font-size:10px;letter-spacing:.16em;color:var(--zm-copper);">STATION 01 / 07</div>
+        <div ref="{{ nameRef }}" style="font-family:var(--zm-font-display);font-weight:700;font-size:19px;color:var(--zm-fg);margin-top:2px;">Business Development</div>
+      </div>
+      <div style="position:absolute;bottom:64px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:rgba(10,16,22,0.7);border:1px solid var(--zm-accent-line);backdrop-filter:blur(4px);">
+        <span ref="{{ dotRef }}" style="width:8px;height:8px;border-radius:999px;background:var(--zm-copper);box-shadow:0 0 8px var(--zm-copper);"></span>
+        <span style="font-family:var(--zm-font-mono);font-size:11px;color:var(--zm-fg);">SITE-4821</span>
+        <span ref="{{ stRef }}" style="font-family:var(--zm-font-mono);font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(224,166,89,0.14);color:var(--zm-copper);">DRAFT</span>
+      </div>
+      <div ref="{{ dotsRef }}" style="position:absolute;bottom:34px;left:50%;transform:translateX(-50%);display:flex;align-items:center;"></div>
+    </div>
+
+    <!-- ===== INTRO ===== -->
+    <div class="intro" ref="{{ introRef }}" style="position:absolute;inset:0;z-index:95;will-change:transform,opacity;background:#05070b;">
+      <canvas ref="{{ introCanvasRef }}" width="960" height="540" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;"></canvas>
+      <div style="position:absolute;inset:0;background:linear-gradient(180deg, rgba(5,7,11,0.3) 0%, transparent 28%, rgba(5,7,11,0.6) 100%);"></div>
+      <div style="position:absolute;left:48px;bottom:96px;max-width:660px;">
+        <div style="font-family:var(--zm-font-mono);font-size:11px;letter-spacing:.2em;color:var(--zm-accent);margin-bottom:10px;text-shadow:0 0 12px rgba(77,208,193,0.6);">retailexpansion<span style="color:var(--zm-copper);">.in</span></div>
+        <div style="font-family:var(--zm-font-display);font-weight:800;font-size:46px;line-height:1.05;color:#EDF4F2;letter-spacing:-.02em;text-shadow:0 2px 30px rgba(0,0,0,0.6);">From a sidewalk<br>to an open store.</div>
+        <div style="font-family:var(--zm-font-body);font-size:15px;color:rgba(220,232,230,0.8);margin-top:14px;max-width:460px;">A site boards the line and rides every station to launch. Scroll to follow SITE-4821 through the pipeline.</div>
+      </div>
+      <div style="position:absolute;left:50%;bottom:30px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;">
+        <span style="font-family:var(--zm-font-mono);font-size:10px;letter-spacing:.18em;color:rgba(220,232,230,0.75);">SCROLL TO ENTER THE LINE</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--zm-accent)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="animation:pxFloat 1.6s ease-in-out infinite;filter:drop-shadow(0 0 6px rgba(77,208,193,0.7));"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  rootRef = (e) => { this._root = e; };
+  layersRef = (e) => { this._layersEl = e; };
+  fadeRef = (e) => { this._fadeEl = e; };
+  barRef = (e) => { this._bar = e; };
+  hudRef = (e) => { this._hud = e; };
+  tagRef = (e) => { this._tag = e; };
+  nameRef = (e) => { this._name = e; };
+  dotRef = (e) => { this._dot = e; };
+  stRef = (e) => { this._st = e; };
+  dotsRef = (e) => { this._dots = e; };
+  introRef = (e) => { this._introEl = e; };
+  introCanvasRef = (e) => { this._introCanvasEl = e; };
+
+  TONE = { go:'var(--zm-accent)', wait:'var(--zm-copper)' };
+
+  RAW = [
+    { name:'Business Development', no:'01', status:'DRAFT',      tone:'wait', dir:'frames/s0', count:32 },
+    { name:'Legal & Finance',      no:'02', status:'APPROVED',   tone:'go',   dir:'frames/s1', count:32 },
+    { name:'Design',               no:'03', status:'GFC',        tone:'go',   dir:'frames/s2', count:32 },
+    { name:'Project Excellence',   no:'04', status:'BUDGET OK',  tone:'go',   dir:'frames/s3', count:32 },
+    { name:'Project Execution',    no:'05', status:'BUILT',      tone:'go',   dir:'frames/s4', count:32 },
+    { name:'New Store Opening',    no:'06', status:'LAUNCH SET', tone:'go',   dir:'frames/s5', count:32 },
+    { name:'Launched Store',       no:'07', status:'LIVE',       tone:'go',   dir:'frames/s6', count:32 },
+  ];
+  introEnd = 0.1;
+
+  renderVals() {
+    if (!this._stations) this._stations = this.RAW.map((s, i) => ({ ...s, i }));
+    return {
+      stations: this._stations,
+      rootRef:this.rootRef, layersRef:this.layersRef, fadeRef:this.fadeRef, barRef:this.barRef, hudRef:this.hudRef,
+      tagRef:this.tagRef, nameRef:this.nameRef, dotRef:this.dotRef, stRef:this.stRef, dotsRef:this.dotsRef,
+      introRef:this.introRef, introCanvasRef:this.introCanvasRef,
+    };
+  }
+
+  mkSeq(dir, count, cv) { return { dir, count, imgs:null, dispF:0, targetF:0, op:0, cv, ctx:cv.getContext('2d'), W:cv.width, H:cv.height }; }
+
+  componentDidMount() {
+    this.N = this.RAW.length;
+    this._layers = this._layersEl ? Array.from(this._layersEl.querySelectorAll('.vlayer')) : [];
+    this._seq = this._layers.map((l, i) => this.mkSeq(this.RAW[i].dir, this.RAW[i].count, l.querySelector('canvas')));
+    this._introSeq = this.mkSeq('frames/intro', 48, this._introCanvasEl);
+
+    if (this._dots) {
+      this._dotEls = this.RAW.map((s, i) => {
+        const w = document.createElement('button'); w.title = s.name;
+        w.style.cssText = 'background:none;border:none;padding:7px 5px;cursor:pointer;display:flex;pointer-events:auto;';
+        const d = document.createElement('span');
+        d.style.cssText = 'display:block;width:7px;height:7px;border-radius:999px;border:1px solid var(--zm-line-strong);background:transparent;transition:all .25s ease;';
+        w.appendChild(d); w.addEventListener('click', () => this.jumpTo(i)); this._dots.appendChild(w); return d;
+      });
+    }
+
+    this._reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this._curWin = -1;
+    this._targetP = this.scrollProgress(); this._displayP = this._targetP;
+    this.preload(this._introSeq);
+    this._onScroll = () => { this._targetP = this.scrollProgress(); if (document.hidden) { this._displayP = this._targetP; this.compute(); this.drawAll(true); } };
+    this._onVis = () => { if (!document.hidden) { this.compute(); this.drawAll(true); } };
+    window.addEventListener('scroll', this._onScroll, { passive:true });
+    document.addEventListener('visibilitychange', this._onVis);
+    this.compute(); this.drawAll(true);
+    window.__px = this;
+    this._raf = requestAnimationFrame(this.tick);
+  }
+  componentWillUnmount() {
+    if (this._raf) cancelAnimationFrame(this._raf);
+    window.removeEventListener('scroll', this._onScroll);
+    document.removeEventListener('visibilitychange', this._onVis);
+  }
+
+  preload(seq) {
+    if (seq.imgs) return;
+    seq.imgs = new Array(seq.count).fill(null);
+    for (let k = 0; k < seq.count; k++) { const img = new Image(); img.src = seq.dir + '/' + String(k).padStart(2, '0') + '.jpg'; seq.imgs[k] = img; }
+  }
+
+  scrollProgress() {
+    const r = this._root; if (!r) return 0;
+    const max = r.offsetHeight - window.innerHeight; if (max <= 0) return 0;
+    return Math.max(0, Math.min(1, (-r.getBoundingClientRect().top) / max));
+  }
+  jumpTo(i) {
+    const r = this._root; if (!r) return;
+    const max = r.offsetHeight - window.innerHeight;
+    const span = (1 - this.introEnd) / this.N;
+    window.scrollTo({ top: r.offsetTop + (this.introEnd + (i + 0.5) * span) * max, behavior:'smooth' });
+  }
+  smooth(t) { t = Math.max(0, Math.min(1, t)); return t*t*(3-2*t); }
+  clamp01(t) { return Math.max(0, Math.min(1, t)); }
+
+  tick = () => {
+    this._raf = requestAnimationFrame(this.tick);
+    if (this._targetP == null || document.hidden) return;
+    this._displayP += (this._targetP - this._displayP) * 0.16;
+    this.compute();
+    this.drawAll(false);
+  };
+
+  compute() {
+    const p = this._displayP;
+
+    // intro
+    const introScrub = this.clamp01(p / this.introEnd);
+    const it = this.smooth(Math.max(0, (introScrub - 0.5) / 0.5));
+    if (this._introEl) {
+      this._introEl.style.opacity = (1 - it).toFixed(3);
+      this._introEl.style.transform = `scale(${(1 + 0.5 * it).toFixed(3)})`;
+      this._introEl.style.filter = `blur(${(it * 7).toFixed(1)}px)`;
+      this._introEl.style.pointerEvents = it > 0.9 ? 'none' : 'auto';
+    }
+    this._introSeq.targetF = introScrub * (this._introSeq.count - 1);
+    if (this._hud) this._hud.style.opacity = it > 0.6 ? '1' : '0';
+
+    const span = (1 - this.introEnd) / this.N;
+    const edge = span * 0.12;
+    let active = 0, bestOp = -1;
+    for (let i = 0; i < this.N; i++) {
+      const segStart = this.introEnd + i * span, segEnd = segStart + span;
+      let op = Math.min((p - (segStart - edge)) / edge, ((segEnd + edge) - p) / edge, 1);
+      op = this.clamp01(op);
+      const local = this.clamp01((p - segStart) / span);
+      const seq = this._seq[i];
+      seq.op = op; seq.targetF = local * (seq.count - 1);
+      const layer = this._layers[i];
+      if (layer) { layer.style.opacity = this.smooth(op).toFixed(3); layer.style.zIndex = String(10 + Math.round(op * 20)); }
+      if (op > bestOp) { bestOp = op; active = i; }
+      if (op > 0.01 || Math.abs(i - this._curWin) <= 1) this.preload(seq);
+    }
+
+    // dark fade between stations (incl. intro -> station 1)
+    let fadeOp = 0; const fadeWin = span * 0.2;
+    for (let b = 0; b < this.N; b++) {
+      const bp = this.introEnd + b * span; const d = Math.abs(p - bp);
+      if (d < fadeWin) fadeOp = Math.max(fadeOp, this.smooth(1 - d / fadeWin) * 0.82);
+    }
+    if (this._fadeEl) this._fadeEl.style.opacity = fadeOp.toFixed(3);
+
+    if (this._bar) this._bar.style.width = (p * 100).toFixed(2) + '%';
+
+    if (active !== this._curWin) {
+      this._curWin = active; const s = this.RAW[active], col = this.TONE[s.tone];
+      if (this._tag) this._tag.textContent = 'STATION ' + s.no + ' / ' + String(this.N).padStart(2, '0');
+      if (this._name) this._name.textContent = s.name;
+      if (this._st) { this._st.textContent = s.status; this._st.style.color = col; this._st.style.background = (s.tone === 'go' ? 'rgba(77,208,193,0.14)' : 'rgba(224,166,89,0.14)'); }
+      if (this._dot) { this._dot.style.background = col; this._dot.style.boxShadow = '0 0 8px ' + col; }
+      if (this._dotEls) this._dotEls.forEach((d, di) => {
+        const on = di === active, done = di < active;
+        d.style.background = on || done ? 'var(--zm-accent)' : 'transparent';
+        d.style.borderColor = on || done ? 'var(--zm-accent)' : 'var(--zm-line-strong)';
+        d.style.transform = on ? 'scale(1.5)' : 'scale(1)';
+        d.style.boxShadow = on ? '0 0 10px var(--zm-accent)' : 'none';
+        d.style.opacity = done ? '0.5' : '1';
+      });
+    }
+  }
+
+  drawAll(snap) {
+    this.drawSeq(this._introSeq, snap);
+    for (let i = 0; i < this.N; i++) { const seq = this._seq[i]; if (seq.op > 0.02 || snap) this.drawSeq(seq, snap); }
+  }
+
+  drawSeq(seq, snap) {
+    if (!seq.imgs) return;
+    if (snap) seq.dispF = seq.targetF; else seq.dispF += (seq.targetF - seq.dispF) * 0.2;
+    const idx = Math.round(Math.max(0, Math.min(seq.count - 1, seq.dispF)));
+    if (idx === seq._last) return;
+    const img = seq.imgs[idx];
+    if (img && img.complete && img.naturalWidth) { seq.ctx.drawImage(img, 0, 0, seq.W, seq.H); seq._last = idx; }
+  }
+}
+</script>
+</body>
+</html>

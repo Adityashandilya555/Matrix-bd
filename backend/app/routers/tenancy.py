@@ -20,7 +20,7 @@ from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func, select, text
+from sqlalchemy import select, text
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, DbDep, TenantId
@@ -30,6 +30,7 @@ from app.core.uploads import read_upload_capped
 from app.db import models
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
+from app.services.auth_repo import get_tenant_by_workspace_code
 from app.services.storage_service import safe_object_name, signed_url
 from app.services.storage_service import upload_bytes as storage_upload
 
@@ -77,13 +78,6 @@ def _generate_workspace_code(slug_hint: Optional[str] = None) -> str:
     if not base:
         base = secrets.token_hex(3).upper()
     return f"{base}-{secrets.token_hex(8).upper()}"
-
-
-def _json_string(s: Optional[str]) -> str:
-    """Serialise a Python string to a JSON-escaped string fragment so we can
-    splice it into the JSONB literal that goes into notification_outbox.payload.
-    Defending against quotes/newlines in the company name."""
-    return json.dumps(s or "")
 
 
 def _require_platform_admin(provided: Optional[str]) -> None:
@@ -159,7 +153,7 @@ async def list_tenants(
 @router.get("/cities", summary="List active cities in tenant")
 async def list_cities(
     db: DbDep,
-    current_user: CurrentUser,
+    _auth: CurrentUser,
     tenant_id: TenantId,
     limit: int = Query(200, le=500),
 ) -> dict:
@@ -183,7 +177,7 @@ async def list_cities(
     "/workspace-info",
     summary="Authed: current tenant code + seat usage",
 )
-async def workspace_info(db: DbDep, current_user: CurrentUser, tenant_id: TenantId) -> dict:
+async def workspace_info(db: DbDep, _auth: CurrentUser, tenant_id: TenantId) -> dict:
     row = (await db.execute(
         text("""
             SELECT t.id, t.name, t.slug, t.plan, t.workspace_code, t.seat_limit,
@@ -633,14 +627,19 @@ async def approve_workspace_request(
             "email":   req_admin_email,
             "subject": outbox_subject,
             "body":    outbox_body,
-            "payload": (
-                '{"tenant_id":"' + str(tenant_id) + '",'
-                '"workspace_code":"' + workspace_code + '",'
-                '"business_admin_id":"' + str(business_admin_id) + '",'
-                '"supervisor_id":"' + str(business_admin_id) + '",'
-                '"company":' + _json_string(req_company) + ','
-                '"city":' + _json_string(payload.city or "") + '}'
-            ),
+            # Serialise with json.dumps rather than hand-splicing the JSON
+            # template (#240/18.5): a company/city containing a quote, backslash
+            # or other escapable char produced malformed JSON, and
+            # CAST(:payload AS jsonb) then threw at runtime. json.dumps escapes
+            # every field correctly in all cases.
+            "payload": json.dumps({
+                "tenant_id": str(tenant_id),
+                "workspace_code": workspace_code,
+                "business_admin_id": str(business_admin_id),
+                "supervisor_id": str(business_admin_id),
+                "company": req_company,
+                "city": payload.city or "",
+            }),
         },
     )
 
@@ -702,14 +701,9 @@ class JoinOut(BaseModel):
 async def join_workspace(payload: JoinIn, db: DbDep) -> JoinOut:
     # 1. Resolve the workspace_code → tenant. Case-insensitive lookup matches
     #    the unique index on upper(workspace_code) created by the migration.
-    tenant = (await db.execute(
-        text("""
-            SELECT id, name, seat_limit
-              FROM tenants
-             WHERE upper(workspace_code) = upper(:code)
-        """),
-        {"code": payload.workspace_code},
-    )).mappings().first()
+    tenant = await get_tenant_by_workspace_code(
+        db, payload.workspace_code, columns="id, name, seat_limit"
+    )
 
     # IMPORTANT: same response for "no such code" and "already joined" so an
     # attacker can't enumerate workspace codes. We log the discriminator
@@ -786,10 +780,7 @@ async def join_workspace(payload: JoinIn, db: DbDep) -> JoinOut:
     dependencies=[Depends(rate_limit(times=30, seconds=60))],
 )
 async def public_branding(code: str, db: DbDep) -> dict:
-    row = (await db.execute(
-        text("SELECT name, logo_url FROM tenants WHERE upper(workspace_code) = upper(:code)"),
-        {"code": code},
-    )).mappings().first()
+    row = await get_tenant_by_workspace_code(db, code, columns="name, logo_url")
     if not row:
         # Default branding instead of a 404 — the status-code split made this
         # endpoint a valid-code enumeration oracle that also leaked company
@@ -827,7 +818,16 @@ async def set_tenant_branding(
     if not tenant:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found.")
 
+    # The SELECT above auto-began a read transaction on the session. Release it
+    # BEFORE the (up-to-30s) storage upload so we don't hold a connection / scarce
+    # pgBouncer slot across slow external I/O (#235; mirrors the #89 LOI/photo/
+    # design fix). Only plain values are carried across the rollback; the UPDATE
+    # below targets WHERE id = :id and does not depend on the released read. No
+    # FOR UPDATE is needed — last-write-wins on branding metadata is acceptable.
+    new_name = (name or "").strip() or tenant["name"]
     logo_path = tenant["logo_url"]
+    await db.rollback()
+
     if logo is not None:
         body = await read_upload_capped(logo)
         if body:
@@ -839,7 +839,6 @@ async def set_tenant_branding(
                 content_type=logo.content_type or "image/png",
             )
 
-    new_name = (name or "").strip() or tenant["name"]
     await db.execute(
         text("UPDATE tenants SET name = :name, logo_url = :logo WHERE id = :id"),
         {"name": new_name, "logo": logo_path, "id": tenant_id},

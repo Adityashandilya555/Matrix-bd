@@ -17,28 +17,21 @@ function _isAuthed() {
   return USE_MOCK || Boolean(getAuthToken());
 }
 
-// ============================================================
 // SitesContext — unified site store.
-// All site data lives in one `sites` array with canonical status.
-// Components NEVER call setSites directly. All mutations go through siteService.
+// Single `sites` array with canonical status; components never call setSites
+// directly. All mutations go through siteService, then refresh.
 //
-// LEGACY FIELD DERIVATIONS (computed at selector time, not stored):
-//   draft.days           <- computed from visitDate vs today
-//   draft.createdBy      <- mapped from site.createdBy.name (string for render)
+// Legacy field derivations (computed at selector time, not stored):
+//   draft.days           <- daysSince(visitDate)
+//   draft.createdBy      <- site.createdBy.name (string for render)
 //   shortlist.inReview   <- status === DETAILS_SUBMITTED
 //   shortlist.stage      <- legacyStageFor(status)
-//   staging.loiUploaded  <- status >= LOI_UPLOADED in the BD→Legal→Payments flow
-//   staging.pushed       <- status has left LOI_UPLOADED for Legal/Payments
-//   staging.daysSinceApproval <- site._daysSinceApproval (stored on canonical site)
-//   staging.draftDate    <- site._draftDate
-//   staging.approvedDate <- site._approvedDate
-//   staging.approvedBy   <- site._approvedBy
-//   staging.daysToLOI    <- site._daysToLOI
-//   staging.loiUploadedAt <- site._loiUploadedAt
-//   archive.archivedAt   <- site.updatedAt (date site moved to ARCHIVED)
+//   staging.loiUploaded  <- status >= LOI_UPLOADED
+//   staging.pushed       <- status in Legal/Payments
+//   staging.daysSinceApproval / draftDate / approvedDate / approvedBy / daysToLOI / loiUploadedAt
+//   archive.archivedAt   <- site.updatedAt
 //   archive.reasons      <- site.rejectionReasons
 //   archive.note         <- site.archiveNote
-// ============================================================
 
 const SitesContext = createContext(null);
 
@@ -148,7 +141,7 @@ export function SitesProvider({ children }) {
   const [sites, setSites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const { user, session, role } = useSession();
+  const { user, session, role, authReady } = useSession();
 
   // Load on mount AND whenever the signed-in identity or active role changes
   // (re-login or the role switcher). Without the identity key the store kept the
@@ -158,6 +151,7 @@ export function SitesProvider({ children }) {
   const identityKey = session?.userId || session?.id || session?.email || '';
   useEffect(() => {
     let alive = true;
+    if (!USE_MOCK && !authReady) { return () => { alive = false; }; }
     // Logged out → don't issue a tokenless /api/sites request (it 401s and would
     // pop the session-expired modal). Reset to a clean empty state instead.
     if (!_isAuthed()) {
@@ -171,7 +165,7 @@ export function SitesProvider({ children }) {
       .then(data => { if (alive) { setSites(data); setLoading(false); } })
       .catch(err => { if (alive) { setError(err.message); setLoading(false); } });
     return () => { alive = false; };
-  }, [identityKey, role]);
+  }, [identityKey, role, authReady]);
 
   // Refresh helper — re-fetches entire list from service
   const refresh = useCallback(async () => {
@@ -217,7 +211,7 @@ export function SitesProvider({ children }) {
   }, [refresh]);
 
   // ---- Derived selectors (memoized) ----
-  // These preserve the exact property names that render bodies destructure.
+  // Preserve the exact property names that render bodies destructure.
 
   const drafts = useMemo(() =>
     sites
@@ -342,20 +336,18 @@ export function SitesProvider({ children }) {
     await refreshAndBroadcast('create_draft');
   }, [refreshAndBroadcast, user, session, role]);
 
+  const value = useMemo(() => ({
+    drafts, shortlist, staging, archive,
+    loading, error,
+    moveDraftToShortlist, rejectDraft, archiveDraft, reviveSite,
+    saveDraftDetails, submitDetailsForReview, approveShortlistToStaging,
+    uploadLOI, pushSite, createDraft,
+    sites,
+    refresh,
+  }), [drafts, shortlist, staging, archive, loading, error, moveDraftToShortlist, rejectDraft, archiveDraft, reviveSite, saveDraftDetails, submitDetailsForReview, approveShortlistToStaging, uploadLOI, pushSite, createDraft, sites, refresh]);
+
   return (
-    <SitesContext.Provider value={{
-      // Derived legacy-compatible arrays
-      drafts, shortlist, staging, archive,
-      // Loading/error state
-      loading, error,
-      // Action methods — all async, all go through siteService
-      moveDraftToShortlist, rejectDraft, archiveDraft, reviveSite,
-      saveDraftDetails, submitDetailsForReview, approveShortlistToStaging,
-      uploadLOI, pushSite, createDraft,
-      // Raw sites array for advanced use
-      sites,
-      refresh,
-    }}>
+    <SitesContext.Provider value={value}>
       {children}
     </SitesContext.Provider>
   );

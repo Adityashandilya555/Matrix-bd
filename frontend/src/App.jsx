@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useSession } from './state/SessionContext.jsx';
 import { useSites } from './state/SitesContext.jsx';
@@ -20,14 +20,17 @@ import CitySelect from './modules/shared/primitives/CitySelect.jsx';
 // All view-specific logic lives in the page components.
 
 export default function App() {
-  const { user, role, setRole, dark, toggleDark, authReady } = useSession();
-  const { drafts, shortlist, staging, archive, createDraft } = useSites();
+  const { user, role, setRole, dark, toggleDark, authReady, isBusinessAdmin, adminOverride, switchAs } = useSession();
+  const { drafts, shortlist, staging, archive, createDraft, error: sitesError, refresh } = useSites();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [openSite, setOpenSite] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [toast, setToast] = useState(null);
+  // #182 — surface a SitesContext fetch failure to the user (was set but never
+  // displayed). Dismissible; resets when a different error arrives.
+  const [dismissedSitesError, setDismissedSitesError] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       return window.localStorage.getItem('zm-sidebar-collapsed') === 'true';
@@ -111,6 +114,11 @@ export default function App() {
     return () => { alive = false; clearInterval(t); };
   }, [authReady, role]);
 
+  // Memoized so the context value identity is stable across renders (both
+  // showToast/onOpenSite are already useCallback) — prevents every consumer
+  // from re-rendering on unrelated App state changes (#232).
+  const pageContextValue = useMemo(() => ({ showToast, onOpenSite }), [showToast, onOpenSite]);
+
   const counts = {
     pipeline:     visibleDrafts.length,
     shortlist:    visibleShortlist.length,
@@ -151,8 +159,31 @@ export default function App() {
         }}>
           {/* Pages inject showToast and onOpenSite via context (see below) or props.
               AppRouter clones page elements with these props via a wrapper. */}
-          <PageContext.Provider value={{ showToast, onOpenSite }}>
-            <Outlet/>
+          {sitesError && sitesError !== dismissedSitesError && (
+            <div role="alert" style={{
+              marginBottom: 16, padding: '10px 14px', borderRadius: 8,
+              display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between',
+              background: dark ? '#3a1a1a' : '#fdecec',
+              border: '1px solid ' + (dark ? '#7a2d2d' : '#f3b5b5'),
+              color: dark ? '#ffb4b4' : '#9e1c1c', fontSize: 13,
+            }}>
+              <span>Couldn’t load sites: {sitesError}</span>
+              <span style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <button type="button" onClick={() => { setDismissedSitesError(null); refresh?.(); }}
+                  style={{ cursor: 'pointer', border: '1px solid currentColor', background: 'transparent',
+                    color: 'inherit', borderRadius: 6, padding: '3px 10px', fontSize: 12 }}>
+                  Retry
+                </button>
+                <button type="button" aria-label="Dismiss error" onClick={() => setDismissedSitesError(sitesError)}
+                  style={{ cursor: 'pointer', border: 'none', background: 'transparent',
+                    color: 'inherit', fontSize: 16, lineHeight: 1, padding: '0 4px' }}>
+                  ×
+                </button>
+              </span>
+            </div>
+          )}
+          <PageContext.Provider value={pageContextValue}>
+            <Outlet key={role}/>
           </PageContext.Provider>
         </main>
 
@@ -173,6 +204,72 @@ export default function App() {
             );
           }}
         />
+      )}
+
+      {isBusinessAdmin && adminOverride && (
+        <div style={{
+          position: 'fixed', top: 12, left: `calc(${sidebarWidth}px + 24px)`, zIndex: 999,
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '7px 14px 7px 14px', borderRadius: 12,
+          background: dark ? '#1a1a2e' : '#fff',
+          border: '1px solid ' + (dark ? '#333' : '#ddd'),
+          fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600,
+          color: dark ? '#f5f5f5' : '#1a1a2e',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+          transition: 'left 200ms ease',
+        }}>
+          <span style={{ width: 8, height: 8, borderRadius: 999, background: '#4CAF50', flexShrink: 0, animation: 'zm-pulse 2s infinite' }}/>
+          <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>Simulating</span>
+          <select
+            value={adminOverride.role}
+            onChange={(e) => { switchAs(e.target.value, adminOverride.module); }}
+            style={{
+              height: 28, padding: '0 6px', borderRadius: 6, fontSize: 11.5, fontWeight: 600,
+              border: '1px solid ' + (dark ? '#444' : '#ccc'),
+              background: dark ? '#2a2a3e' : '#f5f5f5',
+              color: dark ? '#f5f5f5' : '#1a1a2e',
+              fontFamily: 'var(--zm-font-body)', cursor: 'pointer',
+            }}
+          >
+            <option value="supervisor">Supervisor</option>
+            <option value="executive">Executive</option>
+          </select>
+          <select
+            value={adminOverride.module}
+            onChange={(e) => {
+              switchAs(adminOverride.role, e.target.value);
+              const routes = { bd: '/', legal: '/legal', design: '/design', project_excellence: '/project-excellence', project: '/project', nso: '/nso' };
+              navigate(routes[e.target.value] || '/');
+            }}
+            style={{
+              height: 28, padding: '0 6px', borderRadius: 6, fontSize: 11.5, fontWeight: 600,
+              border: '1px solid ' + (dark ? '#444' : '#ccc'),
+              background: dark ? '#2a2a3e' : '#f5f5f5',
+              color: dark ? '#f5f5f5' : '#1a1a2e',
+              fontFamily: 'var(--zm-font-body)', cursor: 'pointer',
+            }}
+          >
+            <option value="bd">BD</option>
+            <option value="legal">Legal</option>
+            <option value="design">Design</option>
+            <option value="project_excellence">Project Excellence</option>
+            <option value="project">Project</option>
+            <option value="nso">NSO</option>
+          </select>
+          <button
+            type="button"
+            onClick={() => { switchAs(null, null); navigate('/business-admin'); }}
+            style={{
+              marginLeft: 2, padding: '4px 12px', borderRadius: 8,
+              border: 'none', background: '#C62828',
+              color: '#fff', fontSize: 11, fontWeight: 700,
+              cursor: 'pointer', fontFamily: 'var(--zm-font-body)',
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+            }}
+          >
+            ✕ Exit
+          </button>
+        </div>
       )}
 
       {toast && (
@@ -200,13 +297,24 @@ export function usePageContext() { return React.useContext(PageContext); }
 // NewPipelineModal — captures pipeline-stage Model · Google pin · Expected rent.
 // Same fields stay editable at shortlist (AddDetailsPage prefills from these values);
 // edits at shortlist are diff-logged into the site Activity tab.
-const PIPELINE_MODELS = ['BTC Cafe', 'BTC Cafe+', 'Blue Tokai Origins', 'Roastries', 'Micro-Cafes & Express Outlets', 'Others'];
+const PIPELINE_MODELS = ['BTC Cafe', 'BTC Cafe+', 'Blue Tokai Origins', 'Roastries', 'Micro-Cafes & Express Outlets', 'GotTea', 'Others'];
 const PIPELINE_RENT_TYPES = [
   { id: 'revshare', label: 'Revenue share', sub: '% of monthly sales' },
   { id: 'fixed', label: 'Fixed + escalation', sub: 'monthly fixed + % per year' },
-  { id: 'mg_revshare', label: 'MG + Revenue share', sub: 'minimum guarantee + % of sales' },
+  { id: 'mg_revshare', label: 'MG + Revenue share', sub: 'minimum guarantee + escalation + % of sales' },
 ];
 function NewPipelineModal({ onClose, onSubmit, dark }) {
+  const idSite = useId();
+  const idVisitDate = useId();
+  const idCity = useId();
+  const idModel = useId();
+  const idGooglePin = useId();
+  const idExpectedRent = useId();
+  const idEscalation = useId();
+  const idRevshare = useId();
+  const idMgRent = useId();
+  const idMgRevshare = useId();
+  const idMgEscalation = useId();
   const [form, setForm] = useState({ name: '', visitDate: '', city: '', model: '', googlePin: '', googleMapsUrl: '', rentType: '', expectedRent: '', expectedEscalation: '', expectedEscalationYears: '', expectedRevshare: '' });
   const [pinStatus, setPinStatus] = useState(null); // { tone: 'info'|'ok'|'err', msg: string }
   const [submitting, setSubmitting] = useState(false);
@@ -217,7 +325,7 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
   const rentReady =
     form.rentType === 'revshare' ? !!form.expectedRevshare
     : form.rentType === 'fixed' ? !!form.expectedRent && !!form.expectedEscalation && !!form.expectedEscalationYears
-    : form.rentType === 'mg_revshare' ? !!form.expectedRent && !!form.expectedRevshare
+    : form.rentType === 'mg_revshare' ? !!form.expectedRent && !!form.expectedRevshare && !!form.expectedEscalation && !!form.expectedEscalationYears
     : false;
   const ready = form.name && form.visitDate && form.city && form.model && form.googlePin && form.rentType && rentReady;
 
@@ -284,16 +392,16 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
           <button onClick={onClose} className="zm-icon-btn" style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 8, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--zm-fg-2)', cursor: 'pointer', flex: '0 0 30px' }}><Icon name="x" size={14}/></button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label style={labelBase}>Site</label><input value={form.name} onChange={set('name')} placeholder="e.g. Powai · Lake Homes" style={inputBase}/></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label htmlFor={idSite} style={labelBase}>Site</label><input id={idSite} value={form.name} onChange={set('name')} placeholder="e.g. Powai · Lake Homes" style={inputBase}/></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label style={labelBase}>Visit date</label><input type="date" value={form.visitDate} onChange={set('visitDate')} style={{ ...inputBase, fontFamily: 'var(--zm-font-mono)', fontSize: 13 }}/></div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label style={labelBase}>City</label><CitySelect value={form.city} onChange={(c) => setForm(prev => ({ ...prev, city: c }))} options={INDIAN_CITIES}/></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label htmlFor={idVisitDate} style={labelBase}>Visit date</label><input id={idVisitDate} type="date" value={form.visitDate} onChange={set('visitDate')} style={{ ...inputBase, fontFamily: 'var(--zm-font-mono)', fontSize: 13 }}/></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label htmlFor={idCity} style={labelBase}>City</label><CitySelect id={idCity} value={form.city} onChange={(c) => setForm(prev => ({ ...prev, city: c }))} options={INDIAN_CITIES}/></div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label style={labelBase}>Model</label><select value={form.model} onChange={set('model')} style={inputBase}><option value="">Select model…</option>{PIPELINE_MODELS.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label htmlFor={idModel} style={labelBase}>Model</label><select id={idModel} value={form.model} onChange={set('model')} style={inputBase}><option value="">Select model…</option>{PIPELINE_MODELS.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={labelBase}>Google pin</label>
-              <input value={form.googlePin || form.googleMapsUrl} onChange={onPinChange} onPaste={onPinPaste} onBlur={onPinBlur} placeholder="Paste Google Maps link or 19.1183, 72.9089" style={{ ...inputBase, fontFamily: 'var(--zm-font-mono)', fontSize: 13 }}/>
+              <label htmlFor={idGooglePin} style={labelBase}>Google pin</label>
+              <input id={idGooglePin} value={form.googlePin || form.googleMapsUrl} onChange={onPinChange} onPaste={onPinPaste} onBlur={onPinBlur} placeholder="Paste Google Maps link or 19.1183, 72.9089" style={{ ...inputBase, fontFamily: 'var(--zm-font-mono)', fontSize: 13 }}/>
               {pinStatus && (
                 <span style={{
                   fontFamily: 'var(--zm-font-body)', fontSize: 11.5,
@@ -315,8 +423,8 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
               )}
             </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={labelBase}>Rent type</label>
+          <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <legend style={{ ...labelBase, padding: 0, marginBottom: 6 }}>Rent type</legend>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
               {PIPELINE_RENT_TYPES.map(rt => (
                 <button
@@ -324,6 +432,7 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
                   key={rt.id}
                   onClick={() => setForm(prev => ({ ...prev, rentType: rt.id }))}
                   className="zm-btn"
+                  aria-pressed={form.rentType === rt.id}
                   style={{
                     textAlign: 'left', padding: 12, borderRadius: 8,
                     border: '1px solid ' + (form.rentType === rt.id ? 'var(--zm-accent)' : 'var(--zm-line)'),
@@ -344,28 +453,28 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
                 </button>
               ))}
             </div>
-          </div>
+          </fieldset>
           {form.rentType === 'fixed' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={labelBase}>Expected rent</label>
+                  <label htmlFor={idExpectedRent} style={labelBase}>Expected rent</label>
                   <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
                     <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderRight: '1px solid var(--zm-line)' }}>₹</span>
-                    <input type="number" min="0" step="any" value={form.expectedRent} onChange={set('expectedRent')} placeholder="120000" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
+                    <input id={idExpectedRent} type="number" min="0" step="any" value={form.expectedRent} onChange={set('expectedRent')} placeholder="120000" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
                     <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>/mo</span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={labelBase}>Escalation</label>
+                  <label htmlFor={idEscalation} style={labelBase}>Escalation</label>
                   <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
-                    <input type="number" min="0" step="any" value={form.expectedEscalation} onChange={set('expectedEscalation')} placeholder="e.g. 4.5" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
+                    <input id={idEscalation} type="number" min="0" step="any" value={form.expectedEscalation} onChange={set('expectedEscalation')} placeholder="e.g. 4.5" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
                     <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>%</span>
                   </div>
                 </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={labelBase}>Escalation cadence</label>
+              <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <legend style={{ ...labelBase, padding: 0, marginBottom: 6 }}>Escalation cadence</legend>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {[
                     { years: 1, label: 'Yearly' },
@@ -390,34 +499,72 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
                     );
                   })}
                 </div>
-              </div>
+              </fieldset>
             </div>
           )}
           {form.rentType === 'revshare' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={labelBase}>Revenue share</label>
+              <label htmlFor={idRevshare} style={labelBase}>Revenue share</label>
               <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
-                <input type="number" min="0" step="any" value={form.expectedRevshare} onChange={set('expectedRevshare')} placeholder="e.g. 12.5" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
+                <input id={idRevshare} type="number" min="0" step="any" value={form.expectedRevshare} onChange={set('expectedRevshare')} placeholder="e.g. 12.5" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
                 <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>% of sales</span>
               </div>
             </div>
           )}
           {form.rentType === 'mg_revshare' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={labelBase}>Minimum guarantee</label>
-                <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
-                  <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderRight: '1px solid var(--zm-line)' }}>₹</span>
-                  <input type="number" min="0" step="any" value={form.expectedRent} onChange={set('expectedRent')} placeholder="80000" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
-                  <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>/mo</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label htmlFor={idMgRent} style={labelBase}>Minimum guarantee</label>
+                  <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
+                    <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderRight: '1px solid var(--zm-line)' }}>₹</span>
+                    <input id={idMgRent} type="number" min="0" step="any" value={form.expectedRent} onChange={set('expectedRent')} placeholder="80000" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)', minWidth: 0 }}/>
+                    <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>/mo</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label htmlFor={idMgRevshare} style={labelBase}>Revenue share</label>
+                  <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
+                    <input id={idMgRevshare} type="number" min="0" step="any" value={form.expectedRevshare} onChange={set('expectedRevshare')} placeholder="e.g. 12.5" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)', minWidth: 0 }}/>
+                    <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)', whiteSpace: 'nowrap' }}>% above MG</span>
+                  </div>
                 </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={labelBase}>Revenue share</label>
-                <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
-                  <input type="number" min="0" step="any" value={form.expectedRevshare} onChange={set('expectedRevshare')} placeholder="e.g. 12.5" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
-                  <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>% above MG</span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label htmlFor={idMgEscalation} style={labelBase}>Escalation</label>
+                  <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
+                    <input id={idMgEscalation} type="number" min="0" step="any" value={form.expectedEscalation} onChange={set('expectedEscalation')} placeholder="e.g. 4.5" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)', minWidth: 0 }}/>
+                    <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>%</span>
+                  </div>
                 </div>
+                <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <legend style={{ ...labelBase, padding: 0, marginBottom: 6 }}>Escalation cadence</legend>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {[
+                      { years: 1, label: 'Yearly' },
+                      { years: 3, label: 'Every 3 yrs' },
+                      { years: 5, label: 'Every 5 yrs' },
+                    ].map(opt => {
+                      const selected = String(form.expectedEscalationYears) === String(opt.years);
+                      return (
+                        <button
+                          type="button"
+                          key={opt.years}
+                          onClick={() => setForm(prev => ({ ...prev, expectedEscalationYears: String(opt.years) }))}
+                          style={{
+                            flex: 1, height: 38, borderRadius: 6,
+                            border: '1px solid ' + (selected ? 'var(--zm-accent)' : 'var(--zm-line)'),
+                            background: selected ? 'var(--zm-accent-soft)' : 'var(--zm-bg)',
+                            color: selected ? 'var(--zm-accent)' : 'var(--zm-fg)',
+                            fontFamily: 'var(--zm-font-body)',
+                            fontWeight: 600, fontSize: 13, cursor: 'pointer',
+                          }}
+                        >{opt.label}</button>
+                      );
+                    })}
+                  </div>
+                </fieldset>
               </div>
             </div>
           )}

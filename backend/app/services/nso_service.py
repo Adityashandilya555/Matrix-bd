@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Optional
 from uuid import UUID
 
@@ -29,20 +30,23 @@ from app.domain.schemas.nso import (
     NsoStateResponse,
     NsoTriggerState,
 )
-from app.services._common import fetch_site_or_404, fetch_user_name
+from app.services._common import count_rows, fetch_site_or_404, fetch_user_name
 from app.services.audit_service import write_audit_event
 from app.services.launch_service import svc_create_launch_approval
+from app.services.licensing_status import (
+    STAGE_TWO_STATUS_TO_LICENSE as _STAGE_TWO_STATUS_TO_LICENSE,
+    legacy_done as _legacy_done,
+    legal_license_values as _legal_license_values,
+    legal_licensing_complete as _legal_licensing_complete,
+    stage_two_canonical_status as _stage_two_canonical_status,
+)
 
 logger = logging.getLogger(__name__)
 
 
-LEGAL_LICENSE_FIELDS = (
-    "fssai",
-    "health_trade",
-    "shops_estab_reg",
-    "fire_noc",
-    "storage_license",
-)
+# LEGAL_LICENSE_FIELDS and _STAGE_TWO_STATUS_TO_LICENSE now live in
+# app.services.licensing_status (shared with the business-admin launch review).
+_STAGE_TWO_STATUS_FIELDS = tuple(_STAGE_TWO_STATUS_TO_LICENSE)
 
 
 async def _fetch_project(
@@ -87,10 +91,19 @@ def _property_summary(snapshot: NsoPropertySnapshot) -> str:
     return " | ".join(parts)
 
 
+_NO_SITE_DETAIL = SimpleNamespace(
+    rent_type=None, rev_share_pct=None, escalation_pct=None, score=None,
+    estimated_monthly_sales=None, carpet_area_sqft=None, cam_charges=None,
+    security_deposit=None, brokerage=None, lock_in_months=None, tenure_months=None,
+    rent_free_days=None, nearest_starbucks_m=None, nearest_twc_m=None,
+)
+
+
 async def _property_snapshot(
     session: AsyncSession, *, site: models.Site,
 ) -> NsoPropertySnapshot:
-    details = await _fetch_site_detail(session, site_id=site.id)
+    # Use an all-None stand-in when SiteDetail is absent (identical behaviour to per-field guards).
+    details = await _fetch_site_detail(session, site_id=site.id) or _NO_SITE_DETAIL
     return NsoPropertySnapshot(
         site_name=site.name,
         site_code=site.ca_code or site.code or "",
@@ -102,26 +115,26 @@ async def _property_snapshot(
         ca_code=site.ca_code,
         finance_amount=_num(site.finance_amount),
         kyc_verified=bool(site.kyc_verified),
-        rent_type=(details.rent_type if details and details.rent_type else site.rent_type),
+        rent_type=(details.rent_type or site.rent_type),
         expected_rent=_num(site.expected_rent),
         expected_revshare_pct=_num(
-            details.rev_share_pct if details and details.rev_share_pct is not None else site.expected_revshare_pct
+            details.rev_share_pct if details.rev_share_pct is not None else site.expected_revshare_pct
         ),
         expected_escalation_pct=_num(
-            details.escalation_pct if details and details.escalation_pct is not None else site.expected_escalation_pct
+            details.escalation_pct if details.escalation_pct is not None else site.expected_escalation_pct
         ),
         expected_escalation_years=site.expected_escalation_years,
-        score=_num(details.score) if details else None,
-        estimated_monthly_sales=_num(details.estimated_monthly_sales) if details else None,
-        carpet_area_sqft=_num(details.carpet_area_sqft) if details else None,
-        cam_charges=_num(details.cam_charges) if details else None,
-        security_deposit=_num(details.security_deposit) if details else None,
-        brokerage=_num(details.brokerage) if details else None,
-        lock_in_months=details.lock_in_months if details else None,
-        tenure_months=details.tenure_months if details else None,
-        rent_free_days=details.rent_free_days if details else None,
-        nearest_starbucks_m=details.nearest_starbucks_m if details else None,
-        nearest_twc_m=details.nearest_twc_m if details else None,
+        score=_num(details.score),
+        estimated_monthly_sales=_num(details.estimated_monthly_sales),
+        carpet_area_sqft=_num(details.carpet_area_sqft),
+        cam_charges=_num(details.cam_charges),
+        security_deposit=_num(details.security_deposit),
+        brokerage=_num(details.brokerage),
+        lock_in_months=details.lock_in_months,
+        tenure_months=details.tenure_months,
+        rent_free_days=details.rent_free_days,
+        nearest_starbucks_m=details.nearest_starbucks_m,
+        nearest_twc_m=details.nearest_twc_m,
     )
 
 
@@ -197,25 +210,6 @@ def _stage_one_complete(row: models.NsoReview) -> bool:
     return row.communication_floated is not None
 
 
-def _legal_license_values(licensing: Optional[models.SiteLicensing]) -> dict[str, str]:
-    if licensing is None:
-        return {field: "pending" for field in LEGAL_LICENSE_FIELDS}
-    return {field: (getattr(licensing, field) or "pending") for field in LEGAL_LICENSE_FIELDS}
-
-
-def _legal_licensing_complete(site: models.Site, licensing: Optional[models.SiteLicensing]) -> bool:
-    values = _legal_license_values(licensing)
-    return bool(
-        licensing
-        and (site.licensing_status or "pending") == "complete"
-        and all(value == "yes" for value in values.values())
-    )
-
-
-def _legacy_done(value: str) -> str:
-    return "done" if value == "yes" else "pending"
-
-
 def _legal_licensing_snapshot(
     site: models.Site, licensing: Optional[models.SiteLicensing],
 ) -> NsoLegalLicensingSnapshot:
@@ -266,11 +260,12 @@ def _stage_three_unlocked(
 
 
 def _compute_stage(
-    site: models.Site,
+    _site: models.Site,
     row: models.NsoReview,
-    project: Optional[models.ProjectReview],
-    licensing: Optional[models.SiteLicensing],
+    _project: Optional[models.ProjectReview],
+    _licensing: Optional[models.SiteLicensing],
 ) -> str:
+    # Unused params kept for a uniform call signature with _sync_rollups / _display_rollups.
     if row.nso_status == "complete":
         return "done"
     # Handed over from the Project module's NSO-Handover tab → opens directly at
@@ -368,7 +363,7 @@ def _triggers(
 
 
 async def _queue_item(
-    session: AsyncSession,
+    _session: AsyncSession,
     site: models.Site,
     row: Optional[models.NsoReview],
     project: Optional[models.ProjectReview],
@@ -432,6 +427,7 @@ async def _state_response(
         project_completed_at=(project.project_completed_at if project else None),
         nso_status=nso_status,
         current_stage=current_stage,
+        stage_three_unlocked=_stage_three_unlocked(row, site, licensing, project),
         triggers=_triggers(site, row, project, licensing),
         property_snapshot=snapshot,
         legal_licensing_snapshot=legal_snapshot,
@@ -464,10 +460,11 @@ async def _state_response(
 
 
 async def svc_nso_queue(
-    session: AsyncSession, *, tenant_id: str | UUID, limit: int = 50, offset: int = 0,
+    session: AsyncSession, *, tenant_id: str | UUID, limit: int = 500, offset: int = 0,
 ) -> NsoQueueResponse:
+    """Return one page of finance-approved sites eligible for NSO, oldest-updated first."""
     async with transaction(session):
-        sites = (await session.execute(
+        stmt = (
             select(models.Site)
             .where(
                 models.Site.tenant_id == tenant_id,
@@ -475,9 +472,9 @@ async def svc_nso_queue(
                 models.Site.ca_code.is_not(None),
             )
             .order_by(models.Site.updated_at.asc())
-            .limit(limit)
-            .offset(offset)
-        )).scalars().all()
+        )
+        total = await count_rows(session, stmt)
+        sites = (await session.execute(stmt.limit(limit).offset(offset))).scalars().all()
         # Batch the child lookups (2 queries regardless of N) and never create
         # rows on a GET — `_queue_item` handles row=None, and the write paths
         # (`svc_save_stage_*`) create the NsoReview when work actually starts.
@@ -495,24 +492,32 @@ async def svc_nso_queue(
             projects = {p.site_id: p for p in (await session.execute(
                 select(models.ProjectReview).where(models.ProjectReview.site_id.in_(site_ids))
             )).scalars()}
-            licensing_rows = {l.site_id: l for l in (await session.execute(
+            licensing_rows = {lic.site_id: lic for lic in (await session.execute(
                 select(models.SiteLicensing).where(models.SiteLicensing.site_id.in_(site_ids))
             )).scalars()}
-        items: list[NsoQueueItem] = []
-        for site in sites:
-            items.append(await _queue_item(
+        items: list[NsoQueueItem] = [
+            await _queue_item(
                 session,
                 site,
                 nso_rows.get(site.id),
                 projects.get(site.id),
                 licensing_rows.get(site.id),
-            ))
-        return NsoQueueResponse(items=items, total=len(items))
+            )
+            for site in sites
+        ]
+        return NsoQueueResponse(items=items, total=total)
 
 
 async def svc_nso_history(
     session: AsyncSession, *, tenant_id: str | UUID, status_filter: str = "all",
+    limit: int = 500, offset: int = 0,
 ) -> NsoHistoryResponse:
+    """Return one page of tenant NSO history, newest first.
+
+    Paginated (``limit``/``offset``) so the response can't grow unbounded with
+    tenant lifetime (#230); mirrors the bounded ``svc_nso_queue`` pattern.
+    ``total`` is the count of rows in this page, exactly as the queue reports.
+    """
     async with transaction(session):
         stmt = (
             select(models.Site, models.NsoReview, models.ProjectReview, models.SiteLicensing)
@@ -534,16 +539,23 @@ async def svc_nso_history(
         elif status_filter == "rejected":
             stmt = stmt.where(False)
 
+        total = await count_rows(session, stmt)
         rows = (await session.execute(
-            stmt.order_by(desc(models.NsoReview.updated_at).nulls_last(), desc(models.Site.updated_at))
+            stmt.order_by(
+                desc(models.NsoReview.updated_at).nulls_last(),
+                desc(models.Site.updated_at),
+                models.Site.id,  # deterministic tie-breaker for stable offset paging
+            )
+            .limit(limit).offset(offset)
         )).all()
         items = [await _queue_item(session, site, row, project, licensing) for (site, row, project, licensing) in rows]
-        return NsoHistoryResponse(items=items, total=len(items))
+        return NsoHistoryResponse(items=items, total=total)
 
 
 async def svc_get_nso(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID, create: bool = True,
 ) -> NsoStateResponse:
+    """Return a site's NSO state, optionally creating the review row when work begins."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         project = await _fetch_project(session, site_id=site.id)
@@ -579,6 +591,7 @@ async def svc_save_stage_one(
     site_id: str | UUID,
     body: NsoStageOneRequest,
 ) -> NsoStateResponse:
+    """Save NSO Stage 1 property details and communication status, gated on Finance/CA approval."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         if not _trigger_one_unlocked(site):
@@ -608,8 +621,25 @@ async def svc_save_stage_two(
     tenant_id: str | UUID,
     actor: dict,
     site_id: str | UUID,
-    body: NsoStageTwoRequest,
+    body: NsoStageTwoRequest | None = None,
 ) -> NsoStateResponse:
+    """Reflect NSO Stage 2 readiness from canonical Legal Licensing.
+
+    Stage 2 is **auto-derived**: its licensing status fields (FSSAI, health
+    trade, shops & establishment, fire NOC, storage license) are recomputed by
+    ``_sync_rollups`` from the site's Legal Licensing record — they are *not*
+    authored on this endpoint. ``body`` is accepted only for backward
+    compatibility with the router/clients that still POST the Stage 2 form; its
+    fields are advisory and intentionally not persisted here.
+
+    Previously the body was accepted with a typed contract and then silently
+    dropped — a caller checking boxes got a 200 and believed their input saved
+    (#229). We now log a WARNING whenever a submitted value diverges from the
+    derived state, so the drop is observable instead of silent.
+
+    To make these fields user-authored instead, write ``body.<field>`` onto
+    ``row`` before ``_sync_rollups`` and surface them in the state response.
+    """
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         project = await _fetch_project(session, site_id=site.id)
@@ -618,6 +648,26 @@ async def svc_save_stage_two(
         if not _stage_two_unlocked(row, project):
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="NSO Stage 2 is locked until Stage 1 and Project initiation are complete.")
         _sync_rollups(site, row, project, licensing)
+        if body is not None:
+            # Compare the submitted fields against the canonical Legal
+            # Licensing-derived values (the same ones _state_response returns to
+            # clients), NOT against row.*_status — those columns are never synced
+            # from licensing, so comparing to them would warn on every normal save
+            # and log a stale "canonical" value (#229 review).
+            canonical = _stage_two_canonical_status(licensing)
+            ignored = {
+                field: getattr(body, field)
+                for field in _STAGE_TWO_STATUS_FIELDS
+                if getattr(body, field) != canonical[field]
+            }
+            if ignored:
+                logger.warning(
+                    "nso_stage_two: ignoring submitted status fields for site=%s; "
+                    "Stage 2 reflects canonical Legal Licensing "
+                    "(submitted=%s, canonical=%s)",
+                    site.id, ignored,
+                    {f: canonical[f] for f in ignored},
+                )
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor.get("name"),
@@ -635,13 +685,14 @@ async def svc_save_stage_three(
     site_id: str | UUID,
     body: NsoStageThreeRequest,
 ) -> NsoStateResponse:
+    """Save NSO Stage 3 launch-readiness checklist, gated on Legal Licensing and Project completion."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         project = await _fetch_project(session, site_id=site.id)
         licensing = await _fetch_licensing(session, site_id=site.id)
         row = await _fetch_nso_or_create(session, site=site)
         if not _stage_three_unlocked(row, site, licensing, project):
-            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="NSO Stage 3 is locked until Legal Licensing and Project completion are complete.")
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="NSO Stage 3 is locked until Stage 1 is complete, Legal Licensing and Project completion are done, and the project supervisor has pushed the site in from the Project NSO-Handover tab.")
         row.dry_stock_order_status = body.dry_stock_order_status
         row.online_delivery_status = body.online_delivery_status
         row.handover_checklist_signed = body.handover_checklist_signed
@@ -666,6 +717,7 @@ async def svc_final_approval(
     actor: dict,
     site_id: str | UUID,
 ) -> NsoStateResponse:
+    """Mark NSO complete after Stage 3 and kick off the post-NSO launch approval chain."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         project = await _fetch_project(session, site_id=site.id)

@@ -47,6 +47,7 @@ async def svc_grant_delegation(
     delegate_user_id: str | UUID,
     notes: Optional[str] = None,
 ) -> dict:
+    """Grant a supervisor's shortlist delegation for a site to an active executive delegate."""
     if (actor.get("role") or "").lower() != "supervisor":
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
@@ -74,16 +75,14 @@ async def svc_grant_delegation(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Delegate user not found in this workspace, or not active.",
             )
-        # Only executives are eligible delegates. Other supervisors already
-        # have full power, so delegating to them would be a no-op.
+        # Only executives are eligible delegates.
         if (delegate.role or "").lower() != "executive":
             raise HTTPException(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="Delegations can only be granted to executive users.",
             )
 
-        # If an active delegation for the same (site, delegate) already
-        # exists, refuse rather than silently double-granting.
+        # Refuse rather than silently double-granting an active delegation for the same (site, delegate).
         existing = (await session.execute(
             select(models.ShortlistDelegation).where(
                 models.ShortlistDelegation.site_id == site.id,
@@ -132,6 +131,7 @@ async def svc_revoke_delegation(
     actor: dict,
     delegation_id: str | UUID,
 ) -> OkResponse:
+    """Revoke a delegation by id, staying idempotent if it was already revoked."""
     if (actor.get("role") or "").lower() != "supervisor":
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
@@ -165,6 +165,7 @@ async def svc_list_delegations_for_site(
     tenant_id: str | UUID,
     site_id: str | UUID,
 ) -> dict:
+    """Return all active delegations for a site, newest first, with delegate email and name."""
     stmt = (
         select(models.ShortlistDelegation, models.User.email, models.User.name)
         .join(models.User, models.User.id == models.ShortlistDelegation.delegate_user_id)
@@ -199,6 +200,7 @@ async def svc_list_my_delegations(
     tenant_id: str | UUID,
     actor: dict,
 ) -> dict:
+    """Return active delegations granted to the calling user, newest first, with site details."""
     stmt = (
         select(models.ShortlistDelegation, models.Site.code, models.Site.name, models.Site.city)
         .join(models.Site, models.Site.id == models.ShortlistDelegation.site_id)
@@ -244,12 +246,9 @@ async def actor_has_delegation_for_site(
 
 
 # ── Module-aware delegations (site_delegations table) ──────────────────────
-# Used by the Legal module today; Payment will reuse the same surface.
-#
-# Defensive default: every reader (`svc_assigned_sites`, `svc_is_delegated`)
-# returns an empty / False result instead of raising when the table is empty
-# or absent. This keeps executive flows usable even before the migration has
-# landed in every environment.
+# Used by BD, Legal, Payment, Design, Project, NSO, Project Excellence, and Financial Closure
+# (see _VALID_MODULES below). Every reader returns empty/False instead of raising when the
+# table is absent — keeps executive flows usable before the migration has landed everywhere.
 
 _VALID_MODULES = {"bd", "legal", "payment", "design", "project", "nso", "project_excellence", "financial_closure"}
 
@@ -472,13 +471,14 @@ async def svc_is_delegated(
                 models.SiteDelegation.revoked_at.is_(None),
             ).limit(1)
         )).first()
-        return row is not None
     except Exception:
         logger.exception(
             "delegation_service.svc_is_delegated failed (tenant=%s, site=%s, user=%s, module=%s) — "
             "returning safe default False", tenant_id, site_id, user_id, module,
         )
         return False
+    else:
+        return row is not None
 
 
 async def svc_list_legal_delegations_for_site(

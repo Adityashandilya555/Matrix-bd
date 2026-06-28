@@ -1,6 +1,7 @@
 import React from 'react';
 import { T, Icon, Card, Drawer, Skeleton, EmptyState, ErrorState, Avatar, TABULAR } from '../ui/kit.jsx';
 import { MODULE_META, moduleForAction, labelForEntry, dotColor } from './historyMeta.js';
+import { getAdminSiteDocuments } from '../../../services/api/businessAdminApi.js';
 
 // A compilation of every site as a BD-style pipeline (LOI → Legal → Payment →
 // Design → Project → NSO → Launch), coloured by each module's status. Click a site for its
@@ -80,6 +81,64 @@ function Pipeline({ site }) {
 
 const fmt = (d) => { try { return new Date(d).toLocaleString(undefined, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
 
+// All documents uploaded across the site lifecycle (LOI, photos, quality-audit,
+// design deliverables) — available even after the site is closed, so the admin
+// can review the paperwork later.
+function DocumentsSection({ siteId }) {
+  const [st, setSt] = React.useState({ status: 'loading', docs: [], error: null });
+
+  React.useEffect(() => {
+    if (!siteId) return undefined;
+    let live = true;
+    setSt({ status: 'loading', docs: [], error: null });
+    getAdminSiteDocuments(siteId)
+      .then((d) => { if (live) setSt({ status: 'ready', docs: d.documents || [], error: null }); })
+      .catch((e) => { if (live) setSt({ status: 'error', docs: [], error: e?.detail || e?.message || 'Failed to load documents' }); });
+    return () => { live = false; };
+  }, [siteId]);
+
+  return (
+    <div style={{ marginBottom: 18, paddingBottom: 16, borderBottom: `1px solid ${T.line}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+        <Icon.doc size={14} />
+        <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.textMuted }}>
+          Documents{st.status === 'ready' ? ` · ${st.docs.length}` : ''}
+        </span>
+      </div>
+      {st.status === 'loading' && <Skeleton h={40} r={10} />}
+      {st.status === 'error' && <ErrorState message={st.error} />}
+      {st.status === 'ready' && st.docs.length === 0 && (
+        <div style={{ fontSize: 12, color: T.textFaint, padding: '2px 0' }}>No documents uploaded for this site.</div>
+      )}
+      {st.status === 'ready' && st.docs.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {st.docs.map((d) => (
+            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
+              border: `1px solid ${T.line}`, borderRadius: T.radiusSm, background: T.surfaceInset }}>
+              <Icon.doc size={15} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {d.fileName}
+                </div>
+                <div style={{ fontSize: 10.5, color: T.textFaint, ...TABULAR }}>
+                  {d.module} · {d.fileType}{d.uploadedAt ? ` · ${fmt(d.uploadedAt)}` : ''}
+                </div>
+              </div>
+              {d.url
+                ? <a href={d.url} target="_blank" rel="noopener noreferrer"
+                    style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5,
+                      fontWeight: 650, color: T.accent, textDecoration: 'none' }}>
+                    Open <Icon.external size={12} />
+                  </a>
+                : <span style={{ flexShrink: 0, fontSize: 11, color: T.textFaint }}>—</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HistoryDrawer({ site, fetchHistory, onClose }) {
   const [state, setState] = React.useState({ status: 'loading', items: [], error: null });
   const [mod, setMod] = React.useState('all');
@@ -109,6 +168,8 @@ function HistoryDrawer({ site, fetchHistory, onClose }) {
       subtitle={site ? `${site.siteCode} · ${site.city}` : ''} title={site ? site.siteName : ''}
       headerRight={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: T.textMuted, marginTop: 6 }}>
         <Icon.clock size={14} /> Full history</span>}>
+
+      {site && <DocumentsSection siteId={site.siteId} />}
 
       <div role="tablist" style={{ display: 'flex', gap: 4, padding: 4, marginBottom: 18, flexWrap: 'wrap',
         background: T.chip, border: `1px solid ${T.line}`, borderRadius: T.radiusPill }}>

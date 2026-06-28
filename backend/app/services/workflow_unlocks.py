@@ -23,6 +23,7 @@ from app.services.audit_service import write_audit_event
 
 
 def design_unlock_ready(site: models.Site) -> bool:
+    """Return True once both legal DD is positive and finance is approved."""
     return (site.legal_dd_status or "pending") == "positive" and (
         site.finance_status or "pending"
     ) == "approved"

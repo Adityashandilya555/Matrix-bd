@@ -1,34 +1,8 @@
-import axios from 'axios';
-import { getAuthToken, notifySessionExpired } from './authToken.js';
-import { ApiError, ensureFreshAuthToken, requestCarriedToken } from './adapters/httpAdapter.js';
+import { createApiClient } from './axiosClient.js';
 import { notifySiteDataChanged } from './siteEvents.js';
+import { toNumberOrNull } from './_utils.js';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
-const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
-
-const client = axios.create({ baseURL: BASE_URL, timeout: TIMEOUT_MS });
-
-client.interceptors.request.use(async (cfg) => {
-  const token = await ensureFreshAuthToken() || getAuthToken();
-  if (token) cfg.headers.Authorization = `Bearer ${token}`;
-  return cfg;
-});
-
-client.interceptors.response.use(
-  (r) => r,
-  (err) => {
-    if (err.code === 'ECONNABORTED') {
-      throw new ApiError({ status: 0, code: 'TIMEOUT', detail: 'Request timed out', cause: err });
-    }
-    const status = err.response?.status ?? 0;
-    const raw = err.response?.data?.detail || err.message || 'Request failed';
-    const detail = status === 0 && raw === 'Network Error'
-      ? `Network Error contacting API at ${BASE_URL}. Check backend deployment, CORS, and that the backend is running.`
-      : raw;
-    if (status === 401 && requestCarriedToken(err.config)) notifySessionExpired({ reason: 'unauthorized', detail });
-    throw new ApiError({ status, detail, code: err.response?.data?.code, cause: err });
-  },
-);
+const client = createApiClient();
 
 function budgetItemFromServer(row) {
   return { id: row.id, idx: row.idx, label: row.label, amount: row.amount };
@@ -90,8 +64,12 @@ function delegationFromServer(row) {
   };
 }
 
-export async function getPEQueue() {
-  const data = await client.get('/project-excellence/queue').then((r) => r.data);
+export async function getPEQueue({ limit, offset } = {}) {
+  // limit/offset only travel when the caller supplies them (default page intact).
+  const params = {};
+  if (limit != null) params.limit = limit;
+  if (offset != null) params.offset = offset;
+  const data = await client.get('/project-excellence/queue', { params }).then((r) => r.data);
   return { items: (data.items || []).map(queueItemFromServer), total: data.total ?? 0 };
 }
 
@@ -112,9 +90,6 @@ export async function allocatePE(siteId, executiveId, notes) {
   notifySiteDataChanged({ source: 'project_excellence', action: 'allocate', siteId });
   return stateFromServer(data);
 }
-
-const toNumberOrNull = (value) =>
-  value === '' || value == null ? null : Number(value);
 
 export async function savePEBudget(siteId, { items, action = 'save', totalIndoorAreaSqft, totalAreaSqft, covers }) {
   const data = await client.post(`/project-excellence/${siteId}/budget`, {

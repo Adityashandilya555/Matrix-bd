@@ -3,11 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import SubFilterPill from '../shared/primitives/SubFilterPill.jsx';
+import ViewMoreButton from '../shared/primitives/ViewMoreButton.jsx';
 import { useSession } from '../../state/SessionContext.jsx';
 import { getFCQueue } from '../../services/api/financialClosureApi.js';
 import { projectFinancialClosureSiteRoute } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
+import { usePagedList } from '../../hooks/usePagedList.js';
 import { useFocusSite } from '../../hooks/useFocusSite.js';
+import { keyActivate } from '../../lib/a11y.js';
 
 const STATUS_LABELS = {
   open: 'Open',
@@ -41,43 +44,26 @@ function StatusPill({ value, tone = 'var(--zm-accent)' }) {
 export default function FinancialClosureQueuePage() {
   const navigate = useNavigate();
   const { role } = useSession();
-  const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
+  // "View more" batch pager — `total` is the server COUNT(*) of the whole queue;
+  // `items` are the rows loaded so far (client status filter operates over these).
+  const { items, total, status, error, hasMore, loadingMore, loadMore, reload } =
+    usePagedList(({ limit, offset }) => getFCQueue({ limit, offset }));
   const [statusFilter, setStatusFilter] = React.useState('all');
 
   useFocusSite();
 
-  const load = React.useCallback(() => {
-    let cancelled = false;
-    setState((prev) => ({ ...prev, status: prev.items.length ? prev.status : 'loading', error: null }));
-    getFCQueue()
-      .then((data) => {
-        if (!cancelled) setState({ status: 'ready', items: data.items, total: data.total, error: null });
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setState((prev) => ({
-            ...prev,
-            status: prev.items.length ? 'ready' : 'error',
-            error: err?.detail || err?.message || 'Failed to load financial closure queue',
-          }));
-        }
-      });
-    return () => { cancelled = true; };
-  }, []);
-
-  React.useEffect(() => load(), [load]);
-  useSiteDataRefresh(load, { sources: ['financial_closure', 'businessAdmin', 'project'] });
+  useSiteDataRefresh(reload, { sources: ['financial_closure', 'businessAdmin', 'project'] });
 
   const open = (row) => navigate(projectFinancialClosureSiteRoute(row.siteId));
   const COLS = '120px minmax(220px, 1fr) 130px 150px 150px 150px 130px';
 
   const statusCounts = STATUS_FILTERS.reduce((acc, f) => {
-    acc[f.key] = state.items.filter((row) => row.financialClosureStatus === f.key).length;
+    acc[f.key] = items.filter((row) => row.financialClosureStatus === f.key).length;
     return acc;
   }, {});
   const visibleItems = statusFilter === 'all'
-    ? state.items
-    : state.items.filter((row) => row.financialClosureStatus === statusFilter);
+    ? items
+    : items.filter((row) => row.financialClosureStatus === statusFilter);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -88,17 +74,17 @@ export default function FinancialClosureQueuePage() {
         right={<HeaderTag icon="box" label="LAUNCHED"/>}
       />
 
-      {state.status === 'loading' && (
+      {status === 'loading' && (
         <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
           Loading financial closure queue...
         </div>
       )}
 
-      {state.error && (
-        <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{state.error}</div>
+      {error && (
+        <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{error}</div>
       )}
 
-      {state.status === 'ready' && state.items.length > 0 && (
+      {status === 'ready' && items.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {STATUS_FILTERS.filter((f) => statusCounts[f.key] > 0 || f.key === statusFilter).map((f) => (
             <SubFilterPill
@@ -113,18 +99,18 @@ export default function FinancialClosureQueuePage() {
         </div>
       )}
 
-      {state.status === 'ready' && visibleItems.length === 0 && (
+      {status === 'ready' && visibleItems.length === 0 && (
         <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
           <Icon name="box" size={20}/>
           <p style={{ margin: '12px 0 0' }}>
-            {statusFilter !== 'all' && state.items.length > 0
+            {statusFilter !== 'all' && items.length > 0
               ? 'No sites match the current status filter.'
               : 'No launched sites are waiting for Financial Closure right now.'}
           </p>
         </div>
       )}
 
-      {state.status === 'ready' && visibleItems.length > 0 && (
+      {status === 'ready' && visibleItems.length > 0 && (
         <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', overflowX: 'auto' }}>
           <div style={{
             display: 'grid', gridTemplateColumns: COLS, gap: 12, padding: '12px 16px',
@@ -151,7 +137,10 @@ export default function FinancialClosureQueuePage() {
                 key={row.siteId}
                 data-site-id={row.siteId}
                 className="zm-row"
+                role="button"
+                tabIndex={0}
                 onClick={() => open(row)}
+                onKeyDown={keyActivate(() => open(row))}
                 style={{
                   display: 'grid', gridTemplateColumns: COLS, gap: 12,
                   padding: '14px 16px', borderBottom: '1px solid var(--zm-line-faint)',
@@ -186,6 +175,16 @@ export default function FinancialClosureQueuePage() {
             );
           })}
         </div>
+      )}
+
+      {status === 'ready' && (
+        <ViewMoreButton
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          loaded={items.length}
+          total={total}
+          onClick={loadMore}
+        />
       )}
     </div>
   );

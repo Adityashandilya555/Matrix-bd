@@ -1,26 +1,23 @@
 """Shared upload helpers.
 
-`read_upload_capped` is the single guard every multipart endpoint uses to read a
-file body. It enforces a hard size cap — first via the declared part size when
-present, then defensively while streaming — so no endpoint can buffer an
-unbounded body into process memory and OOM the backend (#93).
+Defensively caps file sizes to prevent OOM errors, and validates allowed MIME types.
 """
 from __future__ import annotations
 
+import logging
+
+import filetype
 from fastapi import HTTPException, UploadFile, status
 
 from app.core.config import settings
 
-# Read the spooled file in 1 MB chunks so we never materialise more than the cap
-# (plus one chunk) in memory before rejecting an oversized upload.
+_log = logging.getLogger("matrix.uploads")
+
+# Read in 1 MB chunks to cap memory footprint
 _CHUNK_BYTES = 1024 * 1024
 
-# ── Content-type allowlist (#177) ─────────────────────────────────────────
-# Covers every type the UI actually accepts: LOI inputs accept .pdf/.doc/.docx,
-# photo/logo inputs accept image/* (incl. iPhone HEIC and the non-standard
-# image/jpg alias some clients send), and project/design deliverables include
-# legacy Office (.doc/.xls) and CSV exports. Deliberately excludes risky types
-# like image/svg+xml (script-bearing) and application/zip (opaque archive).
+# ── Content-type allowlist ─────────────────────────────────────────
+# Allowed file types: images, PDFs, Word/Excel documents, and CSV.
 ALLOWED_MIME = {
     # Images
     "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif",
@@ -31,13 +28,53 @@ ALLOWED_MIME = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",   # .docx
     "application/vnd.ms-excel",                                                  # .xls
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",         # .xlsx
+    # text/csv
     "text/csv",                                                                  # .csv
 }
+
+# Magic-byte validation. Reconcile declared type against actual bytes for strong-magic types.
+_STRONG_MAGIC: dict[str, set[str]] = {
+    "image/jpeg": {"image/jpeg"},
+    "image/jpg":  {"image/jpeg"},   # non-standard alias some clients send
+    "image/png":  {"image/png"},
+    "image/webp": {"image/webp"},
+    "image/gif":  {"image/gif"},
+    "image/heic": {"image/heic", "image/heif"},
+    "image/heif": {"image/heic", "image/heif"},
+    "application/pdf": {"application/pdf"},
+    # OOXML files (.docx/.xlsx) are ZIP containers and may sniff as application/zip if markers
+    # fall outside the scan window. These are allowed with a warning.
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+        {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+}
+# The two OOXML container types.
+_OOXML_MIME = {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+}
+# Declared types deliberately NOT byte-checked due to weak/absent magic signatures.
+_WEAK_MAGIC = {"application/msword", "application/vnd.ms-excel", "text/csv"}
+
+# Import-time invariant.
+if set(_STRONG_MAGIC) | _WEAK_MAGIC != ALLOWED_MIME:  # pragma: no cover - invariant
+    raise RuntimeError(
+        "uploads allowlist drift: set(_STRONG_MAGIC) | _WEAK_MAGIC must equal ALLOWED_MIME"
+    )
 
 def _unsupported(ct: str) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
         detail=f"File type '{ct}' not allowed.",
+    )
+
+def _content_mismatch(declared: str) -> HTTPException:
+    # The detected type is logged at the call site, not echoed to the client
+    # (no need to reveal sniffing internals in the error body).
+    return HTTPException(
+        status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        detail=f"File content does not match its declared type '{declared}'.",
     )
 
 def _too_large(limit: int) -> HTTPException:
@@ -55,7 +92,7 @@ async def read_upload_capped(file: UploadFile, *, max_bytes: int | None = None) 
     """
     limit = max_bytes if max_bytes is not None else settings.max_upload_bytes
 
-    # Restrict allowed content-types (#177)
+    # Restrict allowed content-types
     content_type = getattr(file, "content_type", None)
     if isinstance(file, UploadFile):
         if not content_type or not content_type.strip():
@@ -81,4 +118,24 @@ async def read_upload_capped(file: UploadFile, *, max_bytes: int | None = None) 
         if total > limit:
             raise _too_large(limit)
         chunks.append(chunk)
-    return b"".join(chunks)
+    data = b"".join(chunks)
+
+    # Magic-byte reconciliation. Enforce only for strong-signature types.
+    if content_type in _STRONG_MAGIC:
+        kind = filetype.guess(data)
+        if kind is not None and kind.mime not in _STRONG_MAGIC[content_type]:
+            # A declared OOXML whose markers fall past filetype's scan window is application/zip.
+            # Allow application/zip for OOXML types with a warning, reject other mismatches.
+            if content_type in _OOXML_MIME and kind.mime == "application/zip":
+                _log.warning(
+                    "upload allowed with warning: declared %s, bytes sniffed as "
+                    "application/zip (OOXML markers likely past the scan window)",
+                    content_type,
+                )
+            else:
+                _log.warning(
+                    "upload rejected: declared %s but bytes detected as %s",
+                    content_type, kind.mime,
+                )
+                raise _content_mismatch(content_type)
+    return data

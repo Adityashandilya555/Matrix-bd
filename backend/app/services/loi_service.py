@@ -1,7 +1,7 @@
 """LOI service — real queries + Supabase Storage handoff."""
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -55,7 +55,6 @@ async def svc_upload_loi(
     assert_transition(SiteStatus(status_now), SiteStatus.LOI_UPLOADED)
 
     # Sanitise the storage key — Supabase rejects non-ASCII keys (400).
-    # The original name is kept on the file_name column for display.
     storage_path = f"loi/{tenant_id}/{site_id}/{safe_object_name(filename, fallback='loi.pdf')}"
     await upload_bytes(
         path=storage_path, body=file_bytes, content_type=content_type or "application/pdf",
@@ -104,7 +103,7 @@ async def svc_upload_loi(
     return LOIUploadResponse(
         site_id=str(site.id),
         loi_uploaded=True,
-        loi_uploaded_at=site.loi_uploaded_at.date() if site.loi_uploaded_at else date.today(),
+        loi_uploaded_at=site.loi_uploaded_at.date() if site.loi_uploaded_at else datetime.now(timezone.utc).date(),
         days_to_loi=days_to_loi,
     )
 

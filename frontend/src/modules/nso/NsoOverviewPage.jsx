@@ -114,7 +114,10 @@ function QueueTable({ rows, onOpen, limit }) {
         <div
           key={row.siteId}
           className="zm-row"
+          role="button"
+          tabIndex={0}
           onClick={() => onOpen(row)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(row); } }}
           style={{
             display: 'grid',
             gridTemplateColumns: COLS,
@@ -188,10 +191,10 @@ export default function NsoOverviewPage() {
   useSiteDataRefresh(load, { sources: ['nso', 'project', 'businessAdmin', 'payment', 'legalApi', 'siteTrackerApi', 'launch'] });
 
   const { items } = state;
-  const stageCounts = STAGE_DEFS.reduce((acc, s) => {
+  const stageCounts = React.useMemo(() => STAGE_DEFS.reduce((acc, s) => {
     acc[s.key] = items.filter((row) => stageOf(row) === s.key).length;
     return acc;
-  }, {});
+  }, {}), [items]);
 
   const kpiCount = (kpi) => (kpi.stages
     ? kpi.stages.reduce((sum, s) => sum + stageCounts[s], 0)
@@ -207,16 +210,18 @@ export default function NsoOverviewPage() {
 
   // Rows: an active stage pill filters the whole queue by that stage;
   // otherwise the table shows the selected KPI's scope. Search applies last.
-  const currentStageFilter = view ? stageFilter : 'all';
-  const baseRows = currentStageFilter !== 'all'
-    ? items.filter((row) => stageOf(row) === currentStageFilter)
-    : (selectedKpi?.stages
-      ? items.filter((row) => selectedKpi.stages.includes(stageOf(row)))
-      : items);
-  const needle = search.trim().toLowerCase();
-  const filteredRows = baseRows
-    .filter((row) => !needle || [row.siteCode, row.siteName, row.city, row.caCode]
-      .filter(Boolean).join(' ').toLowerCase().includes(needle));
+  const filteredRows = React.useMemo(() => {
+    const currentStageFilter = view ? stageFilter : 'all';
+    const baseRows = currentStageFilter !== 'all'
+      ? items.filter((row) => stageOf(row) === currentStageFilter)
+      : (selectedKpi?.stages
+        ? items.filter((row) => selectedKpi.stages.includes(stageOf(row)))
+        : items);
+    const needle = search.trim().toLowerCase();
+    return baseRows
+      .filter((row) => !needle || [row.siteCode, row.siteName, row.city, row.caCode]
+        .filter(Boolean).join(' ').toLowerCase().includes(needle));
+  }, [items, stageFilter, selectedKpi, search, view]);
 
   const total = state.total || items.length;
   const lede = state.status === 'ready'

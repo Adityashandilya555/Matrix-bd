@@ -1,5 +1,7 @@
 import React from 'react';
 import './approval-center.css';
+import { GRID_LAYERS, GRID_ATTACH, stageVignette, canvasBase } from '../../lib/surfaces.js';
+import { PRODUCT_NAME } from '../../router/routes.js';
 import { getAuthToken } from '../../services/api/authToken.js';
 import { decodeJwtPayload } from './jwt.js';
 import {
@@ -10,6 +12,7 @@ import {
   getFinanceQueue, approveFinance, rejectFinance, getBudgetQueue, reviewBudget, fetchBudgetDetail,
   getQualityAuditQueue, confirmQualityAudit, getClosureAdminQueue, finalizeClosure,
   getOrg, getAllSites, getSiteHistory,
+  getExecutiveRequests, approveExecutiveRequest, rejectExecutiveRequest,
 } from '../../services/api/businessAdminApi.js';
 import {
   rotateDeptCode, listPendingSupervisors, approveSupervisor, rejectSupervisor, removeOrgUser,
@@ -21,6 +24,7 @@ import ApprovalCenter from './approval/ApprovalCenter.jsx';
 import DepartmentsTab from './departments/DepartmentsTab.jsx';
 import SitesTab from './sites/SitesTab.jsx';
 import LaunchApprovalTab from './launch/LaunchApprovalTab.jsx';
+import WorkspaceSwitcherPanel from './WorkspaceSwitcherPanel.jsx';
 
 // Real API wiring. Injectable so the dev preview (and tests) can drive the whole
 // portal with mock data — see ./_preview/ApprovalCenterPreview.jsx.
@@ -43,6 +47,9 @@ export const REAL_FETCHERS = {
   listSupervisors:   listPendingSupervisors,
   approveSupervisor,
   rejectSupervisor,
+  listExecutiveReqs: getExecutiveRequests,
+  approveExecutiveReq: approveExecutiveRequest,
+  rejectExecutiveReq: rejectExecutiveRequest,
   removeOrgUser,
   rotateDeptCode,
   listOrg:           getOrg,
@@ -71,10 +78,11 @@ function useQueue(fetcher) {
 }
 
 const TABS = [
-  { key: 'approvals',   label: 'Approval Center', icon: Icon.check },
+  { key: 'approvals',   label: 'Approval Center',  icon: Icon.check },
   { key: 'launch',      label: 'Launch Approvals', icon: Icon.flag },
-  { key: 'departments', label: 'Departments',      icon: Icon.key },
-  { key: 'sites',       label: 'Sites',            icon: Icon.pin },
+  { key: 'departments', label: 'Departments',       icon: Icon.key },
+  { key: 'sites',       label: 'Sites',             icon: Icon.pin },
+  { key: 'workspace',   label: 'Workspace Access',  icon: Icon.external },
 ];
 
 export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, workspaceName }) {
@@ -105,6 +113,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   const [closure, loadClosure] = useQueue(fetchers.listClosure);
   // Departments
   const [supervisors, loadSupervisors] = useQueue(fetchers.listSupervisors);
+  const [executiveRequests, loadExecutiveRequests] = useQueue(fetchers.listExecutiveReqs);
   const [org, loadOrg] = useQueue(fetchers.listOrg);
   // Sites
   const [sites, loadSites] = useQueue(fetchers.listSites);
@@ -187,40 +196,47 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     // departments
     onApproveSupervisor: async (u) => { await fetchers.approveSupervisor(u.id, u.module); await loadSupervisors(true); await loadOrg(true); },
     onRejectSupervisor: async (u) => { await fetchers.rejectSupervisor(u.id); await loadSupervisors(true); },
+    onApproveExecutiveReq: async (reqId) => { await fetchers.approveExecutiveReq(reqId); await loadExecutiveRequests(true); await loadOrg(true); },
+    onRejectExecutiveReq: async (reqId) => { await fetchers.rejectExecutiveReq(reqId); await loadExecutiveRequests(true); },
     onRotate: async (moduleKey) => { await fetchers.rotateDeptCode(moduleKey); await loadOrg(true); },
     onRemoveUser: async (u) => { if (!fetchers.removeOrgUser) return; await fetchers.removeOrgUser(u.id); await loadOrg(true); },
     reloadPendingSupervisors: loadSupervisors,
+    reloadExecutiveRequests: loadExecutiveRequests,
     reloadOrg: loadOrg,
   };
 
   const refreshAll = async () => {
     setRefreshingAll(true);
-    try { await Promise.all([reloadApprovals(true), loadSupervisors(true), loadOrg(true), loadSites(true)]); }
+    try { await Promise.all([reloadApprovals(true), loadSupervisors(true), loadExecutiveRequests(true), loadOrg(true), loadSites(true)]); }
     finally { setRefreshingAll(false); }
   };
 
   const navItems = [
     { ...TABS[0], count: approvalSites.length },
     { ...TABS[1] }, // Launch Approvals — count fetched inside the tab
-    { ...TABS[2], count: supCount },
+    { ...TABS[2], count: supCount + executiveRequests.items.length },
     { ...TABS[3] },
+    { ...TABS[4] }, // Workspace Access tab
   ];
 
   return (
     <div className="ac-root" data-theme={theme}
-      style={{ height: '100vh', background: T.bg, color: T.text, display: 'flex', gap: 14, padding: 14, boxSizing: 'border-box' }}>
+      style={{ height: '100vh', background: 'var(--zm-bg)', color: 'var(--zm-fg)', display: 'flex', boxSizing: 'border-box' }}>
       <Sidebar items={navItems} active={tab} onChange={setTab}
         expanded={navExpanded} onToggleExpanded={toggleNav}
         theme={theme} onToggleTheme={toggleTheme} onLogout={onLogout} />
 
-      <main style={{ flex: 1, minWidth: 0, height: '100%', overflowY: 'auto', borderRadius: 22,
-        background: T.panel, border: `1px solid ${T.line}`, boxShadow: T.cardShadow }}>
+      <main className="zm-app-main" style={{ flex: 1, minWidth: 0, height: '100%', overflowY: 'auto',
+          backgroundColor: canvasBase(theme === 'dark'),
+          backgroundImage: stageVignette(theme === 'dark') + ', ' + GRID_LAYERS,
+          backgroundAttachment: 'fixed, fixed, ' + GRID_ATTACH,
+      }}>
         <div style={{ maxWidth: 1080, margin: '0 auto', padding: '30px 34px 60px' }}>
 
           {/* ── Header ── */}
           <header style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 22, flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: T.textMuted }}>Scale · Business admin</div>
+              <div style={{ fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: T.textMuted }}>{PRODUCT_NAME} · Business admin</div>
               <h1 style={{ margin: '5px 0 0', fontSize: 27, fontWeight: 730, letterSpacing: '-0.025em', color: T.text }}>{company || 'Workspace'}</h1>
               <div style={{ marginTop: 3, fontSize: 13, color: T.textMuted }}>Approval center</div>
             </div>
@@ -239,18 +255,29 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
                 <Icon.alert size={15} /> Some queues couldn’t load — use Retry below.</span>)
             : (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: T.successText }}>
                 <Icon.check size={16} /> You’re all caught up — nothing awaiting approval.</span>)}
+
+          {supCount > 0 && (
+            <span style={{ marginLeft: 10, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              · <Icon.users size={14} style={{ color: T.warnText }} /> <span style={{ color: T.warnText }}>{supCount} pending {supCount === 1 ? 'supervisor' : 'supervisors'}</span>
+            </span>
+          )}
+          {executiveRequests.items.length > 0 && (
+            <span style={{ marginLeft: 10, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              · <Icon.doc size={14} style={{ color: T.warnText }} /> <span style={{ color: T.warnText }}>{executiveRequests.items.length} executive {executiveRequests.items.length === 1 ? 'request' : 'requests'}</span>
+            </span>
+          )}
         </div>
 
         {/* ── Overview tiles ── */}
         <div className="ac-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(212px, 1fr))', gap: 14, marginBottom: 24 }}>
-          <StatTile icon={Icon.pin} label="Total sites" count={sitesCount} tone="neutral"
+          <StatTile icon={Icon.pin} label="Total sites" count={sitesCount} tone="peach"
             loading={sites.status === 'loading'} caption="in the system" onClick={() => setTab('sites')} />
-          <StatTile icon={Icon.check} label="Awaiting approval" count={approvalSites.length} tone="warn"
+          <StatTile icon={Icon.check} label="Awaiting approval" count={approvalSites.length} tone="slate"
             loading={approvalStatus === 'loading'} caption={approvalSites.length ? `${designSites} design · ${paymentSites} payment` : 'all clear'}
             onClick={() => setTab('approvals')} />
-          <StatTile icon={Icon.flag} label="Completed sites" count={completedSites} tone="success"
+          <StatTile icon={Icon.flag} label="Completed sites" count={completedSites} tone="mint"
             loading={sites.status === 'loading'} caption={completedSites ? 'project done' : 'none yet'} onClick={() => setTab('sites')} />
-          <StatTile icon={Icon.users} label="Pending requests" count={supCount} tone="accent"
+          <StatTile icon={Icon.users} label="Pending requests" count={supCount} tone="blue"
             loading={supervisors.status === 'loading'} caption="workspace access" onClick={() => setTab('departments')} />
         </div>
 
@@ -263,11 +290,12 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
               <LaunchApprovalTab />
             )}
             {tab === 'departments' && (
-              <DepartmentsTab org={org} pendingSupervisors={supervisors} handlers={handlers} />
+              <DepartmentsTab org={org} pendingSupervisors={supervisors} executiveRequests={executiveRequests} handlers={handlers} />
             )}
             {tab === 'sites' && (
               <SitesTab data={sites} fetchHistory={fetchers.fetchSiteHistory} onRetry={loadSites} />
             )}
+            {tab === 'workspace' && <WorkspaceSwitcherPanel />}
           </div>
         </div>
       </main>

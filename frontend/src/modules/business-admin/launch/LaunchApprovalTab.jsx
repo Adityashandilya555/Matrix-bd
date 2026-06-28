@@ -25,6 +25,7 @@ import {
   sendForReview, finalConfirm, launchSite,
 } from '../../../services/api/launchApprovalApi.js';
 import { sendForFinancialClosure } from '../../../services/api/financialClosureApi.js';
+import { keyActivate } from '../../../lib/a11y.js';
 
 // ── Status display map ─────────────────────────────────────────────────────────
 const STATUS_LABELS = {
@@ -136,7 +137,7 @@ function Timeline({ events }) {
               {Array.isArray(e.changes) && e.changes.length > 0 && (
                 <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
                   {e.changes.map((c, j) => (
-                    <div key={j} style={{ fontSize: 11.5, color: T.textMuted, ...TABULAR }}>
+                    <div key={`${c.field ?? c.label ?? j}-${j}`} style={{ fontSize: 11.5, color: T.textMuted, ...TABULAR }}>
                       <span style={{ color: T.textFaint }}>{c.label || c.field}:</span>{' '}
                       <span style={{ textDecoration: c.from != null ? 'line-through' : 'none', color: T.textFaint }}>{c.from ?? '—'}</span>
                       {' → '}<span style={{ color: T.text, fontWeight: 600 }}>{c.to ?? '—'}</span>
@@ -413,7 +414,7 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
 function QueueRow({ item, onClick }) {
   const info = STATUS_LABELS[item.status] || { label: item.status, color: T.textMuted };
   return (
-    <div onClick={onClick}
+    <div onClick={onClick} role="button" tabIndex={0} onKeyDown={keyActivate(onClick)}
       style={{ display: 'grid', gridTemplateColumns: '0.7fr 1.4fr 0.8fr 1.4fr 1fr', gap: 12, padding: '13px 18px', borderBottom: `1px solid ${T.line}`, cursor: 'pointer', transition: 'background 0.15s' }}
       onMouseEnter={(e) => { e.currentTarget.style.background = T.hoverBg || 'rgba(255,255,255,0.04)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}

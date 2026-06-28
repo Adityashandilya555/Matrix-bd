@@ -6,7 +6,6 @@ import { usePageContext } from '../../App.jsx';
 import { listMyTeam } from '../../services/api/adapters/httpAdapter.js';
 import {
   getFC,
-  listFCDelegations,
   allocateFC,
   revokeFCAllocation,
   saveFCBudget,
@@ -111,7 +110,6 @@ export default function FinancialClosureReviewPage() {
   const { showToast } = usePageContext();
   const { role } = useSession();
   const isSupervisor = role === 'supervisor';
-  const isExecutive = role === 'exec' || role === 'executive';
   const isBusinessAdmin = role === 'business_admin';
 
   const [state, setState] = React.useState(null);

@@ -19,7 +19,7 @@ def require_role(*roles: Role) -> Callable:
     """
     async def guard(current_user: dict = Depends(get_current_user)) -> dict:
         user_role = current_user.get("role")
-        if user_role not in [r.value for r in roles]:
+        if user_role not in [r.value for r in roles] and user_role != "business_admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Role '{user_role}' not allowed. Required: {[r.value for r in roles]}",
@@ -46,8 +46,9 @@ def require_module(module_name: str) -> Callable:
             ...
     """
     async def guard(current_user: dict = Depends(get_current_user)) -> dict:
+        user_role = current_user.get("role")
         user_module = current_user.get("module")
-        if user_module != module_name:
+        if user_module != module_name and user_role != "business_admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Module '{user_module}' not allowed on this route. Required: '{module_name}'",
@@ -55,11 +56,3 @@ def require_module(module_name: str) -> Callable:
         return current_user
 
     return guard
-
-
-def require_scope(kind: str) -> Callable:
-    """Dependency factory: validates scope access."""
-    raise NotImplementedError(
-        f"require_scope('{kind}') is not implemented — "
-        "do not use in production endpoints until JWT scope claims are wired"
-    )

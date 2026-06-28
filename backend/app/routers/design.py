@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status as http_status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status as http_status
 
 from app.core.deps import DbDep, TenantId
 from app.core.uploads import read_upload_capped
@@ -88,6 +88,8 @@ async def design_queue(
     current_user: DesignMember,
     _module: InDesignModule,
     tenant_id: TenantId,
+    limit: int = Query(500, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
 ) -> DesignQueueResponse:
     # Executives only see sites allocated to them. Supervisors see all.
     restrict_to: Optional[list[str]] = None
@@ -95,7 +97,9 @@ async def design_queue(
         restrict_to = await svc_assigned_sites(
             db, tenant_id=tenant_id, user_id=current_user["sub"], module="design",
         )
-    return await svc_design_queue(db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to)
+    return await svc_design_queue(
+        db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to, limit=limit, offset=offset,
+    )
 
 
 @router.get(
@@ -109,6 +113,8 @@ async def design_history(
     _module: InDesignModule,
     tenant_id: TenantId,
     status_filter: str = "all",
+    limit: int = Query(500, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
 ) -> DesignHistoryResponse:
     # Executives only see design history for sites delegated to them. Supervisors see all.
     restrict_to: Optional[list[str]] = None
@@ -118,6 +124,7 @@ async def design_history(
         )
     return await svc_design_history(
         db, tenant_id=tenant_id, status_filter=status_filter, restrict_to_site_ids=restrict_to,
+        limit=limit, offset=offset,
     )
 
 
@@ -130,7 +137,7 @@ async def design_history(
 )
 async def design_gfc_queue(
     db: DbDep,
-    current_user: BusinessAdmin,
+    _auth: BusinessAdmin,
     tenant_id: TenantId,
 ) -> DesignGfcQueueResponse:
     return await svc_design_gfc_queue(db, tenant_id=tenant_id)
@@ -144,7 +151,7 @@ async def design_gfc_queue(
 async def design_gfc_read(
     site_id: str,
     db: DbDep,
-    current_user: BusinessAdmin,
+    _auth: BusinessAdmin,
     tenant_id: TenantId,
 ) -> DesignReviewResponse:
     return await svc_get_design_review(db, site_id=site_id, tenant_id=tenant_id)
@@ -176,7 +183,7 @@ async def design_gfc_decision(
 )
 async def design_admin_queue(
     db: DbDep,
-    current_user: BusinessAdmin,
+    _auth: BusinessAdmin,
     tenant_id: TenantId,
 ) -> DesignAdminQueueResponse:
     return await svc_design_admin_queue(db, tenant_id=tenant_id)

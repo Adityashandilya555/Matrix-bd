@@ -7,7 +7,7 @@ const MODELS = ['BTC Cafe', 'BTC Cafe+', 'Blue Tokai Origins', 'Roastries', 'Mic
 const RENT_TYPES = [
   { id: 'revshare', label: 'Revenue share', sub: '% of monthly sales' },
   { id: 'fixed', label: 'Fixed + escalation', sub: 'monthly fixed + % per year' },
-  { id: 'mg_revshare', label: 'MG + Revenue share', sub: 'minimum guarantee + % of sales' },
+  { id: 'mg_revshare', label: 'MG + Revenue share', sub: 'minimum guarantee + escalation + % of sales' },
 ];
 
 // uploadingIds: Set of local photo IDs currently being uploaded to storage
@@ -62,13 +62,14 @@ function PhotoPicker({ photos, onAdd, onRemove, onRetry, uploadingIds = new Set(
 
 const formatINR = (n) => { if (!Number.isFinite(n)) return '—'; return '₹' + Math.round(n).toLocaleString('en-IN'); };
 
-function TextField({ label, value, onChange, placeholder, readOnly, mono, required, span = 1, prefix, suffix, type = 'text', min, max, hint, error }) {
+function TextField({ label, value, onChange, onBlur, placeholder, readOnly, mono, required, span = 1, prefix, suffix, type = 'text', min, max, step, inputMode, hint, error }) {
+  const uid = React.useId();
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, gridColumn: `span ${span}` }}>
-      <label style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)' }}>{label}{required && <span style={{ color: 'var(--zm-danger)', fontWeight: 700 }}>*</span>}{readOnly && <span style={{ color: 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-mono)', fontSize: 10, marginLeft: 'auto' }}>read-only</span>}</label>
+      <label htmlFor={uid} style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)' }}>{label}{required && <span style={{ color: 'var(--zm-danger)', fontWeight: 700 }}>*</span>}{readOnly && <span style={{ color: 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-mono)', fontSize: 10, marginLeft: 'auto' }}>read-only</span>}</label>
       <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid ' + (error ? 'var(--zm-danger)' : 'var(--zm-line)'), borderRadius: 6, background: readOnly ? 'var(--zm-surface-sunken)' : 'var(--zm-bg)', overflow: 'hidden' }}>
         {prefix && (<span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderRight: '1px solid var(--zm-line)' }}>{prefix}</span>)}
-        <input type={type} value={value ?? ''} onChange={(e) => onChange?.(e.target.value)} placeholder={placeholder} readOnly={readOnly} min={min} max={max} style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: mono ? 'var(--zm-font-mono)' : 'var(--zm-font-body)', fontFeatureSettings: mono ? "'tnum' 1" : 'normal', fontSize: 13.5, color: readOnly ? 'var(--zm-fg-2)' : 'var(--zm-fg)' }}/>
+        <input id={uid} type={type} value={value ?? ''} onChange={(e) => onChange?.(e.target.value)} onBlur={onBlur} placeholder={placeholder} readOnly={readOnly} min={min} max={max} step={step} inputMode={inputMode} style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: mono ? 'var(--zm-font-mono)' : 'var(--zm-font-body)', fontFeatureSettings: mono ? "'tnum' 1" : 'normal', fontSize: 13.5, color: readOnly ? 'var(--zm-fg-2)' : 'var(--zm-fg)' }}/>
         {suffix && (<span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>{suffix}</span>)}
       </div>
       {hint && !error && <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, color: 'var(--zm-fg-3)' }}>{hint}</span>}
@@ -78,10 +79,11 @@ function TextField({ label, value, onChange, placeholder, readOnly, mono, requir
 }
 
 function SelectField({ label, value, onChange, options, required, span = 1 }) {
+  const uid = React.useId();
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, gridColumn: `span ${span}` }}>
-      <label style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)' }}>{label}{required && <span style={{ color: 'var(--zm-danger)', fontWeight: 700 }}>*</span>}</label>
-      <select value={value || ''} onChange={(e) => onChange(e.target.value)} style={{ height: 38, padding: '0 10px', border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', fontFamily: 'var(--zm-font-body)', fontSize: 13.5, color: 'var(--zm-fg)', outline: 'none' }}><option value="">Select…</option>{options.map(o => <option key={o} value={o}>{o}</option>)}</select>
+      <label htmlFor={uid} style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)' }}>{label}{required && <span style={{ color: 'var(--zm-danger)', fontWeight: 700 }}>*</span>}</label>
+      <select id={uid} value={value || ''} onChange={(e) => onChange(e.target.value)} style={{ height: 38, padding: '0 10px', border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', fontFamily: 'var(--zm-font-body)', fontSize: 13.5, color: 'var(--zm-fg)', outline: 'none' }}><option value="">Select…</option>{options.map(o => <option key={o} value={o}>{o}</option>)}</select>
     </div>
   );
 }
@@ -208,7 +210,7 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
   }, [item?.id]);
 
   const upd = (k) => (v) => setF(prev => ({ ...prev, [k]: v }));
-  // Score is an integer 1–5 (footfall + visibility rating); clamp at the field
+  // Score is a decimal 1–5 (footfall + visibility rating); clamp at the field
   // boundary so users can't enter or paste 0 / 7 / 150 etc. Empty input stays
   // empty so the "required" validator can still fire on submit.
   const updScore = (v) => {
@@ -216,9 +218,21 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
       setF(prev => ({ ...prev, score: '' }));
       return;
     }
-    const n = Number(String(v).replace(/[^\d.]/g, ''));
-    if (!Number.isFinite(n)) return; // ignore garbage
-    const clamped = Math.max(1, Math.min(5, Math.round(n)));
+    const cleaned = String(v).replace(/[^\d.]/g, '');
+    setF(prev => ({ ...prev, score: cleaned }));
+  };
+  const handleScoreBlur = () => {
+    if (f.score === '' || f.score === null || f.score === undefined) {
+      setF(prev => ({ ...prev, score: '' }));
+      return;
+    }
+    const cleaned = String(f.score).replace(/[^\d.]/g, '');
+    const n = parseFloat(cleaned);
+    if (isNaN(n)) {
+      setF(prev => ({ ...prev, score: '' }));
+      return;
+    }
+    const clamped = Math.max(1, Math.min(5, n));
     setF(prev => ({ ...prev, score: String(clamped) }));
   };
   const rentNum = parseFloat(f.rent) || 0; const camNum = parseFloat(f.cam) || 0;
@@ -234,6 +248,7 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
   if (f.rentType === 'mg_revshare') {
     if (!f.rent) errors.rent = 'Set minimum guarantee';
     if (!f.revshare) errors.revshare = 'Set revenue share %';
+    if (!f.escalation) errors.escalation = 'Set escalation %';
   }
   const filled = Object.keys(errors).length === 0;
   // The conditional rent fields (rent/escalation/revshare) count as essentials
@@ -242,7 +257,7 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
   const RENT_EXTRAS = {
     fixed: ['rent', 'escalation'],
     revshare: ['revshare'],
-    mg_revshare: ['rent', 'revshare'],
+    mg_revshare: ['rent', 'revshare', 'escalation'],
   };
   const rentExtras = RENT_EXTRAS[f.rentType] || [];
   const totalFields = REQUIRED.length + rentExtras.length;
@@ -254,7 +269,10 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
   const lastSavedAt = item.details?._savedAt;
   const payloadWithoutSpoc = () => {
     const { spocName, spoc_name, ...rest } = f;
-    return { ...rest, totalOpCost };
+    const cleaned = String(f.score).replace(/[^\d.]/g, '');
+    const n = parseFloat(cleaned);
+    const scoreVal = isNaN(n) ? '' : String(Math.max(1, Math.min(5, n)));
+    return { ...rest, score: scoreVal, totalOpCost };
   };
   const handleSubmit = () => { if (!filled || savingDraft) return; onSubmit(payloadWithoutSpoc()); };
   const handleSaveDraft = () => {
@@ -278,15 +296,15 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
             <FormSection n="1·3" title="Identity"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}><TextField label="Name" value={f.name} onChange={upd('name')} required hint="Editable from draft"/><TextField label="Visit date" value={f.visitDate} mono readOnly hint="Locked from pipeline"/><TextField label="City" value={f.city} onChange={upd('city')} required/></div></FormSection>
             <FormSection n="4·5" title="Model · Google pin"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}><SelectField label="Model" value={f.model} onChange={upd('model')} required options={MODELS}/><TextField label="Google pin" value={f.googlePin} onChange={upd('googlePin')} required mono placeholder="19.1183, 72.9089"/></div></FormSection>
             <FormSection n="7" title="Storefront photos"><PhotoPicker photos={f.photos} onAdd={handlePhotoAdd} onRetry={handlePhotoRetry} onRemove={(id) => setF(prev => ({ ...prev, photos: prev.photos.filter(x => x.id !== id) }))} uploadingIds={uploadingPhotoIds}/></FormSection>
-            <FormSection n="8·11" title="Score + adjacency sales"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}><TextField label="Score" value={f.score} onChange={updScore} required type="number" min="1" max="5" step="1" hint="1–5 footfall + visibility" error={f.score !== '' && (Number(f.score) > 5 || Number(f.score) < 1) ? '1–5 only' : undefined}/><TextField label="Estimated sales" value={f.estSales} onChange={upd('estSales')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 1250000" hint="Full rupees · no commas"/><TextField label="Nearest Starbucks sales" value={f.nearestStarbucks} onChange={upd('nearestStarbucks')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 900000" hint="Full rupees"/><TextField label="Nearest TWC sales" value={f.nearestTWC} onChange={upd('nearestTWC')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 700000" hint="Third-Wave Coffee · full rupees"/></div></FormSection>
+            <FormSection n="8·11" title="Score + adjacency sales"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}><TextField label="Score" value={f.score} onChange={updScore} onBlur={handleScoreBlur} required type="number" min="1" max="5" step="0.1" inputMode="decimal" hint="1–5 footfall + visibility · decimals allowed" error={f.score !== '' && (isNaN(parseFloat(f.score)) || parseFloat(f.score) > 5 || parseFloat(f.score) < 1) ? '1–5 only' : undefined}/><TextField label="Estimated sales" value={f.estSales} onChange={upd('estSales')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 1250000" hint="Full rupees · no commas"/><TextField label="Nearest Starbucks sales" value={f.nearestStarbucks} onChange={upd('nearestStarbucks')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 900000" hint="Full rupees"/><TextField label="Nearest TWC sales" value={f.nearestTWC} onChange={upd('nearestTWC')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 700000" hint="Third-Wave Coffee · full rupees"/></div></FormSection>
             <FormSection n="12·14" title="Carpet · CAM · rent">
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}><TextField label="Carpet / covered area" value={f.carpet} onChange={upd('carpet')} required mono suffix="sqft" placeholder="e.g. 850"/><TextField label="CAM" value={f.cam} onChange={upd('cam')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 25000" hint="Full rupees · no commas"/><div/></div>
               <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div><label style={{ display: 'block', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)', marginBottom: 8 }}>Rent type <span style={{ color: 'var(--zm-danger)', fontWeight: 700 }}>*</span></label><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>{RENT_TYPES.map(rt => (<button type="button" key={rt.id} onClick={() => upd('rentType')(rt.id)} className="zm-btn" style={{ textAlign: 'left', padding: 12, borderRadius: 8, border: '1px solid ' + (f.rentType === rt.id ? 'var(--zm-accent)' : 'var(--zm-line)'), background: f.rentType === rt.id ? 'var(--zm-accent-soft)' : 'var(--zm-surface)', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 10, fontFamily: 'inherit' }}><span style={{ width: 16, height: 16, borderRadius: 999, marginTop: 1, border: '1.5px solid ' + (f.rentType === rt.id ? 'var(--zm-accent)' : 'var(--zm-line-strong)'), background: f.rentType === rt.id ? 'var(--zm-accent)' : 'transparent', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 16px' }}>{f.rentType === rt.id && <span style={{ width: 6, height: 6, borderRadius: 999, background: '#fff' }}/>}</span><span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}><span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12.5, color: 'var(--zm-fg)' }}>{rt.label}</span><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, color: 'var(--zm-fg-3)' }}>{rt.sub}</span></span></button>))}</div></div>
+                <fieldset style={{ border: 'none', margin: 0, padding: 0 }}><legend style={{ display: 'block', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)', marginBottom: 8, padding: 0 }}>Rent type <span style={{ color: 'var(--zm-danger)', fontWeight: 700 }}>*</span></legend><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>{RENT_TYPES.map(rt => (<button type="button" key={rt.id} onClick={() => upd('rentType')(rt.id)} className="zm-btn" style={{ textAlign: 'left', padding: 12, borderRadius: 8, border: '1px solid ' + (f.rentType === rt.id ? 'var(--zm-accent)' : 'var(--zm-line)'), background: f.rentType === rt.id ? 'var(--zm-accent-soft)' : 'var(--zm-surface)', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 10, fontFamily: 'inherit' }}><span style={{ width: 16, height: 16, borderRadius: 999, marginTop: 1, border: '1.5px solid ' + (f.rentType === rt.id ? 'var(--zm-accent)' : 'var(--zm-line-strong)'), background: f.rentType === rt.id ? 'var(--zm-accent)' : 'transparent', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 16px' }}>{f.rentType === rt.id && <span style={{ width: 6, height: 6, borderRadius: 999, background: '#fff' }}/>}</span><span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}><span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12.5, color: 'var(--zm-fg)' }}>{rt.label}</span><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, color: 'var(--zm-fg-3)' }}>{rt.sub}</span></span></button>))}</div></fieldset>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
                   {f.rentType === 'fixed' && (<><TextField label="Rent (monthly)" value={f.rent} onChange={upd('rent')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 180000" hint="Full rupees · no commas" error={errors.rent}/><TextField label="Escalation" value={f.escalation} onChange={upd('escalation')} required mono suffix="% / yr" placeholder="e.g. 5" error={errors.escalation}/><TextField label="Rent-free days" value={f.rentFreeDays} onChange={upd('rentFreeDays')} mono suffix="days" hint="Optional fit-out grace"/></>)}
                   {f.rentType === 'revshare' && (<><TextField label="Revenue share" value={f.revshare} onChange={upd('revshare')} required mono suffix="% of sales" placeholder="e.g. 12" error={errors.revshare}/><TextField label="Rent-free days" value={f.rentFreeDays} onChange={upd('rentFreeDays')} mono suffix="days" hint="Optional"/><div/></>)}
-                  {f.rentType === 'mg_revshare' && (<><TextField label="Minimum guarantee" value={f.rent} onChange={upd('rent')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 80000" hint="MG floor · full rupees" error={errors.rent}/><TextField label="Revenue share" value={f.revshare} onChange={upd('revshare')} required mono suffix="% of sales" placeholder="e.g. 12" hint="Above MG threshold" error={errors.revshare}/><TextField label="Rent-free days" value={f.rentFreeDays} onChange={upd('rentFreeDays')} mono suffix="days" hint="Optional"/></>)}
+                  {f.rentType === 'mg_revshare' && (<><TextField label="Minimum guarantee" value={f.rent} onChange={upd('rent')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 80000" hint="MG floor · full rupees" error={errors.rent}/><TextField label="Revenue share" value={f.revshare} onChange={upd('revshare')} required mono suffix="% of sales" placeholder="e.g. 12" hint="Above MG threshold" error={errors.revshare}/><TextField label="Escalation" value={f.escalation} onChange={upd('escalation')} required mono suffix="% / yr" placeholder="e.g. 5" error={errors.escalation}/><TextField label="Rent-free days" value={f.rentFreeDays} onChange={upd('rentFreeDays')} mono suffix="days" hint="Optional"/></>)}
                   {!f.rentType && (<div style={{ gridColumn: 'span 3', padding: 16, background: 'var(--zm-surface-2)', borderRadius: 8, fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-3)', textAlign: 'center' }}>Pick a rent type above to reveal the rent fields.</div>)}
                 </div>
               </div>
@@ -297,7 +315,7 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
                 <span style={{ fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 22, fontWeight: 600, color: 'var(--zm-fg)' }}>{formatINR(totalOpCost)}<span style={{ fontSize: 12, color: 'var(--zm-fg-3)', marginLeft: 4 }}>/mo</span></span>
               </div>
             </FormSection>
-            <FormSection n="13·15" title="Capex · deposit · brokerage"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}><TextField label="Cadex (capex)" value={f.cadex} onChange={upd('cadex')} required mono prefix="₹" placeholder="e.g. 4500000" hint="Fit-out budget · full rupees"/><TextField label="Security deposit" value={f.deposit} onChange={upd('deposit')} required mono prefix="₹" placeholder="e.g. 1080000" hint="Full rupees · no commas"/><TextField label="Brokerage" value={f.brokerage} onChange={upd('brokerage')} required mono prefix="₹" placeholder="e.g. 360000" hint="Full rupees · no commas"/></div></FormSection>
+            <FormSection n="13·15" title="Capex · deposit · brokerage"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}><TextField label="Capex" value={f.cadex} onChange={upd('cadex')} required mono prefix="₹" placeholder="e.g. 4500000" hint="Fit-out budget · full rupees"/><TextField label="Security deposit" value={f.deposit} onChange={upd('deposit')} required mono prefix="₹" placeholder="e.g. 1080000" hint="Full rupees · no commas"/><TextField label="Brokerage" value={f.brokerage} onChange={upd('brokerage')} required mono prefix="₹" placeholder="e.g. 360000" hint="Full rupees · no commas"/></div></FormSection>
             <FormSection n="opt" title="Lock-in + tenure · optional"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}><TextField label="Lock-in period" value={f.lockin} onChange={upd('lockin')} mono suffix="months" hint="Optional"/><TextField label="Tenure" value={f.tenure} onChange={upd('tenure')} mono suffix="months" hint="Optional"/><div/></div></FormSection>
           </div>
         </div>

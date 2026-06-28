@@ -5,6 +5,7 @@ import Icon from '../../shared/primitives/Icon.jsx';
 import { getDdFailedQueue } from '../../../services/api/changeRequestApi.js';
 import { bdSiteStatusRoute } from '../../../router/routes.js';
 import { useSiteDataRefresh } from '../../../hooks/useSiteDataRefresh.js';
+import { keyActivate } from '../../../lib/a11y.js';
 
 export default function DdFailedPage() {
   const navigate = useNavigate();
@@ -33,7 +34,7 @@ export default function DdFailedPage() {
       <PageHeader
         file="No. 07"
         eyebrow="BD module"
-        title={<>Due diligence <em>failed</em></>}
+        title={<>DDR <em>negative</em></>}
         right={<HeaderTag icon="alert" label="LEGAL_REJECTED"/>}
       />
 
@@ -71,7 +72,10 @@ export default function DdFailedPage() {
           {state.items.map((row) => (
             <div
               key={row.siteId}
+              role="button"
+              tabIndex={0}
               onClick={() => navigate(bdSiteStatusRoute(row.siteId))}
+              onKeyDown={keyActivate(() => navigate(bdSiteStatusRoute(row.siteId)))}
               style={{
                 display: 'grid',
                 gridTemplateColumns: '120px minmax(220px, 1fr) 140px 160px minmax(220px,1fr) 140px',

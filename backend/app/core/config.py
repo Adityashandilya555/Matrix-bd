@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     enable_docs: bool = False
 
     # CORS_ORIGINS comes in as a comma-separated string in .env; split below.
-    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+    cors_origins: str = "http://localhost:5173,http://localhost:3000,https://www.retailexpansion.in,https://retailexpansion.in"
     # Optional regex applied in addition to cors_origins — lets us whitelist a
     # whole pattern of preview URLs (e.g. Vercel's per-commit previews:
     # CORS_ORIGIN_REGEX=^https://<project>-[a-z0-9-]+\.vercel\.app$).
@@ -162,6 +162,19 @@ class Settings(BaseSettings):
                 "Refusing to start: SUPABASE_JWT_SECRET is the repo-committed placeholder — "
                 "every JWT would be forgeable with a public key. Set the real secret "
                 "(or ALLOW_INSECURE_DEFAULTS=true for local dev)."
+            )
+
+        # ALLOW_ANON_DEMO_USER authenticates a header-less request as an
+        # executive (deps.py) — unauthenticated role-gated access. Like the JWT
+        # placeholder it must be confined to insecure-dev mode; nothing else
+        # bound it before (#224). Prod never sets it, so prod is unaffected;
+        # legitimate local UI-driving already runs with ALLOW_INSECURE_DEFAULTS
+        # =true (placeholder secret), so existing dev workflows keep working.
+        if self.allow_anon_demo_user and not self.allow_insecure_defaults:
+            raise RuntimeError(
+                "Refusing to start: ALLOW_ANON_DEMO_USER=true requires "
+                "ALLOW_INSECURE_DEFAULTS=true (local dev only) — it grants "
+                "unauthenticated executive access."
             )
 
         # The retired admin password is handled by effective_platform_admin_*

@@ -34,9 +34,14 @@ TENANT_ROW = {"id": uuid.uuid4(), "name": "Acme", "seat_limit": 10}
 USER_ID = uuid.uuid4()
 
 
-def _user_row(password_hash=None, is_active=True, role="executive"):
+def _login_row(user_id=USER_ID, is_active=True, password_hash=None, role="executive"):
+    """The combined tenant+user row login() now gets from its single LEFT JOIN
+    (#234). user_id is None when the workspace exists but the email isn't a
+    member (the LEFT JOIN still returns the tenant columns)."""
     return {
-        "id": USER_ID, "email": "a@b.co", "name": "A", "role": role,
+        "tenant_id": TENANT_ROW["id"], "tenant_name": TENANT_ROW["name"],
+        "seat_limit": TENANT_ROW["seat_limit"],
+        "user_id": user_id, "email": "a@b.co", "user_name": "A", "role": role,
         "is_active": is_active, "assigned_city": None, "password_hash": password_hash,
     }
 
@@ -74,14 +79,42 @@ def test_insecure_dev_mode_allows_defaults():
     assert s.allow_insecure_defaults is True
 
 
+# ── #224 — ALLOW_ANON_DEMO_USER must be gated by insecure-dev mode ─────────
+# The demo bypass (deps.py) authenticates a header-less request as an
+# executive on tenant …099. Its only safety control used to be "operator
+# remembers to keep the env var false" — nothing bound it to insecure-dev
+# mode the way the JWT-secret placeholder is. These pin the gate.
+
+def test_demo_user_flag_refuses_to_boot_outside_insecure_dev():
+    # PROVE-FIRST: pre-fix this construction did NOT raise (the gap).
+    with pytest.raises((RuntimeError, ValidationError)):
+        _settings(allow_anon_demo_user=True, allow_insecure_defaults=False)
+
+
+def test_demo_user_flag_allowed_in_insecure_dev():
+    # Local UI-driving runs with ALLOW_INSECURE_DEFAULTS=true (placeholder
+    # secret), so the demo user must keep working there.
+    s = _settings(
+        supabase_jwt_secret="change-me-in-production",
+        allow_insecure_defaults=True,
+        allow_anon_demo_user=True,
+    )
+    assert s.allow_anon_demo_user is True
+
+
+def test_demo_user_flag_false_is_unaffected():
+    # Prod default: flag off boots cleanly with any valid secret.
+    s = _settings(allow_anon_demo_user=False)
+    assert s.allow_anon_demo_user is False
+
+
 # ── #83 — no passwordless fall-through, no silent first-password claim ─────
 
 async def test_login_rejects_null_hash_account_without_password(make_session, fake_result):
     from app.routers.auth import LoginIn, login
 
     sess = make_session(
-        fake_result(mappings_rows=[TENANT_ROW]),
-        fake_result(mappings_rows=[_user_row(password_hash=None)]),
+        fake_result(mappings_rows=[_login_row(password_hash=None)]),
     )
     payload = LoginIn(email="a@b.co", workspace_code="ACME-CODE1")
     with pytest.raises(HTTPException) as exc:
@@ -95,8 +128,7 @@ async def test_login_does_not_silently_store_first_password(make_session, fake_r
     from app.routers.auth import LoginIn, login
 
     sess = make_session(
-        fake_result(mappings_rows=[TENANT_ROW]),
-        fake_result(mappings_rows=[_user_row(password_hash=None)]),
+        fake_result(mappings_rows=[_login_row(password_hash=None)]),
     )
     payload = LoginIn(email="a@b.co", workspace_code="ACME-CODE1", password="attacker-pw")
     with pytest.raises(HTTPException) as exc:
@@ -273,6 +305,78 @@ def test_login_route_declares_rate_limit():
     assert "rate_limit(" in src
 
 
+# ── #225 — rate-limit key must not trust a spoofable X-Forwarded-For ───────
+# Railway runs uvicorn with --proxy-headers; once the trusted-proxy set is
+# scoped (not '*'), request.client.host is the real client. The limiter must
+# key on THAT, never on the raw client-supplied X-Forwarded-For header — else
+# an attacker rotating XFF gets a fresh window per request and the limit never
+# trips. These pin both halves: the app-layer key and the railway.json deploy.
+
+class _SpoofRequest:
+    """Same socket peer every call; attacker rotates X-Forwarded-For."""
+
+    def __init__(self, xff: str, path: str = "/api/test/spoof-guard"):
+        self.client = _FakeClient()  # fixed host 203.0.113.7
+        self.headers = {"x-forwarded-for": xff}
+        self.scope = {"path": path}
+
+
+async def test_rate_limit_ignores_spoofable_xff():
+    # PROVE-FIRST: pre-fix _client_ip returns XFF[0], so each rotating value is
+    # a new key and the 4th request slips through (no 429) — the bypass.
+    from app.core.ratelimit import rate_limit
+
+    guard = rate_limit(times=3, seconds=3600)
+    for i in range(3):
+        await guard(_SpoofRequest(xff=f"9.9.9.{i}"))
+    with pytest.raises(HTTPException) as exc:
+        await guard(_SpoofRequest(xff="9.9.9.99"))
+    assert exc.value.status_code == 429
+
+
+async def test_rate_limit_trips_without_xff_header():
+    # Regression: local dev / socket-peer keying (no XFF) must still trip at
+    # times+1, unchanged from today.
+    from app.core.ratelimit import rate_limit
+
+    class _NoXff:
+        client = _FakeClient()
+        headers: dict = {}
+        scope = {"path": "/api/test/no-xff-guard"}
+
+    guard = rate_limit(times=3, seconds=3600)
+    req = _NoXff()
+    for _ in range(3):
+        await guard(req)
+    with pytest.raises(HTTPException) as exc:
+        await guard(req)
+    assert exc.value.status_code == 429
+
+
+def test_railway_deploy_does_not_trust_all_forwarded_ips():
+    # The '*' wildcard makes uvicorn copy the attacker-controlled XFF[0] into
+    # request.client.host, re-opening the bypass at the proxy layer. Parse the
+    # actual --forwarded-allow-ips VALUE (shlex strips any quote style) and assert
+    # it is never '*', so no quoting variant can silently reintroduce the bypass.
+    import json
+    import pathlib
+    import shlex
+
+    railway = pathlib.Path(__file__).resolve().parents[1] / "railway.json"
+    start_cmd = json.loads(railway.read_text())["deploy"]["startCommand"]
+    tokens = shlex.split(start_cmd)
+    values = [
+        tokens[i + 1]
+        for i, tok in enumerate(tokens)
+        if tok == "--forwarded-allow-ips" and i + 1 < len(tokens)
+    ]
+    # If proxy headers are trusted at all, the trusted set must be scoped, never
+    # the wildcard (and no '*' may appear among comma-separated entries).
+    for value in values:
+        assert value != "*", start_cmd
+        assert "*" not in value.split(","), start_cmd
+
+
 # ── #110 — CORS hardening ───────────────────────────────────────────────────
 
 def test_wildcard_cors_origin_is_stripped_not_fatal():
@@ -305,6 +409,45 @@ def test_app_does_not_publish_docs_by_default():
     assert app.openapi_url is None
 
 
+# ── #227 — security response headers (+ CORS-on-error preserved) ───────────
+
+def test_security_headers_present_and_cors_survives_500():
+    from fastapi.testclient import TestClient
+
+    from app.core.config import settings as live_settings
+    from app.main import app
+
+    # A test-only route that raises, to force the 500 path. Removed in finally.
+    @app.get("/api/_boom_227")
+    async def _boom_227():  # pragma: no cover - exercised via TestClient below
+        raise RuntimeError("boom")
+
+    try:
+        client = TestClient(app, raise_server_exceptions=False)
+
+        # Every normal response carries the three always-on security headers.
+        r = client.get("/api/health")
+        assert r.status_code == 200
+        assert r.headers["x-content-type-options"] == "nosniff"
+        assert r.headers["x-frame-options"] == "DENY"
+        assert r.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+
+        # A forced 500 with an allowed Origin must STILL carry the CORS header
+        # (the #117 error-path re-application) AND the security headers (#227),
+        # since unhandled 500s are produced outside the middleware stack.
+        origin = (live_settings.cors_origin_list or ["http://localhost:5173"])[0]
+        r = client.get("/api/_boom_227", headers={"origin": origin})
+        assert r.status_code == 500
+        assert r.headers.get("access-control-allow-origin") == origin
+        assert r.headers["x-content-type-options"] == "nosniff"
+        assert r.headers["x-frame-options"] == "DENY"
+    finally:
+        app.router.routes = [
+            rt for rt in app.router.routes
+            if getattr(rt, "path", None) != "/api/_boom_227"
+        ]
+
+
 # ── Onboarding: account_state + self-service first password + no ghost users ──
 # Fixes the post-approval deadstate (an approved supervisor/executive sets their
 # own first password) and the wrong "reset" prompt for non-member emails.
@@ -316,14 +459,65 @@ async def test_login_unknown_email_in_known_workspace_is_404(make_session, fake_
     from app.routers.auth import LoginIn, login
 
     sess = make_session(
-        fake_result(mappings_rows=[TENANT_ROW]),
-        fake_result(mappings_rows=[]),  # no such user in this tenant
+        # LEFT JOIN: tenant present, but the email is not a member → user_id NULL.
+        fake_result(mappings_rows=[_login_row(user_id=None)]),
     )
     payload = LoginIn(email="stranger@b.co", workspace_code="ACME-CODE1")
     with pytest.raises(HTTPException) as exc:
         await login(payload, sess)
     assert exc.value.status_code == 404
     assert not any("INSERT INTO users" in s for s in sess.executed)
+
+
+async def test_login_happy_path_issues_two_selects(make_session, fake_result, monkeypatch):
+    # #234 regression: the happy path must issue exactly 2 reads — one combined
+    # tenant+user JOIN, then the membership lookup — not the old 3 (tenant, user,
+    # membership). Guards against anyone re-splitting the JOIN. Use a passwordless
+    # demo tenant so the password gate is skipped and the membership query runs.
+    from app.core.config import settings as live_settings
+    from app.routers.auth import LoginIn, login
+
+    monkeypatch.setattr(live_settings, "passwordless_demo_codes", "ACME-CODE1")
+    sess = make_session(
+        fake_result(mappings_rows=[_login_row(password_hash=None)]),   # combined JOIN
+        fake_result(mappings_rows=[                                     # membership
+            {"module": "bd", "role_in_module": "executive", "supervisor_id": None}
+        ]),
+    )
+    out = await login(LoginIn(email="a@b.co", workspace_code="ACME-CODE1"), sess)
+    assert out.access_token
+    selects = [s for s in sess.executed if "SELECT" in s.upper()]
+    assert len(selects) == 2
+    assert any("JOIN users" in s for s in sess.executed)  # the combined read
+
+
+# ── #234 (12.2) — single shared tenant/user lookup helper ──────────────────
+
+async def test_tenant_lookup_helper_keeps_case_folding_contract(make_session, fake_result):
+    from app.services.auth_repo import get_tenant_by_workspace_code
+
+    sess = make_session(fake_result(mappings_rows=[TENANT_ROW]))
+    out = await get_tenant_by_workspace_code(sess, "acme-code1")
+    assert out == TENANT_ROW
+    # The upper()/upper() case-folding contract the unique index relies on now
+    # lives in exactly one place — assert the helper still carries it.
+    assert any("upper(workspace_code) = upper(:code)" in s for s in sess.executed)
+    assert sess.execute_params[0] == {"code": "acme-code1"}
+
+
+def test_tenant_lookup_literal_lives_in_exactly_one_place():
+    # Grep guard: the raw 'FROM tenants WHERE upper(workspace_code)' string must
+    # exist ONLY in the shared helper, so a future edit can't re-duplicate it or
+    # silently drop upper() (which would break case-insensitive matching).
+    import pathlib
+
+    app_dir = pathlib.Path(__file__).resolve().parents[1] / "app"
+    needle = "FROM tenants WHERE upper(workspace_code)"
+    hits = sorted(
+        str(p.relative_to(app_dir)) for p in app_dir.rglob("*.py")
+        if needle in p.read_text()
+    )
+    assert hits == ["services/auth_repo.py"], hits
 
 
 async def test_login_check_reports_account_state(make_session, fake_result):

@@ -1,5 +1,6 @@
 import React from 'react';
 import Icon from './Icon.jsx';
+import { keyActivate } from '../../../lib/a11y.js';
 
 // MetricCard — large overview KPI card (extracted from the BD OverviewPage so
 // module overviews share one implementation; the BD page keeps its local copy
@@ -48,11 +49,15 @@ export default function MetricCard({ eyebrow, value, rule = 'var(--zm-copper)', 
   const metaColor = toned ? onColor : 'var(--zm-fg-3)';
   const noColor = toned ? onColor : 'var(--zm-fg-4)';
   return (
+    // KPI card is interactive only when an onClick is supplied; in that branch
+    // it carries role="button" + tabIndex + onKeyDown, so keyboard parity is
+    // fully provided. The rule can't see the conditional role.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div className="zm-glass"
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
-      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+      onKeyDown={onClick ? keyActivate(onClick) : undefined}
       style={{
         borderRadius: 16, padding: '24px 26px 26px',
         display: 'flex', flexDirection: 'column', gap: 12,

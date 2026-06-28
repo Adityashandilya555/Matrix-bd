@@ -56,6 +56,9 @@ def _assert_not_self_approval(actor: dict, site: models.Site) -> None:
     """Self-approval guard. The submitter cannot also be the approver/rejecter
     of the same draft. A supervisor draft never reaches here because it
     auto-promotes — see svc_create_draft."""
+    if actor.get("real_role") == "business_admin":
+        return
+
     delegated_supervisor_created_site = (
         (actor.get("role") or "").lower() == "supervisor"
         and site.status == SiteStatus.DETAILS_SUBMITTED.value
@@ -182,6 +185,7 @@ async def svc_shortlist_draft(
     actor: dict,
     site_id: str | UUID,
 ) -> SiteResponse:
+    """Shortlist a site as the acting supervisor, blocking self-approval of own draft."""
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_not_self_approval(actor, site)
@@ -278,6 +282,7 @@ async def svc_submit_details(
     site_id: str | UUID,
     details: dict | None = None,
 ) -> SiteResponse:
+    """Persist edited site details and submit them for supervisor review, logging field diffs."""
     details = _normalise_detail_keys(details or {})
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
@@ -341,6 +346,7 @@ async def svc_approve_shortlist(
     site_id: str | UUID,
     expected_loi_days: int,
 ) -> SiteResponse:
+    """Approve a site's details and record the LOI deadline derived from expected_loi_days."""
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         current_status = SiteStatus(site.status)
@@ -350,12 +356,8 @@ async def svc_approve_shortlist(
         site.status = SiteStatus.APPROVED.value
         site.approved_at = approved_at
 
-        # Pre-compute the LOI deadline. The product spec calls for a soft
-        # countdown / highlight on overdue sites — the cheapest source of
-        # truth is a stored DATE column on the approval row rather than
-        # recomputing in every read. Stored as DATE (not timestamp) because
-        # business deadlines are end-of-day in local time, not a precise
-        # instant.
+        # Pre-compute the LOI deadline as a DATE (business deadlines are end-of-day, not a precise instant).
+        # Stored on the approval row for efficient reads.
         from datetime import timedelta
         loi_deadline = (approved_at + timedelta(days=int(expected_loi_days))).date()
 
@@ -405,8 +407,7 @@ async def svc_push_to_payments(
         site.status = SiteStatus.LEGAL_REVIEW.value
         site.legal_review_at = datetime.now(timezone.utc)
 
-        # Seed the DD checklist row so legal team can start filling items immediately.
-        # Retried requests or legacy partial transitions must not duplicate it.
+        # Seed the DD checklist row so legal can start immediately; idempotent on retry.
         existing_legal_dd = (await session.execute(
             select(models.LegalDdChecklist).where(models.LegalDdChecklist.site_id == site.id)
         )).scalar_one_or_none()
@@ -420,7 +421,7 @@ async def svc_push_to_payments(
             from_status=SiteStatus.LOI_UPLOADED.value,
             to_status=SiteStatus.LEGAL_REVIEW.value,
         )
-        # Notify all legal supervisors in the tenant
+        # Notify all legal supervisors in the tenant.
         legal_recipients = await recipients_for_legal_supervisors(session, tenant_id=tenant_id)
         await notify_enqueue(
             session, tenant_id=tenant_id, event="site_sent_to_legal",
@@ -433,7 +434,7 @@ async def svc_push_to_payments(
                 f"submitted for legal review. Please open your Legal Dashboard to proceed."
             ),
         )
-        # Acknowledge to BD exec/supervisor that it has been sent
+        # Acknowledge to BD exec/supervisor that it has been sent.
         owners = await recipients_for_site_owner(session, site=site)
         await notify_enqueue(
             session, tenant_id=tenant_id, event="site_sent_to_legal_ack",
@@ -450,9 +451,12 @@ async def svc_reject_site(
     session: AsyncSession, *, tenant_id: str | UUID, actor: dict,
     site_id: str | UUID, reasons: list[str], comment: Optional[str] = None,
 ) -> OkResponse:
+    """Reject a site with reasons, blocking self-rejection and notifying the site owners."""
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        _assert_not_self_approval(actor, site)
+        # Supervisors need a safe rejection path for shortlisted sites they created or received via delegation.
+        if site.status != SiteStatus.SHORTLISTED.value:
+            _assert_not_self_approval(actor, site)
         assert_transition(SiteStatus(site.status), SiteStatus.REJECTED)
         site.status = SiteStatus.REJECTED.value
         site.rejected_at = datetime.now(timezone.utc)
@@ -480,10 +484,10 @@ async def svc_archive_site(
     session: AsyncSession, *, tenant_id: str | UUID, actor: dict,
     site_id: str | UUID, note: Optional[str] = None,
 ) -> OkResponse:
+    """Archive a site, requiring a non-empty note so the Archive tab stays browsable."""
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        # Archive note is mandatory — see Todo #9. Per the product spec every
-        # archived site must carry a reason so the Archive tab is browsable.
+        # Archive note is mandatory — every archived site must carry a reason so the Archive tab is browsable.
         clean_note = (note or "").strip()
         if not clean_note:
             raise HTTPException(
@@ -491,8 +495,7 @@ async def svc_archive_site(
                 detail="An archive note is required so the archived site stays browsable.",
             )
         assert_transition(SiteStatus(site.status), SiteStatus.ARCHIVED)
-        # Remember the status we came from so Revive (Todo #11) can restore
-        # the site to its prior stage rather than dumping it into drafts.
+        # Store pre-archive status so Revive can restore it to the prior stage.
         site.archived_from_status = site.status
         site.status = SiteStatus.ARCHIVED.value
         site.archived_at = datetime.now(timezone.utc)
@@ -536,8 +539,7 @@ async def svc_revive_site(
         site.status = prev
         site.archived_at = None
         site.archived_from_status = None
-        # Keep the archive_note as historical context — Revive doesn't erase
-        # the reason a site was once archived.
+        # Keep the archive_note as historical context — Revive doesn't erase the reason a site was once archived.
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor["name"],
@@ -561,6 +563,7 @@ async def svc_reassign_site(
     session: AsyncSession, *, tenant_id: str | UUID, actor: dict,
     site_id: str | UUID, new_owner_id: str | UUID,
 ) -> OkResponse:
+    """Reassign a site to another active executive in the same workspace."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         assignee = (await session.execute(
@@ -575,7 +578,8 @@ async def svc_reassign_site(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Executive not found in this workspace.",
             )
-        if (assignee.role or "").lower() != "executive":
+        assignee_role = (assignee.role or "").lower()
+        if assignee_role not in ("executive", "business_admin"):
             raise HTTPException(
                 status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Sites can only be assigned to an executive.",

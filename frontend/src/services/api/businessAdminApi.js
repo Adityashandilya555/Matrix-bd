@@ -12,34 +12,10 @@
 //   GET  /sites                                        → all tenant sites (admin read)
 //   GET  /sites/{site_id}/activity                     → cross-module history feed
 
-import axios from 'axios';
-import { getAuthToken, notifySessionExpired } from './authToken.js';
-import { ApiError, ensureFreshAuthToken, requestCarriedToken } from './adapters/httpAdapter.js';
+import { createApiClient } from './axiosClient.js';
 import { notifySiteDataChanged } from './siteEvents.js';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
-const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
-
-const client = axios.create({ baseURL: BASE_URL, timeout: TIMEOUT_MS });
-
-client.interceptors.request.use(async (cfg) => {
-  const token = await ensureFreshAuthToken() || getAuthToken();
-  if (token) cfg.headers.Authorization = `Bearer ${token}`;
-  return cfg;
-});
-
-client.interceptors.response.use(
-  (r) => r,
-  (err) => {
-    if (err.code === 'ECONNABORTED') {
-      throw new ApiError({ status: 0, code: 'TIMEOUT', detail: 'Request timed out', cause: err });
-    }
-    const status = err.response?.status ?? 0;
-    const detail = err.response?.data?.detail || err.message || 'Request failed';
-    if (status === 401 && requestCarriedToken(err.config)) notifySessionExpired({ reason: 'unauthorized', detail });
-    throw new ApiError({ status, detail, code: err.response?.data?.code, cause: err });
-  },
-);
+const client = createApiClient();
 
 const num = (v) => (v != null ? Number(v) : null);
 
@@ -192,6 +168,8 @@ export async function getOrg() {
     code: m.code ?? null,
     supervisors: (m.supervisors || []).map((s) => ({ ...person(s), executives: (s.executives || []).map(person) })),
     unassignedExecutives: (m.unassigned_executives || []).map(person),
+    // Supervisor-only modules (NSO) hide all executive UI.
+    executivesEnabled: m.executives_enabled !== false,
   }));
 }
 
@@ -206,6 +184,7 @@ export async function getAllSites() {
       createdByName: s.submitted_by_name, assignedToName: s.assigned_to_name,
       legalDdStatus: s.legal_dd_status, agreementStatus: s.agreement_status, licensingStatus: s.licensing_status,
       designStatus: s.design_status, projectStatus: s.project_status, financeStatus: s.finance_status,
+      nsoStatus: s.nso_status, launchStatus: s.launch_status, isLaunched: Boolean(s.is_launched),
     })),
     total: d.total ?? 0,
   };
@@ -223,4 +202,44 @@ export async function getSiteHistory(siteId) {
     })),
     total: d.total ?? 0,
   };
+}
+
+export async function getAdminSiteDocuments(siteId) {
+  // Aggregated documents (site_files + design deliverables) with signed URLs;
+  // business_admin-gated and works even on closed sites.
+  const d = await client.get(`/business-admin/sites/${siteId}/documents`).then((r) => r.data);
+  return {
+    siteId: d.site_id,
+    documents: (d.documents || []).map((it) => ({
+      id: it.id, fileName: it.file_name, fileType: it.file_type, module: it.module,
+      uploadedAt: it.uploaded_at, uploadedBy: it.uploaded_by, url: it.url,
+    })),
+  };
+}
+
+// ── Supervisor Executive Access Requests ─────────────────────────────────────
+
+export async function getExecutiveRequests() {
+  const d = await client.get('/business-admin/executive-requests').then((r) => r.data);
+  return (d || []).map((r) => ({
+    id: r.id,
+    supervisorId: r.supervisor_id,
+    supervisorEmail: r.supervisor_email,
+    supervisorName: r.supervisor_name,
+    module: r.module,
+    status: r.status,
+    createdAt: r.created_at,
+  }));
+}
+
+export async function approveExecutiveRequest(requestId) {
+  const result = await client.post(`/business-admin/executive-requests/${requestId}/approve`).then((r) => r.data);
+  notifySiteDataChanged({ source: 'businessAdmin', action: 'executive_request_approved' });
+  return result;
+}
+
+export async function rejectExecutiveRequest(requestId) {
+  const result = await client.post(`/business-admin/executive-requests/${requestId}/reject`).then((r) => r.data);
+  notifySiteDataChanged({ source: 'businessAdmin', action: 'executive_request_rejected' });
+  return result;
 }

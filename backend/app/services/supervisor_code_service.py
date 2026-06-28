@@ -32,6 +32,7 @@ def _generate_code() -> str:
 
 
 async def get_my_code(session: AsyncSession, supervisor_id: str, module: str) -> dict | None:
+    """Return this supervisor's active invite code for the module, or None if none exists."""
     row = (await session.execute(
         text(
             "SELECT module, code, created_at, rotated_at "
@@ -46,6 +47,7 @@ async def get_my_code(session: AsyncSession, supervisor_id: str, module: str) ->
 async def rotate_my_code(
     session: AsyncSession, tenant_id: str, supervisor_id: str, module: str,
 ) -> dict:
+    """Mint or regenerate this supervisor's invite code for the module and stamp rotated_at."""
     async with transaction(session):
         row = (await session.execute(
             text(
@@ -63,6 +65,7 @@ async def rotate_my_code(
 async def list_my_pending_execs(
     session: AsyncSession, supervisor_id: str, module: str,
 ) -> list[dict]:
+    """List inactive executives awaiting this supervisor's approval in the module."""
     # The marker is the exact `notes` value at signup time, so we can equality-
     # match in SQL and skip a Python parse pass entirely.
     marker = f"{_PENDING_PREFIX}{supervisor_id}{_MODULE_MARKER}{module}"
@@ -87,6 +90,15 @@ async def approve_my_pending_exec(
     user_id: str,
     module: str,
 ) -> None:
+    """Activate a pending executive and bind them to this supervisor, enforcing ownership."""
+    # NSO is a supervisor-only module (canonical list:
+    # business_admin_service._SUPERVISOR_ONLY_MODULES) — it has no executive role,
+    # so refuse to activate one there even if a stray pending row exists.
+    if module == "nso":
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="NSO is a supervisor-only module — it has no executive role.",
+        )
     # Ownership re-check (#86): the approve path must enforce the same
     # `notes` marker the list query scopes by — otherwise any supervisor in
     # the tenant can activate ANY pending user and bind them under themself.
@@ -139,21 +151,36 @@ async def approve_my_pending_exec(
 
 
 async def list_my_team(
-    session: AsyncSession, supervisor_id: str, module: str,
+    session: AsyncSession, current_user: dict, module: str,
 ) -> list[dict]:
-    """Active executives bound to this supervisor in this module."""
-    rows = (await session.execute(
-        text(
-            "SELECT u.id, u.email, u.name, umm.joined_at "
-            "FROM user_module_memberships umm "
-            "JOIN users u ON u.id = umm.user_id "
-            "WHERE umm.supervisor_id = :sid "
-            "  AND umm.module = :m "
-            "  AND umm.role_in_module = 'executive' "
-            "  AND u.is_active = true"
-        ),
-        {"sid": supervisor_id, "m": module},
-    )).mappings().all()
+    """Active executives bound to this supervisor in this module.
+    Business admins simulating a supervisor see all active executives in the module."""
+    if current_user.get("real_role") == "business_admin":
+        rows = (await session.execute(
+            text(
+                "SELECT u.id, u.email, u.name, umm.joined_at "
+                "FROM user_module_memberships umm "
+                "JOIN users u ON u.id = umm.user_id "
+                "WHERE umm.module = :m "
+                "  AND umm.role_in_module = 'executive' "
+                "  AND umm.tenant_id = :tid "
+                "  AND u.is_active = true"
+            ),
+            {"m": module, "tid": current_user["tenant_id"]},
+        )).mappings().all()
+    else:
+        rows = (await session.execute(
+            text(
+                "SELECT u.id, u.email, u.name, umm.joined_at "
+                "FROM user_module_memberships umm "
+                "JOIN users u ON u.id = umm.user_id "
+                "WHERE umm.supervisor_id = :sid "
+                "  AND umm.module = :m "
+                "  AND umm.role_in_module = 'executive' "
+                "  AND u.is_active = true"
+            ),
+            {"sid": current_user["sub"], "m": module},
+        )).mappings().all()
     return [
         {
             "id": str(r["id"]),
@@ -169,6 +196,7 @@ async def list_my_team(
 async def reject_my_pending_exec(
     session: AsyncSession, tenant_id: str, user_id: str, supervisor_id: str,
 ) -> None:
+    """Delete a pending recruit, scoped to only this supervisor's own inactive executives."""
     # Ownership scope (same class as #86): only THIS supervisor's pending
     # recruits are deletable — previously any supervisor could delete any
     # inactive user in the tenant (other supervisors' recruits, pending

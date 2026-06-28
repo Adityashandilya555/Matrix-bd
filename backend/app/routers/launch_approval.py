@@ -56,18 +56,22 @@ AnyUser = Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN, Role.SUPERVI
 @router.get("/queue", response_model=LaunchQueueResponse)
 async def get_launch_queue(
     db: DbDep,
-    current_user: AnyUser,
+    _auth: AnyUser,
     tenant_id: TenantId,
     status: str = Query(default=None, description="Comma-separated status filter"),
+    limit: int = Query(500, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
 ) -> LaunchQueueResponse:
-    return await svc_get_launch_queue(db, tenant_id=tenant_id, status_filter=status)
+    return await svc_get_launch_queue(
+        db, tenant_id=tenant_id, status_filter=status, limit=limit, offset=offset,
+    )
 
 
 @router.get("/{site_id}", response_model=LaunchApprovalResponse)
 async def get_launch_approval(
     site_id: str,
     db: DbDep,
-    current_user: AnyUser,
+    _auth: AnyUser,
     tenant_id: TenantId,
 ) -> LaunchApprovalResponse:
     return await svc_get_approval(db, tenant_id=tenant_id, site_id=site_id)

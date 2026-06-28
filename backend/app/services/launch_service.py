@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional, overload
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
@@ -49,8 +49,9 @@ from app.domain.schemas.launch import (
     LaunchReviewRequest,
     SiteDetailsSnapshot,
 )
-from app.services._common import fetch_site_or_404, fetch_user_name
+from app.services._common import count_rows, fetch_site_or_404, fetch_user_names
 from app.services.audit_service import write_audit_event
+from app.services.licensing_status import stage_two_canonical_status
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,26 @@ def _str(v) -> Optional[str]:
     return str(v)
 
 
+# Typed via @overload so callers get the precise return type (#234-adjacent
+# typecheck fix): required=True can only return a LaunchApproval (it raises 404
+# otherwise), so it is non-Optional; required=False may return None. The runtime
+# body is unchanged.
+@overload
+async def _fetch_approval(
+    session: AsyncSession,
+    *,
+    site_id: str | UUID,
+    tenant_id: str | UUID,
+    required: Literal[True] = ...,
+) -> models.LaunchApproval: ...
+@overload
+async def _fetch_approval(
+    session: AsyncSession,
+    *,
+    site_id: str | UUID,
+    tenant_id: str | UUID,
+    required: Literal[False],
+) -> Optional[models.LaunchApproval]: ...
 async def _fetch_approval(
     session: AsyncSession,
     *,
@@ -195,9 +216,23 @@ async def _build_response(
         .where(models.LaunchReviewEvent.launch_approval_id == row.id)
         .order_by(models.LaunchReviewEvent.created_at)
     )).scalars().all()
+    # License statuses must come from canonical Legal Licensing.
+    licensing = (await session.execute(
+        select(models.SiteLicensing).where(models.SiteLicensing.site_id == site.id)
+    )).scalar_one_or_none()
+    license_status = stage_two_canonical_status(licensing)
 
-    async def name(uid: Optional[UUID]) -> Optional[str]:
-        return await fetch_user_name(session, user_id=uid) if uid else None
+    # Batch actor-name lookups.
+    names_map = await fetch_user_names(session, [
+        row.admin_sent_for_review_by,
+        row.exec_reviewed_by,
+        row.supervisor_reviewed_by,
+        row.admin_confirmed_by,
+        row.launched_by,
+    ])
+
+    def _name(uid: Optional[UUID]) -> Optional[str]:
+        return names_map.get(uid) if uid else None
 
     details = SiteDetailsSnapshot(
         name=site.name,
@@ -227,11 +262,12 @@ async def _build_response(
         kyc_verified=bool(site.kyc_verified),
         ca_code=site.ca_code,
         nso_status=nso.nso_status if nso else None,
-        fssai_status=nso.fssai_status if nso else None,
-        health_trade_status=nso.health_trade_status if nso else None,
-        shops_estab_status=nso.shops_estab_status if nso else None,
-        fire_noc_status=nso.fire_noc_status if nso else None,
-        storage_license_status=nso.storage_license_status if nso else None,
+        # Licensing statuses come from canonical Legal Licensing.
+        fssai_status=license_status["fssai_status"],
+        health_trade_status=license_status["health_trade_status"],
+        shops_estab_status=license_status["shops_estab_status"],
+        fire_noc_status=license_status["fire_noc_status"],
+        storage_license_status=license_status["storage_license_status"],
         launch_date=nso.launch_date if nso else None,
         nso_final_approved_at=nso.final_approved_at if nso else None,
     )
@@ -274,21 +310,21 @@ async def _build_response(
         # Stage verdicts / comments
         admin_review_comment=row.admin_review_comment,
         admin_sent_for_review_at=row.admin_sent_for_review_at,
-        admin_sent_for_review_by_name=await name(row.admin_sent_for_review_by),
+        admin_sent_for_review_by_name=_name(row.admin_sent_for_review_by),
         exec_verdict=row.exec_verdict,
         exec_comment=row.exec_comment,
         exec_reviewed_at=row.exec_reviewed_at,
-        exec_reviewed_by_name=await name(row.exec_reviewed_by),
+        exec_reviewed_by_name=_name(row.exec_reviewed_by),
         supervisor_verdict=row.supervisor_verdict,
         supervisor_comment=row.supervisor_comment,
         supervisor_reviewed_at=row.supervisor_reviewed_at,
-        supervisor_reviewed_by_name=await name(row.supervisor_reviewed_by),
+        supervisor_reviewed_by_name=_name(row.supervisor_reviewed_by),
         admin_final_comment=row.admin_final_comment,
         admin_confirmed_at=row.admin_confirmed_at,
-        admin_confirmed_by_name=await name(row.admin_confirmed_by),
+        admin_confirmed_by_name=_name(row.admin_confirmed_by),
         committed_at=row.committed_at,
         launched_at=row.launched_at,
-        launched_by_name=await name(row.launched_by),
+        launched_by_name=_name(row.launched_by),
         events=event_items,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -341,8 +377,8 @@ async def svc_create_launch_approval(
         row.capex = _num(detail.capex)
         row.score = _num(detail.score)
 
-    # Insert + baseline event in one SAVEPOINT so a duplicate/constraint failure
-    # rolls back ONLY this savepoint and never poisons the NSO transaction (#141).
+    # SAVEPOINT so a duplicate-key failure on the launch_approvals row rolls back
+    # only this savepoint and never poisons the caller's NSO transaction.
     try:
         async with session.begin_nested():
             session.add(row)
@@ -361,7 +397,11 @@ async def svc_create_launch_approval(
             await session.flush()
     except IntegrityError:
         logger.warning("launch_approval insert lost a race for site %s — returning existing row", site.id)
-        return await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id, required=True)
+        existing_row = await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id, required=True)
+        # required=True raises 404 on a miss, so this is never None — narrow the
+        # Optional for the type checker (TYP-005) without changing behaviour.
+        assert existing_row is not None
+        return existing_row
     return row
 
 
@@ -372,7 +412,16 @@ async def svc_get_launch_queue(
     *,
     tenant_id: str | UUID,
     status_filter: Optional[str] = None,
+    limit: int = 500,
+    offset: int = 0,
 ) -> LaunchQueueResponse:
+    """Return one page of the launch-approval queue, newest-created first.
+
+    Paginated (``limit``/``offset``) so the queue can't grow unbounded with
+    tenant lifetime (#230). The queue previously had no ``ORDER BY``; a
+    deterministic ``created_at DESC`` order is added so paging is stable.
+    ``total`` is the page row count.
+    """
     q = select(models.LaunchApproval, models.Site, models.User.name).join(
         models.Site, models.Site.id == models.LaunchApproval.site_id
     ).join(
@@ -383,6 +432,9 @@ async def svc_get_launch_queue(
         statuses = [s.strip() for s in status_filter.split(",")]
         q = q.where(models.LaunchApproval.status.in_(statuses))
 
+    total = await count_rows(session, q)
+    q = q.order_by(models.LaunchApproval.created_at.desc(), models.LaunchApproval.id).limit(limit).offset(offset)
+    # LaunchApproval.id = deterministic tie-breaker for stable offset paging
     rows = (await session.execute(q)).all()
     items = [
         LaunchQueueItem(
@@ -404,7 +456,7 @@ async def svc_get_launch_queue(
         )
         for approval, site, creator_name in rows
     ]
-    return LaunchQueueResponse(items=items, total=len(items))
+    return LaunchQueueResponse(items=items, total=total)
 
 
 async def svc_get_approval(
@@ -413,6 +465,7 @@ async def svc_get_approval(
     tenant_id: str | UUID,
     site_id: str | UUID,
 ) -> LaunchApprovalResponse:
+    """Return the current launch-approval record for a site."""
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
     row = await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id)
     return await _build_response(session, row=row, site=site)
@@ -436,6 +489,7 @@ async def svc_save_rent_fields(
     site_id: str | UUID,
     body: LaunchRentFieldsRequest,
 ) -> LaunchApprovalResponse:
+    """Save staged rent-term edits, enforcing which role may edit at the current status."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         row = await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id)

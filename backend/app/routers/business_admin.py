@@ -22,9 +22,12 @@ from app.domain.schemas.business_admin import (
     ModuleCodeOut,
     OrgResponse,
     PendingSupervisorOut,
+    SiteDocumentsResponse,
+    ExecutiveRequestOut,
 )
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
+from app.services import business_admin_documents_service as docs_svc
 from app.services import business_admin_service as svc
 
 router = APIRouter(prefix="/business-admin", tags=["Business Admin"])
@@ -33,7 +36,7 @@ router = APIRouter(prefix="/business-admin", tags=["Business Admin"])
 @router.get("/dept-codes", response_model=list[ModuleCodeOut])
 async def list_dept_codes(
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
 ) -> list[dict]:
     return await svc.list_dept_codes(db, tenant_id)
@@ -52,7 +55,7 @@ async def rotate_dept_code(
 @router.get("/pending-supervisors", response_model=list[PendingSupervisorOut])
 async def list_pending_supervisors(
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
     module: Optional[Module] = None,
 ) -> list[dict]:
@@ -67,7 +70,7 @@ async def approve_supervisor(
     user_id: str,
     payload: ApproveSupervisorIn,
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
 ) -> None:
     await svc.approve_supervisor(db, tenant_id, user_id, payload.module)
@@ -80,10 +83,46 @@ async def approve_supervisor(
 async def reject_supervisor(
     user_id: str,
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
 ) -> None:
     await svc.reject_supervisor(db, tenant_id, user_id)
+
+
+@router.get("/executive-requests", response_model=list[ExecutiveRequestOut])
+async def list_executive_requests(
+    db: DbDep,
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> list[dict]:
+    return await svc.list_executive_requests(db, tenant_id)
+
+
+@router.post(
+    "/executive-requests/{request_id}/approve",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def approve_executive_request(
+    request_id: str,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> None:
+    await svc.approve_executive_request(db, tenant_id, request_id, current_user["sub"])
+
+
+@router.post(
+    "/executive-requests/{request_id}/reject",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def reject_executive_request(
+    request_id: str,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> None:
+    await svc.reject_executive_request(db, tenant_id, request_id, current_user["sub"])
+
 
 
 @router.post(
@@ -103,7 +142,7 @@ async def remove_org_user(
 @router.get("/sites", response_model=AdminSitesResponse)
 async def list_admin_sites(
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
     limit: int = 80,
 ) -> dict:
@@ -113,7 +152,7 @@ async def list_admin_sites(
 @router.get("/finance-approvals", response_model=list[FinanceApprovalOut])
 async def list_finance_approvals(
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
 ) -> list[dict]:
     return await svc.list_finance_approvals(db, tenant_id)
@@ -158,8 +197,21 @@ async def reject_finance(
 @router.get("/org", response_model=OrgResponse)
 async def get_org(
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
 ) -> dict:
     """Per-department code + active supervisors and the executives under them."""
     return await svc.list_org(db, tenant_id)
+
+
+@router.get("/sites/{site_id}/documents", response_model=SiteDocumentsResponse)
+async def list_site_documents(
+    site_id: str,
+    db: DbDep,
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> dict:
+    """Every document uploaded for a site across its lifecycle (LOI, photos,
+    quality-audit, design deliverables), with signed download URLs. Available even
+    after the site is closed, so the admin can review the paperwork later."""
+    return await docs_svc.list_site_documents(db, tenant_id=tenant_id, site_id=site_id)

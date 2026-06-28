@@ -6,8 +6,7 @@ import { delay, maybeFail } from '../delay.js';
 import { getAllSites, getSiteById, upsertSite } from '../mock/mockSites.js';
 import { MOCK_USERS } from '../mock/mockUsers.js';
 import { DEFAULT_SESSION, mockLogin } from '../mock/mockAuth.js';
-import { SiteStatus } from '../../../lib/stateMachine.js';
-import { assertTransition } from '../../../lib/stateMachine.js';
+import { SiteStatus, assertTransition } from '../../../lib/stateMachine.js';
 
 // ---- Sites ----
 
@@ -348,6 +347,14 @@ export async function getSiteDocuments(siteId) {
 export async function listUsers() {
   await delay();
   return [...MOCK_USERS];
+}
+
+export async function requestExecutiveAccess() {
+  await delay(300, 600);
+  // Just simulate success. The frontend reloads the page on success anyway,
+  // but to correctly reflect it in mock mode without a backend, we'd theoretically
+  // modify the mock session. But for now, returning success is enough.
+  return null;
 }
 
 // ---- Delegations (mock) ----

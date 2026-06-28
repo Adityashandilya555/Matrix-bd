@@ -5,6 +5,7 @@ import asyncio
 import contextvars
 import json
 import logging
+import os
 import re
 import uuid
 from contextlib import asynccontextmanager, suppress
@@ -13,6 +14,7 @@ from fastapi import Depends, FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import settings
@@ -21,10 +23,9 @@ from app.db.session import engine
 from app.routers import audit, auth, bd, business_admin, delegations, design, financial_closure, launch_approval, legal, loi, notifications, nso, project, project_excellence, sites, staging, supervisor_codes, tenancy, users
 
 
-# ── Structured / JSON logging (#117) ─────────────────────────────────────────
-# One JSON object per log line.  Each line carries:
-#   ts, level, logger, request_id, msg  (+ exc on exceptions)
-# This makes Railway log streams grep/filter-friendly and correlatable.
+# ── Structured / JSON logging ─────────────────────────────────────────
+# One JSON object per log line: ts, level, logger, request_id, msg (+ exc on exceptions).
+# Correlation makes log streams grep/filter-friendly.
 
 _request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar(
     "request_id", default="-"
@@ -55,7 +56,45 @@ logging.root.setLevel(getattr(logging, settings.log_level, logging.INFO))
 log = logging.getLogger("matrix.api")
 
 
-# ── Request ID middleware (#117) ──────────────────────────────────────────────
+def _int_or_zero(value: str | None) -> int:
+    """Parse an env var into a non-negative int; 0 on unset/garbage."""
+    try:
+        return max(0, int(value)) if value else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _warn_if_scaled_out() -> None:
+    """Warn at startup if >1 worker/replica is configured while the rate-limiter
+    store is the process-local in-memory dict.
+
+    The limiter store (app/core/ratelimit.py) is valid ONLY for a single process
+    on a single replica. With >1 worker per process each keeps its own windows.
+    No Redis store exists yet, so scaling out silently weakens brute-force protection.
+    Keep WEB_CONCURRENCY unset until the store is migrated to Redis.
+
+    Detectable from inside the container: the worker count
+    (WEB_CONCURRENCY / UVICORN_WORKERS). NOT detectable: horizontal *replica*
+    scaling — Railway exposes per-instance ids (RAILWAY_REPLICA_ID) but no
+    reliable replica *count*, so running multiple replicas can't be warned about
+    here and is operationally unsupported until the store moves to Redis.
+    """
+    concurrency = max(
+        _int_or_zero(os.getenv("WEB_CONCURRENCY")),
+        _int_or_zero(os.getenv("UVICORN_WORKERS")),
+    )
+    if concurrency > 1:
+        log.warning(
+            "startup: in-memory rate limiter active but %d workers are configured "
+            "(WEB_CONCURRENCY/UVICORN_WORKERS) — windows are NOT shared across "
+            "processes, so the effective per-client limit is multiplied and "
+            "brute-force protection is weakened (#225). Run a single worker, or "
+            "migrate the limiter store to Redis before scaling out.",
+            concurrency,
+        )
+
+
+# ── Request ID middleware ──────────────────────────────────────────────
 
 class _RequestIdMiddleware(BaseHTTPMiddleware):
     """Generate a UUID per request; expose it via X-Request-Id response header.
@@ -77,7 +116,39 @@ class _RequestIdMiddleware(BaseHTTPMiddleware):
             _request_id_var.reset(token)
 
 
-# ── Background email drain (#112) ─────────────────────────────────────────────
+# ── Security response headers ──────────────────────────────────────────
+
+def _security_headers(request: Request) -> dict[str, str]:
+    """The defense-in-depth headers added to every response. HSTS only on HTTPS
+    so local http dev / health checks are unaffected (scheme is proxy-corrected
+    from X-Forwarded-Proto on Railway). No Content-Security-Policy here — a CSP
+    on API JSON adds no value and risks breaking calls; the SPA's CSP is applied
+    at the Vercel edge (frontend/vercel.json)."""
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+    }
+    if request.url.scheme == "https":
+        headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+    return headers
+
+
+async def _security_headers_dispatch(request: Request, call_next):
+    """BaseHTTPMiddleware dispatch (registered via the ``dispatch=`` form, so it's
+    a plain function — no unused ``self``). Adds the security headers to every
+    response that passes through the user middleware stack (2xx/4xx). Only ADDS
+    via setdefault — never strips — so the CORS headers set by CORSMiddleware are
+    preserved. Unhandled 500s are produced by Starlette's outer
+    ServerErrorMiddleware, OUTSIDE this middleware, so the exception handler
+    applies the same headers there (see `_security_headers`)."""
+    response = await call_next(request)
+    for name, value in _security_headers(request).items():
+        response.headers.setdefault(name, value)
+    return response
+
+
+# ── Background email drain ─────────────────────────────────────────────
 
 async def _email_drain_loop() -> None:
     """Poll notification_outbox for pending email rows and dispatch via Resend.
@@ -102,14 +173,55 @@ async def _email_drain_loop() -> None:
         await asyncio.sleep(interval)
 
 
+# ── Startup migrations ────────────────────────────────────────────────────────
+
+_MIGRATION_DIR = os.path.join(
+    os.path.dirname(__file__), os.pardir, "database", "migrations"
+)
+
+
+async def _apply_pending_migrations() -> None:
+    """Run idempotent SQL migration files on startup.
+
+    Each statement is executed inside its own transaction so that
+    already-applied DDL (guarded by IF NOT EXISTS / IF EXISTS) succeeds
+    silently without rolling back other work.  Errors are logged but do NOT
+    crash the application — the migration file uses IF NOT EXISTS guards,
+    so partial application is safe and a retry on the next deploy will
+    converge.
+    """
+    migration_file = os.path.join(
+        _MIGRATION_DIR, "202606231_supervisor_executive_requests.sql"
+    )
+    resolved = os.path.normpath(migration_file)
+    if not os.path.isfile(resolved):
+        log.error("startup-migrations: %s not found. Failing startup to prevent inconsistent schema state.", resolved)
+        raise FileNotFoundError(f"Missing required migration file: {resolved}")
+
+    with open(resolved, encoding="utf-8") as fh:
+        raw_sql = fh.read()
+
+    statements = [s.strip() for s in raw_sql.split(";") if s.strip()]
+    applied = 0
+    for stmt in statements:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(stmt))
+            applied += 1
+        except SQLAlchemyError:
+            log.exception(
+                "startup-migrations: statement failed (may already be applied): %.120s",
+                stmt,
+            )
+    log.info("startup-migrations: %d/%d statements applied", applied, len(statements))
+
+
 # ── Application lifespan ──────────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ── Smoke-test the DB — FAIL FAST so Railway ON_FAILURE can restart (#116).
-    # Previously the except block only logged and fell through to `yield`,
-    # meaning a deploy with a bad DATABASE_URL would boot, pass Railway's port
-    # check, and then 500 on every authenticated request indefinitely.
+    # Smoke-test the DB — FAIL FAST so health-checks can detect a failure early.
+    # Previously, a deploy with a bad DATABASE_URL would boot but fail on requests.
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
@@ -119,6 +231,13 @@ async def lifespan(app: FastAPI):
             "startup: database connection failed — exiting so Railway restarts: %s", exc
         )
         raise SystemExit(1) from exc  # triggers ON_FAILURE restart
+
+    # ── Apply pending migrations idempotently.
+    await _apply_pending_migrations()
+
+    # Warn (don't fail) if the deployment scales out past the single-process
+    # invariant the in-memory rate limiter relies on (#225, 3.2).
+    _warn_if_scaled_out()
 
     # ── Start background email drain (only when RESEND_API_KEY is configured).
     drain_task: asyncio.Task | None = None
@@ -148,7 +267,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
-    # Swagger + the machine-readable schema are an attacker's site map (#111).
     # Off unless explicitly enabled (ENABLE_DOCS=true for local dev).
     docs_url="/api/docs" if settings.enable_docs else None,
     redoc_url=None,
@@ -167,6 +285,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Added after CORS (so it wraps it): only adds headers, never strips, so CORS —
+# including the error-path re-application — is preserved (#227).
+app.add_middleware(BaseHTTPMiddleware, dispatch=_security_headers_dispatch)
 app.add_middleware(_RequestIdMiddleware)  # outermost — runs first on ingress
 
 
@@ -208,7 +329,9 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
         # Include request_id in the response body so support can match a
         # user's screenshot to the exact Railway log line.
         content={"detail": "Internal server error", "request_id": rid},
-        headers={**_cors_headers_for(request), "X-Request-Id": rid},
+        # Unhandled 500s are produced outside the user middleware stack, so apply
+        # the security headers (and re-apply CORS, #117) here too (#227).
+        headers={**_cors_headers_for(request), **_security_headers(request), "X-Request-Id": rid},
     )
 
 
@@ -225,7 +348,7 @@ async def health() -> dict:
 @app.get("/api/health/db", dependencies=[Depends(rate_limit(times=30, seconds=60))])
 async def health_db() -> dict:
     """Deep health check — round-trips a SELECT 1 against Supabase.
-    Rate-limited (#109): each call burns a pgBouncer slot round-trip."""
+    Rate-limited: each call burns a pgBouncer slot round-trip."""
     async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))
     return {"status": "ok"}

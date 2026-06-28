@@ -16,46 +16,46 @@ import { createPortal } from 'react-dom';
 // names in both themes means components never hardcode a colour — light/dark is a
 // pure data-theme swap on the portal root, with contrast tuned in both.
 export const T = {
-  bg:            'var(--ac-bg)',
-  panel:         'var(--ac-panel)',        // big rounded sidebar / main panels
-  surface:       'var(--ac-surface)',
-  surfaceRaised: 'var(--ac-surface-raised)',
-  surfaceInset:  'var(--ac-surface-inset)',
-  cardShadow:    'var(--ac-card-shadow)',
-  line:          'var(--ac-line)',
-  lineStrong:    'var(--ac-line-strong)',
-  chip:          'var(--ac-chip)',        // subtle neutral fill (icon chips, ghost buttons)
+  bg:            'var(--zm-bg)',
+  panel:         'var(--zm-surface)',        // big rounded sidebar / main panels
+  surface:       'var(--zm-surface-2)',
+  surfaceRaised: 'var(--zm-surface)',
+  surfaceInset:  'rgba(0,0,0,0.1)',
+  cardShadow:    'var(--zm-shadow-1)',
+  line:          'var(--zm-line)',
+  lineStrong:    'var(--zm-line-strong, var(--zm-line))',
+  chip:          'var(--zm-surface-2)',
 
-  text:      'var(--ac-text)',
-  textMuted: 'var(--ac-text-muted)',
-  textFaint: 'var(--ac-text-faint)',
+  text:      'var(--zm-fg)',
+  textMuted: 'var(--zm-fg-2)',
+  textFaint: 'var(--zm-fg-3)',
 
   // Inverted surface — near-white on dark, near-black on light (solid buttons / active pills).
-  invBg:   'var(--ac-inv-bg)',
-  invText: 'var(--ac-inv-text)',
-  invSoft: 'var(--ac-inv-soft)',          // subtle fill that reads on the inverted surface
+  invBg:   'var(--zm-fg)',
+  invText: 'var(--zm-bg)',
+  invSoft: 'var(--zm-fg-4)',
 
-  drawerBg: 'var(--ac-drawer-bg)',
+  drawerBg: 'var(--zm-surface)',
 
-  accent:     'var(--ac-accent)',
-  accentText: 'var(--ac-accent-text)',
-  accentSoft: 'var(--ac-accent-soft)',
+  accent:     'var(--zm-accent)',
+  accentText: 'var(--zm-accent)',
+  accentSoft: 'var(--zm-accent-soft)',
 
-  success:     'var(--ac-success)',
-  successText: 'var(--ac-success-text)',
-  successSoft: 'var(--ac-success-soft)',
+  success:     'var(--zm-success)',
+  successText: 'var(--zm-success)',
+  successSoft: 'var(--zm-success-soft)',
 
-  danger:     'var(--ac-danger)',
-  dangerText: 'var(--ac-danger-text)',
-  dangerSoft: 'var(--ac-danger-soft)',
+  danger:     'var(--zm-danger)',
+  dangerText: 'var(--zm-danger)',
+  dangerSoft: 'var(--zm-danger-soft)',
 
-  warn:     'var(--ac-warn)',
-  warnText: 'var(--ac-warn-text)',
-  warnSoft: 'var(--ac-warn-soft)',
+  warn:     'var(--zm-warning)',
+  warnText: 'var(--zm-warning)',
+  warnSoft: 'var(--zm-warning-soft)',
 
-  project:     'var(--ac-project)',       // purple — project / budget category
-  projectText: 'var(--ac-project-text)',
-  projectSoft: 'var(--ac-project-soft)',
+  project:     'var(--zm-plum)',       // purple — project / budget category
+  projectText: 'var(--zm-plum)',
+  projectSoft: 'var(--zm-plum-soft)',
 
   mono: 'ui-monospace, SFMono-Regular, Menlo, monospace',
 
@@ -128,8 +128,24 @@ export const Icon = {
   moon:    (p) => <Svg {...p}><path d="M20 13.5A8 8 0 1 1 10.5 4a6.5 6.5 0 0 0 9.5 9.5Z"/></Svg>,
   panel:   (p) => <Svg {...p}><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></Svg>,
   scaleLogo: ({ size = 22, ...p }) => (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true" {...p}>
-      <path d="M4 5.5 L20 5.5 L12 12 L20 18.5 L4 18.5 L12 12 Z" />
+    <svg viewBox="0 0 64 64" width={size} height={size} fill="none" aria-hidden="true" {...p}>
+      <defs>
+        <linearGradient id="re-logo-g-ba" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+          <stop offset="0%" stopColor="#D040C8"/>
+          <stop offset="20%" stopColor="#F04090"/>
+          <stop offset="38%" stopColor="#FF6020"/>
+          <stop offset="55%" stopColor="#FFB020"/>
+          <stop offset="72%" stopColor="#3060F8"/>
+          <stop offset="88%" stopColor="#20D0F8"/>
+          <stop offset="100%" stopColor="#7030D8"/>
+        </linearGradient>
+      </defs>
+      <rect width="64" height="64" rx="12" fill="#150920"/>
+      <path
+        d="M32 4C40 4 42 14 42 22C42 30 52 32 60 32C52 32 42 34 42 42C42 50 40 60 32 60C24 60 22 50 22 42C22 34 12 32 4 32C12 32 22 30 22 22C22 14 24 4 32 4Z"
+        fill="url(#re-logo-g-ba)"
+      />
+      <path d="M32 22L42 32L32 42L22 32Z" fill="#150920"/>
     </svg>
   ),
 };
@@ -154,7 +170,7 @@ export function Avatar({ name, email, size = 30 }) {
 // ── Card ──────────────────────────────────────────────────────────────────────
 
 export function Card({ as: Tag = 'div', interactive = false, raised = false, style, className = '', ...rest }) {
-  const cls = ['ac-card', interactive ? 'ac-interactive' : '', raised ? 'is-raised' : '', className].filter(Boolean).join(' ');
+  const cls = ['zm-glass', interactive ? 'ac-interactive' : '', className].filter(Boolean).join(' ');
   return (
     <Tag
       className={cls}
@@ -162,6 +178,7 @@ export function Card({ as: Tag = 'div', interactive = false, raised = false, sty
         border: `1px solid ${T.line}`,
         borderRadius: T.radius,
         background: raised ? T.surfaceRaised : T.surface,
+        boxShadow: T.cardShadow,
         ...style,
       }}
       {...rest}
@@ -186,9 +203,13 @@ const BTN_SIZES = {
 
 export function Button({ variant = 'subtle', size = 'sm', loading = false, icon, children, style, disabled, ...rest }) {
   const isDisabled = disabled || loading;
+  let cls = 'zm-btn';
+  if (variant === 'solid' || variant === 'accent' || variant === 'success') cls = 'zm-btn-primary';
+  if (variant === 'danger') cls = 'zm-btn-danger';
+
   return (
     <button
-      className={`ac-btn v-${variant}`}
+      className={cls}
       disabled={isDisabled}
       // Disabled/in-flight buttons must LOOK non-clickable — otherwise an admin
       // who clicks (e.g. Financial Closure) sees no state change. The disabled
@@ -205,7 +226,7 @@ export function Button({ variant = 'subtle', size = 'sm', loading = false, icon,
 export function IconButton({ label, loading = false, size = 32, children, style, ...rest }) {
   return (
     <button
-      className={`ac-iconbtn${loading ? ' is-spinning' : ''}`}
+      className={`zm-icon-btn${loading ? ' is-spinning' : ''}`}
       aria-label={label}
       title={label}
       style={{
@@ -269,42 +290,96 @@ export function StatusPill({ status }) {
 
 // ── Stat tile (overview) ────────────────────────────────────────────────────────
 
-export function StatTile({ icon: TileIcon, label, count, caption, tone = 'accent', loading = false, onClick }) {
-  const active = count > 0;
-  const tones = {
-    accent:  { fg: T.accentText,  chip: T.accentSoft },
-    warn:    { fg: T.warnText,    chip: T.warnSoft },
-    success: { fg: T.successText, chip: T.successSoft },
-    neutral: { fg: T.text,        chip: T.chip },
-  };
-  const c = tones[tone] || tones.accent;
+function CornerTicks() {
   return (
-    <Card
-      as="button"
-      interactive
-      raised
+    <>
+      {[
+        { top: 0, left: 0, rot: 0 },
+        { top: 0, right: 0, rot: 90 },
+        { bottom: 0, right: 0, rot: 180 },
+        { bottom: 0, left: 0, rot: -90 },
+      ].map((p, i) => (
+        <span key={i} style={{
+          position: 'absolute', width: 8, height: 8, ...p,
+          borderTop: '1px solid var(--zm-fg-3)', borderLeft: '1px solid var(--zm-fg-3)',
+          opacity: 0.35, transform: `rotate(${p.rot}deg)`, margin: 6,
+        }}/>
+      ))}
+    </>
+  );
+}
+
+const TONE_FILL = {
+  peach: 'var(--zm-brand-peach)',
+  blue:  'var(--zm-brand-blue)',
+  mint:  'var(--zm-brand-mint)',
+  slate: 'var(--zm-brand-slate)',
+};
+
+export function StatTile({ icon: TileIcon, label, count, caption, tone, loading = false, onClick }) {
+  const fill = TONE_FILL[tone];
+  const toned = !!fill;
+  const onColor = tone === 'slate' ? 'var(--zm-brand-on-slate)' : 'var(--zm-brand-on-pastel)';
+  const ruleColor = toned ? onColor : 'var(--zm-copper)';
+  const valueColor = toned ? onColor : 'var(--zm-fg)';
+  const metaColor = toned ? onColor : 'var(--zm-fg-3)';
+  const noColor = toned ? onColor : 'var(--zm-fg-4)';
+  
+  return (
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
+    <div className="zm-glass"
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
       style={{
-        textAlign: 'left', padding: 20, display: 'flex', flexDirection: 'column', gap: 16,
-        cursor: 'pointer', minWidth: 0,
+        borderRadius: 16, padding: '24px 26px 26px',
+        display: 'flex', flexDirection: 'column', gap: 12,
+        position: 'relative', overflow: 'hidden',
+        ...(toned ? { background: fill } : {}),
+        cursor: onClick ? 'pointer' : 'default',
+        outline: 'none',
+        outlineOffset: -2,
+        transition: 'transform 200ms cubic-bezier(0.22,1,0.36,1), box-shadow 200ms cubic-bezier(0.22,1,0.36,1)',
       }}
+      onMouseEnter={(e) => { if (onClick) { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--zm-shadow-3)'; } }}
+      onMouseLeave={(e) => { if (onClick) { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'var(--zm-glass)'; } }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ width: 42, height: 42, borderRadius: 12, display: 'inline-flex', alignItems: 'center',
-          justifyContent: 'center', background: c.chip, color: c.fg }}>
-          <TileIcon size={21} />
+      <span aria-hidden="true" style={{
+        position: 'absolute', inset: '0 0 auto 0', height: 1,
+        background: 'linear-gradient(90deg, transparent, ' + ruleColor + ', transparent)', opacity: toned ? 0.35 : 0.6,
+      }}/>
+      {!toned && <CornerTicks/>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+        <span style={{ color: noColor, display: 'inline-flex', flex: '0 0 auto', opacity: toned ? 0.7 : 1 }}>
+          {TileIcon && <TileIcon size={14}/>}
         </span>
-        <Icon.caret size={16} style={{ color: T.textFaint }} />
+        <span style={{
+          fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9.5,
+          letterSpacing: '0.22em', textTransform: 'uppercase', color: metaColor,
+          lineHeight: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1,
+          opacity: toned ? 0.8 : 1,
+        }}>{label}</span>
+        {onClick && (
+          <span style={{ color: noColor, display: 'inline-flex', flex: '0 0 auto' }}>
+            <Icon.chevron size={12}/>
+          </span>
+        )}
       </div>
-      <div>
-        {loading
-          ? <div className="ac-skel" style={{ width: 52, height: 40, borderRadius: 8 }} />
-          : <div style={{ fontSize: 40, lineHeight: 1, fontWeight: 760, letterSpacing: '-0.03em',
-              color: active ? c.fg : T.textFaint, ...TABULAR }}>{count}</div>}
-        <div style={{ marginTop: 9, fontSize: 14, fontWeight: 650, color: T.text }}>{label}</div>
-        <div style={{ marginTop: 3, fontSize: 12, color: T.textFaint }}>{loading ? '—' : caption}</div>
-      </div>
-    </Card>
+      
+      {loading ? (
+        <div className="ac-skel" style={{ width: 52, height: 40, borderRadius: 8, marginTop: 10, marginBottom: 10 }} />
+      ) : (
+        <span style={{
+          fontFamily: 'var(--zm-font-display)', fontWeight: 800, fontStyle: 'normal',
+          fontSize: 64, letterSpacing: '-0.035em', color: valueColor, lineHeight: 0.95,
+          fontVariantNumeric: 'tabular-nums', fontFeatureSettings: "'tnum' 1",
+        }}>{count}</span>
+      )}
+      
+      <span style={{ width: 36, height: 1, background: ruleColor, opacity: 0.7 }}/>
+      
+      {caption && <span style={{ fontFamily: 'var(--zm-font-body)', fontStyle: 'normal', fontSize: 12.5, color: metaColor, lineHeight: 1.35, opacity: toned ? 0.78 : 1 }}>{caption}</span>}
+    </div>
   );
 }
 
@@ -426,12 +501,24 @@ function getPortalTheme() {
 
 export function Drawer({ open, onClose, title, subtitle, headerRight, children, footer }) {
   const [portalTheme, setPortalTheme] = React.useState(getPortalTheme);
+  const titleId = React.useId();
+  const drawerRef = React.useRef(null);
 
   React.useEffect(() => {
     if (!open) return undefined;
     const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // Move focus into the drawer on open so keyboard/screen-reader users can
+    // navigate its content without tabbing past the rest of the page first.
+    const frame = requestAnimationFrame(() => {
+      const el = drawerRef.current;
+      if (!el) return;
+      const focusable = el.querySelector(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      (focusable || el).focus();
+    });
+    return () => { window.removeEventListener('keydown', onKey); cancelAnimationFrame(frame); };
   }, [open, onClose]);
 
   React.useEffect(() => {
@@ -447,12 +534,16 @@ export function Drawer({ open, onClose, title, subtitle, headerRight, children, 
   if (!open) return null;
   const drawer = (
     <div className="ac-root ac-portal-root" data-theme={portalTheme}>
+      {/* Presentational modal scrim — mousedown on the scrim itself dismisses
+          the dialog; the dialog (role="dialog") owns keyboard focus and its
+          header carries a real Close button, so the scrim isn't a focus target. */}
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div className="ac-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
-      <div className="ac-drawer" role="dialog" aria-modal="true">
+      <div ref={drawerRef} className="ac-drawer" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="ac-drawer-header" style={{ padding: '18px 22px', borderBottom: `1px solid ${T.line}`, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             {subtitle && <div style={{ fontSize: 11.5, letterSpacing: '0.04em', color: T.textMuted, marginBottom: 3 }}>{subtitle}</div>}
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 720, letterSpacing: '-0.015em', color: T.text }}>{title}</h2>
+            <h2 id={titleId} style={{ margin: 0, fontSize: 18, fontWeight: 720, letterSpacing: '-0.015em', color: T.text }}>{title}</h2>
           </div>
           {headerRight}
           <IconButton label="Close" onClick={onClose}><Icon.x size={16} /></IconButton>

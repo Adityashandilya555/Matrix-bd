@@ -9,6 +9,7 @@ import Icon from '../shared/primitives/Icon.jsx';
 import { getDesignQueue } from '../../services/api/designApi.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 import { ROUTES } from '../../router/routes.js';
+import { keyActivate } from '../../lib/a11y.js';
 
 // Design module overview — four drill-down KPIs over the design queue:
 //   Ⅰ Sites in Design — every site in the queue.
@@ -114,7 +115,10 @@ function QueueTable({ rows, onOpen, limit }) {
         <div
           key={row.siteId}
           className="zm-row"
+          role="button"
+          tabIndex={0}
           onClick={() => onOpen(row)}
+          onKeyDown={keyActivate(() => onOpen(row))}
           style={{
             display: 'grid', gridTemplateColumns: COLS,
             gap: 12, padding: '14px 16px',
@@ -181,7 +185,11 @@ export default function DesignOverviewPage() {
   useSiteDataRefresh(load, { sources: ['design', 'businessAdmin', 'siteTrackerApi', 'legalApi'] });
 
   const items = state.items;
-  const countFor = (key) => items.filter((r) => matchesKpi(r, KPIS[key])).length;
+  // The headline "Sites in Design" card + lede use the server COUNT(*)
+  // (state.total); the other KPIs are per-status breakdowns over loaded items.
+  const countFor = (key) => (KPIS[key].statuses == null
+    ? state.total
+    : items.filter((r) => matchesKpi(r, KPIS[key])).length);
 
   const selectKpi = (key) => {
     setView((v) => (v === key ? null : key));
@@ -201,7 +209,7 @@ export default function DesignOverviewPage() {
 
   const openRow = (row) => navigate(`${ROUTES.DESIGN}?focus=${encodeURIComponent(row.siteId)}`);
 
-  const total = items.length;
+  const total = state.total; // server COUNT(*) headline
   const lede = state.status === 'ready'
     ? `${total} site${total === 1 ? '' : 's'} in design`
     : 'Module KPIs and drill-downs.';

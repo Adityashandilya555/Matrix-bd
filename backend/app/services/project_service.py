@@ -6,9 +6,9 @@ has moved to the Project Excellence module (202606134).
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import Optional
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
 from sqlalchemy import desc, or_, select
@@ -33,9 +33,9 @@ from app.domain.schemas.project import (
     ReviewRequest,
 )
 from app.services import budget_service
-from app.services._common import fetch_site_or_404, fetch_user_name, fetch_user_names
+from app.services._common import count_rows, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
-from app.services.delegation_service import svc_assigned_sites, svc_is_delegated
+from app.services.delegation_service import svc_is_delegated
 
 
 def _is_supervisor(actor: dict) -> bool:
@@ -151,14 +151,7 @@ async def _batch_project_prefetch(
     session: AsyncSession, sites: list[models.Site],
 ) -> tuple[dict, dict]:
     """Batch the per-site project-delegate + submitter-name lookups into two
-    queries total, instead of two per site.
-
-    `_queue_item` otherwise issues `_active_project_delegate` + `fetch_user_name`
-    per row — an N+1 that costs a full connection round trip each through the
-    pgBouncer/NullPool transaction pooler (#81). Returns
-    `(delegates_by_site_id, names_by_user_id)`; pass the slices into
-    `_queue_item(..., prefetched=...)`.
-    """
+    queries total, instead of two per site."""
     delegates: dict = {}
     names: dict = {}
     site_ids = [s.id for s in sites]
@@ -286,13 +279,17 @@ async def svc_project_queue(
     *,
     tenant_id: str | UUID,
     restrict_to_site_ids: Optional[list[str]] = None,
+    limit: int = 500,
+    offset: int = 0,
 ) -> ProjectQueueResponse:
+    """Return one page of the active Project queue, oldest-updated first.
+
+    Paginated (``limit``/``offset``) so the queue and its per-row enrichment are
+    bounded by page size (#230). Executive ``restrict_to_site_ids`` scoping is
+    applied before pagination. ``total`` is the page row count.
+    """
     async with transaction(session):
-        # One joined query for sites+reviews (done-filter pushed into SQL), one
-        # batched delegate lookup, one batched name lookup — instead of the old
-        # 1 + 3N round trips with INSERT flushes on a GET. Reviews are no
-        # longer created here: every write path uses _fetch_review_or_create,
-        # and _queue_item already renders sensible defaults for review=None.
+        # One joined query + two batched lookups instead of N round trips per row.
         stmt = (
             select(models.Site, models.ProjectReview)
             .outerjoin(models.ProjectReview, models.ProjectReview.site_id == models.Site.id)
@@ -304,13 +301,14 @@ async def svc_project_queue(
                     models.ProjectReview.project_status != "done",
                 ),
             )
-            .order_by(models.Site.updated_at.asc())
+            .order_by(models.Site.updated_at.asc(), models.Site.id)  # id = stable-paging tie-breaker
         )
         if restrict_to_site_ids is not None:
             if not restrict_to_site_ids:
                 return ProjectQueueResponse(items=[], total=0)
             stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
-        rows = (await session.execute(stmt)).all()
+        total = await count_rows(session, stmt)
+        rows = (await session.execute(stmt.limit(limit).offset(offset))).all()
 
         delegates, names = await _batch_project_prefetch(session, [site for site, _r in rows])
 
@@ -323,7 +321,7 @@ async def svc_project_queue(
                     "submitted_by_name": names.get(site.submitted_by, ""),
                 },
             ))
-        return ProjectQueueResponse(items=items, total=len(items))
+        return ProjectQueueResponse(items=items, total=total)
 
 
 async def svc_project_history(
@@ -332,11 +330,17 @@ async def svc_project_history(
     tenant_id: str | UUID,
     status_filter: str = "all",
     restrict_to_site_ids: Optional[list[str]] = None,
+    limit: int = 500,
+    offset: int = 0,
 ) -> ProjectHistoryResponse:
     """Read-only Project history for sites that reached or entered Project.
 
     Executives pass `restrict_to_site_ids` (their project-delegated sites); a
     supervisor passes None and sees the whole tenant's project history.
+
+    Paginated (``limit``/``offset``, newest first) so the response can't grow
+    unbounded with tenant lifetime (#230); exec scoping is applied before the
+    page window. ``total`` is the page row count.
     """
     if restrict_to_site_ids is not None and not restrict_to_site_ids:
         return ProjectHistoryResponse(items=[], total=0)
@@ -365,14 +369,16 @@ async def svc_project_history(
     if restrict_to_site_ids is not None:
         stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
 
+    total = await count_rows(session, stmt)
     rows = (await session.execute(
         stmt.order_by(
             desc(models.ProjectReview.updated_at).nulls_last(),
             desc(models.Site.updated_at),
-        )
+            models.Site.id,  # deterministic tie-breaker for stable offset paging
+        ).limit(limit).offset(offset)
     )).all()
 
-    # Batch submitter names (1 query) instead of one per row (#91).
+    # Batch submitter names (1 query) instead of one per row.
     names = await fetch_user_names(session, [site.submitted_by for site, _r in rows])
     items: list[ProjectHistoryItem] = []
     for site, review in rows:
@@ -388,12 +394,13 @@ async def svc_project_history(
             project_completed_at=(review.project_completed_at if review else None),
             updated_at=(review.updated_at if review else site.updated_at),
         ))
-    return ProjectHistoryResponse(items=items, total=len(items))
+    return ProjectHistoryResponse(items=items, total=total)
 
 
 async def svc_get_project(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
 ) -> ProjectStateResponse:
+    """Return the active Project state for a site, creating its review row if absent."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_project_unlocked(site)
@@ -433,6 +440,7 @@ async def svc_get_project_history_detail(
 async def svc_list_project_delegations_for_site(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
 ) -> dict:
+    """List the site's active (non-revoked) project delegations with delegate identity."""
     stmt = (
         select(models.SiteDelegation, models.User.email, models.User.name)
         .join(models.User, models.User.id == models.SiteDelegation.delegate_user_id)
@@ -473,6 +481,7 @@ async def svc_allocate_project(
     delegate_user_id: str | UUID,
     notes: Optional[str] = None,
 ) -> ProjectStateResponse:
+    """Allocate a site's project to an active executive; only a supervisor may do so."""
     if not _is_supervisor(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can allocate.")
     if str(delegate_user_id) == str(actor["sub"]):
@@ -535,6 +544,7 @@ async def svc_revoke_project_delegation(
     site_id: str | UUID,
     delegate_user_id: str | UUID,
 ) -> OkResponse:
+    """Revoke a site's active project delegation; only a supervisor may do so."""
     if not _is_supervisor(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can revoke.")
     async with transaction(session):
@@ -571,6 +581,7 @@ async def svc_submit_milestone(
     field: str,
     body: MilestoneRequest,
 ) -> ProjectStateResponse:
+    """Set an expected or final completion milestone, enforcing the gating order of dates."""
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         await _assert_can_work_project(session, tenant_id=tenant_id, actor=actor, site_id=site.id)
@@ -617,6 +628,7 @@ async def svc_review_milestone(
     field: str,
     body: ReviewRequest,
 ) -> ProjectStateResponse:
+    """Approve or reject a submitted expected-completion milestone; supervisor only."""
     if not _is_supervisor(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can review milestones.")
     if field != "expected_completion_date":
@@ -663,8 +675,8 @@ async def svc_propose_initialization(
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_create(session, site=site)
-        # A freshly-created review carries None in-memory (the 'pending'
-        # server_default only materializes on a DB read), so treat None as pending.
+        # A freshly-created review carries None (the 'pending' server_default
+        # only materializes on a DB read), so treat None as pending.
         if review.initialization_status not in (None, "pending"):
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="An initialization date has already been proposed.")
         review.initialization_date = body.value

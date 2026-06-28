@@ -24,8 +24,6 @@ from sqlalchemy import desc, or_, select, text
 from sqlalchemy.exc import ProgrammingError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = logging.getLogger(__name__)
-
 from app.db import models
 from app.db.session import transaction
 from app.domain.schemas.legal import (
@@ -45,7 +43,7 @@ from app.domain.schemas.legal import (
     SaveVerificationRequest,
 )
 from app.domain.state_machine import SiteStatus, assert_transition
-from app.services._common import fetch_site_or_404, fetch_user_name, fetch_user_names
+from app.services._common import count_rows, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.notification_service import (
     enqueue as notify_enqueue,
@@ -80,9 +78,7 @@ async def _fetch_dd_or_404(
 
 
 async def _batch_dd_by_site(session: AsyncSession, site_ids) -> dict:
-    """Batch DD checklists into a ``site_id -> checklist`` map in one query, vs
-    ``_fetch_dd_or_none`` per row (an N+1 round trip each through the pooler) (#91).
-    Mirrors the batching ``svc_legal_queue`` already uses."""
+    """Batch DD checklists into a ``site_id -> checklist`` map in one query."""
     ids = [sid for sid in site_ids if sid]
     if not ids:
         return {}
@@ -195,12 +191,11 @@ async def _executive_has_legal_delegation(
 
     Returns False (rather than raising) if the site_delegations table doesn't
     exist yet — keeps this slice independent of the U2 delegation slice.
+
+    begin_nested() (SAVEPOINT) is intentional: a missing-table error rolls back
+    only this probe, not the caller's outer transaction. session.rollback() would
+    nuke the entire transaction — do not substitute it here.
     """
-    # SAVEPOINT so a missing-table probe failure rolls back ONLY this probe —
-    # the old `session.rollback()` nuked the caller's whole transaction, and
-    # the bare `except Exception` (no rollback) left the connection in a
-    # failed-transaction state for the rest of the request. Mirrors
-    # _find_legal_delegate below.
     try:
         async with session.begin_nested():
             result = await session.execute(
@@ -305,8 +300,10 @@ async def svc_legal_queue(
     *,
     tenant_id: str | UUID,
     restrict_to_site_ids: Optional[list[str]] = None,
+    limit: int = 500,
+    offset: int = 0,
 ) -> LegalQueueResponse:
-    """Return all sites in LEGAL_REVIEW or LEGAL_REJECTED with their DD status.
+    """Return one page of sites in LEGAL_REVIEW or LEGAL_REJECTED with DD status.
 
     LEGAL_REJECTED sites are included so the legal supervisor can see them in
     their queue (marked with a 'negative' badge) and directly fix the failing
@@ -315,6 +312,10 @@ async def svc_legal_queue(
     `restrict_to_site_ids` is an optional additive filter the router passes
     when the caller is an executive (so they see only delegated sites).
     Pass None for the supervisor-wide view.
+
+    Paginated (``limit``/``offset``) so the queue and its batched per-site
+    lookups are bounded by page size (#230); exec scoping is applied before the
+    page window. ``total`` is the page row count.
     """
     stmt = (
         select(models.Site)
@@ -325,17 +326,17 @@ async def svc_legal_queue(
                 SiteStatus.LEGAL_REJECTED.value,
             ]),
         )
-        .order_by(models.Site.legal_review_at.asc())
+        .order_by(models.Site.legal_review_at.asc(), models.Site.id)  # id = stable-paging tie-breaker
     )
     if restrict_to_site_ids is not None:
         if not restrict_to_site_ids:
             return LegalQueueResponse(items=[], total=0)
         stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
 
-    sites = (await session.execute(stmt)).scalars().all()
+    total = await count_rows(session, stmt)
+    sites = (await session.execute(stmt.limit(limit).offset(offset))).scalars().all()
 
-    # Batch the per-site lookups: 2 queries total instead of 2 per site
-    # (N+1 costs a full round trip each through pgBouncer/NullPool).
+    # Batch the per-site lookups: 2 queries total instead of 2 per site.
     site_ids = [site.id for site in sites]
     dd_by_site: dict = {}
     names: dict = {}
@@ -368,7 +369,7 @@ async def svc_legal_queue(
             submitted_by_name=submitted_by_name,
         ))
 
-    return LegalQueueResponse(items=items, total=len(items))
+    return LegalQueueResponse(items=items, total=total)
 
 
 async def svc_legal_rejected_sites(
@@ -396,8 +397,7 @@ async def svc_legal_rejected_sites(
         stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
     sites = (await session.execute(stmt)).scalars().all()
 
-    # Batch DD checklists + submitter names (2 queries total) instead of 2 per
-    # site (#91).
+    # Batch DD checklists + submitter names (2 queries total) instead of 2 per site.
     dd_by_site = await _batch_dd_by_site(session, [s.id for s in sites])
     names = await fetch_user_names(session, [s.submitted_by for s in sites])
     items: list[LegalRejectedSiteItem] = []
@@ -423,11 +423,17 @@ async def svc_legal_history(
     tenant_id: str | UUID,
     status_filter: str = "all",
     restrict_to_site_ids: Optional[list[str]] = None,
+    limit: int = 500,
+    offset: int = 0,
 ) -> LegalHistoryResponse:
     """Read-only Legal history for sites that have touched the Legal module.
 
     Executives pass `restrict_to_site_ids` (their legal-delegated sites); a
     supervisor passes None and sees the whole tenant's legal history.
+
+    Bounded by a safety ceiling (``limit``/``offset``, #230) so the response
+    can't grow unbounded with tenant lifetime; ``total`` is the true filtered
+    count (not the page size), so KPI tiles stay accurate past the ceiling.
     """
     if restrict_to_site_ids is not None and not restrict_to_site_ids:
         return LegalHistoryResponse(items=[], total=0)
@@ -487,10 +493,10 @@ async def svc_legal_history(
         desc(models.Site.legal_review_at).nulls_last(),
         desc(models.Site.updated_at),
     )
-    sites = (await session.execute(stmt)).scalars().all()
+    total = await count_rows(session, stmt)
+    sites = (await session.execute(stmt.limit(limit).offset(offset))).scalars().all()
 
-    # Batch DD checklists + submitter names (2 queries total) instead of 2 per
-    # site (#91).
+    # Batch DD checklists + submitter names (2 queries total) instead of 2 per site.
     dd_by_site = await _batch_dd_by_site(session, [s.id for s in sites])
     names = await fetch_user_names(session, [s.submitted_by for s in sites])
     items: list[LegalHistoryItem] = []
@@ -513,12 +519,13 @@ async def svc_legal_history(
             legal_rejected_at=site.legal_rejected_at,
             updated_at=site.updated_at,
         ))
-    return LegalHistoryResponse(items=items, total=len(items))
+    return LegalHistoryResponse(items=items, total=total)
 
 
 async def svc_get_legal_review(
     session: AsyncSession, *, site_id: str | UUID, tenant_id: str | UUID,
 ) -> LegalReviewResponse:
+    """Return the full legal review (DD checklist and status) for one site."""
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
     return await _build_review_response(session, site)
 
@@ -574,8 +581,6 @@ async def svc_save_verification(
             )
 
         # Delegation check applies only when the site is in LEGAL_REVIEW.
-        # On a LEGAL_REJECTED site only supervisors reach this point (blocked above),
-        # and _require_executive_legal_delegation is a no-op for supervisors.
         is_executive = await _require_executive_legal_delegation(
             session, site_id=site.id, actor=actor,
         )
@@ -583,9 +588,6 @@ async def svc_save_verification(
         dd = await _fetch_dd_or_none(session, site_id=site.id)
         if dd is None:
             dd = models.LegalDdChecklist(site_id=site.id)
-            # Item saves are drafts regardless of who starts them. Only
-            # svc_save_due_diligence publishes DDR, so Save Draft never locks
-            # the checklist or exposes a final BD-visible verdict.
             dd.stage = "draft"
             session.add(dd)
         elif _row_stage(dd) == "published" and dd.approved_by is None:
@@ -604,13 +606,6 @@ async def svc_save_verification(
         elif is_executive:
             _assert_executive_can_edit_stage(_row_stage(dd))
         else:
-            # Supervisor path: blocked from editing items once the row is
-            # published — BD reads published rows as the source of truth, so
-            # any post-publish change must flow through the change-request
-            # path (where the request + approval are explicitly logged).
-            # Draft and pending_review rows remain freely editable so the
-            # supervisor can adjust items either before the executive submits
-            # or after reviewing what they sent.
             _assert_supervisor_can_edit_stage(_row_stage(dd))
 
         # Only overwrite fields that were explicitly supplied
@@ -637,9 +632,8 @@ async def svc_save_verification(
 
         dd.reviewed_by = actor["sub"]
 
-        # Save Draft is not a legal verdict. Keep the BD-visible mirror in
-        # review until the supervisor explicitly finalizes positive/negative
-        # via svc_save_due_diligence, which also publishes the row.
+        # Save Draft is not a legal verdict; keep the BD-visible mirror in review
+        # until the supervisor explicitly finalizes via svc_save_due_diligence.
         if dd.final_verdict == "pending":
             site.legal_dd_status = "in_review"
 

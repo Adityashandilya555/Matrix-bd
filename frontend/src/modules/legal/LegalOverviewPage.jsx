@@ -10,6 +10,7 @@ import { getLegalQueue } from '../../services/api/legalApi.js';
 import { listPendingChangeRequests } from '../../services/api/changeRequestApi.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 import { ROUTES } from '../../router/routes.js';
+import { keyActivate } from '../../lib/a11y.js';
 
 // Legal module overview — four drill-down KPIs over the legal queue +
 // change-request backlog:
@@ -79,7 +80,10 @@ function QueueTable({ rows, onOpen, limit }) {
         <div
           key={row.siteId}
           className="zm-row"
+          role="button"
+          tabIndex={0}
           onClick={() => onOpen(row)}
+          onKeyDown={keyActivate(() => onOpen(row))}
           style={{
             display: 'grid',
             gridTemplateColumns: '120px minmax(220px, 1fr) 140px 160px',
@@ -162,7 +166,9 @@ export default function LegalOverviewPage() {
     return byStatus;
   }, [queue.items]);
 
-  const totalInQueue = queue.items.length;
+  // Headline count uses the server COUNT(*) (queue.total), not the loaded page
+  // size. Per-stage breakdowns below stay over the loaded items.
+  const totalInQueue = queue.total;
   const ddInReview = counts.pending + counts.in_review;
   const pad = (n) => String(n).padStart(2, '0');
 

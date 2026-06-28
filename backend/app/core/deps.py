@@ -1,16 +1,20 @@
 """FastAPI dependencies: get_db, get_current_user, get_tenant."""
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Optional
 
 from fastapi import Depends, Header
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
 from app.core.security import AuthError, decode_token
 from app.db.session import get_db
 
+
+_log = logging.getLogger("matrix.deps")
 
 DbDep = Annotated[AsyncSession, Depends(get_db)]
 
@@ -29,6 +33,8 @@ _DEMO_USER = {
 async def get_current_user(
     db: Annotated[AsyncSession, Depends(get_db)],
     authorization: Annotated[Optional[str], Header()] = None,
+    x_override_role: Annotated[Optional[str], Header(alias="X-Override-Role")] = None,
+    x_override_module: Annotated[Optional[str], Header(alias="X-Override-Module")] = None,
 ) -> dict:
     """Extract + verify the current user from the Authorization header.
 
@@ -47,6 +53,14 @@ async def get_current_user(
     """
     if not authorization:
         if settings.allow_anon_demo_user:
+            # Boot-time validator (#224) already confined this flag to
+            # insecure-dev mode; log each time the bypass is actually exercised
+            # so an accidental dev-mode deploy is visible in the request logs.
+            _log.warning(
+                "ALLOW_ANON_DEMO_USER bypass taken — header-less request "
+                "authenticated as demo executive on tenant %s",
+                _DEMO_USER["tenant_id"],
+            )
             return _DEMO_USER
         raise AuthError("Missing Authorization header")
 
@@ -59,13 +73,64 @@ async def get_current_user(
 
     claims = decode_token(token)
 
-    row = (await db.execute(
-        text("SELECT role, is_active FROM users WHERE id = :uid"),
-        {"uid": claims["sub"]},
-    )).mappings().first()
+    module_to_check = x_override_module or claims.get("module")
+
+    # Full query including supervisor executive access fields.
+    # Falls back to a simpler query if the migration adding
+    # supervisor_executive_requests / has_executive_access hasn't been
+    # applied yet — prevents 500s during the migration window.
+    _FULL_QUERY = """\
+        SELECT u.role, u.is_active,
+               COALESCE(umm.has_executive_access, false) AS has_executive_access,
+               EXISTS(
+                 SELECT 1 FROM supervisor_executive_requests req
+                 WHERE req.supervisor_id = u.id
+                   AND req.tenant_id = :tid
+                   AND req.module = :mod
+                   AND req.status = 'pending'
+               ) AS has_pending_executive_request
+        FROM users u
+        LEFT JOIN user_module_memberships umm
+          ON u.id = umm.user_id
+         AND umm.module = :mod
+         AND umm.tenant_id = :tid
+        WHERE u.id = :uid
+    """
+    _FALLBACK_QUERY = """\
+        SELECT u.role, u.is_active
+        FROM users u
+        WHERE u.id = :uid
+    """
+    params = {"uid": claims["sub"], "mod": module_to_check, "tid": claims["tenant_id"]}
+    try:
+        row = (await db.execute(text(_FULL_QUERY), params)).mappings().first()
+    except SQLAlchemyError:
+        _log.warning(
+            "executive-access query failed (migration not yet applied?), "
+            "falling back to basic user lookup"
+        )
+        await db.rollback()
+        row = (await db.execute(text(_FALLBACK_QUERY), params)).mappings().first()
+
     if not row or not row["is_active"]:
         raise AuthError("Account is inactive or no longer exists. Sign in again.")
-    claims["role"] = row["role"]
+
+    # Check if the database role is business_admin or if supervisor has executive access.
+    # If so, allow headers to override the effective role/module returned to downstream endpoints.
+    db_role = row["role"]
+    claims["role"] = db_role
+    claims["real_role"] = db_role
+    claims["has_executive_access"] = row.get("has_executive_access", False)
+    claims["has_pending_executive_request"] = row.get("has_pending_executive_request", False)
+    if db_role == "business_admin":
+        if x_override_role:
+            claims["role"] = x_override_role
+        if x_override_module:
+            claims["module"] = x_override_module
+    elif db_role == "supervisor" and row.get("has_executive_access"):
+        if x_override_role == "executive":
+            claims["role"] = "executive"
+
     # The is_active SELECT above AUTO-BEGAN a transaction on the request-scoped
     # session (SQLAlchemy 2.0 autobegin). If left open, the service-layer
     # transaction() helper sees in_transaction()==True and opens a SAVEPOINT

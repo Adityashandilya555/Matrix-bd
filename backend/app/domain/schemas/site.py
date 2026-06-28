@@ -70,16 +70,13 @@ class CreateDraftRequest(BaseModel):
     rent_type: Optional[RentType] = None
     # Conditional, depending on rent_type. None for the rest.
     expected_escalation_pct: Optional[float] = None
-    # Cadence in YEARS (1 = yearly, 3 = every 3 yrs …). The live column is a
-    # smallint (int2); an unbounded int >32767 raised an asyncpg DataError that
-    # surfaced as an opaque 500. Bound to a sane lease horizon so a fat-fingered
-    # value (e.g. pasting a year/rent) returns a clean 422 instead. (#135)
+    # Cadence in YEARS (1 = yearly, 3 = every 3 yrs). Bounded to a sane lease horizon
+    # so out-of-range input returns a clean 422 instead of a database error.
     expected_escalation_years: Optional[int] = Field(default=None, ge=0, le=99)
     expected_revshare_pct: Optional[float] = None
-    # Site score is a 1–5 rating (footfall + visibility). Bounded so an
-    # out-of-range value returns a clean 422 instead of persisting. Output
-    # (SiteResponse) stays unconstrained — legacy rows may hold the old 0–100.
-    score: Optional[int] = Field(default=None, ge=1, le=5)
+    # Site score is a decimal 1-5 rating. Bounded on input; output remains unconstrained
+    # so legacy rows (e.g. 0-100) do not cause validation errors.
+    score: Optional[float] = Field(default=None, ge=1, le=5)
     est_sales: Optional[float] = None
     nearest_starbucks: Optional[float] = None
     nearest_twc: Optional[float] = None
@@ -110,8 +107,8 @@ class SaveDetailsRequest(BaseModel):
     model: Optional[str] = None
     spoc_name: Optional[str] = Field(default=None, validation_alias=AliasChoices("spoc_name", "spocName"))
     google_pin: Optional[str] = Field(default=None, validation_alias=AliasChoices("google_pin", "googlePin"))
-    # 1–5 rating (see CreateDraftRequest.score). Bounded on input only.
-    score: Optional[int] = Field(default=None, ge=1, le=5)
+    # Decimal 1-5 rating (see CreateDraftRequest.score). Bounded on input only.
+    score: Optional[float] = Field(default=None, ge=1, le=5)
     est_sales: Optional[float] = Field(default=None, validation_alias=AliasChoices("est_sales", "estSales"))
     nearest_starbucks: Optional[float] = Field(default=None, validation_alias=AliasChoices("nearest_starbucks", "nearestStarbucks"))
     nearest_twc: Optional[float] = Field(default=None, validation_alias=AliasChoices("nearest_twc", "nearestTWC"))
@@ -132,7 +129,6 @@ class SaveDetailsRequest(BaseModel):
 
 class SubmitDetailsRequest(SaveDetailsRequest):
     """Submit for review — same fields but all required fields must be present."""
-    pass
 
 
 class ApproveShortlistRequest(BaseModel):
@@ -218,25 +214,19 @@ class SiteResponse(BaseModel):
     launch_status: Optional[str] = None
     is_launched: bool = False
     launched_at: Optional[datetime] = None
-    # Finance / CA mirror columns — lets the Payments and Launch views render
-    # straight off GET /sites without a per-site /tracker fan-out.
+    # Finance / CA mirror columns for Payments and Launch views.
     finance_status: Optional[str] = None
     kyc_verified: bool = False
-    # Response model: no length/pattern constraint here — output is read straight
-    # from our own DB, so validating it would 500 any legacy row. Input is
-    # validated on _FinanceDraftBody; email sinks are sanitized in finance_service.
+    # Output schema lacks constraints to avoid validation errors on legacy rows.
     ca_code: Optional[str] = None
     finance_amount: Optional[float] = None
-    # LOI SLA tracking (staging view). expected_loi_days comes from the approval
-    # row; approved_at / loi_uploaded_at / approved_by drive the supervisor's
-    # on-time vs overdue counters. Previously absent from the wire, so the
-    # frontend fabricated them from defaults. (#115)
+    # LOI SLA tracking: expected_loi_days, approved_at, loi_uploaded_at, approved_by
+    # drive the supervisor's on-time vs overdue counters.
     expected_loi_days: Optional[int] = None
     approved_at: Optional[datetime] = None
     approved_by: Optional[str] = None
     loi_uploaded_at: Optional[datetime] = None
     # Reject / archive justification shown on the Archive page's Reason column.
-    # Persisted on sites but never surfaced on the wire before. (#126)
     rejection_reason: Optional[str] = None
     archive_note: Optional[str] = None
     archived_at: Optional[datetime] = None

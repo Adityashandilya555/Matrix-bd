@@ -17,6 +17,7 @@ import {
   setAuthToken,
 } from '../authToken.js';
 import { notifySiteDataChanged } from '../siteEvents.js';
+import { getActiveOverride } from '../adminOverride.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
 const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
@@ -94,6 +95,9 @@ export async function ensureFreshAuthToken() {
 client.interceptors.request.use(async cfg => {
   const token = await ensureFreshAuthToken();
   if (token) cfg.headers.Authorization = `Bearer ${token}`;
+  const override = getActiveOverride();
+  if (override?.role) cfg.headers['X-Override-Role'] = override.role;
+  if (override?.module) cfg.headers['X-Override-Module'] = override.module;
   return cfg;
 });
 
@@ -179,7 +183,7 @@ function detailsToServer(details = {}) {
     escalation: clean(details.escalation ?? null),
     revshare: clean(details.revshare ?? null),
     rent_free_days: clean(details.rent_free_days ?? details.rentFreeDays ?? null),
-    cadex: clean(details.cadex ?? null),
+    cadex: clean(details.cadex ?? details.capex ?? null),
     deposit: clean(details.deposit ?? null),
     brokerage: clean(details.brokerage ?? null),
     lockin: clean(details.lockin ?? null),
@@ -232,6 +236,7 @@ export function siteFromServer(s) {
     escalation: s.escalation ?? s.expected_escalation_pct ?? '',
     rentFreeDays: s.rent_free_days ?? '',
     cadex: s.cadex ?? '',
+    capex: s.cadex ?? '',
     deposit: s.deposit ?? '',
     brokerage: s.brokerage ?? '',
     lockin: s.lockin ?? '',
@@ -475,6 +480,10 @@ export async function me() {
 }
 
 export async function logout() { return post('/auth/logout'); }
+
+export async function requestExecutiveAccess() {
+  return post('/users/me/request-executive-access');
+}
 
 // `login` is intentionally NOT exported. With Supabase the sign-in happens on
 // the client via the Supabase JS SDK; the resulting token is fed to

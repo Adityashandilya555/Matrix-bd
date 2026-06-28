@@ -19,7 +19,6 @@ from app.domain.schemas.bd_status import (
     DdFailedListResponse,
     DdFailedSiteItem,
 )
-from app.domain.schemas.legal_change_request import ChangeRequestResponse
 from app.domain.state_machine import SiteStatus
 from app.services._common import apply_role_scope, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.change_request_service import svc_list_for_site
@@ -37,6 +36,7 @@ from app.services.legal_service import (
 async def svc_bd_site_status(
     session: AsyncSession, *, site_id: str | UUID, tenant_id: str | UUID,
 ) -> BdSiteStatusResponse:
+    """Return the combined DD/agreement/licensing status snapshot for one BD site."""
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
 
     dd  = await _fetch_dd_or_none(session, site_id=site.id)

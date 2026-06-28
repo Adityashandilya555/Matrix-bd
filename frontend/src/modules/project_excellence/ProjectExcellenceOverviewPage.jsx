@@ -86,7 +86,7 @@ function QueueTable({ rows, onOpen, limit }) {
 
 export default function ProjectExcellenceOverviewPage() {
   const navigate = useNavigate();
-  const [state, setState] = React.useState({ status: 'loading', items: [], error: null });
+  const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
   const [activeFilter, setActiveFilter] = React.useState('all');
   const [search, setSearch] = React.useState('');
   // Monotonic request id: useSiteDataRefresh calls load() directly (not via the
@@ -100,7 +100,7 @@ export default function ProjectExcellenceOverviewPage() {
     setState((prev) => ({ ...prev, status: prev.items.length ? prev.status : 'loading', error: null }));
     getPEQueue()
       .then((data) => {
-        if (reqId === reqIdRef.current) setState({ status: 'ready', items: data.items, error: null });
+        if (reqId === reqIdRef.current) setState({ status: 'ready', items: data.items, total: data.total ?? 0, error: null });
       })
       .catch((err) => {
         if (reqId === reqIdRef.current) {
@@ -144,7 +144,9 @@ export default function ProjectExcellenceOverviewPage() {
   const metrics = {
     all: {
       no: 'Ⅰ', eyebrow: 'In Project Excellence', rule: 'var(--zm-accent)', tone: 'peach',
-      value: val(items.length), delta: 'Pipeline', deltaTone: 'neutral',
+      // Headline uses the server COUNT(*); the other KPIs stay per-status over
+      // the loaded items.
+      value: val(state.total), delta: 'Pipeline', deltaTone: 'neutral',
       sub: loading ? 'Loading queue…' : `Across ${cityCount} cit${cityCount === 1 ? 'y' : 'ies'}`,
     },
     pending: {
@@ -177,7 +179,7 @@ export default function ProjectExcellenceOverviewPage() {
 
   const lede = loading
     ? 'Loading the project excellence queue…'
-    : `${items.length} site${items.length === 1 ? '' : 's'} in the project excellence queue`;
+    : `${state.total} site${state.total === 1 ? '' : 's'} in the project excellence queue`;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>

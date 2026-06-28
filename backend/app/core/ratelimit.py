@@ -1,15 +1,7 @@
-"""Tiny in-process rate limiter for the unauthenticated public endpoints (#109).
+"""Tiny in-process rate limiter for the unauthenticated public endpoints.
 
 A fixed-size sliding window keyed by (client IP, route path). Deliberately
-dependency-free and in-memory: the backend runs as a single Railway instance,
-so a process-local limiter is sufficient to stop wire-speed brute force of
-workspace codes / passwords / reset tokens and queue-flooding bots. If the
-deployment ever scales horizontally, swap the store for Redis — the dependency
-interface stays the same.
-
-Usage::
-
-    @router.post("/login", dependencies=[Depends(rate_limit(times=10, seconds=60))])
+dependency-free and in-memory.
 """
 from __future__ import annotations
 
@@ -22,23 +14,23 @@ from fastapi import HTTPException, Request, status
 # (ip, path) → timestamps of recent requests. Bounded per key by `times`,
 # and stale keys are pruned opportunistically to keep memory flat.
 _WINDOWS: Dict[Tuple[str, str], Deque[float]] = defaultdict(deque)
-_LAST_PRUNE = 0.0
+# Last opportunistic-prune timestamp.
+_PRUNE_STATE: list[float] = [0.0]
 
 
 def _client_ip(request: Request) -> str:
-    # Railway terminates TLS in front of us; the original client lands in
-    # X-Forwarded-For (first hop). Fall back to the socket peer for local dev.
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[0].strip()
+    # Use the socket peer resolved by uvicorn — NEVER the raw X-Forwarded-For header,
+    # which is fully attacker-controlled. uvicorn's --proxy-headers rewrites
+    # request.client.host from XFF only when --forwarded-allow-ips is scoped to
+    # trusted upstreams (Railway's private-network ranges). Never set it to '*' —
+    # that lets an attacker spoof XFF[0] and mint a fresh rate-limit window per call.
     return request.client.host if request.client else "unknown"
 
 
 def _prune(now: float, horizon: float) -> None:
-    global _LAST_PRUNE
-    if now - _LAST_PRUNE < 60:
+    if now - _PRUNE_STATE[0] < 60:
         return
-    _LAST_PRUNE = now
+    _PRUNE_STATE[0] = now
     stale = [k for k, dq in _WINDOWS.items() if not dq or now - dq[-1] > horizon]
     for k in stale:
         _WINDOWS.pop(k, None)

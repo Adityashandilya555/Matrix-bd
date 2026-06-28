@@ -11,7 +11,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status as http_status
 from pydantic import BaseModel, Field
 
-from app.core.deps import CurrentUser, DbDep, TenantId
+from app.core.deps import DbDep, TenantId
 from app.core.uploads import read_upload_capped
 from app.domain.schemas.audit import AuditListResponse
 from app.domain.schemas.common import OkResponse
@@ -180,9 +180,7 @@ async def patch_site_status(
     new_status = body.status
     payload = body.payload or {}
 
-    # #102 — mirror the dedicated /bd routes: approve/reject/shortlist/archive
-    # (and the two hand-offs below) are supervisor-only. Without this, any
-    # executive could drive the whole approval ladder through this dispatcher.
+    # approve/reject/shortlist/archive and the two hand-offs are supervisor-only.
     _supervisor_only = {
         SiteStatus.REJECTED, SiteStatus.ARCHIVED, SiteStatus.SHORTLISTED,
         SiteStatus.APPROVED, SiteStatus.PUSHED_TO_PAYMENTS, SiteStatus.LEGAL_REVIEW,
@@ -218,10 +216,7 @@ async def patch_site_status(
             expected_loi_days=int(payload.get("expectedLoiDays", 30)),
         )
     if new_status == SiteStatus.PUSHED_TO_PAYMENTS:
-        # Mirror the /staging/{id}/push role-gate (Todo #7). The generic
-        # status patcher is open to any authed role, but Push-to-Payments is
-        # supervisor-only and we want both entry points to enforce the same
-        # rule. Executives have to call the supervisor.
+        # Push-to-Payments is supervisor-only; both entry points enforce the same rule.
         if (current_user.get("role") or "").lower() != "supervisor":
             raise HTTPException(
                 status_code=http_status.HTTP_403_FORBIDDEN,
@@ -229,9 +224,7 @@ async def patch_site_status(
             )
         return await svc_push_to_payments(db, tenant_id=tenant_id, actor=current_user, site_id=site_id)
     if new_status == SiteStatus.LEGAL_REVIEW:
-        # BD supervisor hand-off: LOI_UPLOADED → LEGAL_REVIEW. svc_push_to_payments
-        # is the renamed handler that actually performs this transition + seeds
-        # the legal DD checklist + notifies legal supervisors.
+        # LOI_UPLOADED → LEGAL_REVIEW hand-off: seeds the DD checklist and notifies legal supervisors.
         if (current_user.get("role") or "").lower() != "supervisor":
             raise HTTPException(
                 status_code=http_status.HTTP_403_FORBIDDEN,

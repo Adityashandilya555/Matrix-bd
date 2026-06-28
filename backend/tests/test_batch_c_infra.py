@@ -12,6 +12,7 @@ from datetime import date
 from types import SimpleNamespace
 from uuid import uuid4
 
+import filetype
 import httpx
 import pytest
 from fastapi import HTTPException
@@ -143,6 +144,109 @@ async def test_read_capped_upload_file_valid_mime():
     )
     out = await read_upload_capped(file, max_bytes=100)
     assert out == b"hello"
+
+
+# ── #226 — magic-byte validation (declared Content-Type is spoofable) ──────
+_PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + b"\x00" * 64
+_JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01" + b"\x00" * 64
+_PDF = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n" + b"x" * 64
+
+
+def _docx_bytes() -> bytes:
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr(
+            "[Content_Types].xml",
+            "<Types xmlns='http://schemas.openxmlformats.org/package/2006/content-types'>"
+            "<Override PartName='/word/document.xml' ContentType='application/vnd."
+            "openxmlformats-officedocument.wordprocessingml.document.main+xml'/></Types>",
+        )
+        z.writestr("word/document.xml", "<doc/>")
+    return buf.getvalue()
+
+
+async def test_read_capped_rejects_png_body_declared_as_pdf():
+    # PROVE-FIRST: pre-fix this returned the bytes (spoofed type accepted);
+    # after the magic-byte check it must be 415.
+    file = _FakeUploadWithMime(_PNG, content_type="application/pdf")
+    with pytest.raises(HTTPException) as ei:
+        await read_upload_capped(file, max_bytes=1000)
+    assert ei.value.status_code == 415
+
+
+async def test_read_capped_rejects_jpeg_body_declared_as_png():
+    file = _FakeUploadWithMime(_JPEG, content_type="image/png")
+    with pytest.raises(HTTPException) as ei:
+        await read_upload_capped(file, max_bytes=1000)
+    assert ei.value.status_code == 415
+
+
+async def test_read_capped_accepts_genuine_pdf():
+    file = _FakeUploadWithMime(_PDF, content_type="application/pdf")
+    assert await read_upload_capped(file, max_bytes=1000) == _PDF
+
+
+async def test_read_capped_accepts_genuine_png():
+    file = _FakeUploadWithMime(_PNG, content_type="image/png")
+    assert await read_upload_capped(file, max_bytes=1000) == _PNG
+
+
+async def test_read_capped_accepts_genuine_docx():
+    data = _docx_bytes()
+    ct = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    file = _FakeUploadWithMime(data, content_type=ct)
+    assert await read_upload_capped(file, max_bytes=10_000) == data
+
+
+async def test_read_capped_csv_not_byte_checked():
+    # text/csv has no reliable magic — must pass on the allowlist alone so real
+    # CSV exports are never rejected (#226, 4.2).
+    csv = b"site_code,city\nBD-1,Mumbai\n"
+    file = _FakeUploadWithMime(csv, content_type="text/csv")
+    assert await read_upload_capped(file, max_bytes=1000) == csv
+
+
+async def test_read_capped_allows_zip_declared_as_docx_with_warning():
+    # Deliberate trade-off (#226 / #244 review): a body that sniffs as the generic
+    # application/zip is allow-with-warning when declared as OOXML, because a
+    # genuine, validly-packed .docx/.xlsx whose markers fall past filetype's ~6 KB
+    # scan window is byte-indistinguishable from a plain ZIP. Rejecting it (the
+    # old behaviour) 415'd real Office uploads. The residual risk — a bare ZIP
+    # mislabelled as .docx — is low: the file is served via a signed download URL
+    # and never parsed/executed by the backend. A positive mismatch to any OTHER
+    # known type (png/pdf/exe) is still rejected (see the tests above).
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("hello.txt", "not an office document")  # sniffs as application/zip
+    ct = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    file = _FakeUploadWithMime(buf.getvalue(), content_type=ct)
+    assert await read_upload_capped(file, max_bytes=10_000) == buf.getvalue()
+
+
+async def test_read_capped_accepts_docx_with_markers_past_scan_window():
+    # The regression this fix targets: a genuine docx whose `word/` marker sits
+    # past filetype's ~6 KB scan window (a large leading customXml/embedded part)
+    # sniffs only as application/zip — it must NOT be 415'd.
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("customXml/item1.xml", "<x>" + ("y" * 7000) + "</x>")  # >6 KB leading part
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("word/document.xml", "<doc/>")
+    data = buf.getvalue()
+    # Precondition: filetype can only resolve this to the generic zip container.
+    assert filetype.guess(data).mime == "application/zip"
+    ct = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    file = _FakeUploadWithMime(data, content_type=ct)
+    assert await read_upload_capped(file, max_bytes=20_000) == data
 
 
 # ── #92 — storage error handling ───────────────────────────────────────────

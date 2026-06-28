@@ -504,13 +504,13 @@ export default function NsoReviewPage() {
   const stageOneUnlocked = Boolean(triggerMap.finance_ca?.unlocked);
   const stageTwoUnlocked = Boolean(triggerMap.project_initiation?.unlocked);
   const stageTwoDone = Boolean(review?.legalLicensingSnapshot?.complete || review?.stageTwoCompletedAt);
-  const stageThreeUnlocked = Boolean(triggerMap.project_completion?.unlocked);
+  // Single source of truth: the backend computes _stage_three_unlocked (handover
+  // push ∧ Stage 1 ∧ Legal Licensing ∧ Project done) and exposes it as
+  // stageThreeUnlocked. Read it directly so the form/Save are editable iff the save
+  // would actually succeed — no client-side re-derivation that can drift from the
+  // real gate (a site pushed before Legal Licensing is complete is still locked).
+  const stageThreeUnlocked = Boolean(review?.stageThreeUnlocked);
   const finalUnlocked = Boolean(review?.stageThreeCompletedAt && !review?.finalApprovedAt);
-
-  const markDirty = (setter) => (value) => {
-    setDirty(true);
-    setter(value);
-  };
 
   const saveOne = async () => {
     setBusy('stage-one');
@@ -694,7 +694,7 @@ export default function NsoReviewPage() {
             footer={saveButton('Save Stage 3', saveThree, !stageThreeUnlocked, 'stage-three')}
           >
             {!stageThreeUnlocked ? (
-              <LockedNotice>Stage 3 unlocks after Legal Licensing is complete and Project has reached completion.</LockedNotice>
+              <LockedNotice>Stage 3 unlocks once Legal Licensing and the project are complete and the project supervisor pushes the site in from the Project · NSO-Handover tab.</LockedNotice>
             ) : (
               <div style={{ display: 'grid', gap: 16 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
