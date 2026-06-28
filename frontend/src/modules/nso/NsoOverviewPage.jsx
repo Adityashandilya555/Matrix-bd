@@ -5,6 +5,7 @@ import Icon from '../shared/primitives/Icon.jsx';
 import MetricCard from '../shared/primitives/MetricCard.jsx';
 import SearchBox from '../shared/primitives/SearchBox.jsx';
 import SubFilterPill from '../shared/primitives/SubFilterPill.jsx';
+import OverviewFilterBar from '../shared/primitives/OverviewFilterBar.jsx';
 import { getNsoQueue } from '../../services/api/nsoApi.js';
 import { ROUTES } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
@@ -48,6 +49,12 @@ const KPI_DEFS = [
   { key: 'complete', no: 'Ⅳ', eyebrow: 'Complete',          rule: 'var(--zm-success)', tone: 'slate', stages: ['complete'],                                delta: 'Final sign-off done',    sub: 'Ready for handover' },
 ];
 
+const NSO_STATUS_FILTERS = [
+  { key: 'property', label: 'Property', color: 'var(--zm-info)' },
+  { key: 'licenses', label: 'Licenses & launch', color: 'var(--zm-copper)' },
+  { key: 'complete', label: 'Complete', color: 'var(--zm-success)' },
+];
+
 function pretty(value) {
   if (value == null || value === '') return 'Pending';
   return String(value).replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
@@ -79,7 +86,8 @@ function StatusPill({ value, tone = 'var(--zm-accent)' }) {
 
 const COLS = '120px minmax(220px, 1fr) 130px 150px 160px';
 
-function QueueTable({ rows, onOpen }) {
+function QueueTable({ rows, onOpen, limit }) {
+  const displayRows = limit ? rows.slice(0, limit) : rows;
   return (
     <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
       <div style={{
@@ -102,7 +110,7 @@ function QueueTable({ rows, onOpen }) {
         <span>CA code</span>
         <span>NSO stage</span>
       </div>
-      {rows.map((row) => (
+      {displayRows.map((row) => (
         <div
           key={row.siteId}
           className="zm-row"
@@ -153,6 +161,7 @@ export default function NsoOverviewPage() {
   const [view, setView] = React.useState(null);       // null | KPI key
   const [stageFilter, setStageFilter] = React.useState('all'); // 'all' | stage key
   const [search, setSearch] = React.useState('');
+  const [activeFilter, setActiveFilter] = React.useState('all');
 
   const load = React.useCallback(() => {
     let cancelled = false;
@@ -194,7 +203,7 @@ export default function NsoOverviewPage() {
     setSearch('');
   };
 
-  const selectedKpi = view ? KPI_DEFS.find((k) => k.key === view) : null;
+  const selectedKpi = view ? KPI_DEFS.find((k) => k.key === view) : (activeFilter === 'all' ? null : KPI_DEFS.find((k) => k.key === activeFilter));
 
   // Rows: an active stage pill filters the whole queue by that stage;
   // otherwise the table shows the selected KPI's scope. Search applies last.
@@ -266,9 +275,23 @@ export default function NsoOverviewPage() {
           )}
 
           {!view && (
-            <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-              {KPI_DEFS.map((kpi) => renderCard(kpi))}
-            </div>
+            <>
+              <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
+                {KPI_DEFS.map((kpi) => renderCard(kpi))}
+              </div>
+              <OverviewFilterBar
+                filters={NSO_STATUS_FILTERS.map(f => ({
+                  ...f,
+                  count: kpiCount(KPI_DEFS.find(k => k.key === f.key))
+                }))}
+                active={activeFilter}
+                onFilter={setActiveFilter}
+                search={search}
+                onSearch={setSearch}
+                totalCount={total}
+              />
+              <QueueTable rows={filteredRows} limit={12} onOpen={openRow}/>
+            </>
           )}
 
           {view && selectedKpi && (

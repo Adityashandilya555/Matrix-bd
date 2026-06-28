@@ -4,6 +4,7 @@ import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import MetricCard from '../shared/primitives/MetricCard.jsx';
 import SearchBox from '../shared/primitives/SearchBox.jsx';
 import SubFilterPill from '../shared/primitives/SubFilterPill.jsx';
+import OverviewFilterBar from '../shared/primitives/OverviewFilterBar.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import { getLegalQueue } from '../../services/api/legalApi.js';
 import { listPendingChangeRequests } from '../../services/api/changeRequestApi.js';
@@ -57,7 +58,8 @@ function StatusPill({ value }) {
 
 // QueueTable — Code | Site | City | DD status (row styling mirrors the
 // LegalQueuePage listing; rows deep-link into the queue tab).
-function QueueTable({ rows, onOpen }) {
+function QueueTable({ rows, onOpen, limit }) {
+  const displayRows = limit ? rows.slice(0, limit) : rows;
   return (
     <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
       <div style={{
@@ -73,7 +75,7 @@ function QueueTable({ rows, onOpen }) {
         <span>City</span>
         <span>DD status</span>
       </div>
-      {rows.map((row) => (
+      {displayRows.map((row) => (
         <div
           key={row.siteId}
           className="zm-row"
@@ -121,6 +123,7 @@ export default function LegalOverviewPage() {
   // Active DD-status pills inside the drill-down (empty set = all).
   const [subFilters, setSubFilters] = React.useState(() => new Set());
   const [search, setSearch] = React.useState('');
+  const [activeFilter, setActiveFilter] = React.useState('all');
 
   const load = React.useCallback(() => {
     let cancelled = false;
@@ -184,7 +187,12 @@ export default function LegalOverviewPage() {
 
   const needle = search.trim().toLowerCase();
   const filteredRows = queue.items
-    .filter((row) => (subFilters.size === 0 ? true : subFilters.has(row.legalDdStatus)))
+    .filter((row) => {
+      if (view) {
+        return subFilters.size === 0 ? true : subFilters.has(row.legalDdStatus);
+      }
+      return activeFilter === 'all' ? true : row.legalDdStatus === activeFilter;
+    })
     .filter((row) => !needle || [row.siteCode, row.siteName, row.city].join(' ').toLowerCase().includes(needle));
 
   const openRow = (row) => {
@@ -233,20 +241,36 @@ export default function LegalOverviewPage() {
       )}
 
       {queue.status !== 'error' && !view && (
-        <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-          <MetricCard {...cardMeta.queue}/>
-          <MetricCard {...cardMeta.in_review}/>
-          <MetricCard {...cardMeta.positive}/>
-          <MetricCard
-            tone="slate"
-            no="Ⅳ" eyebrow="Change requests" rule="var(--zm-copper)"
-            value={crs.status === 'loading' ? '··' : pad(crs.total)}
-            delta={crs.status === 'error' ? 'Unavailable' : 'Awaiting decision'}
-            deltaTone="neutral"
-            sub="BD → Legal status changes"
-            onClick={() => navigate(ROUTES.LEGAL_CHANGE_REQUESTS)}
+        <>
+          <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
+            <MetricCard {...cardMeta.queue}/>
+            <MetricCard {...cardMeta.in_review}/>
+            <MetricCard {...cardMeta.positive}/>
+            <MetricCard
+              tone="slate"
+              no="Ⅳ" eyebrow="Change requests" rule="var(--zm-copper)"
+              value={crs.status === 'loading' ? '··' : pad(crs.total)}
+              delta={crs.status === 'error' ? 'Unavailable' : 'Awaiting decision'}
+              deltaTone="neutral"
+              sub="BD → Legal status changes"
+              onClick={() => navigate(ROUTES.LEGAL_CHANGE_REQUESTS)}
+            />
+          </div>
+          <OverviewFilterBar
+            filters={DD_STATUSES.map(status => ({
+              key: status,
+              label: PILL_META[status].label,
+              count: counts[status],
+              color: PILL_META[status].color
+            }))}
+            active={activeFilter}
+            onFilter={setActiveFilter}
+            search={search}
+            onSearch={setSearch}
+            totalCount={totalInQueue}
           />
-        </div>
+          <QueueTable rows={filteredRows} limit={12} onOpen={openRow}/>
+        </>
       )}
 
       {queue.status !== 'error' && view && (
