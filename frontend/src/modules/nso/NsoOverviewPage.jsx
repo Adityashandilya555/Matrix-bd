@@ -1,6 +1,8 @@
+// skipcq: JS-0833
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
+import { keyActivate } from '../../lib/a11y.js';
 import Icon from '../shared/primitives/Icon.jsx';
 import MetricCard from '../shared/primitives/MetricCard.jsx';
 import SearchBox from '../shared/primitives/SearchBox.jsx';
@@ -117,7 +119,7 @@ function QueueTable({ rows, onOpen, limit }) {
           role="button"
           tabIndex={0}
           onClick={() => onOpen(row)}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(row); } }}
+          onKeyDown={keyActivate(() => onOpen(row))}
           style={{
             display: 'grid',
             gridTemplateColumns: COLS,

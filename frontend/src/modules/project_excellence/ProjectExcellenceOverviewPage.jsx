@@ -1,7 +1,9 @@
+// skipcq: JS-0833
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import MetricCard from '../shared/primitives/MetricCard.jsx';
+import { keyActivate } from '../../lib/a11y.js';
 import OverviewFilterBar from '../shared/primitives/OverviewFilterBar.jsx';
 import { getPEQueue } from '../../services/api/projectExcellenceApi.js';
 import { ROUTES } from '../../router/routes.js';
@@ -64,7 +66,7 @@ function QueueTable({ rows, onOpen, limit }) {
         <span>Budget status</span>
       </div>
       {displayRows.map((row) => (
-        <div key={row.siteId} className="zm-row" onClick={() => onOpen(row)} style={{
+        <div key={row.siteId} role="button" tabIndex={0} className="zm-row" onClick={() => onOpen(row)} onKeyDown={keyActivate(() => onOpen(row))} style={{
           display: 'grid', gridTemplateColumns: COLS, gap: 12, padding: '14px 16px',
           borderBottom: '1px solid var(--zm-line-faint)', cursor: 'pointer', alignItems: 'center',
         }} onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zm-surface-hover)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>

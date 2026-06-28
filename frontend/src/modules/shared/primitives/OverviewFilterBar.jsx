@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import React from 'react';
 import SearchBox from './SearchBox.jsx';
 

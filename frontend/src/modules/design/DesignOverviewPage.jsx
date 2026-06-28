@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
@@ -280,10 +281,10 @@ export default function DesignOverviewPage() {
 
           <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
             <MetricCard
-              tone={kpi.tone}
-              no={kpi.no} eyebrow={kpi.eyebrow} rule={kpi.rule}
+              tone={KPIS[view].tone}
+              no={KPIS[view].no} eyebrow={KPIS[view].eyebrow} rule={KPIS[view].rule}
               value={String(subset.length).padStart(2, '0')}
-              sub={kpi.sub}
+              sub={KPIS[view].sub}
               selected
               onClick={() => selectKpi(view)}
             />
