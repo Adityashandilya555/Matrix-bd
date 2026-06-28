@@ -270,7 +270,7 @@ export default function ProjectOverviewPage() {
         </div>
       )}
 
-      {state.status !== 'error' && !view && (
+      {state.status === 'ready' && !view && (
         <>
           <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
             <MetricCard {...metrics.all} onClick={() => selectKpi('all')}/>
@@ -293,7 +293,7 @@ export default function ProjectOverviewPage() {
         </>
       )}
 
-      {state.status !== 'error' && view && (
+      {state.status === 'ready' && view && (
         <>
           <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
             <MetricCard {...metrics[view]} selected onClick={() => selectKpi(view)}/>

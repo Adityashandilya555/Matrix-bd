@@ -240,7 +240,7 @@ export default function LegalOverviewPage() {
         <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{queue.error}</div>
       )}
 
-      {queue.status !== 'error' && !view && (
+      {queue.status === 'ready' && !view && (
         <>
           <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
             <MetricCard {...cardMeta.queue}/>
@@ -273,7 +273,7 @@ export default function LegalOverviewPage() {
         </>
       )}
 
-      {queue.status !== 'error' && view && (
+      {queue.status === 'ready' && view && (
         <>
           <div>
             <button

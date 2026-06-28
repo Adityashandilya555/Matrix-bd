@@ -193,7 +193,7 @@ export default function ProjectExcellenceOverviewPage() {
         <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{state.error}</div>
       )}
 
-      {state.status !== 'error' && (
+      {state.status === 'ready' && (
         <>
           <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
             <MetricCard {...metrics.all} onClick={openQueue}/>

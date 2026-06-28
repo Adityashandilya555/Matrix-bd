@@ -207,8 +207,9 @@ export default function NsoOverviewPage() {
 
   // Rows: an active stage pill filters the whole queue by that stage;
   // otherwise the table shows the selected KPI's scope. Search applies last.
-  const baseRows = stageFilter !== 'all'
-    ? items.filter((row) => stageOf(row) === stageFilter)
+  const currentStageFilter = view ? stageFilter : 'all';
+  const baseRows = currentStageFilter !== 'all'
+    ? items.filter((row) => stageOf(row) === currentStageFilter)
     : (selectedKpi?.stages
       ? items.filter((row) => selectedKpi.stages.includes(stageOf(row)))
       : items);
