@@ -59,3 +59,14 @@ skills-lock.json
 # Claude Code local MCP server config — developer tooling, not app/deploy code.
 # Keep it local (paths like /opt/homebrew/bin/uvx are machine-specific).
 .mcp.json
+
+# ==============================================================================
+# Security: never commit database dumps or large vendored scripts (#311)
+# ==============================================================================
+# supabase-migration/ contains pg_dump output (schema + auth user rows with
+# password material). A single `git add .` would publish prod data to this
+# public repo permanently.
+supabase-migration/*.sql
+supabase-migration/*.dump
+# get-pip.py is a 2.2 MB vendored script unrelated to the app.
+backend/get-pip.py
