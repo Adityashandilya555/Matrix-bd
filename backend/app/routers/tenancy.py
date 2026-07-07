@@ -26,6 +26,7 @@ from app.core.config import settings
 from app.core.deps import CurrentUser, DbDep, TenantId
 from app.core.passwords import hash_password_async
 from app.core.ratelimit import rate_limit
+from app.core.security import decode_admin_token, issue_admin_token
 from app.core.uploads import read_upload_capped
 from app.db import models
 from app.rbac.guards import require_role
@@ -81,17 +82,34 @@ def _generate_workspace_code(slug_hint: Optional[str] = None) -> str:
 
 
 def _require_platform_admin(provided: Optional[str]) -> None:
+    """Verify the X-Platform-Admin-Key header contains a valid admin JWT.
+
+    Backward-compatible: also accepts the legacy static token so existing
+    sessions are not forcibly logged out on deploy. The static path will be
+    removed in a future release.
+    """
+    if not provided:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing X-Platform-Admin-Key header.",
+        )
+    # --- new path: verify a short-lived JWT (issue #312) ---
+    try:
+        decode_admin_token(provided)
+        return  # valid JWT — authorized
+    except Exception:  # noqa: BLE001 — fall through to legacy check
+        pass
+    # --- legacy fallback: static token (will be removed) ---
     expected = settings.effective_platform_admin_token
     if not expected:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Admin portal disabled — PLATFORM_ADMIN_PASSWORD is unset.",
         )
-    # secrets.compare_digest avoids timing leaks on the secret length.
-    if not provided or not secrets.compare_digest(str(provided), expected):
+    if not secrets.compare_digest(str(provided), expected):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing X-Platform-Admin-Key.",
+            detail="Invalid or expired admin token — please log in again.",
         )
 
 
@@ -128,8 +146,12 @@ async def admin_login(payload: AdminLoginIn) -> AdminLoginOut:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password.",
         )
+    # Issue #312: mint a short-lived JWT instead of echoing the static
+    # password/token back. The JWT expires in 30 min; the browser must
+    # re-authenticate after that.
+    token = issue_admin_token(email=expected_email)
     return AdminLoginOut(
-        token=settings.effective_platform_admin_token,
+        token=token,
         email=expected_email,
     )
 
