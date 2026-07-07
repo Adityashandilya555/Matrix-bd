@@ -461,6 +461,55 @@ class ApproveOut(BaseModel):
     message:           str
 
 
+async def _create_tenant_with_retry(db, company: str, seat_limit: int, request_id: str):
+    """Try up to 5 times to INSERT a tenant, re-rolling slug + workspace_code
+    on unique-constraint collisions.  Extracted from approve_workspace_request
+    to keep its cyclomatic complexity below the PY-R1000 threshold."""
+    slug_base = re.sub(r"[^a-z0-9]+", "-", company.lower()).strip("-") or "tenant"
+    last_error: Optional[str] = None
+    for attempt in range(5):
+        slug_try = slug_base if attempt == 0 else f"{slug_base}-{secrets.token_hex(2)}"
+        ws_code  = _generate_workspace_code(slug_try)
+        try:
+            inserted = await db.execute(
+                text("""
+                    INSERT INTO tenants (slug, name, plan, seat_limit, workspace_code)
+                    VALUES (:slug, :name, 'standard', :seat_limit, :code)
+                    RETURNING id, workspace_code, seat_limit
+                """),
+                {
+                    "slug":       slug_try,
+                    "name":       company,
+                    "seat_limit": seat_limit,
+                    "code":       ws_code,
+                },
+            )
+            return inserted.mappings().one()
+        except Exception as e:  # noqa: BLE001
+            msg = str(e).lower()
+            last_error = msg[:240]
+            logger.warning(
+                "approve: tenant insert attempt %d failed slug=%r code=%r err=%s",
+                attempt, slug_try, ws_code, last_error,
+            )
+            if "duplicate" in msg or "unique" in msg or "already exists" in msg:
+                await db.rollback()
+                still = (await db.execute(
+                    text("SELECT status FROM workspace_requests WHERE id=:rid FOR UPDATE"),
+                    {"rid": request_id},
+                )).mappings().first()
+                if not still or still["status"] != "pending":
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Concurrent approve detected.",
+                    )
+                continue
+            raise
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=f"Could not create tenant after 5 attempts. Last error: {last_error}",
+    )
+
 @router.post(
     "/requests/{request_id}/approve",
     response_model=ApproveOut,
@@ -504,51 +553,9 @@ async def approve_workspace_request(
     #    only re-rolled the workspace_code and got stuck in an infinite slug
     #    collision when an existing tenant shared the company-derived slug
     #    (e.g. Shrey's seed data).
-    slug_base = re.sub(r"[^a-z0-9]+", "-", req_company.lower()).strip("-") or "tenant"
-    tenant_row = None
-    last_error: Optional[str] = None
-    for attempt in range(5):
-        slug_try = slug_base if attempt == 0 else f"{slug_base}-{secrets.token_hex(2)}"
-        ws_code  = _generate_workspace_code(slug_try)
-        try:
-            inserted = await db.execute(
-                text("""
-                    INSERT INTO tenants (slug, name, plan, seat_limit, workspace_code)
-                    VALUES (:slug, :name, 'standard', :seat_limit, :code)
-                    RETURNING id, workspace_code, seat_limit
-                """),
-                {
-                    "slug":       slug_try,
-                    "name":       req_company,
-                    "seat_limit": req_seat_limit,
-                    "code":       ws_code,
-                },
-            )
-            tenant_row = inserted.mappings().one()
-            break
-        except Exception as e:  # noqa: BLE001
-            msg = str(e).lower()
-            last_error = msg[:240]
-            logger.warning(
-                "approve: tenant insert attempt %d failed slug=%r code=%r err=%s",
-                attempt, slug_try, ws_code, last_error,
-            )
-            # Both constraints look like UniqueViolation; retry either way.
-            if "duplicate" in msg or "unique" in msg or "already exists" in msg:
-                await db.rollback()
-                still = (await db.execute(
-                    text("SELECT status FROM workspace_requests WHERE id=:rid FOR UPDATE"),
-                    {"rid": request_id},
-                )).mappings().first()
-                if not still or still["status"] != "pending":
-                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Concurrent approve detected.")
-                continue
-            raise
-    if tenant_row is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Could not create tenant after 5 attempts. Last error: {last_error}",
-        )
+    tenant_row = await _create_tenant_with_retry(
+        db, req_company, req_seat_limit, request_id,
+    )
 
     tenant_id      = tenant_row["id"]
     workspace_code = tenant_row["workspace_code"]
