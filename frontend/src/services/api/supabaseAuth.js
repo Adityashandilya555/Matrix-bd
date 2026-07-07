@@ -118,7 +118,7 @@ export function signupAsExecutive(email, supervisorCode) {
 export async function checkPasswordSet(email, workspaceCode) {
   const res = await axios.post(`${API_BASE}/auth/login/check`, {
     email, workspace_code: workspaceCode,
-  });
+  }, { headers: { 'X-Matrix-Internal': '1' } });
   return Boolean(res.data?.password_set);
 }
 
@@ -131,7 +131,7 @@ export async function checkPasswordSet(email, workspaceCode) {
 export async function checkAccountState(email, workspaceCode) {
   const res = await axios.post(`${API_BASE}/auth/login/check`, {
     email, workspace_code: workspaceCode,
-  });
+  }, { headers: { 'X-Matrix-Internal': '1' } });
   return res.data?.account_state
     || (res.data?.password_set ? 'active' : 'needs_password');
 }

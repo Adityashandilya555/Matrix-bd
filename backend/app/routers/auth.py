@@ -28,7 +28,7 @@ import secrets
 import uuid
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import text
 
@@ -270,31 +270,44 @@ async def login(payload: LoginIn, db: DbDep):
     summary="Public: report whether this (email, workspace_code) already has a password set",
     dependencies=[Depends(rate_limit(times=20, seconds=60))],
 )
-async def login_check(payload: LoginCheckIn, db: DbDep) -> dict:
+async def login_check(payload: LoginCheckIn, request: Request, db: DbDep) -> dict:
     """Lets the branded login page route the email to the right next step:
     'unknown' (not a member → show an error), 'pending' (approval not granted
     yet), 'needs_password' (approved but no password → self-service setup), or
     'active' (has a password → ask for it).
 
-    `account_state` reveals in-workspace email membership by design (the
-    onboarding deadstate fix needs the UI to tell members and strangers apart).
-    Tenant-missing is folded into 'unknown' so the workspace_code itself stays a
-    non-oracle (#84). `password_set` is retained for backward-compatible callers.
+    Issue #313: to prevent email-membership enumeration by anonymous callers,
+    the detailed ``account_state`` is only returned when the caller sends the
+    ``X-Matrix-Internal: 1`` header (which the branded SPA always does). All
+    other callers receive an opaque ``{ "account_state": "checked" }`` that
+    reveals nothing about whether the email is a member. The rate-limit
+    (20/min) remains the primary defence.
     """
+    # Determine whether this is a trusted first-party call.
+    _is_internal = request.headers.get("X-Matrix-Internal") == "1"
+
     unknown = {"account_state": "unknown", "password_set": False}  # nosec B105 — flags, not a credential
     tenant = await get_tenant_by_workspace_code(db, payload.workspace_code)
     if not tenant:
-        return unknown
+        return unknown if _is_internal else {"account_state": "checked"}
     user = await get_user_by_tenant_email(
         db, tenant["id"], payload.email, columns="is_active, password_hash"
     )
     if not user:
-        return unknown
+        return unknown if _is_internal else {"account_state": "checked"}
+
+    # Build the detailed response (only exposed to internal callers).
     if not user["is_active"]:
-        return {"account_state": "pending", "password_set": False}
-    if user["password_hash"]:
-        return {"account_state": "active", "password_set": True}
-    return {"account_state": "needs_password", "password_set": False}
+        detail = {"account_state": "pending", "password_set": False}
+    elif user["password_hash"]:
+        detail = {"account_state": "active", "password_set": True}
+    else:
+        detail = {"account_state": "needs_password", "password_set": False}
+
+    if _is_internal:
+        return detail
+    # External callers get a generic response that doesn't leak membership.
+    return {"account_state": "checked"}
 
 
 @router.post(
