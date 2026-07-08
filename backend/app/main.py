@@ -205,22 +205,23 @@ async def _apply_pending_migrations() -> None:
         with open(resolved, encoding="utf-8") as fh:
             raw_sql = fh.read()
 
-        statements = [s.strip() for s in raw_sql.split(";") if s.strip()]
         applied = 0
-        for stmt in statements:
-            try:
-                async with engine.begin() as conn:
-                    await conn.execute(text(stmt))
-                applied += 1
-                applied_total += 1
-            except SQLAlchemyError:
-                log.exception(
-                    "startup-migrations: statement failed in %s (may already be applied): %.120s",
-                    filename,
-                    stmt,
-                )
-        log.info("startup-migrations: %d/%d statements applied from %s", applied, len(statements), filename)
-    log.info("startup-migrations: %d total statements applied across all files", applied_total)
+        try:
+            # We use a raw connection with AUTOCOMMIT to execute the entire script atomically.
+            # This allows PostgreSQL to parse PL/pgSQL blocks natively without
+            # us mangling them by splitting on semicolons.
+            # The .sql files already contain their own explicit BEGIN; and COMMIT; blocks.
+            async with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                await conn.exec_driver_sql(raw_sql)
+            applied += 1
+            applied_total += 1
+            log.info("startup-migrations: successfully applied %s", filename)
+        except SQLAlchemyError:
+            log.exception(
+                "startup-migrations: failed to apply %s (may already be applied)",
+                filename,
+            )
+    log.info("startup-migrations: %d total migration files applied", applied_total)
 
 
 # ── Application lifespan ──────────────────────────────────────────────────────
