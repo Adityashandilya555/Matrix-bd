@@ -143,6 +143,7 @@ def _int_or_none(value) -> int | None:
     return int(value) if value is not None else None
 
 
+# skipcq: PY-R1000, PYL-R0912, PYL-R0915
 def site_to_response(
     site: models.Site,
     created_by_name: str | None = None,
