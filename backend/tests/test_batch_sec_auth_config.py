@@ -523,11 +523,14 @@ def test_tenant_lookup_literal_lives_in_exactly_one_place():
 async def test_login_check_reports_account_state(make_session, fake_result):
     from app.routers.auth import LoginCheckIn, login_check
 
-    # Build a minimal Request-like object with the internal header so the
-    # endpoint returns detailed account_state (issue #313).
+    # Build a minimal Request-like object with the internal header + a
+    # matching Origin so _is_trusted_internal returns True (issue #313).
     class _FakeRequest:
         def __init__(self):
-            self.headers = {"X-Matrix-Internal": "1"}
+            self.headers = {
+                "X-Matrix-Internal": "1",
+                "origin": "http://localhost:5173",
+            }
 
     _req = _FakeRequest()
 

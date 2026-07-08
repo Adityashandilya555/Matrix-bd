@@ -84,29 +84,19 @@ def _generate_workspace_code(slug_hint: Optional[str] = None) -> str:
 def _require_platform_admin(provided: Optional[str]) -> None:
     """Verify the X-Platform-Admin-Key header contains a valid admin JWT.
 
-    Backward-compatible: also accepts the legacy static token so existing
-    sessions are not forcibly logged out on deploy. The static path will be
-    removed in a future release.
+    Only short-lived JWTs issued by POST /admin/login are accepted (#312).
+    The legacy static-token fallback has been removed (CodeAnt review —
+    Critical): a leaked static password/token can no longer bypass the
+    30-minute JWT expiry window.
     """
     if not provided:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing X-Platform-Admin-Key header.",
         )
-    # --- new path: verify a short-lived JWT (issue #312) ---
     try:
         decode_admin_token(provided)
-        return  # valid JWT — authorized
-    except Exception:  # noqa: BLE001 — fall through to legacy check
-        pass
-    # --- legacy fallback: static token (will be removed) ---
-    expected = settings.effective_platform_admin_token
-    if not expected:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Admin portal disabled — PLATFORM_ADMIN_PASSWORD is unset.",
-        )
-    if not secrets.compare_digest(str(provided), expected):
+    except Exception:  # noqa: BLE001
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired admin token — please log in again.",

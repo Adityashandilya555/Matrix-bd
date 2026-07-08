@@ -20,6 +20,7 @@ Routes:
     POST /auth/logout  — courtesy; clients should also drop their local token
 """
 from __future__ import annotations
+import urllib.parse
 
 import hashlib
 import logging
@@ -265,6 +266,30 @@ async def login(payload: LoginIn, db: DbDep):
     )
 
 
+def _is_trusted_internal(request: Request) -> bool:
+    """Return True only when the request looks like it came from our own SPA.
+
+    Two conditions must both be met (CodeAnt review — Critical):
+      1. The ``X-Matrix-Internal: 1`` header is present.
+      2. The ``Origin`` (or ``Referer``) header matches one of the CORS
+         origins configured in ``settings.cors_origin_list``.
+
+    Browsers enforce Origin/Referer — they cannot be spoofed from JS running
+    on a different origin.  curl/Postman can fake them, but those are not
+    browser-context attacks; the opaque fallback + rate-limit handles that.
+    """
+    if request.headers.get("X-Matrix-Internal") != "1":
+        return False
+    origin = request.headers.get("origin") or ""
+    if not origin:
+        # Fall back to Referer (some older browsers / non-CORS POST).
+        referer = request.headers.get("referer") or ""
+        if referer:
+            parsed = urllib.parse.urlparse(referer)
+            origin = f"{parsed.scheme}://{parsed.netloc}"
+    return origin in settings.cors_origin_list
+
+
 @router.post(
     "/login/check",
     summary="Public: report whether this (email, workspace_code) already has a password set",
@@ -277,14 +302,15 @@ async def login_check(payload: LoginCheckIn, request: Request, db: DbDep) -> dic
     'active' (has a password → ask for it).
 
     Issue #313: to prevent email-membership enumeration by anonymous callers,
-    the detailed ``account_state`` is only returned when the caller sends the
-    ``X-Matrix-Internal: 1`` header (which the branded SPA always does). All
-    other callers receive an opaque ``{ "account_state": "checked" }`` that
-    reveals nothing about whether the email is a member. The rate-limit
-    (20/min) remains the primary defence.
+    the detailed ``account_state`` is only returned when the request is a
+    trusted first-party call (``X-Matrix-Internal: 1`` header AND a matching
+    ``Origin``/``Referer`` from an allowed CORS origin).  All other callers
+    receive an opaque ``{ "account_state": "checked" }`` that reveals nothing
+    about whether the email is a member.  The rate-limit (20/min) remains the
+    primary defence.
     """
     # Determine whether this is a trusted first-party call.
-    _is_internal = request.headers.get("X-Matrix-Internal") == "1"
+    _is_internal = _is_trusted_internal(request)
 
     unknown = {"account_state": "unknown", "password_set": False}  # nosec B105 — flags, not a credential
     tenant = await get_tenant_by_workspace_code(db, payload.workspace_code)

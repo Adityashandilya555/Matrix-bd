@@ -33,6 +33,18 @@ CREATE INDEX IF NOT EXISTS idx_supervisor_executive_requests_tenant_status
 -- constrains direct PostgREST/anon access.
 ALTER TABLE public.supervisor_executive_requests ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY tenant_isolation ON public.supervisor_executive_requests
-  USING (tenant_id = public.current_tenant_id())
-  WITH CHECK (tenant_id = public.current_tenant_id());
+-- Idempotent creation of tenant_isolation policy (CodeAnt review – Major severity)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policy
+        WHERE schemaname = 'public'
+          AND tablename  = 'supervisor_executive_requests'
+          AND policyname = 'tenant_isolation'
+    ) THEN
+        CREATE POLICY tenant_isolation ON public.supervisor_executive_requests
+          USING (tenant_id = public.current_tenant_id())
+          WITH CHECK (tenant_id = public.current_tenant_id());
+    END IF;
+END
+$$;
