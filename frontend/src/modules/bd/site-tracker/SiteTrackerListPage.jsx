@@ -447,9 +447,9 @@ export default function SiteTrackerListPage() {
   const [filter, setFilter] = React.useState('all');
   const [query, setQuery] = React.useState('');
 
-  const loadSites = React.useCallback(() => {
+  const loadSites = React.useCallback((silent = false) => {
     let cancelled = false;
-    setState({ status: 'loading', items: [], error: null });
+    if (!silent) setState({ status: 'loading', items: [], error: null });
     Promise.all(TRACKED_STATUSES.map((s) =>
       listSites({ status: s }).catch(() => []),
     ))
@@ -473,19 +473,20 @@ export default function SiteTrackerListPage() {
       })
       .catch((err) => {
         if (cancelled) return;
-        setState({
-          status: 'error',
-          items: [],
+        if (silent && err?.code === 'TIMEOUT') return;
+        setState((s) => ({
+          status: (silent && s.items.length) ? 'ready' : 'error',
+          items: (silent && s.items.length) ? s.items : [],
           error: err?.detail || err?.message || 'Failed to load sites',
-        });
+        }));
       });
     return () => { cancelled = true; };
   }, []);
 
   React.useEffect(() => loadSites(), [loadSites]);
 
-  useSiteDataRefresh(React.useCallback(() => {
-    loadSites();
+  useSiteDataRefresh(React.useCallback((silent) => {
+    loadSites(silent);
   }, [loadSites]));
 
   const filtered = React.useMemo(() => {

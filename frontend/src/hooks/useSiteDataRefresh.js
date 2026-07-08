@@ -42,7 +42,7 @@ export function useSiteDataRefresh(
       const now = Date.now();
       if (reason !== 'event' && now - lastRunAt < 400) return;
       lastRunAt = now;
-      refreshRef.current?.(detail);
+      refreshRef.current?.(true, detail);
     };
 
     const unsubscribe = subscribeSiteDataChanged((detail) => run(detail, 'event'));
