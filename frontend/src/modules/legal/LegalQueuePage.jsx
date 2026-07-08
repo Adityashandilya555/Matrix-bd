@@ -154,13 +154,15 @@ export default function LegalQueuePage() {
     : items.filter((row) => row.legalDdStatus === ddFilter);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader
-        file="No. 05"
-        eyebrow="Legal module"
-        title="Sites"
-        right={<HeaderTag icon="shield" label="LEGAL_REVIEW"/>}
-      />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <PageHeader
+          file="No. 05"
+          eyebrow="Legal module"
+          title="Sites"
+          right={<HeaderTag icon="shield" label="LEGAL_REVIEW"/>}
+        />
+      </div>
 
       {status === 'loading' && (
         <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
@@ -184,7 +186,7 @@ export default function LegalQueuePage() {
       )}
 
       {status === 'ready' && items.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {DD_FILTERS.map((filterKey) => (
             <SubFilterPill
               key={filterKey}
@@ -199,8 +201,9 @@ export default function LegalQueuePage() {
       )}
 
       {status === 'ready' && items.length > 0 && (
-        <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
+        <div className="zm-glass" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', borderRadius: 12, overflow: 'hidden' }}>
           <div style={{
+            flexShrink: 0,
             display: 'grid',
             gridTemplateColumns: '120px minmax(220px, 1fr) 140px 160px 140px',
             gap: 12, padding: '12px 16px',
@@ -214,6 +217,8 @@ export default function LegalQueuePage() {
             <span>DD status</span>
             <span style={{ textAlign: 'right' }}>Action</span>
           </div>
+
+          <div style={{ flex: 1, overflowY: 'auto' }}>
 
           {visibleItems.map((row) => (
             <div
@@ -278,23 +283,25 @@ export default function LegalQueuePage() {
               </button>
             </div>
           ))}
-          {visibleItems.length === 0 && (
-            <div style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
-              No sites match this DD status filter.
-            </div>
-          )}
+            {visibleItems.length === 0 && (
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
+                No sites match this DD status filter.
+              </div>
+            )}
+            
+            {status === 'ready' && (
+              <ViewMoreButton
+                hasMore={hasMore}
+                loadingMore={loadingMore}
+                loaded={items.length}
+                total={total}
+                onClick={loadMore}
+              />
+            )}
+          </div>
         </div>
       )}
 
-      {status === 'ready' && (
-        <ViewMoreButton
-          hasMore={hasMore}
-          loadingMore={loadingMore}
-          loaded={items.length}
-          total={total}
-          onClick={loadMore}
-        />
-      )}
     </div>
   );
 }

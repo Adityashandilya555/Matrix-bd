@@ -19,7 +19,6 @@ import threading
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-import pytest
 
 from app.core import passwords
 

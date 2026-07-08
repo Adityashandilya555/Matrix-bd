@@ -168,16 +168,17 @@ export function SitesProvider({ children }) {
   }, [identityKey, role, authReady]);
 
   // Refresh helper — re-fetches entire list from service
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
     setError(null);
     try {
       const data = await siteService.listSites();
       setSites(data);
     } catch (err) {
+      if (isBackground && err?.code === 'TIMEOUT') return;
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   }, []);
 
@@ -189,7 +190,7 @@ export function SitesProvider({ children }) {
   useEffect(() => {
     // Never poll while signed out — a tokenless refresh 401s and re-pops the
     // session modal. (popup-on-login fix)
-    const run = () => { if (_isAuthed()) refresh().catch(err => setError(err.message)); };
+    const run = () => { if (_isAuthed()) refresh(true).catch(err => { if (err?.code !== 'TIMEOUT') setError(err.message); }); };
     const unsubscribe = subscribeSiteDataChanged((detail) => {
       if (detail?.source !== 'SitesContext') run();
     });

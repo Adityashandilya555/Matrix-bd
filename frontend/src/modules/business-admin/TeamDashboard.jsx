@@ -60,17 +60,22 @@ export const REAL_FETCHERS = {
 const errMsg = (e) => e?.detail || e?.message || 'Failed to load';
 
 function useQueue(fetcher) {
-  const [state, setState] = React.useState({ status: 'loading', items: [], error: null, refreshing: false });
+  const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null, refreshing: false });
   const load = React.useCallback(async (silent = false) => {
-    setState((s) => (silent ? { ...s, refreshing: true } : { status: 'loading', items: [], error: null, refreshing: false }));
+    setState((s) => (silent ? { ...s, refreshing: true } : { status: 'loading', items: [], total: 0, error: null, refreshing: false }));
     try {
       const d = await fetcher();
       const items = Array.isArray(d) ? d : (d?.items || []);
-      setState({ status: 'ready', items, error: null, refreshing: false });
+      const total = typeof d?.total === 'number' ? d.total : items.length;
+      setState({ status: 'ready', items, total, error: null, refreshing: false });
     } catch (e) {
+      if (silent && e?.code === 'TIMEOUT') {
+        setState((s) => ({ ...s, refreshing: false }));
+        return;
+      }
       setState((s) => (silent && s.items.length
         ? { ...s, error: errMsg(e), refreshing: false }
-        : { status: 'error', items: [], error: errMsg(e), refreshing: false }));
+        : { status: 'error', items: [], total: 0, error: errMsg(e), refreshing: false }));
     }
   }, [fetcher]);
   React.useEffect(() => { load(false); }, [load]);
@@ -205,11 +210,16 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     reloadOrg: loadOrg,
   };
 
-  const refreshAll = async () => {
-    setRefreshingAll(true);
+  const refreshAll = async (silent = false) => {
+    if (!silent) setRefreshingAll(true);
     try { await Promise.all([reloadApprovals(true), loadSupervisors(true), loadExecutiveRequests(true), loadOrg(true), loadSites(true)]); }
-    finally { setRefreshingAll(false); }
+    finally { if (!silent) setRefreshingAll(false); }
   };
+
+  React.useEffect(() => {
+    const pollId = window.setInterval(() => refreshAll(true), 30000);
+    return () => window.clearInterval(pollId);
+  }, [reloadApprovals, loadSupervisors, loadExecutiveRequests, loadOrg, loadSites]);
 
   const navItems = [
     { ...TABS[0], count: approvalSites.length },
