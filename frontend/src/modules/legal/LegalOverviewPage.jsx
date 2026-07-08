@@ -141,16 +141,16 @@ export default function LegalOverviewPage() {
   const [search, setSearch] = React.useState('');
   const [activeFilter, setActiveFilter] = React.useState('all');
 
-  const load = React.useCallback(() => {
+  const load = React.useCallback((silent = false) => {
     let cancelled = false;
     getLegalQueue()
       .then((data) => { if (!cancelled) setQueue({ status: 'ready', items: data.items, total: data.total, error: null }); })
       .catch((err) => {
         if (cancelled) return;
-        // Failed background refresh keeps the loaded KPIs/list + shows a banner.
+        if (silent && err?.code === 'TIMEOUT') return;
         setQueue((s) => ({
           ...s,
-          status: s.items.length ? 'ready' : 'error',
+          status: (silent && s.items.length) ? 'ready' : (s.items.length ? 'ready' : 'error'),
           error: err?.detail || err?.message || 'Failed to load legal queue',
         }));
       });
@@ -158,9 +158,10 @@ export default function LegalOverviewPage() {
       .then((data) => { if (!cancelled) setCrs({ status: 'ready', total: data.total, error: null }); })
       .catch((err) => {
         if (cancelled) return;
+        if (silent && err?.code === 'TIMEOUT') return;
         setCrs((s) => ({
           ...s,
-          status: s.status === 'ready' ? 'ready' : 'error',
+          status: (silent && s.status === 'ready') ? 'ready' : (s.status === 'ready' ? 'ready' : 'error'),
           error: err?.detail || err?.message || 'Failed to load change requests',
         }));
       });

@@ -161,6 +161,8 @@ async def create_site(
         expected_escalation_pct=body.expected_escalation_pct,
         expected_escalation_years=body.expected_escalation_years,
         expected_revshare_pct=body.expected_revshare_pct,
+        area_sqft=body.area_sqft,
+        staggered_escalation=body.staggered_escalation,
     )
 
 
@@ -168,6 +170,7 @@ async def create_site(
     "/{site_id}/status",
     summary="Universal status-transition dispatcher (alias)",
 )
+# skipcq: PY-R1000, PYL-R0912
 async def patch_site_status(
     site_id: str,
     body: PatchSiteStatusRequest,

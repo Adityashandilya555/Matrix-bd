@@ -164,9 +164,9 @@ export default function DesignOverviewPage() {
   const [search, setSearch] = React.useState('');
   const [activeFilter, setActiveFilter] = React.useState('all');
 
-  const load = React.useCallback(() => {
+  const load = React.useCallback((silent = false) => {
     let cancelled = false;
-    setState((s) => ({ ...s, status: s.items.length ? s.status : 'loading', error: null }));
+    if (!silent) setState((s) => ({ ...s, status: s.items.length ? s.status : 'loading', error: null }));
     getDesignQueue()
       .then((data) => {
         if (cancelled) return;
@@ -174,10 +174,11 @@ export default function DesignOverviewPage() {
       })
       .catch((err) => {
         if (cancelled) return;
+        if (silent && err?.code === 'TIMEOUT') return;
         // Failed background refresh keeps the loaded KPIs/list + shows a banner.
         setState((s) => ({
           ...s,
-          status: s.items.length ? 'ready' : 'error',
+          status: (silent && s.items.length) ? 'ready' : (s.items.length ? 'ready' : 'error'),
           error: err?.detail || err?.message || 'Failed to load design queue',
         }));
       });

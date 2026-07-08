@@ -19,7 +19,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import desc, select, text
+from sqlalchemy import desc, func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -484,13 +484,13 @@ def _admin_site_item(site: dict, *, project: dict, nso: dict, launch: dict, budg
         "finance_status": site["finance_status"] or "pending",
         "design_status": site["design_status"] or "pending",
         "financial_closure_status": site["financial_closure_status"] or "pending",
-        "project_status": project.get("project_status", "pending"),
+        "project_status": project.get("project_status") or site.get("project_status", "pending"),
         "project_current_stage": project.get("current_stage"),
         "project_budget_status": budget.get("status"),
         "project_completed_at": project.get("project_completed_at"),
-        "nso_status": nso.get("nso_status"),
+        "nso_status": nso.get("nso_status") or site.get("nso_status", "pending"),
         "nso_current_stage": nso.get("current_stage"),
-        "launch_status": launch.get("status"),
+        "launch_status": launch.get("status") or site.get("launch_status", "pending"),
         "is_launched": bool(site["is_launched"]),
         "launched_at": site["launched_at"] or launch.get("launched_at"),
         "ca_code": site["ca_code"],
@@ -530,6 +530,11 @@ async def list_admin_sites(
         .limit(safe_limit)
     )).scalars().all()
 
+    total_count = await session.scalar(
+        select(func.count(models.Site.id))
+        .where(models.Site.tenant_id == tenant_id)
+    )
+
     # Snapshot site fields before the optional Project join. If the deployed
     # database has not run the Project migration yet, Postgres aborts the
     # transaction and a rollback can expire ORM instances. Keeping primitive
@@ -554,6 +559,9 @@ async def list_admin_sites(
             "finance_status": site.finance_status,
             "design_status": site.design_status,
             "financial_closure_status": site.financial_closure_status,
+            "project_status": getattr(site, "project_status", "pending"),
+            "nso_status": getattr(site, "nso_status", "pending"),
+            "launch_status": getattr(site, "launch_status", "pending"),
             "is_launched": site.is_launched,
             "launched_at": site.launched_at,
             "finance_amount": site.finance_amount,
@@ -602,7 +610,7 @@ async def list_admin_sites(
         )
         for site in site_rows
     ]
-    return {"items": items, "total": len(items)}
+    return {"items": items, "total": total_count}
 
 
 async def approve_finance(

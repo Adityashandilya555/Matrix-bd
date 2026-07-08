@@ -11,7 +11,7 @@ import { useSiteDataRefresh } from './useSiteDataRefresh.js';
 export function useLaunchSites() {
   const [state, setState] = useState({ loading: true, rows: [], error: null });
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback((silent = false) => {
     let cancelled = false;
     listSites({ status: 'pushed_to_payments' })
       .then((sites) => {
@@ -21,7 +21,10 @@ export function useLaunchSites() {
       })
       .catch((err) => {
         if (cancelled) return;
-        setState({ loading: false, rows: [], error: err?.detail || err?.message || 'Failed to load launch sites' });
+        if (silent && err?.code === 'TIMEOUT') return;
+        setState((s) => (silent && s.rows.length
+          ? { ...s, loading: false, error: err?.detail || err?.message || 'Failed to load launch sites' }
+          : { loading: false, rows: [], error: err?.detail || err?.message || 'Failed to load launch sites' }));
       });
     return () => { cancelled = true; };
   }, []);

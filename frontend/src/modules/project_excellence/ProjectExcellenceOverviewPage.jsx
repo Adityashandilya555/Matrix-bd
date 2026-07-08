@@ -99,18 +99,19 @@ export default function ProjectExcellenceOverviewPage() {
   // request's result is allowed to write state.
   const reqIdRef = React.useRef(0);
 
-  const load = React.useCallback(() => {
+  const load = React.useCallback((silent = false) => {
     const reqId = ++reqIdRef.current;
-    setState((prev) => ({ ...prev, status: prev.items.length ? prev.status : 'loading', error: null }));
+    if (!silent) setState((prev) => ({ ...prev, status: prev.items.length ? prev.status : 'loading', error: null }));
     getPEQueue()
       .then((data) => {
         if (reqId === reqIdRef.current) setState({ status: 'ready', items: data.items, total: data.total ?? 0, error: null });
       })
       .catch((err) => {
         if (reqId === reqIdRef.current) {
+          if (silent && err?.code === 'TIMEOUT') return;
           setState((prev) => ({
             ...prev,
-            status: prev.items.length ? 'ready' : 'error',
+            status: (silent && prev.items.length) ? 'ready' : (prev.items.length ? 'ready' : 'error'),
             error: err?.detail || err?.message || 'Failed to load project excellence queue',
           }));
         }
