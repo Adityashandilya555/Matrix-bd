@@ -190,30 +190,65 @@ async def _apply_pending_migrations() -> None:
     so partial application is safe and a retry on the next deploy will
     converge.
     """
-    migration_file = os.path.join(
-        _MIGRATION_DIR, "202606231_supervisor_executive_requests.sql"
-    )
-    resolved = os.path.normpath(migration_file)
-    if not os.path.isfile(resolved):
-        log.error("startup-migrations: %s not found. Failing startup to prevent inconsistent schema state.", resolved)
-        raise FileNotFoundError(f"Missing required migration file: {resolved}")
+    files_to_apply = [
+        "202606231_supervisor_executive_requests.sql",
+        "202607081_add_sqft_and_staggered_rent.sql",
+    ]
+    
+    applied_total = 0
+    for filename in files_to_apply:
+        resolved = os.path.normpath(os.path.join(_MIGRATION_DIR, filename))
+        if not os.path.isfile(resolved):
+            log.error("startup-migrations: %s not found. Failing startup to prevent inconsistent schema state.", resolved)
+            raise FileNotFoundError(f"Missing required migration file: {resolved}")
 
-    with open(resolved, encoding="utf-8") as fh:
-        raw_sql = fh.read()
+        with open(resolved, encoding="utf-8") as fh:
+            raw_sql = fh.read()
 
-    statements = [s.strip() for s in raw_sql.split(";") if s.strip()]
-    applied = 0
-    for stmt in statements:
-        try:
-            async with engine.begin() as conn:
-                await conn.execute(text(stmt))
-            applied += 1
-        except SQLAlchemyError:
-            log.exception(
-                "startup-migrations: statement failed (may already be applied): %.120s",
-                stmt,
-            )
-    log.info("startup-migrations: %d/%d statements applied", applied, len(statements))
+        # Parse SQL file intelligently to protect PL/pgSQL blocks
+        statements = []
+        current_stmt = []
+        in_dollar_quote = False
+        
+        for line in raw_sql.splitlines():
+            if "$$" in line:
+                in_dollar_quote = (line.count("$$") % 2 == 1) ^ in_dollar_quote
+                
+            if not in_dollar_quote and line.strip().endswith(";"):
+                current_stmt.append(line)
+                stmt_text = "\n".join(current_stmt).strip()
+                if stmt_text.upper() not in ("BEGIN;", "COMMIT;"):
+                    statements.append(stmt_text)
+                current_stmt = []
+            else:
+                current_stmt.append(line)
+                
+        if current_stmt and "".join(current_stmt).strip():
+            stmt_text = "\n".join(current_stmt).strip()
+            if stmt_text.upper() not in ("BEGIN;", "COMMIT;"):
+                statements.append(stmt_text)
+
+        applied = 0
+        for stmt in statements:
+            if not stmt:
+                continue
+            try:
+                # Replace : with \: to bypass SQLAlchemy's bind parameter parser (e.g. ::int -> \:\:int)
+                # We use engine.begin() so each statement executes in its own isolated short transaction,
+                # avoiding lock timeouts and asyncpg multi-statement deadlocks.
+                safe_stmt = stmt.replace(":", "\\:")
+                async with engine.begin() as conn:
+                    await conn.execute(text(safe_stmt))
+                applied += 1
+                applied_total += 1
+            except SQLAlchemyError:
+                log.exception(
+                    "startup-migrations: statement failed in %s (may already be applied): %.120s",
+                    filename,
+                    stmt,
+                )
+        log.info("startup-migrations: %d/%d statements applied from %s", applied, len(statements), filename)
+    log.info("startup-migrations: %d total statements applied across all files", applied_total)
 
 
 # ── Application lifespan ──────────────────────────────────────────────────────
