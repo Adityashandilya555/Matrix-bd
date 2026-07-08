@@ -142,8 +142,9 @@ export default function NsoQueuePage() {
   const COLS = '120px minmax(220px, 1fr) 130px 150px 150px 160px 110px';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <PageHeader
         file="No. 10"
         eyebrow="NSO module"
         title="Sites"
@@ -179,8 +180,10 @@ export default function NsoQueuePage() {
         </div>
       )}
 
+      </div>
+
       {items.length > 0 && (
-        <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
+        <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{
             display: 'grid',
             gridTemplateColumns: COLS,
@@ -204,10 +207,11 @@ export default function NsoQueuePage() {
             <span style={{ textAlign: 'right' }}>Action</span>
           </div>
 
-          {visibleItems.map((row) => (
-            <div
-              key={row.siteId}
-              data-site-id={row.siteId}
+          <div style={{ overflowY: 'auto' }}>
+            {visibleItems.map((row) => (
+              <div
+                key={row.siteId}
+                data-site-id={row.siteId}
               role="button"
               tabIndex={0}
               onClick={() => open(row)}
@@ -258,14 +262,15 @@ export default function NsoQueuePage() {
                 }}
               >
                 Open<Icon name="arrow" size={12}/>
-              </button>
-            </div>
-          ))}
-          {visibleItems.length === 0 && (
-            <div style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
-              No NSO sites match this filter.
-            </div>
-          )}
+                </button>
+              </div>
+            ))}
+            {visibleItems.length === 0 && (
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
+                No NSO sites match this filter.
+              </div>
+            )}
+          </div>
         </div>
       )}
 

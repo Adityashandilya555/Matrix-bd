@@ -36,33 +36,36 @@ export default function DdFailedPage() {
   useSiteDataRefresh(load);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader
-        file="No. 07"
-        eyebrow="BD module"
-        title={<>DDR <em>negative</em></>}
-        right={<HeaderTag icon="alert" label="LEGAL_REJECTED"/>}
-      />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <PageHeader
+          file="No. 07"
+          eyebrow="BD module"
+          title={<>DDR <em>negative</em></>}
+          right={<HeaderTag icon="alert" label="LEGAL_REJECTED"/>}
+        />
 
-      {state.status === 'loading' && (
-        <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
-          Loading…
-        </div>
-      )}
-      {state.status === 'error' && (
-        <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{state.error}</div>
-      )}
-      {state.status === 'ready' && state.items.length === 0 && (
-        <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
-          <Icon name="check" size={20}/>
-          <p style={{ margin: '12px 0 0' }}>No failed sites — clean slate.</p>
-        </div>
-      )}
+        {state.status === 'loading' && (
+          <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
+            Loading…
+          </div>
+        )}
+        {state.status === 'error' && (
+          <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{state.error}</div>
+        )}
+        {state.status === 'ready' && state.items.length === 0 && (
+          <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
+            <Icon name="check" size={20}/>
+            <p style={{ margin: '12px 0 0' }}>No failed sites — clean slate.</p>
+          </div>
+        )}
+      </div>
 
       {state.status === 'ready' && state.items.length > 0 && (
         <div className="zm-glass" style={{
           borderRadius: 12, overflow: 'hidden',
           borderLeft: '4px solid var(--zm-danger)',
+          display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0
         }}>
           <div style={{
             display: 'grid',
@@ -75,8 +78,9 @@ export default function DdFailedPage() {
             <span>Code</span><span>Site</span><span>City</span><span>Drafted by</span>
             <span>Reason</span><span style={{ textAlign: 'right' }}>Action</span>
           </div>
-          {state.items.map((row) => (
-            <div
+          <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
+            {state.items.map((row) => (
+              <div
               key={row.siteId}
               role="button"
               tabIndex={0}
@@ -122,6 +126,7 @@ export default function DdFailedPage() {
               </button>
             </div>
           ))}
+          </div>
         </div>
       )}
     </div>

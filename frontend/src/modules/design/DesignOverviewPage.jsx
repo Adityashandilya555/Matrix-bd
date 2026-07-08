@@ -94,11 +94,11 @@ function StatusPill({ value }) {
 
 // QueueTable — Code | Site | City | Status | Stage (row styling mirrors
 // DesignQueuePage). Row click deep-links into the queue tab.
-function QueueTable({ rows, onOpen, limit }) {
+function QueueTable({ rows, onOpen, limit, style }) {
   const displayRows = limit ? rows.slice(0, limit) : rows;
   const COLS = '120px minmax(200px, 1fr) 130px 180px 110px';
   return (
-    <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
+    <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', ...style }}>
       <div style={{
         display: 'grid', gridTemplateColumns: COLS,
         gap: 12, padding: '12px 16px',
@@ -112,8 +112,9 @@ function QueueTable({ rows, onOpen, limit }) {
         <span>Status</span>
         <span>Stage</span>
       </div>
-      {displayRows.map((row) => (
-        <div
+      <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
+        {displayRows.map((row) => (
+          <div
           key={row.siteId}
           className="zm-row"
           role="button"
@@ -149,6 +150,7 @@ function QueueTable({ rows, onOpen, limit }) {
           No sites match the current filter.
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -217,96 +219,103 @@ export default function DesignOverviewPage() {
     : 'Module KPIs and drill-downs.';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader
-        file="No. 06" eyebrow="Design module" title="Overview"
-        lede={lede}
-        right={<HeaderTag icon="box" label="FINANCE APPROVED"/>}
-      />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <PageHeader
+          file="No. 06" eyebrow="Design module" title="Overview"
+          lede={lede}
+          right={<HeaderTag icon="box" label="FINANCE APPROVED"/>}
+        />
 
-      {state.status === 'loading' && (
-        <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
-          Loading overview…
-        </div>
-      )}
+        {state.status === 'loading' && (
+          <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
+            Loading overview…
+          </div>
+        )}
 
-      {state.error && (
-        <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>
-          {state.error}
-        </div>
-      )}
+        {state.error && (
+          <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>
+            {state.error}
+          </div>
+        )}
+
+        {state.status === 'ready' && !view && (
+          <>
+            <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+              {KPI_ORDER.map((key) => {
+                const k = KPIS[key];
+                return (
+                  <MetricCard
+                    key={key}
+                    tone={k.tone}
+                    no={k.no} eyebrow={k.eyebrow} rule={k.rule}
+                    value={String(countFor(key)).padStart(2, '0')}
+                    sub={k.sub}
+                    onClick={() => selectKpi(key)}
+                  />
+                );
+              })}
+            </div>
+            <OverviewFilterBar
+              filters={DESIGN_STATUS_FILTERS.map(f => ({
+                ...f,
+                count: countFor(f.key)
+              }))}
+              active={activeFilter}
+              onFilter={setActiveFilter}
+              search={search}
+              onSearch={setSearch}
+              totalCount={total}
+            />
+          </>
+        )}
+
+        {state.status === 'ready' && view && (
+          <>
+            <div>
+              <button
+                type="button"
+                onClick={() => setView(null)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px', borderRadius: 999, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              >
+                <Icon name="arrow" size={12} style={{ transform: 'rotate(180deg)' }}/> All metrics
+              </button>
+            </div>
+
+            <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+              <MetricCard
+                tone={KPIS[view].tone}
+                no={KPIS[view].no} eyebrow={KPIS[view].eyebrow} rule={KPIS[view].rule}
+                value={String(subset.length).padStart(2, '0')}
+                sub={KPIS[view].sub}
+                selected
+                onClick={() => selectKpi(view)}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <SearchBox value={search} onChange={setSearch}/>
+              {STAGE_PILLS.map((p) => (
+                <SubFilterPill
+                  key={p.id}
+                  label={p.label}
+                  count={stageCounts[p.id]}
+                  color={p.color}
+                  active={stage === p.id}
+                  onClick={() => setStage((s) => (s === p.id ? 'all' : p.id))}
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </div>
 
       {state.status === 'ready' && !view && (
-        <>
-          <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
-            {KPI_ORDER.map((key) => {
-              const k = KPIS[key];
-              return (
-                <MetricCard
-                  key={key}
-                  tone={k.tone}
-                  no={k.no} eyebrow={k.eyebrow} rule={k.rule}
-                  value={String(countFor(key)).padStart(2, '0')}
-                  sub={k.sub}
-                  onClick={() => selectKpi(key)}
-                />
-              );
-            })}
-          </div>
-          <OverviewFilterBar
-            filters={DESIGN_STATUS_FILTERS.map(f => ({
-              ...f,
-              count: countFor(f.key)
-            }))}
-            active={activeFilter}
-            onFilter={setActiveFilter}
-            search={search}
-            onSearch={setSearch}
-            totalCount={total}
-          />
-          <QueueTable rows={filtered} limit={12} onOpen={openRow}/>
-        </>
+        <QueueTable rows={filtered} limit={12} onOpen={openRow} style={{ flex: 1, minHeight: 0 }}/>
       )}
 
       {state.status === 'ready' && view && (
-        <>
-          <div>
-            <button
-              type="button"
-              onClick={() => setView(null)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px', borderRadius: 999, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-            >
-              <Icon name="arrow" size={12} style={{ transform: 'rotate(180deg)' }}/> All metrics
-            </button>
-          </div>
-
-          <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-            <MetricCard
-              tone={KPIS[view].tone}
-              no={KPIS[view].no} eyebrow={KPIS[view].eyebrow} rule={KPIS[view].rule}
-              value={String(subset.length).padStart(2, '0')}
-              sub={KPIS[view].sub}
-              selected
-              onClick={() => selectKpi(view)}
-            />
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <SearchBox value={search} onChange={setSearch}/>
-            {STAGE_PILLS.map((p) => (
-              <SubFilterPill
-                key={p.id}
-                label={p.label}
-                count={stageCounts[p.id]}
-                color={p.color}
-                active={stage === p.id}
-                onClick={() => setStage((s) => (s === p.id ? 'all' : p.id))}
-              />
-            ))}
-          </div>
-
-          <QueueTable rows={filtered} onOpen={openRow}/>
-        </>
+        <QueueTable rows={filtered} onOpen={openRow} style={{ flex: 1, minHeight: 0 }}/>
       )}
     </div>
   );

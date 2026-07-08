@@ -103,41 +103,41 @@ export default function DesignQueuePage() {
   const COLS = '120px minmax(200px, 1fr) 120px 170px 110px 120px';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader
-        file="No. 06"
-        eyebrow="Design module"
-        title="Sites"
-        right={<HeaderTag icon="box" label="FINANCE APPROVED"/>}
-      />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <PageHeader
+          file="No. 06"
+          eyebrow="Design module"
+          title="Sites"
+          right={<HeaderTag icon="box" label="FINANCE APPROVED"/>}
+        />
 
-      {status === 'loading' && (
-        <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
-          Loading queue…
-        </div>
-      )}
+        {status === 'loading' && (
+          <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
+            Loading queue…
+          </div>
+        )}
 
-      {error && (
-        <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>
-          {error}
-        </div>
-      )}
+        {error && (
+          <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>
+            {error}
+          </div>
+        )}
 
-      {status === 'ready' && items.length === 0 && (
-        <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
-          <Icon name="box" size={20}/>
-          <p style={{ margin: '12px 0 0' }}>
-            {isSupervisor
-              ? 'No finance-approved sites are waiting for design right now. Waiting for Finance admin approval.'
-              : 'No sites have been allocated to you yet. Design opens after Finance admin approval.'}
-          </p>
-        </div>
-      )}
+        {status === 'ready' && items.length === 0 && (
+          <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
+            <Icon name="box" size={20}/>
+            <p style={{ margin: '12px 0 0' }}>
+              {isSupervisor
+                ? 'No finance-approved sites are waiting for design right now. Waiting for Finance admin approval.'
+                : 'No sites have been allocated to you yet. Design opens after Finance admin approval.'}
+            </p>
+          </div>
+        )}
 
-      {status === 'ready' && items.length > 0 && (
-        <>
-          {/* Stage filter chips */}
+        {status === 'ready' && items.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {/* Stage filter chips */}
             {STAGE_FILTERS.map((f) => {
               const active = stageFilter === f.id;
               const count = f.id === 'all'
@@ -166,8 +166,11 @@ export default function DesignQueuePage() {
               );
             })}
           </div>
+        )}
+      </div>
 
-        <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
+      {status === 'ready' && items.length > 0 && (
+        <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{
             display: 'grid', gridTemplateColumns: COLS,
             gap: 12, padding: '12px 16px',
@@ -183,9 +186,10 @@ export default function DesignQueuePage() {
             <span style={{ textAlign: 'right' }}>Action</span>
           </div>
 
-          {visibleItems.filter((r) => matchesStageFilter(r, stageFilter)).map((row) => (
-            <div
-              key={row.siteId}
+          <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
+            {visibleItems.filter((r) => matchesStageFilter(r, stageFilter)).map((row) => (
+              <div
+                key={row.siteId}
               data-site-id={row.siteId}
               role="button"
               tabIndex={0}
@@ -240,17 +244,19 @@ export default function DesignQueuePage() {
             </div>
           ))}
         </div>
-        </>
+        </div>
       )}
 
       {status === 'ready' && (
-        <ViewMoreButton
-          hasMore={hasMore}
-          loadingMore={loadingMore}
-          loaded={items.length}
-          total={total}
-          onClick={loadMore}
-        />
+        <div style={{ flexShrink: 0 }}>
+          <ViewMoreButton
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+            loaded={items.length}
+            total={total}
+            onClick={loadMore}
+          />
+        </div>
       )}
     </div>
   );

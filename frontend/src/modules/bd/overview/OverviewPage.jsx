@@ -308,23 +308,25 @@ function PipelineFilter({ stage, onStage, counts, advanced, onAdvanced }) {
 // MotionTable — render body preserved from App.jsx
 function MotionTable({ rows, onOpen, limit = 12 }) {
   return (
-    <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.7fr 1fr 1fr 0.7fr 1.1fr 1.2fr', gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
+      <div style={{ flexShrink: 0, display: 'grid', gridTemplateColumns: '0.9fr 1.7fr 1fr 1fr 0.7fr 1.1fr 1.2fr', gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
         <span>Code</span><span>Site</span><span>City</span><span>Owner</span><span>Days</span><span>Stage</span><span>Detail</span>
       </div>
-      {rows.slice(0, limit).map(r => (
-        <div key={r.id} role="button" tabIndex={0} onClick={() => onOpen(r)} onKeyDown={keyActivate(() => onOpen(r))} className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.7fr 1fr 1fr 0.7fr 1.1fr 1.2fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: r.stage === 'overdue' ? 'rgba(217,119,6,0.06)' : 'transparent', cursor: 'pointer', position: 'relative' }}>
-          {r.stage === 'overdue' && <span style={{ position: 'absolute', left: 0, top: 12, bottom: 12, width: 2, background: 'var(--zm-warning)', borderRadius: 2 }}/>}
-          <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{r.code}</span>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{r.name}</span>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{r.city}</span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Avatar name={r.owner} size={20}/><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{r.owner}</span></span>
-          <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, color: r.stage === 'overdue' ? 'var(--zm-warning)' : 'var(--zm-fg)' }}>{String(r.days).padStart(2,'0')}d</span>
-          <span><StatusPill stage={r.stage}/></span>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-3)' }}>{r.meta}</span>
-        </div>
-      ))}
-      {rows.length === 0 && (<div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>No sites in this stage right now.</div>)}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {rows.slice(0, limit).map(r => (
+          <div key={r.id} role="button" tabIndex={0} onClick={() => onOpen(r)} onKeyDown={keyActivate(() => onOpen(r))} className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.7fr 1fr 1fr 0.7fr 1.1fr 1.2fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: r.stage === 'overdue' ? 'rgba(217,119,6,0.06)' : 'transparent', cursor: 'pointer', position: 'relative' }}>
+            {r.stage === 'overdue' && <span style={{ position: 'absolute', left: 0, top: 12, bottom: 12, width: 2, background: 'var(--zm-warning)', borderRadius: 2 }}/>}
+            <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{r.code}</span>
+            <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{r.name}</span>
+            <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{r.city}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Avatar name={r.owner} size={20}/><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{r.owner}</span></span>
+            <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, color: r.stage === 'overdue' ? 'var(--zm-warning)' : 'var(--zm-fg)' }}>{String(r.days).padStart(2,'0')}d</span>
+            <span><StatusPill stage={r.stage}/></span>
+            <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-3)' }}>{r.meta}</span>
+          </div>
+        ))}
+        {rows.length === 0 && (<div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>No sites in this stage right now.</div>)}
+      </div>
     </div>
   );
 }
@@ -332,32 +334,34 @@ function MotionTable({ rows, onOpen, limit = 12 }) {
 // ArchiveTable — compact archive listing for the expanded Archived KPI.
 function ArchiveTable({ rows, onOpen }) {
   return (
-    <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1.1fr 0.9fr 1.5fr', gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
+      <div style={{ flexShrink: 0, display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1.1fr 0.9fr 1.5fr', gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
         <span>Code</span><span>Site</span><span>City</span><span>Created by</span><span>Archived on</span><span>Reason / note</span>
       </div>
-      {rows.map(a => {
-        const hasReasons = (a.reasons || []).length > 0;
-        return (
-          <div key={a.id} role="button" tabIndex={0} onClick={() => onOpen?.(a)} onKeyDown={keyActivate(() => onOpen?.(a))} className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1.1fr 0.9fr 1.5fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', cursor: 'pointer', position: 'relative', alignItems: 'flex-start' }}>
-            <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)', paddingTop: 2 }}>{a.code}</span>
-            <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{a.name}</span>
-            <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{a.city}</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Avatar name={a.createdBy} size={20}/><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{a.createdBy}</span></span>
-            <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12, color: 'var(--zm-fg)', paddingTop: 2 }}>{a.archivedAt || '—'}</span>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {hasReasons && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {a.reasons.map(r => (<span key={r} style={{ padding: '2px 8px', borderRadius: 999, background: '#F1F3F6', color: '#374151', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, whiteSpace: 'nowrap' }}>{r}</span>))}
-                </div>
-              )}
-              {a.note && (<span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-2)', lineHeight: 1.45 }}>{a.note}</span>)}
-              {!hasReasons && !a.note && (<span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)' }}>—</span>)}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {rows.map(a => {
+          const hasReasons = (a.reasons || []).length > 0;
+          return (
+            <div key={a.id} role="button" tabIndex={0} onClick={() => onOpen?.(a)} onKeyDown={keyActivate(() => onOpen?.(a))} className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1.1fr 0.9fr 1.5fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', cursor: 'pointer', position: 'relative', alignItems: 'flex-start' }}>
+              <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)', paddingTop: 2 }}>{a.code}</span>
+              <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{a.name}</span>
+              <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{a.city}</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Avatar name={a.createdBy} size={20}/><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{a.createdBy}</span></span>
+              <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12, color: 'var(--zm-fg)', paddingTop: 2 }}>{a.archivedAt || '—'}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {hasReasons && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {a.reasons.map(r => (<span key={r} style={{ padding: '2px 8px', borderRadius: 999, background: '#F1F3F6', color: '#374151', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, whiteSpace: 'nowrap' }}>{r}</span>))}
+                  </div>
+                )}
+                {a.note && (<span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-2)', lineHeight: 1.45 }}>{a.note}</span>)}
+                {!hasReasons && !a.note && (<span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)' }}>—</span>)}
+              </div>
             </div>
-          </div>
-        );
-      })}
-      {rows.length === 0 && (<div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>No archived sites match the current filter.</div>)}
+          );
+        })}
+        {rows.length === 0 && (<div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>No archived sites match the current filter.</div>)}
+      </div>
     </div>
   );
 }
@@ -513,83 +517,89 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
   };
 
   return (
-    <>
-      <PageHeader
-        file="№ 01" eyebrow="Overview" title="Sites"
-        lede={ledeFor()}
-        right={<>
-          <HeaderTag icon="clock" label="LIVE · 2M LAG"/>
-          <HeaderTag icon="shield" label={role === 'supervisor' ? 'TENANT SCOPE' : 'PERSONAL SCOPE'} tone="accent"/>
-        </>}
-      />
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0 }}>
+        <PageHeader
+          file="№ 01" eyebrow="Overview" title="Sites"
+          lede={ledeFor()}
+          right={<>
+            <HeaderTag icon="clock" label="LIVE · 2M LAG"/>
+            <HeaderTag icon="shield" label={role === 'supervisor' ? 'TENANT SCOPE' : 'PERSONAL SCOPE'} tone="accent"/>
+          </>}
+        />
 
-      {view && (
-        <div style={{ marginBottom: 12 }}>
-          <button onClick={() => setView(null)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px', borderRadius: 999, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-            <Icon name="arrow" size={12} style={{ transform: 'rotate(180deg)' }}/> All metrics
-          </button>
-        </div>
-      )}
+        {view && (
+          <div style={{ marginBottom: 12 }}>
+            <button onClick={() => setView(null)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px', borderRadius: 999, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              <Icon name="arrow" size={12} style={{ transform: 'rotate(180deg)' }}/> All metrics
+            </button>
+          </div>
+        )}
 
-      {/* KPI strip — all four when collapsed; selected KPI + its big filter
-          boxes when expanded (the other KPIs disappear). */}
-      {!view && (
-        <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
-          <MetricCard tone="peach" no="Ⅰ" eyebrow="Total sites" value={metrics.total.value}    rule="var(--zm-accent)" delta={metrics.total.delta}    sub={metrics.total.sub}    onClick={() => selectKpi('sites')}/>
-          <MetricCard tone="blue" no="Ⅱ" eyebrow="Archive / Rejected" value={metrics.archived.value} rule="var(--zm-fg-3)" delta={metrics.archived.delta} deltaTone="neutral" sub={metrics.archived.sub} onClick={() => selectKpi('archived')}/>
-          <MetricCard tone="mint" no="Ⅲ" eyebrow="Payments"    value={metrics.payments.value} rule="var(--zm-info)"   delta={metrics.payments.delta} deltaTone="neutral" sub={metrics.payments.sub} onClick={() => selectKpi('payments')}/>
-          <MetricCard tone="slate" no="Ⅳ" eyebrow="Launch"      value={metrics.launch.value}   rule="var(--zm-copper)" delta={metrics.launch.delta}   deltaTone={metrics.launch.deltaTone} sub={metrics.launch.sub} onClick={() => selectKpi('launch')}/>
-        </div>
-      )}
+        {/* KPI strip — all four when collapsed; selected KPI + its big filter
+            boxes when expanded (the other KPIs disappear). */}
+        {!view && (
+          <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
+            <MetricCard tone="peach" no="Ⅰ" eyebrow="Total sites" value={metrics.total.value}    rule="var(--zm-accent)" delta={metrics.total.delta}    sub={metrics.total.sub}    onClick={() => selectKpi('sites')}/>
+            <MetricCard tone="blue" no="Ⅱ" eyebrow="Archive / Rejected" value={metrics.archived.value} rule="var(--zm-fg-3)" delta={metrics.archived.delta} deltaTone="neutral" sub={metrics.archived.sub} onClick={() => selectKpi('archived')}/>
+            <MetricCard tone="mint" no="Ⅲ" eyebrow="Payments"    value={metrics.payments.value} rule="var(--zm-info)"   delta={metrics.payments.delta} deltaTone="neutral" sub={metrics.payments.sub} onClick={() => selectKpi('payments')}/>
+            <MetricCard tone="slate" no="Ⅳ" eyebrow="Launch"      value={metrics.launch.value}   rule="var(--zm-copper)" delta={metrics.launch.delta}   deltaTone={metrics.launch.deltaTone} sub={metrics.launch.sub} onClick={() => selectKpi('launch')}/>
+          </div>
+        )}
+      </div>
 
       {view === 'sites' && (
-        <>
-          <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
-            <MetricCard tone="peach" no="Ⅰ" eyebrow="Total sites" value={metrics.total.value} rule="var(--zm-accent)" delta={metrics.total.delta} sub={metrics.total.sub} selected onClick={() => selectKpi('sites')}/>
-            <BigFilterBox label="Pipeline"         value={visibleDrafts.length}    color={STAGES.draft.color}     active={stage === 'draft'}     onClick={() => { setSubFilter('all'); setStage(s => s === 'draft' ? 'all' : 'draft'); }}/>
-            <BigFilterBox label="Shortlist"        value={visibleShortlist.length} color={STAGES.shortlist.color} active={stage === 'shortlist'} onClick={() => { setSubFilter('all'); setStage(s => s === 'shortlist' ? 'all' : 'shortlist'); }}/>
-            <BigFilterBox label="Sites in process" value={activeStaging.length}    color={STAGES.staging.color}   active={stage === 'staging'}   onClick={() => { setSubFilter('all'); setStage(s => s === 'staging' ? 'all' : 'staging'); }}/>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-            <SearchBox value={search} onChange={setSearch}/>
-            {stage === 'shortlist' && (
-              <>
-                <FilterChip label="Awaiting details" count={visibleShortlist.filter(s => !s.inReview).length} color={STAGES.staging.color}  active={subFilter === 'awaiting'} onClick={() => setSubFilter(s => s === 'awaiting' ? 'all' : 'awaiting')}/>
-                <FilterChip label="Pending approval" count={visibleShortlist.filter(s => s.inReview).length}  color={STAGES.inReview.color} active={subFilter === 'pending'}  onClick={() => setSubFilter(s => s === 'pending' ? 'all' : 'pending')}/>
-              </>
-            )}
-            {stage === 'staging' && (
-              <>
-                <FilterChip label="Awaiting LOI"      count={activeStaging.filter(s => !s.loiUploaded).length} color={STAGES.staging.color}  active={subFilter === 'awaiting_loi'}      onClick={() => setSubFilter(s => s === 'awaiting_loi' ? 'all' : 'awaiting_loi')}/>
-                <FilterChip label="Awaiting approval" count={activeStaging.filter(s => s.loiUploaded).length}  color={STAGES.uploaded.color} active={subFilter === 'awaiting_approval'} onClick={() => setSubFilter(s => s === 'awaiting_approval' ? 'all' : 'awaiting_approval')}/>
-              </>
-            )}
-            <span style={{ flex: 1 }}/>
-            <DateFilterButton value={advanced} onChange={setAdvanced}/>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <div style={{ flexShrink: 0 }}>
+            <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
+              <MetricCard tone="peach" no="Ⅰ" eyebrow="Total sites" value={metrics.total.value} rule="var(--zm-accent)" delta={metrics.total.delta} sub={metrics.total.sub} selected onClick={() => selectKpi('sites')}/>
+              <BigFilterBox label="Pipeline"         value={visibleDrafts.length}    color={STAGES.draft.color}     active={stage === 'draft'}     onClick={() => { setSubFilter('all'); setStage(s => s === 'draft' ? 'all' : 'draft'); }}/>
+              <BigFilterBox label="Shortlist"        value={visibleShortlist.length} color={STAGES.shortlist.color} active={stage === 'shortlist'} onClick={() => { setSubFilter('all'); setStage(s => s === 'shortlist' ? 'all' : 'shortlist'); }}/>
+              <BigFilterBox label="Sites in process" value={activeStaging.length}    color={STAGES.staging.color}   active={stage === 'staging'}   onClick={() => { setSubFilter('all'); setStage(s => s === 'staging' ? 'all' : 'staging'); }}/>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+              <SearchBox value={search} onChange={setSearch}/>
+              {stage === 'shortlist' && (
+                <>
+                  <FilterChip label="Awaiting details" count={visibleShortlist.filter(s => !s.inReview).length} color={STAGES.staging.color}  active={subFilter === 'awaiting'} onClick={() => setSubFilter(s => s === 'awaiting' ? 'all' : 'awaiting')}/>
+                  <FilterChip label="Pending approval" count={visibleShortlist.filter(s => s.inReview).length}  color={STAGES.inReview.color} active={subFilter === 'pending'}  onClick={() => setSubFilter(s => s === 'pending' ? 'all' : 'pending')}/>
+                </>
+              )}
+              {stage === 'staging' && (
+                <>
+                  <FilterChip label="Awaiting LOI"      count={activeStaging.filter(s => !s.loiUploaded).length} color={STAGES.staging.color}  active={subFilter === 'awaiting_loi'}      onClick={() => setSubFilter(s => s === 'awaiting_loi' ? 'all' : 'awaiting_loi')}/>
+                  <FilterChip label="Awaiting approval" count={activeStaging.filter(s => s.loiUploaded).length}  color={STAGES.uploaded.color} active={subFilter === 'awaiting_approval'} onClick={() => setSubFilter(s => s === 'awaiting_approval' ? 'all' : 'awaiting_approval')}/>
+                </>
+              )}
+              <span style={{ flex: 1 }}/>
+              <DateFilterButton value={advanced} onChange={setAdvanced}/>
+            </div>
           </div>
           <MotionTable rows={filteredMotion} limit={Infinity} onOpen={openRowInTab}/>
-        </>
+        </div>
       )}
 
       {view === 'archived' && (
-        <>
-          <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
-            <MetricCard tone="blue" no="Ⅱ" eyebrow="Archive / Rejected" value={metrics.archived.value} rule="var(--zm-fg-3)" delta={metrics.archived.delta} deltaTone="neutral" sub={metrics.archived.sub} selected onClick={() => selectKpi('archived')}/>
-            <BigFilterBox label="Archived" value={archivedOnly} color={STAGES.archived.color} active={archStatus === 'archived'} onClick={() => setArchStatus(s => s === 'archived' ? 'all' : 'archived')}/>
-            <BigFilterBox label="Rejected" value={rejectedOnly} color={STAGES.rejected.color} active={archStatus === 'rejected'} onClick={() => setArchStatus(s => s === 'rejected' ? 'all' : 'rejected')}/>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-            <SearchBox value={archSearch} onChange={setArchSearch}/>
-            <span style={{ flex: 1 }}/>
-            <DateFilterButton value={archAdvanced} onChange={setArchAdvanced} dateLabel="archived date"/>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <div style={{ flexShrink: 0 }}>
+            <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
+              <MetricCard tone="blue" no="Ⅱ" eyebrow="Archive / Rejected" value={metrics.archived.value} rule="var(--zm-fg-3)" delta={metrics.archived.delta} deltaTone="neutral" sub={metrics.archived.sub} selected onClick={() => selectKpi('archived')}/>
+              <BigFilterBox label="Archived" value={archivedOnly} color={STAGES.archived.color} active={archStatus === 'archived'} onClick={() => setArchStatus(s => s === 'archived' ? 'all' : 'archived')}/>
+              <BigFilterBox label="Rejected" value={rejectedOnly} color={STAGES.rejected.color} active={archStatus === 'rejected'} onClick={() => setArchStatus(s => s === 'rejected' ? 'all' : 'rejected')}/>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+              <SearchBox value={archSearch} onChange={setArchSearch}/>
+              <span style={{ flex: 1 }}/>
+              <DateFilterButton value={archAdvanced} onChange={setArchAdvanced} dateLabel="archived date"/>
+            </div>
           </div>
           <ArchiveTable rows={filteredArchive} onOpen={(a) => onOpenSite?.(a)}/>
-        </>
+        </div>
       )}
 
       {!view && (
-        <>
-          <div style={{ marginBottom: 14 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <div style={{ flexShrink: 0, marginBottom: 14 }}>
             <PipelineFilter
               stage={stage} onStage={setStage}
               counts={{ all: allMotion.length, draft: visibleDrafts.length, shortlist: visibleShortlist.length, staging: visibleStaging.length }}
@@ -597,8 +607,8 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
             />
           </div>
           <MotionTable rows={filteredMotion} onOpen={openRowInTab}/>
-        </>
+        </div>
       )}
-    </>
+    </div>
   );
 }
