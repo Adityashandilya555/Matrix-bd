@@ -143,6 +143,47 @@ def _int_or_none(value) -> int | None:
     return int(value) if value is not None else None
 
 
+def _extract_details(details: models.SiteDetail | None, rent: float | None) -> dict:
+    if not details:
+        return {}
+    cam = _float_or_none(details.cam_charges)
+    total_op_cost = (rent + cam) * 1.18 if rent is not None and cam is not None else None
+    return {
+        "score": _float_or_none(details.score),
+        "est_sales": _float_or_none(details.estimated_monthly_sales),
+        "nearest_starbucks": _float_or_none(details.nearest_starbucks_m),
+        "nearest_twc": _float_or_none(details.nearest_twc_m),
+        "carpet": _float_or_none(details.carpet_area_sqft),
+        "cam": cam,
+        "rent": rent,
+        "total_op_cost": total_op_cost,
+        "escalation": _float_or_none(details.escalation_pct),
+        "revshare": _float_or_none(details.rev_share_pct),
+        "rent_free_days": _int_or_none(details.rent_free_days),
+        "cadex": _float_or_none(details.capex),
+        "deposit": _float_or_none(details.security_deposit),
+        "brokerage": _float_or_none(details.brokerage),
+        "lockin": _int_or_none(details.lock_in_months),
+        "tenure": _int_or_none(details.tenure_months),
+        "details_saved_at": details.updated_at,
+    }
+
+def _extract_project(project: models.ProjectReview | None) -> dict:
+    if not project:
+        return {}
+    return {
+        "project_status": project.project_status,
+        "project_current_stage": project.current_stage,
+    }
+
+def _extract_nso(nso: models.NsoReview | None) -> dict:
+    if not nso:
+        return {}
+    return {
+        "nso_status": nso.nso_status,
+        "nso_current_stage": nso.current_stage,
+    }
+
 def site_to_response(
     site: models.Site,
     created_by_name: str | None = None,
@@ -156,79 +197,60 @@ def site_to_response(
 ) -> SiteResponse:
     """Map an ORM Site into the API SiteResponse Pydantic model."""
     rent = _float_or_none(site.expected_rent)
-    cam = _float_or_none(details.cam_charges) if details else None
-    total_op_cost = (rent + cam) * 1.18 if rent is not None and cam is not None else None
-    return SiteResponse(
-        id=str(site.id),
-        code=site.code or "",
-        name=site.name,
-        city=site.city,
-        tenant_id=str(site.tenant_id),
-        status=SiteStatus(site.status),
-        created_by=created_by_name or "",
-        submitted_by=str(site.submitted_by),
-        assigned_to=str(site.assigned_to) if site.assigned_to else None,
-        assigned_to_name=assigned_to_name,
-        supervisor_id=str(site.supervisor_id) if site.supervisor_id else None,
-        visit_date=site.visit_date,
-        days=_days_since(site.visit_date),
-        stage=_legacy_stage_for(site.status),
-        details_completion=None,
-        model=site.model,
-        spoc_name=site.spoc_name,
-        google_pin=site.google_maps_pin,
-        google_maps_url=site.google_maps_url,
-        expected_rent=rent,
-        rent_type=site.rent_type,
-        expected_escalation_pct=_float_or_none(site.expected_escalation_pct),
-        expected_escalation_years=site.expected_escalation_years,
-        expected_revshare_pct=_float_or_none(site.expected_revshare_pct),
-        score=_float_or_none(details.score) if details else None,
-        est_sales=_float_or_none(details.estimated_monthly_sales) if details else None,
-        nearest_starbucks=_float_or_none(details.nearest_starbucks_m) if details else None,
-        nearest_twc=_float_or_none(details.nearest_twc_m) if details else None,
-        carpet=_float_or_none(details.carpet_area_sqft) if details else None,
-        cam=cam,
-        rent=rent,
-        total_op_cost=total_op_cost,
-        escalation=_float_or_none(details.escalation_pct) if details else None,
-        revshare=_float_or_none(details.rev_share_pct) if details else None,
-        rent_free_days=_int_or_none(details.rent_free_days) if details else None,
-        cadex=_float_or_none(details.capex) if details else None,
-        deposit=_float_or_none(details.security_deposit) if details else None,
-        brokerage=_float_or_none(details.brokerage) if details else None,
-        lockin=_int_or_none(details.lock_in_months) if details else None,
-        tenure=_int_or_none(details.tenure_months) if details else None,
-        details_saved_at=details.updated_at if details else None,
-        legal_dd_status=site.legal_dd_status,
-        agreement_status=site.agreement_status,
-        licensing_status=site.licensing_status,
-        design_status=site.design_status,
-        project_status=project.project_status if project else None,
-        project_current_stage=project.current_stage if project else None,
-        # The 11-field budget moved to Project Excellence (shared site_budgets);
-        # project_reviews no longer carries budget_status.
-        project_budget_status=None,
-        nso_status=nso.nso_status if nso else None,
-        nso_current_stage=nso.current_stage if nso else None,
-        launch_status=launch.status if launch else None,
-        is_launched=bool(getattr(site, "is_launched", False)),
-        launched_at=getattr(site, "launched_at", None),
-        finance_status=site.finance_status or "pending",
-        kyc_verified=bool(site.kyc_verified),
-        ca_code=site.ca_code,
-        finance_amount=_float_or_none(site.finance_amount),
-        # LOI SLA tracking (#115)
-        expected_loi_days=approval.expected_loi_days if approval else None,
-        approved_at=site.approved_at,
-        approved_by=approved_by_name,
-        loi_uploaded_at=site.loi_uploaded_at,
-        # Reject / archive justification (#126)
-        rejection_reason=site.rejection_reason,
-        archive_note=site.archive_note,
-        archived_at=site.archived_at,
-        updated_at=site.updated_at,
-    )
+
+    data = {
+        "id": str(site.id),
+        "code": site.code or "",
+        "name": site.name,
+        "city": site.city,
+        "tenant_id": str(site.tenant_id),
+        "status": SiteStatus(site.status),
+        "created_by": created_by_name or "",
+        "submitted_by": str(site.submitted_by),
+        "assigned_to": str(site.assigned_to) if site.assigned_to else None,
+        "assigned_to_name": assigned_to_name,
+        "supervisor_id": str(site.supervisor_id) if site.supervisor_id else None,
+        "visit_date": site.visit_date,
+        "days": _days_since(site.visit_date),
+        "stage": _legacy_stage_for(site.status),
+        "details_completion": None,
+        "model": site.model,
+        "spoc_name": site.spoc_name,
+        "google_pin": site.google_maps_pin,
+        "google_maps_url": site.google_maps_url,
+        "expected_rent": rent,
+        "rent_type": site.rent_type,
+        "expected_escalation_pct": _float_or_none(site.expected_escalation_pct),
+        "expected_escalation_years": site.expected_escalation_years,
+        "expected_revshare_pct": _float_or_none(site.expected_revshare_pct),
+        "area_sqft": site.area_sqft if site.area_sqft is not None else 0,
+        "staggered_escalation": site.staggered_escalation,
+        "legal_dd_status": site.legal_dd_status,
+        "agreement_status": site.agreement_status,
+        "licensing_status": site.licensing_status,
+        "design_status": site.design_status,
+        "is_launched": bool(getattr(site, "is_launched", False)),
+        "launched_at": getattr(site, "launched_at", None),
+        "finance_status": site.finance_status or "pending",
+        "kyc_verified": bool(site.kyc_verified),
+        "ca_code": site.ca_code,
+        "finance_amount": _float_or_none(site.finance_amount),
+        "approved_at": site.approved_at,
+        "approved_by": approved_by_name,
+        "loi_uploaded_at": site.loi_uploaded_at,
+        "rejection_reason": site.rejection_reason,
+        "archive_note": site.archive_note,
+        "archived_at": site.archived_at,
+        "updated_at": site.updated_at,
+        "launch_status": launch.status if launch else None,
+        "expected_loi_days": approval.expected_loi_days if approval else None,
+    }
+
+    data.update(_extract_details(details, rent))
+    data.update(_extract_project(project))
+    data.update(_extract_nso(nso))
+
+    return SiteResponse(**data)
 
 
 def _days_since(d: Optional[date]) -> Optional[int]:
