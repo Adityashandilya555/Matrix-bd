@@ -36,6 +36,52 @@ from app.core.config import settings
 # and blast radius (lost laptops eventually lock themselves out).
 TOKEN_TTL_SECONDS = 60 * 60 * 24  # 24 hours
 
+# Platform-admin portal tokens are intentionally short-lived (#312).
+# Previously the admin password itself was echoed back as a static bearer
+# token — capturing it once gave permanent admin access with no expiry or
+# rotation. Now we mint a proper JWT with a 30-minute window.
+ADMIN_TOKEN_TTL_SECONDS = 60 * 30  # 30 minutes
+
+
+def issue_admin_token(*, email: str) -> str:
+    """Mint a short-lived HS256 JWT for the platform-admin portal.
+
+    The token carries ``aud: "platform-admin"`` so it cannot be confused with
+    a regular user token (which has ``aud: "authenticated"``).  Verification
+    uses :func:`decode_admin_token`.
+    """
+    now = dt.datetime.now(tz=dt.timezone.utc)
+    claims = {
+        "sub":   "platform-admin",
+        "aud":   "platform-admin",
+        "iat":   int(now.timestamp()),
+        "exp":   int((now + dt.timedelta(seconds=ADMIN_TOKEN_TTL_SECONDS)).timestamp()),
+        "email": email,
+    }
+    # Re-use the Supabase JWT secret — avoids a new env var. The distinct
+    # audience ("platform-admin" vs "authenticated") prevents cross-use.
+    return jwt.encode(claims, settings.supabase_jwt_secret, algorithm="HS256")
+
+
+def decode_admin_token(token: str) -> dict[str, Any]:
+    """Verify a platform-admin JWT issued by :func:`issue_admin_token`.
+
+    Returns ``{"email": ...}`` on success; raises 401 on any failure.
+    """
+    try:
+        claims = jwt.decode(
+            token,
+            settings.supabase_jwt_secret,
+            algorithms=["HS256"],
+            audience="platform-admin",
+            options={"require": ["exp", "sub"]},
+        )
+    except jwt.ExpiredSignatureError:
+        raise AuthError("Admin session expired — please log in again.")
+    except jwt.PyJWTError as exc:
+        raise AuthError(f"Invalid admin token: {exc}")
+    return {"email": claims.get("email", "")}
+
 
 def issue_token(
     *,
