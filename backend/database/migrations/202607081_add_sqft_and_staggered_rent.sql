@@ -27,43 +27,21 @@ ALTER TABLE public.sites
 ALTER TABLE public.sites
     ADD COLUMN IF NOT EXISTS staggered_escalation jsonb;
 
-CREATE OR REPLACE FUNCTION public.is_valid_staggered_escalation(arr jsonb)
-RETURNS boolean
-LANGUAGE plpgsql IMMUTABLE AS $$
-DECLARE
-    elem jsonb;
-    y int;
-    p float;
-BEGIN
-    IF arr IS NULL THEN
-        RETURN true;
-    END IF;
-    IF jsonb_typeof(arr) != 'array' THEN
-        RETURN false;
-    END IF;
-    IF jsonb_array_length(arr) > 5 THEN
-        RETURN false;
-    END IF;
-    FOR elem IN SELECT * FROM jsonb_array_elements(arr)
-    LOOP
-        BEGIN
-            y := (elem->>'year')::int;
-            p := (elem->>'percent')::float;
-            IF y <= 0 OR p < 0 OR p > 100 THEN
-                RETURN false;
-            END IF;
-        EXCEPTION WHEN OTHERS THEN
-            RETURN false;
-        END;
-    END LOOP;
-    RETURN true;
-END;
-$$;
-
 ALTER TABLE public.sites
     DROP CONSTRAINT IF EXISTS chk_staggered_escalation;
 ALTER TABLE public.sites
-    ADD CONSTRAINT chk_staggered_escalation CHECK (public.is_valid_staggered_escalation(staggered_escalation));
+    ADD CONSTRAINT chk_staggered_escalation CHECK (
+        (staggered_escalation IS NULL) OR (
+            jsonb_typeof(staggered_escalation) = 'array'
+            AND jsonb_array_length(staggered_escalation) <= 5
+            AND NOT EXISTS (
+                SELECT 1 FROM jsonb_array_elements(staggered_escalation) AS e
+                WHERE (e->>'year')::int <= 0
+                   OR (e->>'percent')::float < 0
+                   OR (e->>'percent')::float > 100
+            )
+        )
+    );
 
 -- 3. Widen rent_type CHECK to include 'staggered'
 ALTER TABLE public.sites
