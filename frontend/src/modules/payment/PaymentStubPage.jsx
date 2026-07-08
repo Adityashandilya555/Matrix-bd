@@ -349,9 +349,9 @@ export default function PaymentStubPage() {
   const [q, setQ] = React.useState('');
   const [state, setState] = React.useState({ status: 'loading', rows: [], error: null });
 
-  const load = React.useCallback(() => {
+  const load = React.useCallback((silent = false) => {
     let cancelled = false;
-    setState((s) => ({ ...s, status: s.rows.length ? 'ready' : 'loading', error: null }));
+    if (!silent) setState((s) => ({ ...s, status: s.rows.length ? 'ready' : 'loading', error: null }));
     // One request: the backend accepts a comma-separated status list and the
     // list response carries the finance mirror columns.
     listSites({ status: PAYMENT_STATUSES })
@@ -378,11 +378,12 @@ export default function PaymentStubPage() {
       })
       .catch((err) => {
         if (cancelled) return;
-        setState({
-          status: 'error',
-          rows: [],
+        if (silent && err?.code === 'TIMEOUT') return;
+        setState((s) => ({
+          status: (silent && s.rows.length) ? 'ready' : 'error',
+          rows: (silent && s.rows.length) ? s.rows : [],
           error: err?.detail || err?.message || 'Failed to load payment readiness',
-        });
+        }));
       });
     return () => { cancelled = true; };
   }, [isExec, role, user]);

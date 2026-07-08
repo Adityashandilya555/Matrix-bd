@@ -11,9 +11,9 @@ export default function DdFailedPage() {
   const navigate = useNavigate();
   const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
 
-  const load = React.useCallback(() => {
+  const load = React.useCallback((silent = false) => {
     let cancelled = false;
-    setState({ status: 'loading', items: [], total: 0, error: null });
+    if (!silent) setState({ status: 'loading', items: [], total: 0, error: null });
     getDdFailedQueue()
       .then((data) => {
         if (cancelled) return;
@@ -21,7 +21,13 @@ export default function DdFailedPage() {
       })
       .catch((err) => {
         if (cancelled) return;
-        setState({ status: 'error', items: [], total: 0, error: err?.detail || err?.message || 'Failed to load' });
+        if (silent && err?.code === 'TIMEOUT') return;
+        setState((s) => ({
+          status: (silent && s.items.length) ? 'ready' : 'error',
+          items: (silent && s.items.length) ? s.items : [],
+          total: (silent && s.items.length) ? s.total : 0,
+          error: err?.detail || err?.message || 'Failed to load',
+        }));
       });
     return () => { cancelled = true; };
   }, []);

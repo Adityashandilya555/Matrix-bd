@@ -168,20 +168,19 @@ export default function NsoOverviewPage() {
   const [search, setSearch] = React.useState('');
   const [activeFilter, setActiveFilter] = React.useState('all');
 
-  const load = React.useCallback(() => {
+  const load = React.useCallback((silent = false) => {
     let cancelled = false;
-    // Keep loaded KPIs/list during background refreshes; failed refreshes
-    // keep stale data + a banner instead of zeroing the cards.
-    setState((prev) => ({ ...prev, status: prev.items.length ? prev.status : 'loading', error: null }));
+    if (!silent) setState((prev) => ({ ...prev, status: prev.items.length ? prev.status : 'loading', error: null }));
     getNsoQueue()
       .then((data) => {
         if (!cancelled) setState({ status: 'ready', items: data.items, total: data.total, error: null });
       })
       .catch((err) => {
         if (!cancelled) {
+          if (silent && err?.code === 'TIMEOUT') return;
           setState((prev) => ({
             ...prev,
-            status: prev.items.length ? 'ready' : 'error',
+            status: (silent && prev.items.length) ? 'ready' : (prev.items.length ? 'ready' : 'error'),
             error: err?.detail || err?.message || 'Failed to load NSO queue',
           }));
         }
