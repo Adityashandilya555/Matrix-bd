@@ -82,11 +82,11 @@ function StatusPill({ value, tone = 'var(--zm-accent)' }) {
 
 // QueueTable — Code | Site | City | Project status | Budget. Row click
 // deep-links to the owning tab (Pipeline or Sites) focused on that site.
-function QueueTable({ rows, onOpen, limit }) {
+function QueueTable({ rows, onOpen, limit, style }) {
   const displayRows = limit ? rows.slice(0, limit) : rows;
   const COLS = '120px minmax(220px, 1fr) 130px 170px 170px';
   return (
-    <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
+    <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', ...style }}>
       <div style={{
         display: 'grid',
         gridTemplateColumns: COLS,
@@ -107,11 +107,12 @@ function QueueTable({ rows, onOpen, limit }) {
         <span>Project status</span>
         <span>Budget</span>
       </div>
-      {displayRows.map((row) => (
-        <div
-          key={row.siteId}
-          className="zm-row"
-          role="button"
+      <div style={{ overflowY: 'auto' }}>
+        {displayRows.map((row) => (
+          <div
+            key={row.siteId}
+            className="zm-row"
+            role="button"
           tabIndex={0}
           onClick={() => onOpen(row)}
           onKeyDown={keyActivate(() => onOpen(row))}
@@ -149,6 +150,7 @@ function QueueTable({ rows, onOpen, limit }) {
           No sites match the current filter.
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -264,8 +266,9 @@ export default function ProjectOverviewPage() {
     : `${state.total} site${state.total === 1 ? '' : 's'} in the project queue`;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <PageHeader
         file="No. 09" eyebrow="Project module" title="Overview"
         lede={lede}
         right={<HeaderTag icon="route" label="DESIGN → NSO"/>}
@@ -296,7 +299,6 @@ export default function ProjectOverviewPage() {
             onSearch={setSearch}
             totalCount={items.length}
           />
-          <QueueTable rows={filteredRows} limit={12} onOpen={openRow}/>
         </>
       )}
 
@@ -325,8 +327,12 @@ export default function ProjectOverviewPage() {
               />
             ))}
           </div>
-          <QueueTable rows={filteredRows} onOpen={openRow}/>
         </>
+      )}
+      </div>
+
+      {state.status === 'ready' && (
+        <QueueTable rows={filteredRows} limit={!view ? 12 : undefined} onOpen={openRow} style={{ flex: 1, minHeight: 0 }} />
       )}
     </div>
   );

@@ -173,25 +173,31 @@ export default function DraftsPage({ onOpenSite: onOpenSiteProp, showToast: show
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader
-        file="№ 02" eyebrow="Workflow · Pipeline"
-        title={<>Pipeline</>}
-        lede={`${visibleDrafts.length} draft${visibleDrafts.length === 1 ? '' : 's'}`}
-        right={overdueCount > 0 ? <HeaderTag icon="alert" label={`${overdueCount} PAST SLA`} tone="accent"/> : <HeaderTag icon="check" label="SLA CLEAR"/>}
-      />
-      <DraftsFilterBar filters={filters} onFilters={setFilters} drafts={visibleDrafts}/>
-      <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1fr 0.8fr 0.7fr ' + (can(role, 'shortlist') ? '230px' : '90px'), gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0 }}>
+        <PageHeader
+          file="№ 02" eyebrow="Workflow · Pipeline"
+          title={<>Pipeline</>}
+          lede={`${visibleDrafts.length} draft${visibleDrafts.length === 1 ? '' : 's'}`}
+          right={overdueCount > 0 ? <HeaderTag icon="alert" label={`${overdueCount} PAST SLA`} tone="accent"/> : <HeaderTag icon="check" label="SLA CLEAR"/>}
+        />
+        <div style={{ marginTop: 18 }}>
+          <DraftsFilterBar filters={filters} onFilters={setFilters} drafts={visibleDrafts}/>
+        </div>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
+        <div style={{ flexShrink: 0, display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1fr 0.8fr 0.7fr ' + (can(role, 'shortlist') ? '230px' : '90px'), gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
           <span>Code</span><span>Pipeline name</span><span>Created by</span><span>City</span><span>Visit date</span><span>Days</span><span style={{ textAlign: 'right' }}>{can(role, 'shortlist') ? 'Decision' : 'Action'}</span>
         </div>
-        {filtered.map(d => {
-          const canDecideHere = can(role, 'shortlist') || role === 'supervisor' || role === 'business_admin';
-          return (
-            <DraftRow key={d.id} draft={d} role={role} canDecide={canDecideHere} onApprove={onApprove} onReject={onReject} onArchive={onArchive} onOpen={onOpenSite || (() => {})}/>
-          );
-        })}
-        {filtered.length === 0 && (<div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>No drafts match these filters.</div>)}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {filtered.map(d => {
+            const canDecideHere = can(role, 'shortlist') || role === 'supervisor' || role === 'business_admin';
+            return (
+              <DraftRow key={d.id} draft={d} role={role} canDecide={canDecideHere} onApprove={onApprove} onReject={onReject} onArchive={onArchive} onOpen={onOpenSite || (() => {})}/>
+            );
+          })}
+          {filtered.length === 0 && (<div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>No drafts match these filters.</div>)}
+        </div>
       </div>
       {rejecting && <RejectReasonDialog draft={rejecting} onCancel={() => setRejecting(null)} onSubmit={onRejectConfirm}/>}
       {archiving && <ArchiveNoteDialog draft={archiving} onCancel={() => setArchiving(null)} onConfirm={onArchiveConfirm}/>}

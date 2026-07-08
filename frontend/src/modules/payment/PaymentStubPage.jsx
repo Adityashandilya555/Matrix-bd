@@ -417,36 +417,39 @@ export default function PaymentStubPage() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader
-        file="No. 09"
-        eyebrow="BD module"
-        title="Payment"
-        right={<HeaderTag icon="paymentCard" label={`${counts.pending + counts.awaiting} ACTIVE`}/>}
-      />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <PageHeader
+          file="No. 09"
+          eyebrow="BD module"
+          title="Payment"
+          right={<HeaderTag icon="paymentCard" label={`${counts.pending + counts.awaiting} ACTIVE`}/>}
+        />
 
-      <div>
-        <button
-          type="button"
-          onClick={() => navigate(ROUTES.OVERVIEW)}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px', borderRadius: 999, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-        >
-          <Icon name="arrow" size={12} style={{ transform: 'rotate(180deg)' }}/> All metrics
-        </button>
-      </div>
+        <div>
+          <button
+            type="button"
+            onClick={() => navigate(ROUTES.OVERVIEW)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px', borderRadius: 999, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+          >
+            <Icon name="arrow" size={12} style={{ transform: 'rotate(180deg)' }}/> All metrics
+          </button>
+        </div>
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(4, minmax(130px, 1fr))',
-        gap: 12,
-      }}>
-        <Metric icon="layers"       label="All"               value={rows.length}     tone="muted"   active={filter === 'all'}      onClick={() => setFilter('all')}/>
-        <Metric icon="paymentCard"  label="Pending"           value={counts.pending}  tone="accent"  active={filter === 'pending'}  onClick={() => setFilter('pending')}/>
-        <Metric icon="clock"        label="Awaiting approval" value={counts.awaiting} tone="warning" active={filter === 'awaiting'} onClick={() => setFilter('awaiting')}/>
-        <Metric icon="check"        label="Approved"          value={counts.approved} tone="success" active={filter === 'approved'} onClick={() => setFilter('approved')}/>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, minmax(130px, 1fr))',
+          gap: 12,
+        }}>
+          <Metric icon="layers"       label="All"               value={rows.length}     tone="muted"   active={filter === 'all'}      onClick={() => setFilter('all')}/>
+          <Metric icon="paymentCard"  label="Pending"           value={counts.pending}  tone="accent"  active={filter === 'pending'}  onClick={() => setFilter('pending')}/>
+          <Metric icon="clock"        label="Awaiting approval" value={counts.awaiting} tone="warning" active={filter === 'awaiting'} onClick={() => setFilter('awaiting')}/>
+          <Metric icon="check"        label="Approved"          value={counts.approved} tone="success" active={filter === 'approved'} onClick={() => setFilter('approved')}/>
+        </div>
       </div>
 
       <section style={{
+        flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
         background: 'var(--zm-surface)',
         border: '1px solid var(--zm-line)',
         borderRadius: 14,
@@ -454,6 +457,7 @@ export default function PaymentStubPage() {
         overflow: 'hidden',
       }}>
         <div style={{
+          flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -518,41 +522,43 @@ export default function PaymentStubPage() {
           </div>
         </div>
 
-        {state.status === 'loading' && (
-          <div style={{ padding: 36, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
-            Loading payment readiness...
-          </div>
-        )}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {state.status === 'loading' && (
+            <div style={{ padding: 36, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
+              Loading payment readiness...
+            </div>
+          )}
 
-        {state.status === 'error' && (
-          <div style={{
-            margin: 18,
-            padding: 14,
-            borderRadius: 10,
-            border: '1px solid var(--zm-danger, #9B2A2A)',
-            background: 'var(--zm-danger-soft, #F0D6D2)',
-            color: 'var(--zm-danger, #9B2A2A)',
-            fontFamily: 'var(--zm-font-body)',
-            fontSize: 13,
-          }}>
-            {state.error}
-          </div>
-        )}
+          {state.status === 'error' && (
+            <div style={{
+              margin: 18,
+              padding: 14,
+              borderRadius: 10,
+              border: '1px solid var(--zm-danger, #9B2A2A)',
+              background: 'var(--zm-danger-soft, #F0D6D2)',
+              color: 'var(--zm-danger, #9B2A2A)',
+              fontFamily: 'var(--zm-font-body)',
+              fontSize: 13,
+            }}>
+              {state.error}
+            </div>
+          )}
 
-        {state.status === 'ready' && visible.length === 0 && (
-          <div style={{ padding: 42, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
-            <Icon name="paymentCard" size={24}/>
-            <p style={{ margin: '10px 0 0', fontFamily: 'var(--zm-font-body)' }}>
-              {rows.length === 0
-                ? 'No sites in Payments yet. Push a site from Sites in process to start Finance / CA.'
-                : 'No sites match the current filter / search.'}
-            </p>
-          </div>
-        )}
+          {state.status === 'ready' && visible.length === 0 && (
+            <div style={{ padding: 42, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
+              <Icon name="paymentCard" size={24}/>
+              <p style={{ margin: '10px 0 0', fontFamily: 'var(--zm-font-body)' }}>
+                {rows.length === 0
+                  ? 'No sites in Payments yet. Push a site from Sites in process to start Finance / CA.'
+                  : 'No sites match the current filter / search.'}
+              </p>
+            </div>
+          )}
 
-        {state.status === 'ready' && visible.map((site) => (
-          <PaymentRow key={site.siteId} site={site} onOpen={openPayment}/>
-        ))}
+          {state.status === 'ready' && visible.map((site) => (
+            <PaymentRow key={site.siteId} site={site} onOpen={openPayment}/>
+          ))}
+        </div>
       </section>
     </div>
   );

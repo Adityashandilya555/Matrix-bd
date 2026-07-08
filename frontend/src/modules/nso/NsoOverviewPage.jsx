@@ -88,11 +88,12 @@ function StatusPill({ value, tone = 'var(--zm-accent)' }) {
 
 const COLS = '120px minmax(220px, 1fr) 130px 150px 160px';
 
-function QueueTable({ rows, onOpen, limit }) {
+function QueueTable({ rows, onOpen, limit, style }) {
   const displayRows = limit ? rows.slice(0, limit) : rows;
   return (
-    <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
+    <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', ...style }}>
       <div style={{
+        flexShrink: 0,
         display: 'grid',
         gridTemplateColumns: COLS,
         gap: 12,
@@ -112,50 +113,52 @@ function QueueTable({ rows, onOpen, limit }) {
         <span>CA code</span>
         <span>NSO stage</span>
       </div>
-      {displayRows.map((row) => (
-        <div
-          key={row.siteId}
-          className="zm-row"
-          role="button"
-          tabIndex={0}
-          onClick={() => onOpen(row)}
-          onKeyDown={keyActivate(() => onOpen(row))}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: COLS,
-            gap: 12,
-            padding: '14px 16px',
-            borderBottom: '1px solid var(--zm-line-faint)',
-            cursor: 'pointer',
-            alignItems: 'center',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zm-surface-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-        >
-          <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12, color: 'var(--zm-fg-2)' }}>
-            {row.siteCode}
-          </span>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 800, color: 'var(--zm-fg)' }}>
-            {row.siteName}
-            {row.nextAction && (
-              <span style={{ display: 'block', marginTop: 3, color: 'var(--zm-fg-3)', fontWeight: 600, fontSize: 12 }}>
-                {row.nextAction}
-              </span>
-            )}
-          </span>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-2)' }}>{row.city}</span>
-          <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, color: 'var(--zm-fg)' }}>{row.caCode || '—'}</span>
-          <StatusPill
-            value={STAGE_LABELS[stageOf(row)] || row.currentStage}
-            tone={stageOf(row) === 'complete' ? 'var(--zm-success)' : 'var(--zm-accent)'}
-          />
-        </div>
-      ))}
-      {rows.length === 0 && (
-        <div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
-          No NSO sites match the current filter.
-        </div>
-      )}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {displayRows.map((row) => (
+          <div
+            key={row.siteId}
+            className="zm-row"
+            role="button"
+            tabIndex={0}
+            onClick={() => onOpen(row)}
+            onKeyDown={keyActivate(() => onOpen(row))}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: COLS,
+              gap: 12,
+              padding: '14px 16px',
+              borderBottom: '1px solid var(--zm-line-faint)',
+              cursor: 'pointer',
+              alignItems: 'center',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zm-surface-hover)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12, color: 'var(--zm-fg-2)' }}>
+              {row.siteCode}
+            </span>
+            <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 800, color: 'var(--zm-fg)' }}>
+              {row.siteName}
+              {row.nextAction && (
+                <span style={{ display: 'block', marginTop: 3, color: 'var(--zm-fg-3)', fontWeight: 600, fontSize: 12 }}>
+                  {row.nextAction}
+                </span>
+              )}
+            </span>
+            <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-2)' }}>{row.city}</span>
+            <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, color: 'var(--zm-fg)' }}>{row.caCode || '—'}</span>
+            <StatusPill
+              value={STAGE_LABELS[stageOf(row)] || row.currentStage}
+              tone={stageOf(row) === 'complete' ? 'var(--zm-success)' : 'var(--zm-accent)'}
+            />
+          </div>
+        ))}
+        {rows.length === 0 && (
+          <div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
+            No NSO sites match the current filter.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -249,12 +252,14 @@ export default function NsoOverviewPage() {
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader
-        file="No. 10" eyebrow="NSO module" title="Overview"
-        lede={lede}
-        right={<HeaderTag icon="home" label="OPENING READINESS"/>}
-      />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0 }}>
+        <PageHeader
+          file="No. 10" eyebrow="NSO module" title="Overview"
+          lede={lede}
+          right={<HeaderTag icon="home" label="OPENING READINESS"/>}
+        />
+      </div>
 
       {state.status === 'loading' && (
         <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
@@ -284,43 +289,47 @@ export default function NsoOverviewPage() {
 
           {!view && (
             <>
-              <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
-                {KPI_DEFS.map((kpi) => renderCard(kpi))}
+              <div style={{ flexShrink: 0 }}>
+                <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
+                  {KPI_DEFS.map((kpi) => renderCard(kpi))}
+                </div>
+                <OverviewFilterBar
+                  filters={NSO_STATUS_FILTERS.map(f => ({
+                    ...f,
+                    count: kpiCount(KPI_DEFS.find(k => k.key === f.key))
+                  }))}
+                  active={activeFilter}
+                  onFilter={setActiveFilter}
+                  search={search}
+                  onSearch={setSearch}
+                  totalCount={total}
+                />
               </div>
-              <OverviewFilterBar
-                filters={NSO_STATUS_FILTERS.map(f => ({
-                  ...f,
-                  count: kpiCount(KPI_DEFS.find(k => k.key === f.key))
-                }))}
-                active={activeFilter}
-                onFilter={setActiveFilter}
-                search={search}
-                onSearch={setSearch}
-                totalCount={total}
-              />
-              <QueueTable rows={filteredRows} limit={12} onOpen={openRow}/>
+              <QueueTable rows={filteredRows} limit={12} onOpen={openRow} style={{ flex: 1, minHeight: 0 }}/>
             </>
           )}
 
           {view && selectedKpi && (
             <>
-              <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-                {renderCard(selectedKpi, true)}
+              <div style={{ flexShrink: 0 }}>
+                <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
+                  {renderCard(selectedKpi, true)}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
+                  <SearchBox value={search} onChange={setSearch} placeholder="Search code, site, city, CA code…"/>
+                  {STAGE_DEFS.map((s) => (
+                    <SubFilterPill
+                      key={s.key}
+                      label={s.label}
+                      count={stageCounts[s.key]}
+                      color={s.color}
+                      active={stageFilter === s.key}
+                      onClick={() => setStageFilter((f) => (f === s.key ? 'all' : s.key))}
+                    />
+                  ))}
+                </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <SearchBox value={search} onChange={setSearch} placeholder="Search code, site, city, CA code…"/>
-                {STAGE_DEFS.map((s) => (
-                  <SubFilterPill
-                    key={s.key}
-                    label={s.label}
-                    count={stageCounts[s.key]}
-                    color={s.color}
-                    active={stageFilter === s.key}
-                    onClick={() => setStageFilter((f) => (f === s.key ? 'all' : s.key))}
-                  />
-                ))}
-              </div>
-              <QueueTable rows={filteredRows} onOpen={openRow}/>
+              <QueueTable rows={filteredRows} onOpen={openRow} style={{ flex: 1, minHeight: 0 }}/>
             </>
           )}
         </>

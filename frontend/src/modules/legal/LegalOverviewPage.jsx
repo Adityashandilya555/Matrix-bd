@@ -60,60 +60,71 @@ function StatusPill({ value }) {
 
 // QueueTable — Code | Site | City | DD status (row styling mirrors the
 // LegalQueuePage listing; rows deep-link into the queue tab).
-function QueueTable({ rows, onOpen, limit }) {
+function QueueTable({ rows, onOpen, limit, style }) {
   const displayRows = limit ? rows.slice(0, limit) : rows;
   return (
-    <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
+    <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', ...style }}>
       <div style={{
+        flexShrink: 0,
         display: 'grid',
         gridTemplateColumns: '120px minmax(220px, 1fr) 140px 160px',
-        gap: 12, padding: '12px 16px',
-        background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)',
-        fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 10.5,
-        letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)',
+        gap: 12,
+        padding: '12px 16px',
+        background: 'var(--zm-surface-2)',
+        borderBottom: '1px solid var(--zm-line)',
+        fontFamily: 'var(--zm-font-body)',
+        fontWeight: 800,
+        fontSize: 10.5,
+        letterSpacing: '0.12em',
+        textTransform: 'uppercase',
+        color: 'var(--zm-fg-3)',
       }}>
         <span>Code</span>
         <span>Site</span>
         <span>City</span>
+        <span>Days in stage</span>
         <span>DD status</span>
       </div>
-      {displayRows.map((row) => (
-        <div
-          key={row.siteId}
-          className="zm-row"
-          role="button"
-          tabIndex={0}
-          onClick={() => onOpen(row)}
-          onKeyDown={keyActivate(() => onOpen(row))}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '120px minmax(220px, 1fr) 140px 160px',
-            gap: 12, padding: '14px 16px',
-            borderBottom: '1px solid var(--zm-line-faint)', cursor: 'pointer',
-            alignItems: 'center',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zm-surface-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-        >
-          <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12, color: 'var(--zm-fg-2)' }}>
-            {row.siteCode}
-          </span>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 700, color: 'var(--zm-fg)' }}>
-            {row.siteName}
-          </span>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>
-            {row.city}
-          </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-            <StatusPill value={row.legalDdStatus}/>
-          </span>
-        </div>
-      ))}
-      {rows.length === 0 && (
-        <div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
-          No sites match the current filter.
-        </div>
-      )}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {displayRows.map((row) => (
+          <div
+            key={row.siteId}
+            className="zm-row"
+            role="button"
+            tabIndex={0}
+            onClick={() => onOpen(row)}
+            onKeyDown={keyActivate(() => onOpen(row))}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '120px minmax(220px, 1fr) 140px 160px',
+              gap: 12,
+              padding: '14px 16px',
+              borderBottom: '1px solid var(--zm-line-faint)',
+              cursor: 'pointer',
+              alignItems: 'center',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zm-surface-hover)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12, color: 'var(--zm-fg-2)' }}>
+              {row.siteCode}
+            </span>
+            <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 800, color: 'var(--zm-fg)' }}>
+              {row.siteName}
+            </span>
+            <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-2)' }}>{row.city}</span>
+            <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, color: 'var(--zm-fg)' }}>{row.daysInStage ?? '—'}</span>
+            <div>
+              <StatusPill status={row.legalDdStatus} />
+            </div>
+          </div>
+        ))}
+        {rows.length === 0 && (
+          <div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
+            No Legal sites match the current filter.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -236,12 +247,14 @@ export default function LegalOverviewPage() {
     : `${totalInQueue} site${totalInQueue === 1 ? '' : 's'} in legal · ${crs.total} change request${crs.total === 1 ? '' : 's'} pending`;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader
-        file="No. 05" eyebrow="Legal module" title="Overview"
-        lede={lede}
-        right={<HeaderTag icon="legalShield" label="LEGAL_REVIEW"/>}
-      />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0 }}>
+        <PageHeader
+          file="No. 05" eyebrow="Legal module" title="Overview"
+          lede={lede}
+          right={<HeaderTag icon="legalShield" label="LEGAL_REVIEW"/>}
+        />
+      </div>
 
       {queue.error && (
         <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{queue.error}</div>
@@ -249,68 +262,72 @@ export default function LegalOverviewPage() {
 
       {queue.status === 'ready' && !view && (
         <>
-          <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
-            <MetricCard {...cardMeta.queue}/>
-            <MetricCard {...cardMeta.in_review}/>
-            <MetricCard {...cardMeta.positive}/>
-            <MetricCard
-              tone="slate"
-              no="Ⅳ" eyebrow="Change requests" rule="var(--zm-copper)"
-              value={crs.status === 'loading' ? '··' : pad(crs.total)}
-              delta={crs.status === 'error' ? 'Unavailable' : 'Awaiting decision'}
-              deltaTone="neutral"
-              sub="BD → Legal status changes"
-              onClick={() => navigate(ROUTES.LEGAL_CHANGE_REQUESTS)}
+          <div style={{ flexShrink: 0 }}>
+            <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
+              <MetricCard {...cardMeta.queue}/>
+              <MetricCard {...cardMeta.in_review}/>
+              <MetricCard {...cardMeta.positive}/>
+              <MetricCard
+                tone="slate"
+                no="Ⅳ" eyebrow="Change requests" rule="var(--zm-copper)"
+                value={crs.status === 'loading' ? '··' : pad(crs.total)}
+                delta={crs.status === 'error' ? 'Unavailable' : 'Awaiting decision'}
+                deltaTone="neutral"
+                sub="BD → Legal status changes"
+                onClick={() => navigate(ROUTES.LEGAL_CHANGE_REQUESTS)}
+              />
+            </div>
+            <OverviewFilterBar
+              filters={DD_STATUSES.map(status => ({
+                key: status,
+                label: PILL_META[status].label,
+                count: counts[status],
+                color: PILL_META[status].color
+              }))}
+              active={activeFilter}
+              onFilter={setActiveFilter}
+              search={search}
+              onSearch={setSearch}
+              totalCount={totalInQueue}
             />
           </div>
-          <OverviewFilterBar
-            filters={DD_STATUSES.map(status => ({
-              key: status,
-              label: PILL_META[status].label,
-              count: counts[status],
-              color: PILL_META[status].color
-            }))}
-            active={activeFilter}
-            onFilter={setActiveFilter}
-            search={search}
-            onSearch={setSearch}
-            totalCount={totalInQueue}
-          />
-          <QueueTable rows={filteredRows} limit={12} onOpen={openRow}/>
+          <QueueTable rows={filteredRows} limit={12} onOpen={openRow} style={{ flex: 1, minHeight: 0 }}/>
         </>
       )}
 
       {queue.status === 'ready' && view && (
         <>
-          <div>
-            <button
-              type="button"
-              onClick={() => setView(null)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px', borderRadius: 999, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-            >
-              <Icon name="arrow" size={12} style={{ transform: 'rotate(180deg)' }}/> All metrics
-            </button>
+          <div style={{ flexShrink: 0 }}>
+            <div>
+              <button
+                type="button"
+                onClick={() => setView(null)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px', borderRadius: 999, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer', marginBottom: 18 }}
+              >
+                <Icon name="arrow" size={12} style={{ transform: 'rotate(180deg)' }}/> All metrics
+              </button>
+            </div>
+
+            <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
+              <MetricCard {...cardMeta[view]} selected/>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
+              <SearchBox value={search} onChange={setSearch}/>
+              {DD_STATUSES.map((status) => (
+                <SubFilterPill
+                  key={status}
+                  label={PILL_META[status].label}
+                  count={counts[status]}
+                  color={PILL_META[status].color}
+                  active={subFilters.has(status)}
+                  onClick={() => toggleSubFilter(status)}
+                />
+              ))}
+            </div>
           </div>
 
-          <div className="zm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-            <MetricCard {...cardMeta[view]} selected/>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <SearchBox value={search} onChange={setSearch}/>
-            {DD_STATUSES.map((status) => (
-              <SubFilterPill
-                key={status}
-                label={PILL_META[status].label}
-                count={counts[status]}
-                color={PILL_META[status].color}
-                active={subFilters.has(status)}
-                onClick={() => toggleSubFilter(status)}
-              />
-            ))}
-          </div>
-
-          <QueueTable rows={filteredRows} onOpen={openRow}/>
+          <QueueTable rows={filteredRows} onOpen={openRow} style={{ flex: 1, minHeight: 0 }}/>
         </>
       )}
     </div>

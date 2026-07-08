@@ -128,21 +128,23 @@ export default function ExecStagingPage({ onOpenSite: onOpenSiteProp, showToast:
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader file="№ 04" eyebrow="Workflow · Sites in process" title={<>Sites <em>awaiting</em> LOI</>}
-        lede={`${visibleStaging.length} site${visibleStaging.length === 1 ? '' : 's'} assigned to you`}
-        right={overdueCount > 0 ? <HeaderTag icon="alert" label={`${overdueCount} OVERDUE`} tone="accent"/> : <HeaderTag icon="check" label="ON TRACK"/>}
-      />
-      <StagingKpiStrip sites={visibleStaging}/>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <StateKpiTile label="Awaiting LOI" value={awaitingLoi.length} color={STAGES.staging.color} sub="no LOI uploaded yet" active={subState === 'awaiting_loi'} onClick={() => setSubState(s => s === 'awaiting_loi' ? 'all' : 'awaiting_loi')}/>
-        <StateKpiTile label="Awaiting approval" value={awaitingApproval.length} color={STAGES.uploaded.color} sub="LOI uploaded · supervisor push pending" active={subState === 'awaiting_approval'} onClick={() => setSubState(s => s === 'awaiting_approval' ? 'all' : 'awaiting_approval')}/>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <PageHeader file="№ 04" eyebrow="Workflow · Sites in process" title={<>Sites <em>awaiting</em> LOI</>}
+          lede={`${visibleStaging.length} site${visibleStaging.length === 1 ? '' : 's'} assigned to you`}
+          right={overdueCount > 0 ? <HeaderTag icon="alert" label={`${overdueCount} OVERDUE`} tone="accent"/> : <HeaderTag icon="check" label="ON TRACK"/>}
+        />
+        <StagingKpiStrip sites={visibleStaging}/>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <StateKpiTile label="Awaiting LOI" value={awaitingLoi.length} color={STAGES.staging.color} sub="no LOI uploaded yet" active={subState === 'awaiting_loi'} onClick={() => setSubState(s => s === 'awaiting_loi' ? 'all' : 'awaiting_loi')}/>
+          <StateKpiTile label="Awaiting approval" value={awaitingApproval.length} color={STAGES.uploaded.color} sub="LOI uploaded · supervisor push pending" active={subState === 'awaiting_approval'} onClick={() => setSubState(s => s === 'awaiting_approval' ? 'all' : 'awaiting_approval')}/>
+        </div>
+        <StagingFilterBar filters={filters} onFilters={setFilters} sites={visibleStaging}/>
       </div>
-      <StagingFilterBar filters={filters} onFilters={setFilters} sites={visibleStaging}/>
-      <div className="zm-glass" style={{ borderRadius: 16, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
+      <div className="zm-glass" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', borderRadius: 16, overflow: 'hidden' }}>
+        <div style={{ flex: 1, overflowY: 'auto' }}>
           <div style={{ minWidth: 1080 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1fr 1fr 1.4fr 170px', gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
+            <div style={{ position: 'sticky', top: 0, zIndex: 10, display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1fr 1fr 1.4fr 170px', gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
               <span>Code</span><span>Site</span><span>City</span><span>Approved</span><span>LOI timeline</span><span>Status</span><span style={{ textAlign: 'right' }}>Action</span>
             </div>
             {filtered.map(s => <ExecRow key={s.id} site={s} onUpload={onUpload} onOpen={onOpenSite || (() => {})}/>)}

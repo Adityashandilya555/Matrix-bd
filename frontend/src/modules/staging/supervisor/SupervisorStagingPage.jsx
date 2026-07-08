@@ -141,21 +141,23 @@ export default function SupervisorStagingPage({ onOpenSite: onOpenSiteProp, show
   const onViewStatus = (site) => { navigate(bdSiteStatusRoute(site.id)); };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader file="№ 04" eyebrow="Workflow · Sites in process" title={<>Sites <em>awaiting</em> handoff</>}
-        lede={`${visibleStaging.length} approved site${visibleStaging.length === 1 ? '' : 's'}`}
-        right={<HeaderTag icon="check" label="ON TRACK"/>}
-      />
-      <StagingKpiStripSupervisor sites={visibleStaging}/>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <StateKpiTile label="Awaiting LOI" value={awaitingLoi.length} color={STAGES.staging.color} sub="no LOI uploaded yet" active={subState === 'awaiting_loi'} onClick={() => setSubState(s => s === 'awaiting_loi' ? 'all' : 'awaiting_loi')}/>
-        <StateKpiTile label="Awaiting approval" value={awaitingApproval.length} color={STAGES.uploaded.color} sub="LOI uploaded · push to Legal" active={subState === 'awaiting_approval'} onClick={() => setSubState(s => s === 'awaiting_approval' ? 'all' : 'awaiting_approval')}/>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <PageHeader file="№ 04" eyebrow="Workflow · Sites in process" title={<>Sites <em>awaiting</em> handoff</>}
+          lede={`${visibleStaging.length} approved site${visibleStaging.length === 1 ? '' : 's'}`}
+          right={<HeaderTag icon="check" label="ON TRACK"/>}
+        />
+        <StagingKpiStripSupervisor sites={visibleStaging}/>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <StateKpiTile label="Awaiting LOI" value={awaitingLoi.length} color={STAGES.staging.color} sub="no LOI uploaded yet" active={subState === 'awaiting_loi'} onClick={() => setSubState(s => s === 'awaiting_loi' ? 'all' : 'awaiting_loi')}/>
+          <StateKpiTile label="Awaiting approval" value={awaitingApproval.length} color={STAGES.uploaded.color} sub="LOI uploaded · push to Legal" active={subState === 'awaiting_approval'} onClick={() => setSubState(s => s === 'awaiting_approval' ? 'all' : 'awaiting_approval')}/>
+        </div>
+        <StagingFilterBar filters={filters} onFilters={setFilters} sites={visibleStaging}/>
       </div>
-      <StagingFilterBar filters={filters} onFilters={setFilters} sites={visibleStaging}/>
-      <div className="zm-glass" style={{ borderRadius: 16, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
+      <div className="zm-glass" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', borderRadius: 16, overflow: 'hidden' }}>
+        <div style={{ flex: 1, overflowY: 'auto' }}>
           <div>
-            <div style={{ display: 'grid', gridTemplateColumns: '70px minmax(130px, 0.9fr) 70px 124px minmax(170px, 1.3fr) 170px', gap: 10, padding: '11px 12px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
+            <div style={{ position: 'sticky', top: 0, zIndex: 10, display: 'grid', gridTemplateColumns: '70px minmax(130px, 0.9fr) 70px 124px minmax(170px, 1.3fr) 170px', gap: 10, padding: '11px 12px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
               <span>Code</span><span>Site</span><span>City</span><span>Status</span><span>Draft → LOI timeline</span>
               <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}><span aria-hidden="true" style={{ width: 32, flex: '0 0 32px' }}/><span aria-hidden="true" style={{ width: 32, flex: '0 0 32px' }}/><span style={{ flex: '1 1 auto', minWidth: 100, textAlign: 'center' }}>Action</span></div>
             </div>
