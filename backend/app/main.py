@@ -205,23 +205,50 @@ async def _apply_pending_migrations() -> None:
         with open(resolved, encoding="utf-8") as fh:
             raw_sql = fh.read()
 
+        # Parse SQL file intelligently to protect PL/pgSQL blocks
+        statements = []
+        current_stmt = []
+        in_dollar_quote = False
+        
+        for line in raw_sql.splitlines():
+            if "$$" in line:
+                in_dollar_quote = (line.count("$$") % 2 == 1) ^ in_dollar_quote
+                
+            if not in_dollar_quote and line.strip().endswith(";"):
+                current_stmt.append(line)
+                stmt_text = "\n".join(current_stmt).strip()
+                if stmt_text.upper() not in ("BEGIN;", "COMMIT;"):
+                    statements.append(stmt_text)
+                current_stmt = []
+            else:
+                current_stmt.append(line)
+                
+        if current_stmt and "".join(current_stmt).strip():
+            stmt_text = "\n".join(current_stmt).strip()
+            if stmt_text.upper() not in ("BEGIN;", "COMMIT;"):
+                statements.append(stmt_text)
+
         applied = 0
-        try:
-            # We use a raw connection with AUTOCOMMIT to execute the entire script atomically.
-            # This allows PostgreSQL to parse PL/pgSQL blocks natively without
-            # us mangling them by splitting on semicolons.
-            # The .sql files already contain their own explicit BEGIN; and COMMIT; blocks.
-            async with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-                await conn.exec_driver_sql(raw_sql)
-            applied += 1
-            applied_total += 1
-            log.info("startup-migrations: successfully applied %s", filename)
-        except SQLAlchemyError:
-            log.exception(
-                "startup-migrations: failed to apply %s (may already be applied)",
-                filename,
-            )
-    log.info("startup-migrations: %d total migration files applied", applied_total)
+        for stmt in statements:
+            if not stmt:
+                continue
+            try:
+                # Replace : with \: to bypass SQLAlchemy's bind parameter parser (e.g. ::int -> \:\:int)
+                # We use engine.begin() so each statement executes in its own isolated short transaction,
+                # avoiding lock timeouts and asyncpg multi-statement deadlocks.
+                safe_stmt = stmt.replace(":", "\\:")
+                async with engine.begin() as conn:
+                    await conn.execute(text(safe_stmt))
+                applied += 1
+                applied_total += 1
+            except SQLAlchemyError:
+                log.exception(
+                    "startup-migrations: statement failed in %s (may already be applied): %.120s",
+                    filename,
+                    stmt,
+                )
+        log.info("startup-migrations: %d/%d statements applied from %s", applied, len(statements), filename)
+    log.info("startup-migrations: %d total statements applied across all files", applied_total)
 
 
 # ── Application lifespan ──────────────────────────────────────────────────────
