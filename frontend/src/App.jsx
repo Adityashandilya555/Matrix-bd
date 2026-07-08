@@ -302,7 +302,6 @@ const PIPELINE_RENT_TYPES = [
   { id: 'revshare', label: 'Revenue share', sub: '% of monthly sales' },
   { id: 'fixed', label: 'Fixed + escalation', sub: 'monthly fixed + % per year' },
   { id: 'mg_revshare', label: 'MG + Revenue share', sub: 'minimum guarantee + escalation + % of sales' },
-  { id: 'staggered', label: 'Staggered Rent with Escalation', sub: 'base rent + yearly stepped schedule' },
 ];
 function NewPipelineModal({ onClose, onSubmit, dark }) {
   const idSite = useId();
@@ -316,8 +315,7 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
   const idMgRent = useId();
   const idMgRevshare = useId();
   const idMgEscalation = useId();
-  const idAreaSqft = useId();
-  const [form, setForm] = useState({ name: '', visitDate: '', city: '', model: '', googlePin: '', googleMapsUrl: '', rentType: '', expectedRent: '', expectedEscalation: '', expectedEscalationYears: '', expectedRevshare: '', areaSqft: '', staggeredEscalation: [{ year: 1, percent: '' }] });
+  const [form, setForm] = useState({ name: '', visitDate: '', city: '', model: '', googlePin: '', googleMapsUrl: '', rentType: '', expectedRent: '', expectedEscalation: '', expectedEscalationYears: '', expectedRevshare: '' });
   const [pinStatus, setPinStatus] = useState(null); // { tone: 'info'|'ok'|'err', msg: string }
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
@@ -402,12 +400,6 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label htmlFor={idModel} style={labelBase}>Model</label><select id={idModel} value={form.model} onChange={set('model')} style={inputBase}><option value="">Select model…</option>{PIPELINE_MODELS.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label htmlFor={idAreaSqft} style={labelBase}>Area (sqft)</label>
-              <input id={idAreaSqft} type="number" min="0" step="any" value={form.areaSqft} onChange={set('areaSqft')} placeholder="e.g. 1500" style={{ ...inputBase, fontFamily: 'var(--zm-font-mono)', fontSize: 13 }}/>
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <label htmlFor={idGooglePin} style={labelBase}>Google pin</label>
               <input id={idGooglePin} value={form.googlePin || form.googleMapsUrl} onChange={onPinChange} onPaste={onPinPaste} onBlur={onPinBlur} placeholder="Paste Google Maps link or 19.1183, 72.9089" style={{ ...inputBase, fontFamily: 'var(--zm-font-mono)', fontSize: 13 }}/>
               {pinStatus && (
@@ -433,7 +425,7 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
           </div>
           <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
             <legend style={{ ...labelBase, padding: 0, marginBottom: 6 }}>Rent type</legend>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
               {PIPELINE_RENT_TYPES.map(rt => (
                 <button
                   type="button"
@@ -573,42 +565,6 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
                     })}
                   </div>
                 </fieldset>
-              </div>
-            </div>
-          )}
-          {form.rentType === 'staggered' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label htmlFor={idExpectedRent} style={labelBase}>Base rent</label>
-                <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
-                  <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderRight: '1px solid var(--zm-line)' }}>₹</span>
-                  <input id={idExpectedRent} type="number" min="0" step="any" value={form.expectedRent} onChange={set('expectedRent')} placeholder="Base monthly rent" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
-                  <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>/mo</span>
-                </div>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={labelBase}>Escalation schedule</span>
-                  {form.staggeredEscalation.length < 5 && (
-                    <button type="button" onClick={() => setForm(prev => ({ ...prev, staggeredEscalation: [...prev.staggeredEscalation, { year: prev.staggeredEscalation.length + 1, percent: '' }] }))} style={{ background: 'transparent', border: 'none', color: 'var(--zm-accent)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="plus" size={14}/> Add year</button>
-                  )}
-                </div>
-                {form.staggeredEscalation.map((esc, idx) => (
-                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ flex: '0 0 100px', display: 'flex', alignItems: 'center', height: 38, padding: '0 10px', background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)', borderRadius: 6, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-2)' }}>Year {idx + 1}</div>
-                    <div style={{ flex: 1, display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
-                      <input type="number" min="0" step="any" value={esc.percent} onChange={(e) => {
-                        const next = [...form.staggeredEscalation];
-                        next[idx].percent = e.target.value;
-                        setForm(prev => ({ ...prev, staggeredEscalation: next }));
-                      }} placeholder="Escalation %" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: 'var(--zm-fg)' }}/>
-                      <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>%</span>
-                    </div>
-                    {idx > 0 && idx === form.staggeredEscalation.length - 1 && (
-                      <button type="button" onClick={() => setForm(prev => ({ ...prev, staggeredEscalation: prev.staggeredEscalation.slice(0, -1) }))} title="Remove" style={{ width: 34, height: 34, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', color: 'var(--zm-danger)', cursor: 'pointer', flexShrink: 0 }}><Icon name="x" size={16}/></button>
-                    )}
-                  </div>
-                ))}
               </div>
             </div>
           )}
