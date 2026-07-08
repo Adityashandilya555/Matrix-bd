@@ -705,7 +705,6 @@ async def _upsert_site_details(
     """Upsert site_details with whatever fields the form supplied. We do NOT
     write `fixed_rent_amt` — that column is tombstoned; rent lives on
     `sites.expected_rent`."""
-    from sqlalchemy import select
 
     stmt = select(models.SiteDetail).where(models.SiteDetail.site_id == site_id)
     row = (await session.execute(stmt)).scalar_one_or_none()

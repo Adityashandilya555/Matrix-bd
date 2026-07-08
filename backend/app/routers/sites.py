@@ -170,6 +170,7 @@ async def create_site(
     "/{site_id}/status",
     summary="Universal status-transition dispatcher (alias)",
 )
+# skipcq: PY-R1000, PYL-R0912
 async def patch_site_status(
     site_id: str,
     body: PatchSiteStatusRequest,

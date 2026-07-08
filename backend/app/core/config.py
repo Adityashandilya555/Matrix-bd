@@ -189,7 +189,7 @@ class Settings(BaseSettings):
 
         # The retired admin password is handled by effective_platform_admin_*
         # (portal disabled, not a boot failure) — warn loudly so it gets fixed.
-        if self.platform_admin_password == _RETIRED_ADMIN_PASSWORD or self.platform_admin_token == _RETIRED_ADMIN_PASSWORD:
+        if _RETIRED_ADMIN_PASSWORD in (self.platform_admin_password, self.platform_admin_token):
             log.error(
                 "PLATFORM_ADMIN_PASSWORD/TOKEN is the retired repo-committed default "
                 "(public git history). The admin portal is DISABLED until a real one is set."
