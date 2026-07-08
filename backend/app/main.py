@@ -183,72 +183,30 @@ _MIGRATION_DIR = os.path.join(
 async def _apply_pending_migrations() -> None:
     """Run idempotent SQL migration files on startup.
 
-    Each statement is executed inside its own transaction so that
-    already-applied DDL (guarded by IF NOT EXISTS / IF EXISTS) succeeds
-    silently without rolling back other work.  Errors are logged but do NOT
-    crash the application — the migration file uses IF NOT EXISTS guards,
-    so partial application is safe and a retry on the next deploy will
-    converge.
+    Each file is executed in AUTOCOMMIT mode so PostgreSQL parses its own
+    BEGIN/COMMIT blocks and dollar‑quoted PL/pgSQL functions correctly.
+    This avoids custom parsing, colon‑escaping, and lock contention during
+    zero‑downtime deployments.
     """
     files_to_apply = [
         "202606231_supervisor_executive_requests.sql",
         "202607081_add_sqft_and_staggered_rent.sql",
     ]
-    
     applied_total = 0
     for filename in files_to_apply:
-        resolved = os.path.normpath(os.path.join(_MIGRATION_DIR, filename))
-        if not os.path.isfile(resolved):
-            log.error("startup-migrations: %s not found. Failing startup to prevent inconsistent schema state.", resolved)
-            raise FileNotFoundError(f"Missing required migration file: {resolved}")
-
-        with open(resolved, encoding="utf-8") as fh:
+        path = os.path.join(_MIGRATION_DIR, filename)
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"Missing migration file: {path}")
+        with open(path, encoding="utf-8") as fh:
             raw_sql = fh.read()
-
-        # Parse SQL file intelligently to protect PL/pgSQL blocks
-        statements = []
-        current_stmt = []
-        in_dollar_quote = False
-        
-        for line in raw_sql.splitlines():
-            if "$$" in line:
-                in_dollar_quote = (line.count("$$") % 2 == 1) ^ in_dollar_quote
-                
-            if not in_dollar_quote and line.strip().endswith(";"):
-                current_stmt.append(line)
-                stmt_text = "\n".join(current_stmt).strip()
-                if stmt_text.upper() not in ("BEGIN;", "COMMIT;"):
-                    statements.append(stmt_text)
-                current_stmt = []
-            else:
-                current_stmt.append(line)
-                
-        if current_stmt and "".join(current_stmt).strip():
-            stmt_text = "\n".join(current_stmt).strip()
-            if stmt_text.upper() not in ("BEGIN;", "COMMIT;"):
-                statements.append(stmt_text)
-
-        applied = 0
-        for stmt in statements:
-            if not stmt:
-                continue
-            try:
-                # Replace : with \: to bypass SQLAlchemy's bind parameter parser (e.g. ::int -> \:\:int)
-                # We use engine.begin() so each statement executes in its own isolated short transaction,
-                # avoiding lock timeouts and asyncpg multi-statement deadlocks.
-                safe_stmt = stmt.replace(":", "\\:")
-                async with engine.begin() as conn:
-                    await conn.execute(text(safe_stmt))
-                applied += 1
-                applied_total += 1
-            except SQLAlchemyError:
-                log.exception(
-                    "startup-migrations: statement failed in %s (may already be applied): %.120s",
-                    filename,
-                    stmt,
-                )
-        log.info("startup-migrations: %d/%d statements applied from %s", applied, len(statements), filename)
-    log.info("startup-migrations: %d total statements applied across all files", applied_total)
+        try:
+            async with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                await conn.exec_driver_sql(raw_sql)
+            applied_total += 1
+            log.info("startup-migrations: applied %s", filename)
+        except SQLAlchemyError:
+            log.exception("startup-migrations: failed %s (may already be applied)", filename)
+    log.info("startup-migrations: %d total migration files applied", applied_total)
 
 
 # ── Application lifespan ──────────────────────────────────────────────────────
