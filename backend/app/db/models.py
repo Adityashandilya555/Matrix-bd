@@ -97,11 +97,18 @@ class Site(Base):
     #   fixed       → expected_rent + expected_escalation_pct
     #   revshare    → expected_revshare_pct
     #   mg_revshare → expected_rent (MG floor) + expected_revshare_pct
+    #   staggered   → expected_rent (base) + staggered_escalation (JSONB schedule)
     expected_escalation_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
     # Cadence in years for the escalation (1 = yearly, 3 = every 3 yrs, 5 = every 5 yrs).
     expected_escalation_years: Mapped[Optional[int]] = mapped_column(Integer)
     expected_revshare_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
     rent_set_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # Pipeline-stage area (sqft). Captured at draft creation; flows to
+    # site_details.carpet_area_sqft when the Add Details form is filled.
+    area_sqft: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # Staggered escalation schedule: JSONB array of {year: int, percent: float}.
+    # Only used when rent_type == 'staggered'. Max 5 entries.
+    staggered_escalation: Mapped[Optional[dict]] = mapped_column(JSONB)
 
     # Ownership
     submitted_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)

@@ -1,4 +1,5 @@
 import React from 'react';
+import Icon from '../primitives/Icon.jsx';
 
 /**
  * RentTermsForm — the rent-type + conditional rent fields block, mirroring the
@@ -40,6 +41,7 @@ const RENT_TYPES = [
   { id: 'revshare', label: 'Revenue share', sub: '% of monthly sales' },
   { id: 'fixed', label: 'Fixed + escalation', sub: 'monthly fixed + % per year' },
   { id: 'mg_revshare', label: 'MG + Revenue share', sub: 'minimum guarantee + escalation + % of sales' },
+  { id: 'staggered', label: 'Staggered Rent with Escalation', sub: 'base rent + yearly stepped schedule' },
 ];
 const CADENCE = [{ years: 1, label: 'Yearly' }, { years: 3, label: 'Every 3 yrs' }, { years: 5, label: 'Every 5 yrs' }];
 
@@ -154,6 +156,38 @@ export default function RentTermsForm({ value = {}, onChange, readOnly = false, 
                 })}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {rentType === 'staggered' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <NumField t={t} label="Base rent" value={v.expected_rent} onChange={set('expected_rent')} prefix="₹" suffix="/mo" placeholder="Base monthly rent" readOnly={readOnly} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Label t={t}>Escalation schedule</Label>
+              {!readOnly && (!v.staggered_escalation || v.staggered_escalation.length < 5) && (
+                <button type="button" onClick={() => {
+                  const arr = v.staggered_escalation || [];
+                  onChange?.('staggered_escalation', [...arr, { year: arr.length + 1, percent: null }]);
+                }} style={{ background: 'transparent', border: 'none', color: t.accent, fontFamily: t.fontBody, fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="plus" size={14}/> Add year</button>
+              )}
+            </div>
+            {(v.staggered_escalation || []).map((esc, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ flex: '0 0 100px', display: 'flex', alignItems: 'center', height: 38, padding: '0 10px', background: t.surface2, border: `1px solid ${t.line}`, borderRadius: 6, fontFamily: t.fontBody, fontSize: 13, color: t.fgMuted }}>Year {idx + 1}</div>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'stretch', height: 38, border: `1px solid ${t.line}`, borderRadius: 6, background: readOnly ? t.surface2 : t.bg, overflow: 'hidden' }}>
+                  <input type="number" min="0" step="any" value={esc.percent ?? ''} readOnly={readOnly} disabled={readOnly} onChange={(e) => {
+                    const next = [...v.staggered_escalation];
+                    next[idx].percent = e.target.value === '' ? null : Number(e.target.value);
+                    onChange?.('staggered_escalation', next);
+                  }} placeholder="Escalation %" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: t.fontMono, fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: readOnly ? t.fgMuted : t.fg }}/>
+                  <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: t.fgFaint, fontFamily: t.fontMono, fontSize: 12, background: t.surface2, borderLeft: `1px solid ${t.line}` }}>%</span>
+                </div>
+                {!readOnly && idx > 0 && idx === (v.staggered_escalation || []).length - 1 && (
+                  <button type="button" onClick={() => onChange?.('staggered_escalation', v.staggered_escalation.slice(0, -1))} title="Remove" style={{ width: 34, height: 34, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, background: t.surface, border: `1px solid ${t.line}`, color: t.danger, cursor: 'pointer', flexShrink: 0 }}><Icon name="x" size={16}/></button>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}
