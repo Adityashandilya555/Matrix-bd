@@ -190,30 +190,37 @@ async def _apply_pending_migrations() -> None:
     so partial application is safe and a retry on the next deploy will
     converge.
     """
-    migration_file = os.path.join(
-        _MIGRATION_DIR, "202606231_supervisor_executive_requests.sql"
-    )
-    resolved = os.path.normpath(migration_file)
-    if not os.path.isfile(resolved):
-        log.error("startup-migrations: %s not found. Failing startup to prevent inconsistent schema state.", resolved)
-        raise FileNotFoundError(f"Missing required migration file: {resolved}")
+    files_to_apply = [
+        "202606231_supervisor_executive_requests.sql",
+        "202607081_add_sqft_and_staggered_rent.sql",
+    ]
+    
+    applied_total = 0
+    for filename in files_to_apply:
+        resolved = os.path.normpath(os.path.join(_MIGRATION_DIR, filename))
+        if not os.path.isfile(resolved):
+            log.error("startup-migrations: %s not found. Failing startup to prevent inconsistent schema state.", resolved)
+            raise FileNotFoundError(f"Missing required migration file: {resolved}")
 
-    with open(resolved, encoding="utf-8") as fh:
-        raw_sql = fh.read()
+        with open(resolved, encoding="utf-8") as fh:
+            raw_sql = fh.read()
 
-    statements = [s.strip() for s in raw_sql.split(";") if s.strip()]
-    applied = 0
-    for stmt in statements:
-        try:
-            async with engine.begin() as conn:
-                await conn.execute(text(stmt))
-            applied += 1
-        except SQLAlchemyError:
-            log.exception(
-                "startup-migrations: statement failed (may already be applied): %.120s",
-                stmt,
-            )
-    log.info("startup-migrations: %d/%d statements applied", applied, len(statements))
+        statements = [s.strip() for s in raw_sql.split(";") if s.strip()]
+        applied = 0
+        for stmt in statements:
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text(stmt))
+                applied += 1
+                applied_total += 1
+            except SQLAlchemyError:
+                log.exception(
+                    "startup-migrations: statement failed in %s (may already be applied): %.120s",
+                    filename,
+                    stmt,
+                )
+        log.info("startup-migrations: %d/%d statements applied from %s", applied, len(statements), filename)
+    log.info("startup-migrations: %d total statements applied across all files", applied_total)
 
 
 # ── Application lifespan ──────────────────────────────────────────────────────
