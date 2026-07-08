@@ -72,6 +72,8 @@ async def create_draft(
         expected_escalation_pct=body.expected_escalation_pct,
         expected_escalation_years=body.expected_escalation_years,
         expected_revshare_pct=body.expected_revshare_pct,
+        area_sqft=body.area_sqft,
+        staggered_escalation=body.staggered_escalation,
     )
 
 
