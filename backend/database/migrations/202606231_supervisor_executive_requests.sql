@@ -26,3 +26,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_supervisor_executive_requests_pending
 -- Index for querying requests efficiently
 CREATE INDEX IF NOT EXISTS idx_supervisor_executive_requests_tenant_status
   ON public.supervisor_executive_requests (tenant_id, status);
+
+-- Row-Level Security (#310): without this, the table is readable/writable by
+-- anyone via PostgREST's /rest/v1/ endpoint with just the anon key, across all
+-- tenants. The backend connects as a BYPASSRLS role so this policy only
+-- constrains direct PostgREST/anon access.
+ALTER TABLE public.supervisor_executive_requests ENABLE ROW LEVEL SECURITY;
+
+-- Idempotent creation of tenant_isolation policy (CodeAnt review – Major severity)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policy
+        WHERE schemaname = 'public'
+          AND tablename  = 'supervisor_executive_requests'
+          AND policyname = 'tenant_isolation'
+    ) THEN
+        CREATE POLICY tenant_isolation ON public.supervisor_executive_requests
+          USING (tenant_id = public.current_tenant_id())
+          WITH CHECK (tenant_id = public.current_tenant_id());
+    END IF;
+END
+$$;
