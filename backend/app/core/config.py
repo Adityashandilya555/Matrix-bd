@@ -146,16 +146,6 @@ class Settings(BaseSettings):
             token = ""  # nosec B105 — clearing a retired credential, not setting one
         return token or self.effective_platform_admin_password
 
-    @model_validator(mode="after")
-    def _fix_database_url_scheme(self) -> "Settings":
-        # Railway and Supabase provide URLs starting with postgres:// or postgresql://
-        # SQLAlchemy create_async_engine requires the explicit postgresql+asyncpg:// scheme
-        if self.database_url.startswith("postgres://"):
-            self.database_url = self.database_url.replace("postgres://", "postgresql+asyncpg://", 1)
-        elif self.database_url.startswith("postgresql://"):
-            self.database_url = self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        return self
-
     # ── Startup guard (#80, #110) ────────────────────────────────────────────
     @model_validator(mode="after")
     def _refuse_insecure_production_config(self) -> "Settings":
