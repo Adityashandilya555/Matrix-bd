@@ -218,21 +218,18 @@ async def test_reset_complete_accepts_matching_token(make_session, fake_result):
 
 
 async def test_reset_confirm_issues_token_and_stores_hash(make_session, fake_result, monkeypatch):
-    from app.core.config import settings as live_settings
+    from app.core.security import issue_admin_token
     from app.routers.tenancy import confirm_password_reset_request
 
-    # _require_platform_admin compares against effective_platform_admin_token,
-    # which is `platform_admin_token or effective_platform_admin_password`. Pin
-    # the TOKEN (not just the password) or this test 401s on any machine whose
-    # .env sets a real PLATFORM_ADMIN_TOKEN — the token would otherwise win and
-    # the patched password be ignored.
-    monkeypatch.setattr(live_settings, "platform_admin_token", "k")
-    monkeypatch.setattr(live_settings, "platform_admin_password", "k")
+    # _require_platform_admin now only accepts short-lived JWTs (CodeAnt
+    # Critical review removed the legacy static-token fallback). Mint a
+    # real admin JWT for the test.
+    admin_jwt = issue_admin_token(email="test@admin.co")
     sess = make_session(
         fake_result(mappings_rows=[{"id": uuid.uuid4(), "status": "pending", "user_id": USER_ID}]),
     )
     out = await confirm_password_reset_request(
-        "rid", sess, x_platform_admin_key="k",
+        "rid", sess, x_platform_admin_key=admin_jwt,
     )
     assert out.get("reset_token")  # plaintext token returned ONCE to the admin
     update_sql = next(s for s in sess.executed if "UPDATE password_reset_requests" in s)
