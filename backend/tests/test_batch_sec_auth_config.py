@@ -218,21 +218,18 @@ async def test_reset_complete_accepts_matching_token(make_session, fake_result):
 
 
 async def test_reset_confirm_issues_token_and_stores_hash(make_session, fake_result, monkeypatch):
-    from app.core.config import settings as live_settings
+    from app.core.security import issue_admin_token
     from app.routers.tenancy import confirm_password_reset_request
 
-    # _require_platform_admin compares against effective_platform_admin_token,
-    # which is `platform_admin_token or effective_platform_admin_password`. Pin
-    # the TOKEN (not just the password) or this test 401s on any machine whose
-    # .env sets a real PLATFORM_ADMIN_TOKEN — the token would otherwise win and
-    # the patched password be ignored.
-    monkeypatch.setattr(live_settings, "platform_admin_token", "k")
-    monkeypatch.setattr(live_settings, "platform_admin_password", "k")
+    # _require_platform_admin now only accepts short-lived JWTs (CodeAnt
+    # Critical review removed the legacy static-token fallback). Mint a
+    # real admin JWT for the test.
+    admin_jwt = issue_admin_token(email="test@admin.co")
     sess = make_session(
         fake_result(mappings_rows=[{"id": uuid.uuid4(), "status": "pending", "user_id": USER_ID}]),
     )
     out = await confirm_password_reset_request(
-        "rid", sess, x_platform_admin_key="k",
+        "rid", sess, x_platform_admin_key=admin_jwt,
     )
     assert out.get("reset_token")  # plaintext token returned ONCE to the admin
     update_sql = next(s for s in sess.executed if "UPDATE password_reset_requests" in s)
@@ -523,9 +520,21 @@ def test_tenant_lookup_literal_lives_in_exactly_one_place():
 async def test_login_check_reports_account_state(make_session, fake_result):
     from app.routers.auth import LoginCheckIn, login_check
 
+    # Build a minimal Request-like object with the internal header + a
+    # matching Origin so _is_trusted_internal returns True (issue #313).
+    class _FakeRequest:
+        def __init__(self):
+            self.headers = {
+                "X-Matrix-Internal": "1",
+                "origin": "http://localhost:5173",
+            }
+
+    _req = _FakeRequest()
+
     async def _state(*results):
         out = await login_check(
             LoginCheckIn(email="a@b.co", workspace_code="ACME-CODE1"),
+            _req,
             make_session(*results),
         )
         return out

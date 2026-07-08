@@ -48,11 +48,11 @@ function StatusPill({ value, tone = 'var(--zm-accent)' }) {
   );
 }
 
-function QueueTable({ rows, onOpen, limit }) {
+function QueueTable({ rows, onOpen, limit, style }) {
   const displayRows = limit ? rows.slice(0, limit) : rows;
   const COLS = '120px minmax(220px, 1fr) 130px 170px 170px';
   return (
-    <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
+    <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', ...style }}>
       <div style={{
         display: 'grid', gridTemplateColumns: COLS, gap: 12, padding: '12px 16px',
         background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)',
@@ -65,8 +65,9 @@ function QueueTable({ rows, onOpen, limit }) {
         <span>Excellence status</span>
         <span>Budget status</span>
       </div>
-      {displayRows.map((row) => (
-        <div key={row.siteId} role="button" tabIndex={0} className="zm-row" onClick={() => onOpen(row)} onKeyDown={keyActivate(() => onOpen(row))} style={{
+      <div style={{ overflowY: 'auto' }}>
+        {displayRows.map((row) => (
+          <div key={row.siteId} role="button" tabIndex={0} className="zm-row" onClick={() => onOpen(row)} onKeyDown={keyActivate(() => onOpen(row))} style={{
           display: 'grid', gridTemplateColumns: COLS, gap: 12, padding: '14px 16px',
           borderBottom: '1px solid var(--zm-line-faint)', cursor: 'pointer', alignItems: 'center',
         }} onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--zm-surface-hover)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
@@ -74,14 +75,15 @@ function QueueTable({ rows, onOpen, limit }) {
           <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 800, color: 'var(--zm-fg)' }}>{row.siteName}</span>
           <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-2)' }}>{row.city}</span>
           <StatusPill value={STATUS_LABELS[row.excellenceStatus] || row.excellenceStatus} />
-          <StatusPill value={BUDGET_LABELS[row.budgetStatus] || row.budgetStatus} tone={row.budgetStatus === 'approved' ? 'var(--zm-success)' : 'var(--zm-copper)'} />
-        </div>
-      ))}
-      {rows.length === 0 && (
-        <div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
-          No sites match the current filter.
-        </div>
-      )}
+            <StatusPill value={BUDGET_LABELS[row.budgetStatus] || row.budgetStatus} tone={row.budgetStatus === 'approved' ? 'var(--zm-success)' : 'var(--zm-copper)'} />
+          </div>
+        ))}
+        {rows.length === 0 && (
+          <div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
+            No sites match the current filter.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -97,18 +99,19 @@ export default function ProjectExcellenceOverviewPage() {
   // request's result is allowed to write state.
   const reqIdRef = React.useRef(0);
 
-  const load = React.useCallback(() => {
+  const load = React.useCallback((silent = false) => {
     const reqId = ++reqIdRef.current;
-    setState((prev) => ({ ...prev, status: prev.items.length ? prev.status : 'loading', error: null }));
+    if (!silent) setState((prev) => ({ ...prev, status: prev.items.length ? prev.status : 'loading', error: null }));
     getPEQueue()
       .then((data) => {
         if (reqId === reqIdRef.current) setState({ status: 'ready', items: data.items, total: data.total ?? 0, error: null });
       })
       .catch((err) => {
         if (reqId === reqIdRef.current) {
+          if (silent && err?.code === 'TIMEOUT') return;
           setState((prev) => ({
             ...prev,
-            status: prev.items.length ? 'ready' : 'error',
+            status: (silent && prev.items.length) ? 'ready' : (prev.items.length ? 'ready' : 'error'),
             error: err?.detail || err?.message || 'Failed to load project excellence queue',
           }));
         }
@@ -184,8 +187,9 @@ export default function ProjectExcellenceOverviewPage() {
     : `${state.total} site${state.total === 1 ? '' : 's'} in the project excellence queue`;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <PageHeader
         file="No. 10"
         eyebrow="Project Excellence module"
         title="Overview"
@@ -216,8 +220,12 @@ export default function ProjectExcellenceOverviewPage() {
             onSearch={setSearch}
             totalCount={items.length}
           />
-          <QueueTable rows={filteredRows} limit={12} onOpen={openRow} />
         </>
+      )}
+      </div>
+
+      {state.status === 'ready' && (
+        <QueueTable rows={filteredRows} limit={12} onOpen={openRow} style={{ flex: 1, minHeight: 0 }} />
       )}
     </div>
   );

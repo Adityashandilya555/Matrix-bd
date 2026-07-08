@@ -66,52 +66,54 @@ export default function FinancialClosureQueuePage() {
     : items.filter((row) => row.financialClosureStatus === statusFilter);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader
-        file="No. 11"
-        eyebrow="Project module"
-        title="Financial Closure"
-        right={<HeaderTag icon="box" label="LAUNCHED"/>}
-      />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <PageHeader
+          file="No. 11"
+          eyebrow="Project module"
+          title="Financial Closure"
+          right={<HeaderTag icon="box" label="LAUNCHED"/>}
+        />
 
-      {status === 'loading' && (
-        <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
-          Loading financial closure queue...
-        </div>
-      )}
+        {status === 'loading' && (
+          <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
+            Loading financial closure queue...
+          </div>
+        )}
 
-      {error && (
-        <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{error}</div>
-      )}
+        {error && (
+          <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{error}</div>
+        )}
 
-      {status === 'ready' && items.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {STATUS_FILTERS.filter((f) => statusCounts[f.key] > 0 || f.key === statusFilter).map((f) => (
-            <SubFilterPill
-              key={f.key}
-              label={f.label}
-              count={statusCounts[f.key]}
-              color={f.color}
-              active={statusFilter === f.key}
-              onClick={() => setStatusFilter((s) => (s === f.key ? 'all' : f.key))}
-            />
-          ))}
-        </div>
-      )}
+        {status === 'ready' && items.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {STATUS_FILTERS.filter((f) => statusCounts[f.key] > 0 || f.key === statusFilter).map((f) => (
+              <SubFilterPill
+                key={f.key}
+                label={f.label}
+                count={statusCounts[f.key]}
+                color={f.color}
+                active={statusFilter === f.key}
+                onClick={() => setStatusFilter((s) => (s === f.key ? 'all' : f.key))}
+              />
+            ))}
+          </div>
+        )}
 
-      {status === 'ready' && visibleItems.length === 0 && (
-        <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
-          <Icon name="box" size={20}/>
-          <p style={{ margin: '12px 0 0' }}>
-            {statusFilter !== 'all' && items.length > 0
-              ? 'No sites match the current status filter.'
-              : 'No launched sites are waiting for Financial Closure right now.'}
-          </p>
-        </div>
-      )}
+        {status === 'ready' && visibleItems.length === 0 && (
+          <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
+            <Icon name="box" size={20}/>
+            <p style={{ margin: '12px 0 0' }}>
+              {statusFilter !== 'all' && items.length > 0
+                ? 'No sites match the current status filter.'
+                : 'No launched sites are waiting for Financial Closure right now.'}
+            </p>
+          </div>
+        )}
+      </div>
 
       {status === 'ready' && visibleItems.length > 0 && (
-        <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', overflowX: 'auto' }}>
+        <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{
             display: 'grid', gridTemplateColumns: COLS, gap: 12, padding: '12px 16px',
             background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)',
@@ -127,8 +129,9 @@ export default function FinancialClosureQueuePage() {
             <span style={{ textAlign: 'right' }}>Variation</span>
           </div>
 
-          {visibleItems.map((row) => {
-            const variation = row.variationTotal == null ? null : Number(row.variationTotal);
+          <div style={{ overflowY: 'auto', overflowX: 'auto', flex: 1, minHeight: 0 }}>
+            {visibleItems.map((row) => {
+              const variation = row.variationTotal == null ? null : Number(row.variationTotal);
             const variationTone = variation == null || variation === 0
               ? 'var(--zm-fg-2)'
               : variation > 0 ? 'var(--zm-danger)' : 'var(--zm-success)';
@@ -174,17 +177,20 @@ export default function FinancialClosureQueuePage() {
               </div>
             );
           })}
+          </div>
         </div>
       )}
 
       {status === 'ready' && (
-        <ViewMoreButton
+        <div style={{ flexShrink: 0 }}>
+          <ViewMoreButton
           hasMore={hasMore}
           loadingMore={loadingMore}
           loaded={items.length}
           total={total}
           onClick={loadMore}
         />
+        </div>
       )}
     </div>
   );

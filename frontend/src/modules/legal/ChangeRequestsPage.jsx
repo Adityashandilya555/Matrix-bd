@@ -154,30 +154,32 @@ export default function ChangeRequestsPage() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader
-        file="No. 08"
-        eyebrow="Legal module"
-        title={<>Change <em>requests</em></>}
-        right={<HeaderTag icon="alert" label={`${state.total} PENDING`}/>}
-      />
-
-      {state.status === 'loading' && (
-        <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>Loading…</div>
-      )}
-      {state.error && (
-        <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{state.error}</div>
-      )}
-      {state.status === 'ready' && state.items.length === 0 && (
-        <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
-          <Icon name="check" size={20}/>
-          <p style={{ margin: '12px 0 0' }}>No pending change requests.</p>
-        </div>
-      )}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <PageHeader
+          file="No. 08"
+          eyebrow="Legal module"
+          title={<>Change <em>requests</em></>}
+          right={<HeaderTag icon="alert" label={`${state.total} PENDING`}/>}
+        />
+        {state.status === 'loading' && (
+          <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>Loading…</div>
+        )}
+        {state.error && (
+          <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{state.error}</div>
+        )}
+        {state.status === 'ready' && state.items.length === 0 && (
+          <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
+            <Icon name="check" size={20}/>
+            <p style={{ margin: '12px 0 0' }}>No pending change requests.</p>
+          </div>
+        )}
+      </div>
 
       {state.status === 'ready' && state.items.length > 0 && (
-        <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden' }}>
+        <div className="zm-glass" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', borderRadius: 12, overflow: 'hidden' }}>
           <div style={{
+            flexShrink: 0,
             display: 'grid',
             gridTemplateColumns: 'minmax(180px,1fr) minmax(220px,1.2fr) 140px 100px 220px',
             gap: 12, padding: '12px 16px',
@@ -191,6 +193,8 @@ export default function ChangeRequestsPage() {
             <span>Status</span>
             <span style={{ textAlign: 'right' }}>Action</span>
           </div>
+          
+          <div style={{ flex: 1, overflowY: 'auto' }}>
           {state.items.map((cr) => (
             <div key={cr.id} data-site-id={cr.siteId} style={{
               display: 'grid',
@@ -247,6 +251,7 @@ export default function ChangeRequestsPage() {
               </div>
             </div>
           ))}
+          </div>
         </div>
       )}
       

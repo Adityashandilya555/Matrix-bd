@@ -87,8 +87,9 @@ export default function ProjectExcellenceQueuePage({ mode = 'pipeline' }) {
     : scopedItems.filter((row) => row.excellenceStatus === statusFilter);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <PageHeader
         file="No. 10"
         eyebrow="Project Excellence module"
         title={isHistory ? 'History' : 'Pipeline'}
@@ -133,8 +134,10 @@ export default function ProjectExcellenceQueuePage({ mode = 'pipeline' }) {
         </div>
       )}
 
+      </div>
+
       {status === 'ready' && visibleItems.length > 0 && (
-        <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', overflowX: 'auto' }}>
+        <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', overflowX: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{
             display: 'grid', gridTemplateColumns: COLS, gap: 12, padding: '12px 16px',
             background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)',
@@ -149,10 +152,11 @@ export default function ProjectExcellenceQueuePage({ mode = 'pipeline' }) {
             <span style={{ textAlign: 'right' }}>Action</span>
           </div>
 
-          {visibleItems.map((row) => (
-            <div
-              key={row.siteId}
-              data-site-id={row.siteId}
+          <div style={{ overflowY: 'auto' }}>
+            {visibleItems.map((row) => (
+              <div
+                key={row.siteId}
+                data-site-id={row.siteId}
               className="zm-row"
               role="button"
               tabIndex={0}
@@ -194,9 +198,10 @@ export default function ProjectExcellenceQueuePage({ mode = 'pipeline' }) {
                 }}
               >
                 Open<Icon name="arrow" size={12}/>
-              </button>
-            </div>
-          ))}
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

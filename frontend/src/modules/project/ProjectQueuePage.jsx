@@ -103,8 +103,9 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
     : modeItems.filter((row) => row.projectStatus === statusFilter);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <PageHeader
         file="No. 09"
         eyebrow="Project module"
         title={mode === 'sites' ? 'Sites' : 'Pipeline'}
@@ -151,8 +152,10 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
         </div>
       )}
 
+      </div>
+
       {status === 'ready' && visibleItems.length > 0 && (
-        <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', overflowX: 'auto' }}>
+        <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', overflowX: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{
             display: 'grid',
             gridTemplateColumns: COLS,
@@ -175,10 +178,11 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
             <span style={{ textAlign: 'right' }}>Action</span>
           </div>
 
-          {visibleItems.map((row) => (
-            <div
-              key={row.siteId}
-              data-site-id={row.siteId}
+          <div style={{ overflowY: 'auto' }}>
+            {visibleItems.map((row) => (
+              <div
+                key={row.siteId}
+                data-site-id={row.siteId}
               className="zm-row"
               role="button"
               tabIndex={0}
@@ -231,9 +235,10 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
                 }}
               >
                 Open<Icon name="arrow" size={12}/>
-              </button>
-            </div>
-          ))}
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

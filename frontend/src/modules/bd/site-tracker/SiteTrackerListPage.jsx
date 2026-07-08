@@ -447,9 +447,9 @@ export default function SiteTrackerListPage() {
   const [filter, setFilter] = React.useState('all');
   const [query, setQuery] = React.useState('');
 
-  const loadSites = React.useCallback(() => {
+  const loadSites = React.useCallback((silent = false) => {
     let cancelled = false;
-    setState({ status: 'loading', items: [], error: null });
+    if (!silent) setState({ status: 'loading', items: [], error: null });
     Promise.all(TRACKED_STATUSES.map((s) =>
       listSites({ status: s }).catch(() => []),
     ))
@@ -473,19 +473,20 @@ export default function SiteTrackerListPage() {
       })
       .catch((err) => {
         if (cancelled) return;
-        setState({
-          status: 'error',
-          items: [],
+        if (silent && err?.code === 'TIMEOUT') return;
+        setState((s) => ({
+          status: (silent && s.items.length) ? 'ready' : 'error',
+          items: (silent && s.items.length) ? s.items : [],
           error: err?.detail || err?.message || 'Failed to load sites',
-        });
+        }));
       });
     return () => { cancelled = true; };
   }, []);
 
   React.useEffect(() => loadSites(), [loadSites]);
 
-  useSiteDataRefresh(React.useCallback(() => {
-    loadSites();
+  useSiteDataRefresh(React.useCallback((silent) => {
+    loadSites(silent);
   }, [loadSites]));
 
   const filtered = React.useMemo(() => {
@@ -518,53 +519,55 @@ export default function SiteTrackerListPage() {
   }, [navigate]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader
-        file="No. 08"
-        eyebrow="BD module"
-        title="Process flow"
-        right={<HeaderTag icon="activity" label={`${filtered.length} IN FLOW`}/>}
-      />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <PageHeader
+          file="No. 08"
+          eyebrow="BD module"
+          title="Process flow"
+          right={<HeaderTag icon="activity" label={`${filtered.length} IN FLOW`}/>}
+        />
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(4, minmax(120px, 1fr))',
-        gap: 10,
-      }}>
-        <Metric label="LOI signed" value={counts.loi_uploaded || 0}/>
-        <Metric label="Legal review" value={counts.legal_review || 0}/>
-        <Metric label="Legal cleared" value={counts.legal_approved || 0}/>
-        <Metric label="Payments handoff" value={counts.pushed_to_payments || 0}/>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, minmax(120px, 1fr))',
+          gap: 10,
+        }}>
+          <Metric label="LOI signed" value={counts.loi_uploaded || 0}/>
+          <Metric label="Legal review" value={counts.legal_review || 0}/>
+          <Metric label="Legal cleared" value={counts.legal_approved || 0}/>
+          <Metric label="Payments handoff" value={counts.pushed_to_payments || 0}/>
+        </div>
+
+        <FilterBar
+          filter={filter}
+          setFilter={setFilter}
+          query={query}
+          setQuery={setQuery}
+        />
+
+        {state.status === 'loading' && (
+          <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
+            Loading...
+          </div>
+        )}
+
+        {state.status === 'error' && (
+          <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger, #B91C1C)' }}>
+            {state.error}
+          </div>
+        )}
+
+        {state.status === 'ready' && filtered.length === 0 && (
+          <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
+            <Icon name="activity" size={20}/>
+            <p style={{ margin: '12px 0 0' }}>No LOI-stage sites match these filters.</p>
+          </div>
+        )}
       </div>
 
-      <FilterBar
-        filter={filter}
-        setFilter={setFilter}
-        query={query}
-        setQuery={setQuery}
-      />
-
-      {state.status === 'loading' && (
-        <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
-          Loading...
-        </div>
-      )}
-
-      {state.status === 'error' && (
-        <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger, #B91C1C)' }}>
-          {state.error}
-        </div>
-      )}
-
-      {state.status === 'ready' && filtered.length === 0 && (
-        <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
-          <Icon name="activity" size={20}/>
-          <p style={{ margin: '12px 0 0' }}>No LOI-stage sites match these filters.</p>
-        </div>
-      )}
-
       {state.status === 'ready' && filtered.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minHeight: 0, overflowY: 'auto' }}>
           {filtered.map((site) => (
             <PipelineRow
               key={site.id}

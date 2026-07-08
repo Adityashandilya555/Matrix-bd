@@ -35,10 +35,12 @@ export function usePagedList(fetchPage, { pageSize = 50, deps = [] } = {}) {
   const fetchPageRef = useRef(fetchPage);
   fetchPageRef.current = fetchPage;
 
-  const reload = useCallback(() => {
+  const reload = useCallback((silent = false) => {
     const reqId = ++reqIdRef.current;
-    setStatus('loading');
-    setError(null);
+    if (!silent) {
+      setStatus('loading');
+      setError(null);
+    }
     Promise.resolve(fetchPageRef.current({ limit: pageSize, offset: 0 }))
       .then((data) => {
         if (!aliveRef.current || reqId !== reqIdRef.current) return;
@@ -48,11 +50,16 @@ export function usePagedList(fetchPage, { pageSize = 50, deps = [] } = {}) {
       })
       .catch((err) => {
         if (!aliveRef.current || reqId !== reqIdRef.current) return;
+        if (silent && err?.code === 'TIMEOUT') return;
+        if (silent && items.length > 0) {
+          setError(err?.detail || err?.message || 'Failed to load');
+          return;
+        }
         setError(err?.detail || err?.message || 'Failed to load');
         setStatus('error');
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageSize]);
+  }, [pageSize, items.length]);
 
   const loadMore = useCallback(() => {
     if (loadingMoreRef.current) return; // guard double-fire

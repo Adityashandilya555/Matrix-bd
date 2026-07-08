@@ -11,9 +11,9 @@ export default function DdFailedPage() {
   const navigate = useNavigate();
   const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
 
-  const load = React.useCallback(() => {
+  const load = React.useCallback((silent = false) => {
     let cancelled = false;
-    setState({ status: 'loading', items: [], total: 0, error: null });
+    if (!silent) setState({ status: 'loading', items: [], total: 0, error: null });
     getDdFailedQueue()
       .then((data) => {
         if (cancelled) return;
@@ -21,7 +21,13 @@ export default function DdFailedPage() {
       })
       .catch((err) => {
         if (cancelled) return;
-        setState({ status: 'error', items: [], total: 0, error: err?.detail || err?.message || 'Failed to load' });
+        if (silent && err?.code === 'TIMEOUT') return;
+        setState((s) => ({
+          status: (silent && s.items.length) ? 'ready' : 'error',
+          items: (silent && s.items.length) ? s.items : [],
+          total: (silent && s.items.length) ? s.total : 0,
+          error: err?.detail || err?.message || 'Failed to load',
+        }));
       });
     return () => { cancelled = true; };
   }, []);
@@ -30,33 +36,36 @@ export default function DdFailedPage() {
   useSiteDataRefresh(load);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHeader
-        file="No. 07"
-        eyebrow="BD module"
-        title={<>DDR <em>negative</em></>}
-        right={<HeaderTag icon="alert" label="LEGAL_REJECTED"/>}
-      />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <PageHeader
+          file="No. 07"
+          eyebrow="BD module"
+          title={<>DDR <em>negative</em></>}
+          right={<HeaderTag icon="alert" label="LEGAL_REJECTED"/>}
+        />
 
-      {state.status === 'loading' && (
-        <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
-          Loading…
-        </div>
-      )}
-      {state.status === 'error' && (
-        <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{state.error}</div>
-      )}
-      {state.status === 'ready' && state.items.length === 0 && (
-        <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
-          <Icon name="check" size={20}/>
-          <p style={{ margin: '12px 0 0' }}>No failed sites — clean slate.</p>
-        </div>
-      )}
+        {state.status === 'loading' && (
+          <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
+            Loading…
+          </div>
+        )}
+        {state.status === 'error' && (
+          <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{state.error}</div>
+        )}
+        {state.status === 'ready' && state.items.length === 0 && (
+          <div className="zm-glass" style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)' }}>
+            <Icon name="check" size={20}/>
+            <p style={{ margin: '12px 0 0' }}>No failed sites — clean slate.</p>
+          </div>
+        )}
+      </div>
 
       {state.status === 'ready' && state.items.length > 0 && (
         <div className="zm-glass" style={{
           borderRadius: 12, overflow: 'hidden',
           borderLeft: '4px solid var(--zm-danger)',
+          display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0
         }}>
           <div style={{
             display: 'grid',
@@ -69,8 +78,9 @@ export default function DdFailedPage() {
             <span>Code</span><span>Site</span><span>City</span><span>Drafted by</span>
             <span>Reason</span><span style={{ textAlign: 'right' }}>Action</span>
           </div>
-          {state.items.map((row) => (
-            <div
+          <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
+            {state.items.map((row) => (
+              <div
               key={row.siteId}
               role="button"
               tabIndex={0}
@@ -116,6 +126,7 @@ export default function DdFailedPage() {
               </button>
             </div>
           ))}
+          </div>
         </div>
       )}
     </div>
