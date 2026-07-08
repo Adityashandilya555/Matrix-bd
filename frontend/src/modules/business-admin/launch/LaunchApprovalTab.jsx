@@ -37,7 +37,7 @@ const STATUS_LABELS = {
   launched:                { label: 'LAUNCHED 🚀',           color: '#58E0A4' },
 };
 
-const RENT_TYPE_LABEL = { fixed: 'Fixed + escalation', revshare: 'Revenue share', mg_revshare: 'MG + Revenue share', staggered: 'Staggered Rent with Escalation' };
+const RENT_TYPE_LABEL = { fixed: 'Fixed + escalation', revshare: 'Revenue share', mg_revshare: 'MG + Revenue share' };
 const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-IN'));
 const pct = (n) => (n == null ? '—' : `${Number(n)}%`);
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN') : '—');

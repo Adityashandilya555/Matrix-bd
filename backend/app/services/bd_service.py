@@ -106,8 +106,6 @@ async def svc_create_draft(
     expected_escalation_pct: float | None = None,
     expected_escalation_years: int | None = None,
     expected_revshare_pct: float | None = None,
-    area_sqft: int = 0,
-    staggered_escalation: list | None = None,
 ) -> SiteResponse:
     """Create a pipeline draft. One canonical implementation used by both
     `POST /api/bd/drafts` and `POST /api/sites`.
@@ -138,16 +136,10 @@ async def svc_create_draft(
             expected_escalation_pct=expected_escalation_pct,
             expected_escalation_years=expected_escalation_years,
             expected_revshare_pct=expected_revshare_pct,
-            area_sqft=area_sqft,
-            staggered_escalation=(
-                [e if isinstance(e, dict) else e.model_dump() for e in staggered_escalation]
-                if staggered_escalation else None
-            ),
             rent_set_at=now if (
                 expected_rent is not None
                 or expected_escalation_pct is not None
                 or expected_revshare_pct is not None
-                or staggered_escalation is not None
             ) else None,
             submitted_by=actor["sub"],
             shortlisted_at=now if is_supervisor else None,
@@ -246,7 +238,6 @@ async def svc_save_details(
             "google_pin": site.google_maps_pin,
             "expected_rent": float(site.expected_rent) if site.expected_rent is not None else None,
             "rent_type": site.rent_type,
-            "area_sqft": site.area_sqft,
         }
         # Normalise incoming keys to the audit key shape
         incoming = {
@@ -255,7 +246,6 @@ async def svc_save_details(
             "google_pin": details.get("google_pin"),
             "expected_rent": _to_float(details.get("rent")),
             "rent_type": details.get("rent_type"),
-            "area_sqft": _to_int(details.get("area_sqft")),
         }
         await diff_and_log_pipeline_fields(
             session,
@@ -276,13 +266,6 @@ async def svc_save_details(
                 setattr(site, k, v)
         if incoming.get("expected_rent") is not None:
             site.rent_set_at = datetime.now(timezone.utc)
-        # Staggered escalation — update directly (not diff-logged field-by-field)
-        esc_raw = details.get("staggered_escalation")
-        if esc_raw is not None:
-            site.staggered_escalation = (
-                [e if isinstance(e, dict) else e.model_dump() for e in esc_raw]
-                if esc_raw else None
-            )
 
         await _upsert_site_details(session, tenant_id=tenant_id, site_id=site.id, details=details)
 
@@ -311,14 +294,12 @@ async def svc_submit_details(
                 "google_pin": site.google_maps_pin,
                 "expected_rent": float(site.expected_rent) if site.expected_rent is not None else None,
                 "rent_type": site.rent_type,
-                "area_sqft": site.area_sqft,
             }
             incoming = {
                 "model": details.get("model"), "spoc_name": details.get("spoc_name"),
                 "google_pin": details.get("google_pin"),
                 "expected_rent": _to_float(details.get("rent")),
                 "rent_type": details.get("rent_type"),
-                "area_sqft": _to_int(details.get("area_sqft")),
             }
             await diff_and_log_pipeline_fields(
                 session, tenant_id=tenant_id, site_id=site.id,
@@ -332,13 +313,6 @@ async def svc_submit_details(
                     site.google_maps_pin = v
                 else:
                     setattr(site, k, v)
-            # Staggered escalation
-            esc_raw = details.get("staggered_escalation")
-            if esc_raw is not None:
-                site.staggered_escalation = (
-                    [e if isinstance(e, dict) else e.model_dump() for e in esc_raw]
-                    if esc_raw else None
-                )
             await _upsert_site_details(session, tenant_id=tenant_id, site_id=site.id, details=details)
 
         site.status = SiteStatus.DETAILS_SUBMITTED.value
@@ -637,15 +611,6 @@ def _to_float(v) -> float | None:
         return None
     try:
         return float(v)
-    except (TypeError, ValueError):
-        return None
-
-
-def _to_int(v) -> int | None:
-    if v is None or v == "":
-        return None
-    try:
-        return int(v)
     except (TypeError, ValueError):
         return None
 

@@ -1,14 +1,14 @@
 """Pydantic schemas for site resources."""
 from __future__ import annotations
 from datetime import date, datetime
-from typing import List, Literal, Optional
-from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
+from typing import Literal, Optional
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 from app.domain.state_machine import SiteStatus
 
 # Closed vocabulary mirroring the live DB CHECK constraint on sites.rent_type.
 # Using a Literal here converts a latent IntegrityError 500 into a clean 422
 # before any SQL is issued (issue #166).
-RentType = Literal["fixed", "revshare", "mg_revshare", "staggered"]
+RentType = Literal["fixed", "revshare", "mg_revshare"]
 
 
 # Schemes that execute or embed code when rendered as an <a href>. Blocking
@@ -50,12 +50,6 @@ def _validate_http_url(v: Optional[str]) -> Optional[str]:
 
 # ── Request models ─────────────────────────────────────────────────────────────
 
-class StaggeredEscalationItem(BaseModel):
-    """One year's escalation entry for staggered rent."""
-    year: int = Field(..., gt=0, description="Escalation year (1-based, relative to lease start)")
-    percent: float = Field(..., gt=0, le=100, description="Percentage increase for that year")
-
-
 class CreateDraftRequest(BaseModel):
     name: str
     city: str
@@ -80,13 +74,6 @@ class CreateDraftRequest(BaseModel):
     # so out-of-range input returns a clean 422 instead of a database error.
     expected_escalation_years: Optional[int] = Field(default=None, ge=0, le=99)
     expected_revshare_pct: Optional[float] = None
-    # Pipeline-stage area in sqft. Defaults to 0; editable later in Add Details.
-    area_sqft: int = Field(default=0, ge=0, description="Site area in square feet")
-    # Staggered rent escalation schedule: required when rent_type == 'staggered'.
-    staggered_escalation: Optional[List[StaggeredEscalationItem]] = Field(
-        default=None,
-        description="Up to 5 escalation entries; required when rent_type='staggered'",
-    )
     # Site score is a decimal 1-5 rating. Bounded on input; output remains unconstrained
     # so legacy rows (e.g. 0-100) do not cause validation errors.
     score: Optional[float] = Field(default=None, ge=1, le=5)
@@ -104,22 +91,6 @@ class CreateDraftRequest(BaseModel):
     brokerage: Optional[float] = None
     lockin: Optional[int] = None
     tenure: Optional[int] = None
-
-    @model_validator(mode="after")
-    def _staggered_requirements(self) -> "CreateDraftRequest":
-        """When rent_type is 'staggered', enforce required fields."""
-        if self.rent_type == "staggered":
-            if self.expected_rent is None:
-                raise ValueError("expected_rent is required for staggered rent")
-            esc = self.staggered_escalation
-            if not esc or len(esc) == 0:
-                raise ValueError("staggered_escalation schedule is required for staggered rent")
-            if len(esc) > 5:
-                raise ValueError("Maximum of 5 escalation entries allowed")
-            years = {e.year for e in esc}
-            if len(years) != len(esc):
-                raise ValueError("Escalation years must be unique")
-        return self
 
 
 class ShortlistDraftRequest(BaseModel):
@@ -154,13 +125,6 @@ class SaveDetailsRequest(BaseModel):
     lockin: Optional[int] = None
     tenure: Optional[int] = None
     total_op_cost: Optional[float] = Field(default=None, validation_alias=AliasChoices("total_op_cost", "totalOpCost"))
-    # Pipeline-stage area (sqft) — editable via Add Details
-    area_sqft: Optional[int] = Field(default=None, ge=0, validation_alias=AliasChoices("area_sqft", "areaSqft"))
-    # Staggered escalation schedule — passed through to sites row
-    staggered_escalation: Optional[List[StaggeredEscalationItem]] = Field(
-        default=None,
-        validation_alias=AliasChoices("staggered_escalation", "staggeredEscalation"),
-    )
 
 
 class SubmitDetailsRequest(SaveDetailsRequest):
@@ -220,8 +184,6 @@ class SiteResponse(BaseModel):
     expected_escalation_pct: Optional[float] = None
     expected_escalation_years: Optional[int] = None
     expected_revshare_pct: Optional[float] = None
-    area_sqft: int = 0
-    staggered_escalation: Optional[list] = None
     # Persisted 17-field details from the shortlist form. These power the
     # read-only site drawer and must never be synthesized by the frontend.
     score: Optional[float] = None
