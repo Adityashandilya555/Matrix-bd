@@ -168,7 +168,7 @@ async def svc_create_draft(
             expected_escalation_pct=expected_escalation_pct,
             expected_escalation_years=expected_escalation_years,
             expected_revshare_pct=expected_revshare_pct,
-            area_sqft=area_sqft,
+            area_sqft=area_sqft if area_sqft is not None else 0,
             staggered_escalation=_prepare_staggered_escalation(staggered_escalation, rent_type),
             rent_set_at=_determine_rent_set_at(
                 now, expected_rent, expected_escalation_pct, expected_revshare_pct, staggered_escalation

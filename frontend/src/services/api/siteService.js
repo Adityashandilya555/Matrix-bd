@@ -51,6 +51,12 @@ export async function submitDetails(siteId, formData, by) {
     lockin:           toNumber(formData.lockin),
     tenure:           toNumber(formData.tenure),
     totalOpCost:      toNumber(formData.totalOpCost),
+    areaSqft:         toNumber(formData.areaSqft),
+    staggeredEscalation: formData.rentType === 'staggered'
+      ? (formData.staggeredEscalation || [])
+          .filter(e => e.year !== '' && e.year != null && e.percent !== '' && e.percent != null)
+          .map(e => ({ year: Number(e.year), percent: Number(e.percent) }))
+      : undefined,
   };
   return transitionSite(siteId, SiteStatus.DETAILS_SUBMITTED, {
     by,
@@ -137,7 +143,7 @@ export async function saveDraftDetails(siteId, formData) {
     'score', 'estSales', 'nearestStarbucks', 'nearestTWC',
     'carpet', 'cam', 'rent', 'escalation', 'revshare',
     'rentFreeDays', 'cadex', 'capex', 'deposit', 'brokerage',
-    'lockin', 'tenure', 'totalOpCost',
+    'lockin', 'tenure', 'totalOpCost', 'areaSqft',
   ];
   const coerced = { ...formData };
   for (const key of NUMERIC_FIELDS) {
