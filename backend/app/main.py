@@ -269,21 +269,47 @@ async def _verify_schema():
             log.critical("startup: schema verification failed! Missing columns in 'sites': %s", missing)
             raise SystemExit(1)
             
-        # 2. Verify chk_sites_rent_type allows 'staggered'
+        # 2. Verify sites.model is 'text' and not USER-DEFINED
+        res = await conn.execute(text("""
+            SELECT data_type
+            FROM information_schema.columns
+            WHERE table_name = 'sites' AND column_name = 'model';
+        """))
+        row = res.fetchone()
+        if not row or row[0] != 'text':
+            log.critical("startup: schema verification failed! sites.model is not 'text'. Found: %s", row[0] if row else 'MISSING')
+            raise SystemExit(1)
+
+        # 3. Verify chk_sites_status allows all modern statuses
         res = await conn.execute(text("""
             SELECT pg_get_constraintdef(c.oid)
             FROM pg_constraint c
             JOIN pg_class t ON c.conrelid = t.oid
-            WHERE t.relname = 'sites' AND c.conname = 'chk_sites_rent_type';
+            WHERE t.relname = 'sites' AND c.conname = 'chk_sites_status';
         """))
         row = res.fetchone()
         if not row:
-            log.critical("startup: schema verification failed! chk_sites_rent_type constraint missing.")
+            log.critical("startup: schema verification failed! chk_sites_status constraint missing.")
             raise SystemExit(1)
-            
+        constraint_def = row[0]
+        if "'legal_review'" not in constraint_def or "'pushed_to_payments'" not in constraint_def:
+            log.critical("startup: schema verification failed! chk_sites_status is outdated: %s", constraint_def)
+            raise SystemExit(1)
+
+        # 4. Verify chk_site_details_rent_type allows 'staggered'
+        res = await conn.execute(text("""
+            SELECT pg_get_constraintdef(c.oid)
+            FROM pg_constraint c
+            JOIN pg_class t ON c.conrelid = t.oid
+            WHERE t.relname = 'site_details' AND c.conname = 'chk_site_details_rent_type';
+        """))
+        row = res.fetchone()
+        if not row:
+            log.critical("startup: schema verification failed! chk_site_details_rent_type constraint missing.")
+            raise SystemExit(1)
         constraint_def = row[0]
         if "'staggered'" not in constraint_def:
-            log.critical("startup: schema verification failed! chk_sites_rent_type does not allow 'staggered': %s", constraint_def)
+            log.critical("startup: schema verification failed! chk_site_details_rent_type does not allow 'staggered': %s", constraint_def)
             raise SystemExit(1)
             
     log.info("startup: schema verification OK")

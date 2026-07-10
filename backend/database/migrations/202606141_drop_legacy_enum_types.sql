@@ -48,10 +48,14 @@ ALTER TABLE public.sites
     ALTER COLUMN status TYPE text USING status::text;
 
 ALTER TABLE public.sites
+    DROP CONSTRAINT IF EXISTS chk_sites_status;
+ALTER TABLE public.sites
     ADD CONSTRAINT chk_sites_status
     CHECK (status IN (
         'draft_submitted', 'shortlisted', 'details_submitted',
-        'approved', 'loi_uploaded', 'rejected', 'archived'
+        'approved', 'loi_uploaded', 'legal_review', 'legal_approved',
+        'legal_rejected', 'pushed_to_payments', 'rejected', 'archived',
+        'launched'
     )) NOT VALID;
 
 -- stage_events.from_status / to_status — open set; just convert, no CHECK
@@ -83,8 +87,10 @@ ALTER TABLE public.site_details
     ALTER COLUMN rent_type TYPE text USING rent_type::text;
 
 ALTER TABLE public.site_details
+    DROP CONSTRAINT IF EXISTS chk_site_details_rent_type;
+ALTER TABLE public.site_details
     ADD CONSTRAINT chk_site_details_rent_type
-    CHECK (rent_type IN ('fixed', 'revshare', 'mg_revshare') OR rent_type IS NULL)
+    CHECK (rent_type IN ('fixed', 'revshare', 'mg_revshare', 'staggered') OR rent_type IS NULL)
     NOT VALID;
 
 DROP TYPE IF EXISTS public.rent_type;
