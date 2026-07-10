@@ -236,12 +236,13 @@ async def _apply_pending_migrations() -> None:
             if not stmt:
                 continue
             try:
-                # Replace : with \: to bypass SQLAlchemy's bind parameter parser (e.g. ::int -> \:\:int)
-                # We use engine.begin() so each statement executes in its own isolated short transaction,
-                # avoiding lock timeouts and asyncpg multi-statement deadlocks.
-                safe_stmt = stmt.replace(":", "\\:")
+                # Use exec_driver_sql to send raw SQL directly to asyncpg,
+                # bypassing SQLAlchemy's bind-parameter parser entirely.
+                # The previous approach (replacing ":" with "\:") corrupted
+                # PostgreSQL :: type casts (e.g. status::text -> status\:\:text)
+                # and dollar-quoted PL/pgSQL blocks, causing migrations to fail.
                 async with engine.begin() as conn:
-                    await conn.execute(text(safe_stmt))
+                    await conn.exec_driver_sql(stmt)
                 applied += 1
                 applied_total += 1
             except SQLAlchemyError:
