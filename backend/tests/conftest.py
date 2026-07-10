@@ -58,6 +58,9 @@ class FakeResult:
     def scalar(self) -> Any:
         return self._scalar
 
+    def __iter__(self):
+        return iter(self._all_rows)
+
     def scalars(self) -> "FakeScalars":
         return FakeScalars(self._scalars_list)
 

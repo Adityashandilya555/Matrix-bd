@@ -34,14 +34,20 @@ async def test_create_and_transition_custom_model_site():
         rent_type="fixed",
         model="BTC Cafe+"
     )
-    site_id = site_dict["id"]
+    site_id = site_dict.id
+    
+    # Extract the created site from session.added
+    site_row = session.added[0]
     
     # Bypass intermediate steps for brevity: manually set to LOI_UPLOADED 
     # to test the svc_push_to_payments (which moves to LEGAL_REVIEW).
-    # We must flush so the DB state matches what the service expects.
-    site_row = await session.get(models.Site, site_id)
     site_row.status = SiteStatus.LOI_UPLOADED.value
-    await session.flush()
+    
+    # Seed the mock session so `fetch_site_for_update_or_404` finds it
+    from tests.conftest import FakeResult
+    session._results.append(FakeResult(scalar=site_row)) # for fetch_site_for_update_or_404
+    session._results.append(FakeResult(scalar=None)) # for existing_legal_dd
+    session._results.append(FakeResult(all_rows=[(actor["sub"],)])) # for recipients_for_legal_supervisors
     
     # 2. Push to Legal Review (BD Supervisor action)
     # This previously failed if the `chk_sites_status` constraint didn't allow `legal_review`.
@@ -49,12 +55,11 @@ async def test_create_and_transition_custom_model_site():
         session,
         tenant_id=tenant_id,
         actor=actor,
-        site_id=site_id
+        site_id=site_row.id
     )
     
-    assert result.success is True
+    assert result.ok is True
     
     # Verify the final state
-    updated_site = await session.get(models.Site, site_id)
-    assert updated_site.status == SiteStatus.LEGAL_REVIEW.value
-    assert updated_site.legal_review_at is not None
+    assert site_row.status == SiteStatus.LEGAL_REVIEW.value
+    assert site_row.legal_review_at is not None
