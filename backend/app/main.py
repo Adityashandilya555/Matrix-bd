@@ -222,38 +222,36 @@ async def _apply_pending_migrations() -> None:
     ])
 
     applied_total = 0
-    for filename in files_to_apply:
-        resolved = os.path.normpath(os.path.join(_MIGRATION_DIR, filename))
-        if not os.path.isfile(resolved):
-            log.error("startup-migrations: %s not found. Failing startup to prevent inconsistent schema state.", resolved)
-            raise FileNotFoundError(f"Missing required migration file: {resolved}")
+    # Reuse a single connection for all migrations to avoid pool checkout overhead and DB connection limits.
+    async with engine.connect() as conn:
+        for filename in files_to_apply:
+            resolved = os.path.normpath(os.path.join(_MIGRATION_DIR, filename))
+            if not os.path.isfile(resolved):
+                log.error("startup-migrations: %s not found. Failing startup to prevent inconsistent schema state.", resolved)
+                raise FileNotFoundError(f"Missing required migration file: {resolved}")
 
-        with open(resolved, encoding="utf-8") as fh:
-            raw_sql = fh.read()
+            with open(resolved, encoding="utf-8") as fh:
+                raw_sql = fh.read()
 
-        statements = _parse_sql_statements(raw_sql)
+            statements = _parse_sql_statements(raw_sql)
 
-        applied = 0
-        for stmt in statements:
-            if not stmt:
-                continue
-            try:
-                # Use exec_driver_sql to send raw SQL directly to asyncpg,
-                # bypassing SQLAlchemy's bind-parameter parser entirely.
-                # The previous approach (replacing ":" with "\:") corrupted
-                # PostgreSQL :: type casts (e.g. status::text -> status\:\:text)
-                # and dollar-quoted PL/pgSQL blocks, causing migrations to fail.
-                async with engine.begin() as conn:
-                    await conn.exec_driver_sql(stmt)
-                applied += 1
-                applied_total += 1
-            except SQLAlchemyError:
-                log.exception(
-                    "startup-migrations: statement failed in %s (may already be applied): %.120s",
-                    filename,
-                    stmt,
-                )
-        log.info("startup-migrations: %d/%d statements applied from %s", applied, len(statements), filename)
+            applied = 0
+            for stmt in statements:
+                if not stmt:
+                    continue
+                try:
+                    # Use a nested transaction block per statement on the same connection
+                    async with conn.begin():
+                        await conn.exec_driver_sql(stmt)
+                    applied += 1
+                    applied_total += 1
+                except SQLAlchemyError:
+                    log.exception(
+                        "startup-migrations: statement failed in %s (may already be applied): %.120s",
+                        filename,
+                        stmt,
+                    )
+            log.info("startup-migrations: %d/%d statements applied from %s", applied, len(statements), filename)
     log.info("startup-migrations: %d total statements applied across all files", applied_total)
 
 
