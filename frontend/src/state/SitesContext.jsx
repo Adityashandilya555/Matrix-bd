@@ -326,10 +326,14 @@ export function SitesProvider({ children }) {
       googlePin: form.googlePin || null,
       googleMapsUrl: form.googleMapsUrl || null,
       rentType: form.rentType || null,
-      expectedRent: form.expectedRent ? Number(form.expectedRent) : null,
-      expectedEscalationPct: form.expectedEscalation ? Number(form.expectedEscalation) : null,
-      expectedEscalationYears: form.expectedEscalationYears ? Number(form.expectedEscalationYears) : null,
-      expectedRevsharePct: form.expectedRevshare ? Number(form.expectedRevshare) : null,
+      expectedRent: ['fixed', 'mg_revshare', 'staggered'].includes(form.rentType) && form.expectedRent ? Number(form.expectedRent) : null,
+      expectedEscalationPct: ['fixed', 'mg_revshare'].includes(form.rentType) && form.expectedEscalation ? Number(form.expectedEscalation) : null,
+      expectedEscalationYears: ['fixed', 'mg_revshare'].includes(form.rentType) && form.expectedEscalationYears ? Number(form.expectedEscalationYears) : null,
+      expectedRevsharePct: ['revshare', 'mg_revshare'].includes(form.rentType) && form.expectedRevshare ? Number(form.expectedRevshare) : null,
+      areaSqft: form.areaSqft ? Number(form.areaSqft) : null,
+      staggeredEscalation: form.rentType === 'staggered' 
+        ? form.staggeredEscalation.map(e => ({ year: e.year, percent: e.percent ? Number(e.percent) : null }))
+        : null,
       createdBy: { id: session?.id || session?.sub || undefined, name: sessionDisplayName, role },
       role,
       tenantId: user?.tenantId,

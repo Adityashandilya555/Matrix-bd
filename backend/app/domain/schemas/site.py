@@ -81,7 +81,7 @@ class CreateDraftRequest(BaseModel):
     expected_escalation_years: Optional[int] = Field(default=None, ge=0, le=99)
     expected_revshare_pct: Optional[float] = Field(default=None, ge=0, le=100)
     # Pipeline-stage area in sqft. Defaults to 0; editable later in Add Details.
-    area_sqft: int = Field(default=0, ge=0, description="Site area in square feet")
+    area_sqft: Optional[float] = Field(default=None, ge=0, description="Site area in square feet")
     # Staggered rent escalation schedule: required when rent_type == 'staggered'.
     staggered_escalation: Optional[List[StaggeredEscalationItem]] = Field(
         default=None,

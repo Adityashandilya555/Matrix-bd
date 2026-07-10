@@ -78,6 +78,8 @@ export async function createSite(payload) {
     expectedEscalationPct: payload.expectedEscalationPct ?? null,
     expectedEscalationYears: payload.expectedEscalationYears ?? null,
     expectedRevsharePct: payload.expectedRevsharePct ?? null,
+    areaSqft: payload.areaSqft ?? null,
+    staggeredEscalation: payload.staggeredEscalation ?? null,
     score: '', estSales: '', carpet: '', rent: payload.expectedRent ?? '', totalOpCost: 0,
     hue: Math.round(Math.random() * 360),
   };
