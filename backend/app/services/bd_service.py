@@ -141,7 +141,7 @@ async def svc_create_draft(
             area_sqft=area_sqft,
             staggered_escalation=(
                 [e if isinstance(e, dict) else e.model_dump() for e in staggered_escalation]
-                if staggered_escalation else None
+                if staggered_escalation and rent_type == "staggered" else None
             ),
             rent_set_at=now if (
                 expected_rent is not None
@@ -278,11 +278,12 @@ async def svc_save_details(
             site.rent_set_at = datetime.now(timezone.utc)
         # Staggered escalation — update directly (not diff-logged field-by-field)
         esc_raw = details.get("staggered_escalation")
-        if esc_raw is not None:
-            site.staggered_escalation = (
-                [e if isinstance(e, dict) else e.model_dump() for e in esc_raw]
-                if esc_raw else None
-            )
+        current_rent_type = incoming.get("rent_type") or site.rent_type
+        if current_rent_type == "staggered":
+            if esc_raw is not None:
+                site.staggered_escalation = [e if isinstance(e, dict) else e.model_dump() for e in esc_raw]
+        else:
+            site.staggered_escalation = None
 
         await _upsert_site_details(session, tenant_id=tenant_id, site_id=site.id, details=details)
 
@@ -334,11 +335,12 @@ async def svc_submit_details(
                     setattr(site, k, v)
             # Staggered escalation
             esc_raw = details.get("staggered_escalation")
-            if esc_raw is not None:
-                site.staggered_escalation = (
-                    [e if isinstance(e, dict) else e.model_dump() for e in esc_raw]
-                    if esc_raw else None
-                )
+            current_rent_type = incoming.get("rent_type") or site.rent_type
+            if current_rent_type == "staggered":
+                if esc_raw is not None:
+                    site.staggered_escalation = [e if isinstance(e, dict) else e.model_dump() for e in esc_raw]
+            else:
+                site.staggered_escalation = None
             await _upsert_site_details(session, tenant_id=tenant_id, site_id=site.id, details=details)
 
         site.status = SiteStatus.DETAILS_SUBMITTED.value
