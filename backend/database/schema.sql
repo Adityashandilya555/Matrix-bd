@@ -8,6 +8,32 @@
 -- were retired by migration 202606141 — all affected columns are now text
 -- with CHECK constraints.
 
+-- ── Functions ─────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.is_valid_staggered_escalation(arr jsonb)
+RETURNS boolean
+LANGUAGE plpgsql IMMUTABLE AS $$
+DECLARE
+    elem jsonb;
+    y int;
+    p float;
+BEGIN
+    IF arr IS NULL THEN RETURN true; END IF;
+    IF jsonb_typeof(arr) != 'array' THEN RETURN false; END IF;
+    IF jsonb_array_length(arr) > 5 THEN RETURN false; END IF;
+    FOR elem IN SELECT * FROM jsonb_array_elements(arr)
+    LOOP
+        BEGIN
+            y := (elem->>'year')::int;
+            p := (elem->>'percent')::float;
+            IF y <= 0 OR p < 0 OR p > 100 THEN RETURN false; END IF;
+        EXCEPTION WHEN OTHERS THEN
+            RETURN false;
+        END;
+    END LOOP;
+    RETURN true;
+END;
+$$;
+
 -- ── tenants ───────────────────────────────────────────────────────────────────
 CREATE TABLE public.tenants (
   id             uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -97,6 +123,8 @@ CREATE TABLE public.sites (
   archived_from_status     text,
   is_launched              boolean NOT NULL DEFAULT false,  -- set by Launch Approval workflow (202606094)
   launched_at              timestamp with time zone,
+  area_sqft                integer NOT NULL DEFAULT 0,
+  staggered_escalation     jsonb,
   created_at               timestamp with time zone NOT NULL DEFAULT now(),
   updated_at               timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT sites_pkey PRIMARY KEY (id),
@@ -109,8 +137,10 @@ CREATE TABLE public.sites (
       'approved','loi_uploaded','rejected','archived'
   )) NOT VALID,
   CONSTRAINT chk_sites_rent_type CHECK (
-      (rent_type IN ('fixed','revshare','mg_revshare')) OR (rent_type IS NULL)
-  )
+      (rent_type IN ('fixed','revshare','mg_revshare','staggered')) OR (rent_type IS NULL)
+  ),
+  CONSTRAINT chk_area_sqft_positive CHECK (area_sqft >= 0),
+  CONSTRAINT chk_staggered_escalation CHECK (public.is_valid_staggered_escalation(staggered_escalation))
 );
 CREATE INDEX idx_sites_tenant_id_status ON public.sites(tenant_id, status);
 CREATE INDEX idx_sites_assigned_to ON public.sites(assigned_to);
@@ -145,7 +175,7 @@ CREATE TABLE public.site_details (
   CONSTRAINT site_details_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id),
   CONSTRAINT site_details_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id),
   CONSTRAINT chk_site_details_rent_type CHECK (
-      rent_type IN ('fixed','revshare','mg_revshare') OR rent_type IS NULL
+      rent_type IN ('fixed','revshare','mg_revshare','staggered') OR rent_type IS NULL
   ) NOT VALID
 );
 

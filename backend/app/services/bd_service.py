@@ -178,7 +178,14 @@ async def svc_create_draft(
             supervisor_id=actor["sub"] if is_supervisor else None,
         )
         session.add(site)
-        await session.flush()
+        from sqlalchemy.exc import SQLAlchemyError
+        try:
+            await session.flush()
+        except SQLAlchemyError as e:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Database schema mismatch or constraint violation during site creation. Please verify backend migrations.",
+            ) from e
 
         await write_audit_event(
             session,
