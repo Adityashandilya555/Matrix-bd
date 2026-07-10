@@ -193,6 +193,7 @@ async def _apply_pending_migrations() -> None:
     files_to_apply = [
         "202606231_supervisor_executive_requests.sql",
         "202607081_add_sqft_and_staggered_rent.sql",
+        "20260715_add_staggered_rent_type_and_sqft.sql",
     ]
     
     applied_total = 0
@@ -251,6 +252,42 @@ async def _apply_pending_migrations() -> None:
     log.info("startup-migrations: %d total statements applied across all files", applied_total)
 
 
+async def _verify_schema():
+    """Verify that required schema changes exist to prevent runtime 500s on pipeline creation."""
+    async with engine.connect() as conn:
+        # 1. Verify sites.area_sqft and sites.staggered_escalation exist
+        res = await conn.execute(text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'sites' 
+              AND column_name IN ('area_sqft', 'staggered_escalation');
+        """))
+        cols = {row[0] for row in res.fetchall()}
+        missing = {'area_sqft', 'staggered_escalation'} - cols
+        if missing:
+            log.critical("startup: schema verification failed! Missing columns in 'sites': %s", missing)
+            raise SystemExit(1)
+            
+        # 2. Verify chk_sites_rent_type allows 'staggered'
+        res = await conn.execute(text("""
+            SELECT pg_get_constraintdef(c.oid)
+            FROM pg_constraint c
+            JOIN pg_class t ON c.conrelid = t.oid
+            WHERE t.relname = 'sites' AND c.conname = 'chk_sites_rent_type';
+        """))
+        row = res.fetchone()
+        if not row:
+            log.critical("startup: schema verification failed! chk_sites_rent_type constraint missing.")
+            raise SystemExit(1)
+            
+        constraint_def = row[0]
+        if "'staggered'" not in constraint_def:
+            log.critical("startup: schema verification failed! chk_sites_rent_type does not allow 'staggered': %s", constraint_def)
+            raise SystemExit(1)
+            
+    log.info("startup: schema verification OK")
+
+
 # ── Application lifespan ──────────────────────────────────────────────────────
 
 @asynccontextmanager
@@ -269,6 +306,9 @@ async def lifespan(app: FastAPI):
 
     # ── Apply pending migrations idempotently.
     await _apply_pending_migrations()
+    
+    # ── Verify required schema matches expectations
+    await _verify_schema()
 
     # Warn (don't fail) if the deployment scales out past the single-process
     # invariant the in-memory rate limiter relies on (#225, 3.2).

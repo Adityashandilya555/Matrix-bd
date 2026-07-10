@@ -65,3 +65,47 @@ async def test_staggered_rent_guard_clears_escalation_if_wrong_rent_type():
     assert site.rent_type == "fixed"
     assert site.staggered_escalation is None
     assert site.area_sqft == 1200
+
+
+async def test_create_revshare_rent_site():
+    """Verify Revenue Share site creation works."""
+    session = RecordingSession()
+    actor = {"sub": "00000000-0000-0000-0000-000000000001", "name": "Bob", "role": "executive"}
+    
+    _ = await svc_create_draft(
+        session,
+        tenant_id="00000000-0000-0000-0000-000000000002",
+        actor=actor,
+        name="Test Site",
+        city="Mumbai",
+        visit_date=datetime.date(2026, 7, 10),
+        rent_type="revshare",
+        expected_revshare_pct=15.5,
+    )
+    site = session.added[0]
+    assert site.rent_type == "revshare"
+    assert site.expected_revshare_pct == 15.5
+    assert site.staggered_escalation is None
+
+
+async def test_create_mg_revshare_rent_site():
+    """Verify MG + Revenue Share site creation works."""
+    session = RecordingSession()
+    actor = {"sub": "00000000-0000-0000-0000-000000000001", "name": "Bob", "role": "executive"}
+    
+    _ = await svc_create_draft(
+        session,
+        tenant_id="00000000-0000-0000-0000-000000000002",
+        actor=actor,
+        name="Test Site",
+        city="Mumbai",
+        visit_date=datetime.date(2026, 7, 10),
+        rent_type="mg_revshare",
+        expected_rent=50000,
+        expected_revshare_pct=10.0,
+    )
+    site = session.added[0]
+    assert site.rent_type == "mg_revshare"
+    assert site.expected_rent == 50000
+    assert site.expected_revshare_pct == 10.0
+    assert site.staggered_escalation is None

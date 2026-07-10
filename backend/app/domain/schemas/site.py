@@ -222,6 +222,20 @@ class SiteResponse(BaseModel):
     expected_revshare_pct: Optional[float] = None
     area_sqft: int = 0
     staggered_escalation: Optional[list] = None
+
+    @field_validator("staggered_escalation", mode="before")
+    @classmethod
+    def _parse_staggered_escalation(cls, v: Optional[list | str]) -> Optional[list]:
+        """Safely parse legacy stringified JSON in the staggered_escalation column."""
+        if isinstance(v, str):
+            import json
+            try:
+                parsed = json.loads(v)
+                return parsed if isinstance(parsed, list) else None
+            except Exception:
+                return None
+        return v
+
     # Persisted 17-field details from the shortlist form. These power the
     # read-only site drawer and must never be synthesized by the frontend.
     score: Optional[float] = None
