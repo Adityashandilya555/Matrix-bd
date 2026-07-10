@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 // Mock adapter — implements the full adapter interface against in-memory data.
 // Components never import this directly; they go through *Service.js.
 // All reads and writes await delay() to simulate realistic latency.
@@ -78,6 +79,8 @@ export async function createSite(payload) {
     expectedEscalationPct: payload.expectedEscalationPct ?? null,
     expectedEscalationYears: payload.expectedEscalationYears ?? null,
     expectedRevsharePct: payload.expectedRevsharePct ?? null,
+    areaSqft: payload.areaSqft ?? null,
+    staggeredEscalation: payload.staggeredEscalation ?? null,
     score: '', estSales: '', carpet: '', rent: payload.expectedRent ?? '', totalOpCost: 0,
     hue: Math.round(Math.random() * 360),
   };

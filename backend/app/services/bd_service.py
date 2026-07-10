@@ -136,7 +136,7 @@ async def svc_create_draft(
     expected_escalation_pct: float | None = None,
     expected_escalation_years: int | None = None,
     expected_revshare_pct: float | None = None,
-    area_sqft: int = 0,
+    area_sqft: float | None = None,
     staggered_escalation: list | None = None,
 ) -> SiteResponse:
     """Create a pipeline draft. One canonical implementation used by both

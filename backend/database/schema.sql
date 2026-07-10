@@ -610,8 +610,13 @@ CREATE TABLE public.project_reviews (
   mid_project_visit_date       date,
   inspection_date              date,
   quality_audit_status         text NOT NULL DEFAULT 'pending'
-                                 CHECK (quality_audit_status IN ('pending','submitted','approved','rejected')),
+                                 CHECK (quality_audit_status IN ('pending','submitted','supervisor_approved','approved','rejected')),
   quality_audit_comments       text,
+  quality_audit_supervisor_approved_at timestamp with time zone,
+  quality_audit_supervisor_approved_by uuid REFERENCES public.users(id),
+  quality_audit_admin_confirmed_at timestamp with time zone,
+  quality_audit_admin_confirmed_by uuid REFERENCES public.users(id),
+  quality_audit_admin_notes    text,
   final_completion_date        date,
   project_completed_at         timestamp with time zone,
   nso_status                   text NOT NULL DEFAULT 'pending'
@@ -627,23 +632,56 @@ CREATE TABLE public.project_reviews (
 CREATE INDEX idx_project_reviews_tenant_status ON public.project_reviews(tenant_id, project_status);
 CREATE INDEX idx_project_reviews_budget_status ON public.project_reviews(tenant_id, budget_status);
 
--- ── project_budget_items ──────────────────────────────────────────────────────
-CREATE TABLE public.project_budget_items (
-  id         uuid NOT NULL DEFAULT uuid_generate_v4(),
-  tenant_id  uuid NOT NULL,
-  site_id    uuid NOT NULL,
-  idx        integer NOT NULL,
-  label      text,
-  amount     numeric(14,2),
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  updated_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT project_budget_items_pkey PRIMARY KEY (id),
-  CONSTRAINT project_budget_items_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
-  CONSTRAINT project_budget_items_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id) ON DELETE CASCADE,
-  CONSTRAINT uq_project_budget_site_idx UNIQUE (site_id, idx),
-  CONSTRAINT chk_project_budget_idx CHECK (idx BETWEEN 1 AND 11)
+-- ── site_budgets ───────────────────────────────────────────────────────────────
+CREATE TABLE public.site_budgets (
+  id            uuid NOT NULL DEFAULT uuid_generate_v4(),
+  tenant_id     uuid NOT NULL,
+  site_id       uuid NOT NULL,
+  phase         text NOT NULL,
+  status        text NOT NULL DEFAULT 'draft',
+  allocated_to  uuid,
+  budget_total  numeric(14,2),
+  total_indoor_area_sqft numeric(12,2),
+  total_area_sqft numeric(12,2),
+  covers        integer,
+  supervisor_comments text,
+  admin_comments text,
+  approved_at   timestamp with time zone,
+  created_at    timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at    timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT site_budgets_pkey PRIMARY KEY (id),
+  CONSTRAINT site_budgets_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
+  CONSTRAINT site_budgets_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id) ON DELETE CASCADE,
+  CONSTRAINT site_budgets_allocated_to_fkey FOREIGN KEY (allocated_to) REFERENCES public.users(id),
+  CONSTRAINT chk_site_budget_phase  CHECK (phase IN ('gfc','closure')),
+  CONSTRAINT chk_site_budget_status CHECK (status IN ('draft','pending_supervisor','pending_admin','approved','rejected')),
+  CONSTRAINT uq_site_budget_site_phase UNIQUE (site_id, phase)
 );
-CREATE INDEX idx_project_budget_items_site ON public.project_budget_items(site_id);
+CREATE INDEX idx_site_budgets_tenant_phase_status ON public.site_budgets (tenant_id, phase, status);
+CREATE INDEX idx_site_budgets_site ON public.site_budgets (site_id);
+
+-- ── site_budget_items ──────────────────────────────────────────────────────────
+CREATE TABLE public.site_budget_items (
+  id          uuid NOT NULL DEFAULT uuid_generate_v4(),
+  tenant_id   uuid NOT NULL,
+  site_id     uuid NOT NULL,
+  budget_id   uuid NOT NULL,
+  phase       text NOT NULL,
+  idx         integer NOT NULL,
+  label       text,
+  amount      numeric(14,2),
+  created_at  timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at  timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT site_budget_items_pkey PRIMARY KEY (id),
+  CONSTRAINT site_budget_items_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
+  CONSTRAINT site_budget_items_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id) ON DELETE CASCADE,
+  CONSTRAINT site_budget_items_budget_id_fkey FOREIGN KEY (budget_id) REFERENCES public.site_budgets(id) ON DELETE CASCADE,
+  CONSTRAINT chk_site_budget_item_phase CHECK (phase IN ('gfc','closure')),
+  CONSTRAINT chk_site_budget_item_idx   CHECK (idx BETWEEN 1 AND 11),
+  CONSTRAINT uq_site_budget_item_budget_idx UNIQUE (budget_id, idx)
+);
+CREATE INDEX idx_site_budget_items_site_phase ON public.site_budget_items (site_id, phase);
+CREATE INDEX idx_site_budget_items_budget ON public.site_budget_items (budget_id);
 
 -- ── nso_reviews ───────────────────────────────────────────────────────────────
 -- 1:1 with sites. Added by migration 20260609.
@@ -674,6 +712,7 @@ CREATE TABLE public.nso_reviews (
   stage_two_completed_at   timestamp with time zone,
   stage_three_completed_at timestamp with time zone,
   final_approved_at        timestamp with time zone,
+  handover_pushed_at       timestamp with time zone,
   created_at               timestamp with time zone NOT NULL DEFAULT now(),
   updated_at               timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT nso_reviews_pkey PRIMARY KEY (site_id),
@@ -764,13 +803,13 @@ CREATE TABLE public.launch_review_events (
   action              text NOT NULL,
   comment             text,
   changes             jsonb,
-  occurred_at         timestamp with time zone NOT NULL DEFAULT now(),
+  created_at          timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT launch_review_events_pkey PRIMARY KEY (id),
   CONSTRAINT lre_launch_approval_id_fkey FOREIGN KEY (launch_approval_id) REFERENCES public.launch_approvals(id) ON DELETE CASCADE,
   CONSTRAINT lre_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id) ON DELETE CASCADE,
   CONSTRAINT lre_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
-CREATE INDEX idx_launch_review_events_approval ON public.launch_review_events(launch_approval_id, occurred_at);
+CREATE INDEX idx_launch_review_events_approval ON public.launch_review_events(launch_approval_id, created_at);
 -- Add has_executive_access to user_module_memberships
 ALTER TABLE public.user_module_memberships
   ADD COLUMN has_executive_access boolean NOT NULL DEFAULT false;

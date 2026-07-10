@@ -75,13 +75,13 @@ class CreateDraftRequest(BaseModel):
     expected_rent: Optional[float] = None
     rent_type: Optional[RentType] = None
     # Conditional, depending on rent_type. None for the rest.
-    expected_escalation_pct: Optional[float] = None
+    expected_escalation_pct: Optional[float] = Field(default=None, ge=0, le=100)
     # Cadence in YEARS (1 = yearly, 3 = every 3 yrs). Bounded to a sane lease horizon
     # so out-of-range input returns a clean 422 instead of a database error.
     expected_escalation_years: Optional[int] = Field(default=None, ge=0, le=99)
-    expected_revshare_pct: Optional[float] = None
+    expected_revshare_pct: Optional[float] = Field(default=None, ge=0, le=100)
     # Pipeline-stage area in sqft. Defaults to 0; editable later in Add Details.
-    area_sqft: int = Field(default=0, ge=0, description="Site area in square feet")
+    area_sqft: Optional[float] = Field(default=None, ge=0, description="Site area in square feet")
     # Staggered rent escalation schedule: required when rent_type == 'staggered'.
     staggered_escalation: Optional[List[StaggeredEscalationItem]] = Field(
         default=None,
@@ -145,8 +145,8 @@ class SaveDetailsRequest(BaseModel):
     cam: Optional[float] = None
     rent_type: Optional[RentType] = Field(default=None, validation_alias=AliasChoices("rent_type", "rentType"))
     rent: Optional[float] = None
-    escalation: Optional[float] = None
-    revshare: Optional[float] = None
+    escalation: Optional[float] = Field(default=None, ge=0, le=100)
+    revshare: Optional[float] = Field(default=None, ge=0, le=100)
     rent_free_days: Optional[int] = Field(default=None, validation_alias=AliasChoices("rent_free_days", "rentFreeDays"))
     cadex: Optional[float] = None
     deposit: Optional[float] = None

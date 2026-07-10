@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 // HTTP adapter — production-ready client against the FastAPI backend.
 //
 // Responsibilities:
@@ -357,6 +358,8 @@ export async function createSite(payload) {
     expected_escalation_pct: payload.expectedEscalationPct ?? null,
     expected_escalation_years: payload.expectedEscalationYears ?? null,
     expected_revshare_pct: payload.expectedRevsharePct ?? null,
+    area_sqft: payload.areaSqft ?? null,
+    staggered_escalation: payload.staggeredEscalation ?? null,
   };
   return siteFromServer(await post('/sites', body));
 }

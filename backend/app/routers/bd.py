@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.deps import DbDep, TenantId
 from app.domain.schemas.common import OkResponse
@@ -63,18 +63,26 @@ async def create_draft(
     current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))],
     tenant_id: TenantId,
 ) -> SiteResponse:
-    return await svc_create_draft(
-        db, tenant_id=tenant_id, actor=current_user,
-        name=body.name, city=body.city, visit_date=body.visit_date,
-        model=body.model, spoc_name=body.spoc_name, google_pin=body.google_pin,
-        google_maps_url=body.google_maps_url,
-        expected_rent=body.expected_rent, rent_type=body.rent_type,
-        expected_escalation_pct=body.expected_escalation_pct,
-        expected_escalation_years=body.expected_escalation_years,
-        expected_revshare_pct=body.expected_revshare_pct,
-        area_sqft=body.area_sqft,
-        staggered_escalation=body.staggered_escalation,
-    )
+    from sqlalchemy.exc import DataError, IntegrityError
+
+    try:
+        return await svc_create_draft(
+            db, tenant_id=tenant_id, actor=current_user,
+            name=body.name, city=body.city, visit_date=body.visit_date,
+            model=body.model, spoc_name=body.spoc_name, google_pin=body.google_pin,
+            google_maps_url=body.google_maps_url,
+            expected_rent=body.expected_rent, rent_type=body.rent_type,
+            expected_escalation_pct=body.expected_escalation_pct,
+            expected_escalation_years=body.expected_escalation_years,
+            expected_revshare_pct=body.expected_revshare_pct,
+            area_sqft=body.area_sqft,
+            staggered_escalation=body.staggered_escalation,
+        )
+    except (DataError, IntegrityError):
+        raise HTTPException(
+            status_code=400,
+            detail="Database schema mismatch during site creation. Missing or invalid constraint for sites.status/rent_type/model."
+        )
 
 
 @router.get("/drafts", response_model=SiteListResponse, summary="List pipeline drafts")
