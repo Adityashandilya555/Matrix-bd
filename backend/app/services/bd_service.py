@@ -89,6 +89,36 @@ def _assert_can_edit_details(actor: dict, site: models.Site) -> None:
 
 # ── Create draft ──────────────────────────────────────────────────────────
 
+def _prepare_staggered_escalation(staggered_escalation: list | None, rent_type: str | None) -> list | None:
+    if not staggered_escalation or rent_type != "staggered":
+        return None
+    return [e if isinstance(e, dict) else e.model_dump() for e in staggered_escalation]
+
+def _determine_rent_set_at(
+    now: datetime, expected_rent, expected_escalation_pct, expected_revshare_pct, staggered_escalation
+) -> datetime | None:
+    if (
+        expected_rent is not None
+        or expected_escalation_pct is not None
+        or expected_revshare_pct is not None
+        or staggered_escalation is not None
+    ):
+        return now
+    return None
+
+async def _notify_draft_submission(session, tenant_id, site_id, name, city, is_supervisor):
+    if not is_supervisor:
+        recipients = await recipients_for_supervisors(session, tenant_id=tenant_id)
+        await notify_enqueue(
+            session,
+            tenant_id=tenant_id,
+            event="draft_submitted",
+            recipient_ids=recipients,
+            site_id=site_id,
+            channels=("email", "slack", "in_app"),
+            payload={"site_id": str(site_id), "site_name": name, "city": city},
+        )
+
 async def svc_create_draft(
     session: AsyncSession,
     *,
@@ -139,16 +169,10 @@ async def svc_create_draft(
             expected_escalation_years=expected_escalation_years,
             expected_revshare_pct=expected_revshare_pct,
             area_sqft=area_sqft,
-            staggered_escalation=(
-                [e if isinstance(e, dict) else e.model_dump() for e in staggered_escalation]
-                if staggered_escalation else None
+            staggered_escalation=_prepare_staggered_escalation(staggered_escalation, rent_type),
+            rent_set_at=_determine_rent_set_at(
+                now, expected_rent, expected_escalation_pct, expected_revshare_pct, staggered_escalation
             ),
-            rent_set_at=now if (
-                expected_rent is not None
-                or expected_escalation_pct is not None
-                or expected_revshare_pct is not None
-                or staggered_escalation is not None
-            ) else None,
             submitted_by=actor["sub"],
             shortlisted_at=now if is_supervisor else None,
             supervisor_id=actor["sub"] if is_supervisor else None,
@@ -167,19 +191,7 @@ async def svc_create_draft(
             to_status=initial_status.value,
             detail="supervisor auto-promote" if is_supervisor else None,
         )
-        # Supervisors don't need to notify themselves; for executives the
-        # supervisor cohort gets the email/slack ping.
-        if not is_supervisor:
-            recipients = await recipients_for_supervisors(session, tenant_id=tenant_id)
-            await notify_enqueue(
-                session,
-                tenant_id=tenant_id,
-                event="draft_submitted",
-                recipient_ids=recipients,
-                site_id=site.id,
-                channels=("email", "slack", "in_app"),
-                payload={"site_id": str(site.id), "site_name": name, "city": city},
-            )
+        await _notify_draft_submission(session, tenant_id, site.id, name, city, is_supervisor)
 
     return site_to_response(site, created_by_name=actor["name"])
 
@@ -278,11 +290,12 @@ async def svc_save_details(
             site.rent_set_at = datetime.now(timezone.utc)
         # Staggered escalation — update directly (not diff-logged field-by-field)
         esc_raw = details.get("staggered_escalation")
-        if esc_raw is not None:
-            site.staggered_escalation = (
-                [e if isinstance(e, dict) else e.model_dump() for e in esc_raw]
-                if esc_raw else None
-            )
+        current_rent_type = incoming.get("rent_type") or site.rent_type
+        if current_rent_type == "staggered":
+            if esc_raw is not None:
+                site.staggered_escalation = [e if isinstance(e, dict) else e.model_dump() for e in esc_raw]
+        else:
+            site.staggered_escalation = None
 
         await _upsert_site_details(session, tenant_id=tenant_id, site_id=site.id, details=details)
 
@@ -334,11 +347,12 @@ async def svc_submit_details(
                     setattr(site, k, v)
             # Staggered escalation
             esc_raw = details.get("staggered_escalation")
-            if esc_raw is not None:
-                site.staggered_escalation = (
-                    [e if isinstance(e, dict) else e.model_dump() for e in esc_raw]
-                    if esc_raw else None
-                )
+            current_rent_type = incoming.get("rent_type") or site.rent_type
+            if current_rent_type == "staggered":
+                if esc_raw is not None:
+                    site.staggered_escalation = [e if isinstance(e, dict) else e.model_dump() for e in esc_raw]
+            else:
+                site.staggered_escalation = None
             await _upsert_site_details(session, tenant_id=tenant_id, site_id=site.id, details=details)
 
         site.status = SiteStatus.DETAILS_SUBMITTED.value
