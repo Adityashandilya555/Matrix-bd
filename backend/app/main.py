@@ -180,6 +180,32 @@ _MIGRATION_DIR = os.path.join(
 )
 
 
+def _parse_sql_statements(raw_sql: str) -> list:
+    statements = []
+    current_stmt = []
+    in_dollar_quote = False
+
+    for line in raw_sql.splitlines():
+        if "$$" in line:
+            in_dollar_quote = (line.count("$$") % 2 == 1) ^ in_dollar_quote
+
+        if not in_dollar_quote and line.strip().endswith(";"):
+            current_stmt.append(line)
+            stmt_text = "\n".join(current_stmt).strip()
+            if stmt_text.upper() not in ("BEGIN;", "COMMIT;"):
+                statements.append(stmt_text)
+            current_stmt = []
+        else:
+            current_stmt.append(line)
+
+    if current_stmt and "".join(current_stmt).strip():
+        stmt_text = "\n".join(current_stmt).strip()
+        if stmt_text.upper() not in ("BEGIN;", "COMMIT;"):
+            statements.append(stmt_text)
+            
+    return statements
+
+
 async def _apply_pending_migrations() -> None:
     """Run idempotent SQL migration files on startup.
 
@@ -190,13 +216,10 @@ async def _apply_pending_migrations() -> None:
     so partial application is safe and a retry on the next deploy will
     converge.
     """
-    files_to_apply = [
-        "202606141_drop_legacy_enum_types.sql",
-        "202606231_supervisor_executive_requests.sql",
-        "202607081_add_sqft_and_staggered_rent.sql",
-        "20260715_add_staggered_rent_type_and_sqft.sql",
-        "20260730_extend_rent_type_constraint.sql",
-    ]
+    files_to_apply = sorted([
+        f for f in os.listdir(_MIGRATION_DIR)
+        if f.endswith(".sql")
+    ])
 
     applied_total = 0
     for filename in files_to_apply:
@@ -208,28 +231,7 @@ async def _apply_pending_migrations() -> None:
         with open(resolved, encoding="utf-8") as fh:
             raw_sql = fh.read()
 
-        # Parse SQL file intelligently to protect PL/pgSQL blocks
-        statements = []
-        current_stmt = []
-        in_dollar_quote = False
-
-        for line in raw_sql.splitlines():
-            if "$$" in line:
-                in_dollar_quote = (line.count("$$") % 2 == 1) ^ in_dollar_quote
-
-            if not in_dollar_quote and line.strip().endswith(";"):
-                current_stmt.append(line)
-                stmt_text = "\n".join(current_stmt).strip()
-                if stmt_text.upper() not in ("BEGIN;", "COMMIT;"):
-                    statements.append(stmt_text)
-                current_stmt = []
-            else:
-                current_stmt.append(line)
-
-        if current_stmt and "".join(current_stmt).strip():
-            stmt_text = "\n".join(current_stmt).strip()
-            if stmt_text.upper() not in ("BEGIN;", "COMMIT;"):
-                statements.append(stmt_text)
+        statements = _parse_sql_statements(raw_sql)
 
         applied = 0
         for stmt in statements:

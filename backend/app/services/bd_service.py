@@ -182,6 +182,8 @@ async def svc_create_draft(
         try:
             await session.flush()
         except SQLAlchemyError as e:
+            import logging
+            logging.getLogger(__name__).exception("Database schema mismatch or constraint violation during site creation.")
             raise HTTPException(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="Database schema mismatch or constraint violation during site creation. Please verify backend migrations.",
