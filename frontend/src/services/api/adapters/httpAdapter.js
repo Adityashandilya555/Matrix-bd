@@ -172,6 +172,7 @@ function detailsToServer(details = {}) {
   const clean = (value) => value === '' ? null : value;
   return {
     model: clean(details.model ?? null),
+    spoc_name: clean(details.spoc_name ?? details.spocName ?? null),
     google_pin: clean(details.google_pin ?? details.googlePin ?? null),
     score: clean(details.score ?? null),
     est_sales: clean(details.est_sales ?? details.estSales ?? null),
@@ -190,6 +191,8 @@ function detailsToServer(details = {}) {
     lockin: clean(details.lockin ?? null),
     tenure: clean(details.tenure ?? null),
     total_op_cost: clean(details.total_op_cost ?? details.totalOpCost ?? null),
+    area_sqft: clean(details.area_sqft ?? details.areaSqft ?? null),
+    staggered_escalation: details.staggered_escalation ?? details.staggeredEscalation ?? null,
   };
 }
 
@@ -351,6 +354,7 @@ export async function createSite(payload) {
     city: payload.city,
     visit_date: payload.visitDate,
     model: payload.model ?? null,
+    spoc_name: payload.spocName ?? null,
     google_pin: payload.googlePin ?? null,
     google_maps_url: payload.googleMapsUrl ?? null,
     expected_rent: payload.expectedRent ?? null,

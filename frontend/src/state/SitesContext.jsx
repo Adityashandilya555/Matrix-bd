@@ -324,6 +324,7 @@ export function SitesProvider({ children }) {
       city: form.city,
       visitDate: form.visitDate,
       model: form.model || null,
+      spocName: form.spocName || null,
       googlePin: form.googlePin || null,
       googleMapsUrl: form.googleMapsUrl || null,
       rentType: form.rentType || null,
@@ -333,7 +334,9 @@ export function SitesProvider({ children }) {
       expectedRevsharePct: ['revshare', 'mg_revshare'].includes(form.rentType) && form.expectedRevshare ? Number(form.expectedRevshare) : null,
       areaSqft: form.areaSqft ? Number(form.areaSqft) : null,
       staggeredEscalation: form.rentType === 'staggered'
-        ? form.staggeredEscalation.map(e => ({ year: e.year, percent: e.percent ? Number(e.percent) : null }))
+        ? (form.staggeredEscalation || [])
+            .filter(e => e.year !== '' && e.year != null && e.percent !== '' && e.percent != null)
+            .map(e => ({ year: Number(e.year), percent: Number(e.percent) }))
         : null,
       createdBy: { id: session?.id || session?.sub || undefined, name: sessionDisplayName, role },
       role,
