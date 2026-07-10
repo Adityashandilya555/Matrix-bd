@@ -17,7 +17,7 @@ async def test_staggered_rent_sets_staggered_escalation():
         {"year": 2, "percent": 5.5}
     ]
 
-    response = await svc_create_draft(
+    _ = await svc_create_draft(
         session,
         tenant_id="00000000-0000-0000-0000-000000000002",
         actor=actor,
@@ -46,7 +46,7 @@ async def test_staggered_rent_guard_clears_escalation_if_wrong_rent_type():
         {"year": 1, "percent": 5.0},
     ]
 
-    response = await svc_create_draft(
+    _ = await svc_create_draft(
         session,
         tenant_id="00000000-0000-0000-0000-000000000002",
         actor=actor,
