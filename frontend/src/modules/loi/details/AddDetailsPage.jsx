@@ -107,19 +107,27 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
   //
   // Photos are ALWAYS initialised as [] here — blob URLs from a previous session
   // are stale and unusable. The useEffect below loads persisted photos from the API.
+  // Read persisted details back from the site response. These fields live on
+  // site_details and are surfaced flat by site_to_response (item.carpet,
+  // item.escalation, …). Earlier this hard-coded '' for the site_details-only
+  // fields, so carpet/escalation/etc. appeared not to persist on reopen even
+  // though they were saved. escalation/revshare prefer the site_details value
+  // (what add-details writes) and fall back to the sites-row expected* columns
+  // used by the launch path.
+  const s = (v) => (v != null ? String(v) : '');
   const init = {
     ...(item.details || {
       name: item.name, visitDate: item.visitDate, city: item.city,
       model: item.model || '',
       googlePin: item.googlePin || '',
       rentType: item.rentType || '',
-      rent: item.expectedRent != null ? String(item.expectedRent) : '',
-      score: '', estSales: '', nearestStarbucks: '', nearestTWC: '',
-      carpet: '', cam: '',
-      escalation: item.expectedEscalationPct != null ? String(item.expectedEscalationPct) : '',
-      revshare: item.expectedRevsharePct != null ? String(item.expectedRevsharePct) : '',
-      rentFreeDays: '',
-      cadex: '', deposit: '', brokerage: '', lockin: '', tenure: '',
+      rent: s(item.expectedRent),
+      score: s(item.score), estSales: s(item.estSales), nearestStarbucks: s(item.nearestStarbucks), nearestTWC: s(item.nearestTWC),
+      carpet: s(item.carpet), cam: s(item.cam),
+      escalation: s(item.escalation ?? item.expectedEscalationPct),
+      revshare: s(item.revshare ?? item.expectedRevsharePct),
+      rentFreeDays: s(item.rentFreeDays),
+      cadex: s(item.cadex), deposit: s(item.deposit), brokerage: s(item.brokerage), lockin: s(item.lockin), tenure: s(item.tenure),
     }),
     photos: [], // always override — load from API below
   };
