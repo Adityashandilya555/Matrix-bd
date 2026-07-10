@@ -195,6 +195,7 @@ async def _apply_pending_migrations() -> None:
         "202606231_supervisor_executive_requests.sql",
         "202607081_add_sqft_and_staggered_rent.sql",
         "20260715_add_staggered_rent_type_and_sqft.sql",
+        "20260730_extend_rent_type_constraint.sql",
     ]
 
     applied_total = 0
