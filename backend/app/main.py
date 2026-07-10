@@ -256,17 +256,21 @@ async def _apply_pending_migrations() -> None:
 async def _verify_schema():
     """Verify that required schema changes exist to prevent runtime 500s on pipeline creation."""
     async with engine.connect() as conn:
-        # 1. Verify sites.area_sqft and sites.staggered_escalation exist
+        # 1. Verify all required sites columns exist
+        required_columns = {
+            'area_sqft', 'google_maps_url', 'expected_rent', 'rent_type',
+            'expected_escalation_pct', 'expected_escalation_years',
+            'expected_revshare_pct', 'rent_set_at'
+        }
         res = await conn.execute(text("""
             SELECT column_name 
             FROM information_schema.columns 
-            WHERE table_name = 'sites' 
-              AND column_name IN ('area_sqft', 'staggered_escalation');
+            WHERE table_name = 'sites';
         """))
         cols = {row[0] for row in res.fetchall()}
-        missing = {'area_sqft', 'staggered_escalation'} - cols
+        missing = required_columns - cols
         if missing:
-            log.critical("startup: schema verification failed! Missing columns in 'sites': %s", missing)
+            log.critical(f"Database schema is outdated. Missing sites columns: {', '.join(missing)}. Run latest migrations before deploying.")
             raise SystemExit(1)
             
         # 2. Verify sites.model is 'text' and not USER-DEFINED
@@ -277,7 +281,7 @@ async def _verify_schema():
         """))
         row = res.fetchone()
         if not row or row[0] != 'text':
-            log.critical("startup: schema verification failed! sites.model is not 'text'. Found: %s", row[0] if row else 'MISSING')
+            log.critical("Database schema is outdated. sites.model must be TEXT, not a PostgreSQL enum. Run latest migrations before deploying.")
             raise SystemExit(1)
 
         # 3. Verify chk_sites_status allows all modern statuses
@@ -289,14 +293,20 @@ async def _verify_schema():
         """))
         row = res.fetchone()
         if not row:
-            log.critical("startup: schema verification failed! chk_sites_status constraint missing.")
+            log.critical("Database schema is outdated. chk_sites_status constraint missing. Run latest migrations before deploying.")
             raise SystemExit(1)
         constraint_def = row[0]
-        if "'legal_review'" not in constraint_def or "'pushed_to_payments'" not in constraint_def:
-            log.critical("startup: schema verification failed! chk_sites_status is outdated: %s", constraint_def)
+        required_statuses = {
+            'draft_submitted', 'shortlisted', 'details_submitted', 'approved', 
+            'loi_uploaded', 'legal_review', 'legal_approved', 'legal_rejected', 
+            'pushed_to_payments', 'rejected', 'archived', 'launched'
+        }
+        missing_statuses = [s for s in required_statuses if f"'{s}'" not in constraint_def]
+        if missing_statuses:
+            log.critical(f"Database schema is outdated. Missing sites.status values: {', '.join(missing_statuses)}. Run latest migrations before deploying.")
             raise SystemExit(1)
 
-        # 4. Verify chk_site_details_rent_type allows 'staggered'
+        # 4. Verify chk_site_details_rent_type allows all rent types
         res = await conn.execute(text("""
             SELECT pg_get_constraintdef(c.oid)
             FROM pg_constraint c
@@ -305,14 +315,16 @@ async def _verify_schema():
         """))
         row = res.fetchone()
         if not row:
-            log.critical("startup: schema verification failed! chk_site_details_rent_type constraint missing.")
+            log.critical("Database schema is outdated. chk_site_details_rent_type constraint missing. Run latest migrations before deploying.")
             raise SystemExit(1)
         constraint_def = row[0]
-        if "'staggered'" not in constraint_def:
-            log.critical("startup: schema verification failed! chk_site_details_rent_type does not allow 'staggered': %s", constraint_def)
+        required_rent_types = {'fixed', 'revshare', 'mg_revshare', 'staggered'}
+        missing_rent_types = [r for r in required_rent_types if f"'{r}'" not in constraint_def]
+        if missing_rent_types:
+            log.critical(f"Database schema is outdated. Missing site_details.rent_type values: {', '.join(missing_rent_types)}. Run latest migrations before deploying.")
             raise SystemExit(1)
             
-    log.info("startup: schema verification OK")
+    log.info("Schema verification passed: sites.model=text, status/rent constraints current.")
 
 
 # ── Application lifespan ──────────────────────────────────────────────────────

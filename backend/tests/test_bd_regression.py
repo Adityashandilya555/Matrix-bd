@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import datetime
 import pytest
-from app.db import models
 from app.domain.state_machine import SiteStatus
 from app.services.bd_service import svc_create_draft, svc_push_to_payments
 from tests.conftest import RecordingSession
@@ -34,7 +33,6 @@ async def test_create_and_transition_custom_model_site():
         rent_type="fixed",
         model="BTC Cafe+"
     )
-    site_id = site_dict.id
     
     # Extract the created site from session.added
     site_row = session.added[0]

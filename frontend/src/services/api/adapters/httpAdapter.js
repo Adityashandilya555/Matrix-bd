@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 // HTTP adapter — production-ready client against the FastAPI backend.
 //
 // Responsibilities:

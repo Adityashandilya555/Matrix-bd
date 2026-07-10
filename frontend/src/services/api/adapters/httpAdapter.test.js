@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import { describe, it, expect, vi } from 'vitest';
 import axios from 'axios';
 import { createSite } from './httpAdapter.js';

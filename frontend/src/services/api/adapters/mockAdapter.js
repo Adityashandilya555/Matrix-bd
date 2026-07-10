@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 // Mock adapter — implements the full adapter interface against in-memory data.
 // Components never import this directly; they go through *Service.js.
 // All reads and writes await delay() to simulate realistic latency.

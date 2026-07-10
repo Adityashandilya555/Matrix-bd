@@ -153,7 +153,6 @@ async def create_site(
     tenant_id: TenantId,
 ) -> SiteResponse:
     from sqlalchemy.exc import DataError, IntegrityError
-    from fastapi import HTTPException
 
     try:
         return await svc_create_draft(

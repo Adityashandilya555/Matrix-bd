@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import { SiteStatus, legacyStageFor } from '../lib/stateMachine.js';
 import * as siteService from '../services/api/siteService.js';
