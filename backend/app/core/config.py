@@ -69,8 +69,8 @@ class Settings(BaseSettings):
 
     # ── Database ────────────────────────────────────────────────────────────
     database_url: str = Field(
-        "sqlite+aiosqlite:///:memory:",
-        description="async SQLAlchemy URL — defaults to in‑memory SQLite for testing/dev",
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/postgres",
+        description="async SQLAlchemy URL — must use the asyncpg driver",
     )
     db_pool_size: int = 5
     db_max_overflow: int = 10

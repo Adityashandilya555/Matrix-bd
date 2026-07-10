@@ -47,13 +47,10 @@ def _build_engine_kwargs(database_url: str) -> dict:
         kwargs["poolclass"]   = NullPool
         connect_args["statement_cache_size"] = 0
     else:
-        # For PostgreSQL use connection pool settings; SQLite does not support them.
-        if not database_url.startswith("sqlite"):
-            kwargs["pool_size"]       = settings.db_pool_size
-            kwargs["max_overflow"]    = settings.db_max_overflow
-            kwargs["pool_pre_ping"]   = True
-            kwargs["pool_recycle"]    = settings.db_pool_recycle_seconds
-
+        kwargs["pool_size"]       = settings.db_pool_size
+        kwargs["max_overflow"]    = settings.db_max_overflow
+        kwargs["pool_pre_ping"]   = True
+        kwargs["pool_recycle"]    = settings.db_pool_recycle_seconds
     kwargs["connect_args"] = connect_args
     return kwargs
 
