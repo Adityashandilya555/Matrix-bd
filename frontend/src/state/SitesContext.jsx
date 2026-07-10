@@ -332,7 +332,7 @@ export function SitesProvider({ children }) {
       expectedEscalationYears: ['fixed', 'mg_revshare'].includes(form.rentType) && form.expectedEscalationYears ? Number(form.expectedEscalationYears) : null,
       expectedRevsharePct: ['revshare', 'mg_revshare'].includes(form.rentType) && form.expectedRevshare ? Number(form.expectedRevshare) : null,
       areaSqft: form.areaSqft ? Number(form.areaSqft) : null,
-      staggeredEscalation: form.rentType === 'staggered' 
+      staggeredEscalation: form.rentType === 'staggered'
         ? form.staggeredEscalation.map(e => ({ year: e.year, percent: e.percent ? Number(e.percent) : null }))
         : null,
       createdBy: { id: session?.id || session?.sub || undefined, name: sessionDisplayName, role },

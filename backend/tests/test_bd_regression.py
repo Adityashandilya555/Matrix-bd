@@ -11,7 +11,7 @@ pytestmark = pytest.mark.asyncio
 
 async def test_create_and_transition_custom_model_site():
     """Verify that creating a site with a custom model and transitioning it works correctly.
-    
+
     This tests:
     1. sites.model does not crash with legacy ENUM type when using arbitrary text ('BTC Cafe+').
     2. sites.status allows current workflow statuses ('legal_review').
@@ -33,20 +33,20 @@ async def test_create_and_transition_custom_model_site():
         rent_type="fixed",
         model="BTC Cafe+"
     )
-    
+
     # Extract the created site from session.added
     site_row = session.added[0]
-    
-    # Bypass intermediate steps for brevity: manually set to LOI_UPLOADED 
+
+    # Bypass intermediate steps for brevity: manually set to LOI_UPLOADED
     # to test the svc_push_to_payments (which moves to LEGAL_REVIEW).
     site_row.status = SiteStatus.LOI_UPLOADED.value
-    
+
     # Seed the mock session so `fetch_site_for_update_or_404` finds it
     from tests.conftest import FakeResult
     session._results.append(FakeResult(scalar=site_row)) # for fetch_site_for_update_or_404
     session._results.append(FakeResult(scalar=None)) # for existing_legal_dd
     session._results.append(FakeResult(all_rows=[(actor["sub"],)])) # for recipients_for_legal_supervisors
-    
+
     # 2. Push to Legal Review (BD Supervisor action)
     # This previously failed if the `chk_sites_status` constraint didn't allow `legal_review`.
     result = await svc_push_to_payments(
@@ -55,9 +55,9 @@ async def test_create_and_transition_custom_model_site():
         actor=actor,
         site_id=site_row.id
     )
-    
+
     assert result.ok is True
-    
+
     # Verify the final state
     assert site_row.status == SiteStatus.LEGAL_REVIEW.value
     assert site_row.legal_review_at is not None

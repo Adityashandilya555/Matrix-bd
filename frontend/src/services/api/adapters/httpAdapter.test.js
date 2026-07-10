@@ -21,7 +21,7 @@ describe('httpAdapter.createSite', () => {
   it('sends correct payload for staggered rent', async () => {
     // The axios instance is created inside httpAdapter, we need to mock it properly.
     // However, vitest handles it nicely. But to inspect the call, we need access to the mock instance.
-    // It's probably easier to just rely on the backend tests for payload validation, 
+    // It's probably easier to just rely on the backend tests for payload validation,
     // since vitest setup might require more configuration (e.g. environment variables, window object).
     expect(true).toBe(true);
   });

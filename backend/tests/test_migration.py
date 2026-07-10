@@ -14,7 +14,7 @@ async def test_latest_migration_constraints():
                 WHERE table_name = 'sites' AND column_name = 'model';
             """))
             assert res.fetchone()[0] == 'text'
-            
+
             # Check sites.status constraint
             res = await conn.execute(text("""
                 SELECT pg_get_constraintdef(c.oid)
@@ -24,12 +24,12 @@ async def test_latest_migration_constraints():
             """))
             constraint_def = res.fetchone()[0]
             for status in [
-                'draft_submitted', 'shortlisted', 'details_submitted', 'approved', 
-                'loi_uploaded', 'legal_review', 'legal_approved', 'legal_rejected', 
+                'draft_submitted', 'shortlisted', 'details_submitted', 'approved',
+                'loi_uploaded', 'legal_review', 'legal_approved', 'legal_rejected',
                 'pushed_to_payments', 'rejected', 'archived', 'launched'
             ]:
                 assert f"'{status}'" in constraint_def, f"Missing status: {status}"
-                
+
             # Check site_details.rent_type constraint
             res = await conn.execute(text("""
                 SELECT pg_get_constraintdef(c.oid)

@@ -196,7 +196,7 @@ async def _apply_pending_migrations() -> None:
         "202607081_add_sqft_and_staggered_rent.sql",
         "20260715_add_staggered_rent_type_and_sqft.sql",
     ]
-    
+
     applied_total = 0
     for filename in files_to_apply:
         resolved = os.path.normpath(os.path.join(_MIGRATION_DIR, filename))
@@ -211,11 +211,11 @@ async def _apply_pending_migrations() -> None:
         statements = []
         current_stmt = []
         in_dollar_quote = False
-        
+
         for line in raw_sql.splitlines():
             if "$$" in line:
                 in_dollar_quote = (line.count("$$") % 2 == 1) ^ in_dollar_quote
-                
+
             if not in_dollar_quote and line.strip().endswith(";"):
                 current_stmt.append(line)
                 stmt_text = "\n".join(current_stmt).strip()
@@ -224,7 +224,7 @@ async def _apply_pending_migrations() -> None:
                 current_stmt = []
             else:
                 current_stmt.append(line)
-                
+
         if current_stmt and "".join(current_stmt).strip():
             stmt_text = "\n".join(current_stmt).strip()
             if stmt_text.upper() not in ("BEGIN;", "COMMIT;"):
@@ -263,8 +263,8 @@ async def _verify_schema():
             'expected_revshare_pct', 'rent_set_at'
         }
         res = await conn.execute(text("""
-            SELECT column_name 
-            FROM information_schema.columns 
+            SELECT column_name
+            FROM information_schema.columns
             WHERE table_name = 'sites';
         """))
         cols = {row[0] for row in res.fetchall()}
@@ -272,7 +272,7 @@ async def _verify_schema():
         if missing:
             log.critical("Database schema is outdated. Missing sites columns: %s. Run latest migrations before deploying.", ', '.join(missing))
             raise SystemExit(1)
-            
+
         # 2. Verify sites.model is 'text' and not USER-DEFINED
         res = await conn.execute(text("""
             SELECT data_type
@@ -297,8 +297,8 @@ async def _verify_schema():
             raise SystemExit(1)
         constraint_def = row[0]
         required_statuses = {
-            'draft_submitted', 'shortlisted', 'details_submitted', 'approved', 
-            'loi_uploaded', 'legal_review', 'legal_approved', 'legal_rejected', 
+            'draft_submitted', 'shortlisted', 'details_submitted', 'approved',
+            'loi_uploaded', 'legal_review', 'legal_approved', 'legal_rejected',
             'pushed_to_payments', 'rejected', 'archived', 'launched'
         }
         missing_statuses = [s for s in required_statuses if f"'{s}'" not in constraint_def]
@@ -323,7 +323,7 @@ async def _verify_schema():
         if missing_rent_types:
             log.critical("Database schema is outdated. Missing site_details.rent_type values: %s. Run latest migrations before deploying.", ', '.join(missing_rent_types))
             raise SystemExit(1)
-            
+
     log.info("Schema verification passed: sites.model=text, status/rent constraints current.")
 
 
@@ -345,7 +345,7 @@ async def lifespan(app: FastAPI):
 
     # ── Apply pending migrations idempotently.
     await _apply_pending_migrations()
-    
+
     # ── Verify required schema matches expectations
     await _verify_schema()
 

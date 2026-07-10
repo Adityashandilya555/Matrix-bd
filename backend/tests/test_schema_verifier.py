@@ -20,7 +20,7 @@ async def test_verify_schema_success(mock_engine_connect):
         # 4. chk_site_details_rent_type
         AsyncMock(fetchone=lambda: ("CHECK (rent_type IN ('fixed', 'revshare', 'mg_revshare', 'staggered'))",))
     ]
-    
+
     # Should pass without SystemExit
     await _verify_schema()
 
@@ -33,7 +33,7 @@ async def test_verify_schema_missing_pushed_to_payments(mock_engine_connect):
         AsyncMock(fetchone=lambda: ("CHECK (status IN ('draft_submitted', 'shortlisted', 'launched'))",)),
         AsyncMock(fetchone=lambda: ("CHECK (rent_type IN ('fixed', 'revshare', 'mg_revshare', 'staggered'))",))
     ]
-    
+
     with pytest.raises(SystemExit):
         await _verify_schema()
 
@@ -46,7 +46,7 @@ async def test_verify_schema_missing_staggered(mock_engine_connect):
         # Missing 'staggered'
         AsyncMock(fetchone=lambda: ("CHECK (rent_type IN ('fixed', 'revshare', 'mg_revshare'))",))
     ]
-    
+
     with pytest.raises(SystemExit):
         await _verify_schema()
 
@@ -59,6 +59,6 @@ async def test_verify_schema_model_not_text(mock_engine_connect):
         AsyncMock(fetchone=lambda: ("CHECK (status IN ('draft_submitted', 'shortlisted', 'details_submitted', 'approved', 'loi_uploaded', 'legal_review', 'legal_approved', 'legal_rejected', 'pushed_to_payments', 'rejected', 'archived', 'launched'))",)),
         AsyncMock(fetchone=lambda: ("CHECK (rent_type IN ('fixed', 'revshare', 'mg_revshare', 'staggered'))",))
     ]
-    
+
     with pytest.raises(SystemExit):
         await _verify_schema()

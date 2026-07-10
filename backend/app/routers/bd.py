@@ -64,7 +64,7 @@ async def create_draft(
     tenant_id: TenantId,
 ) -> SiteResponse:
     from sqlalchemy.exc import DataError, IntegrityError
-    
+
     try:
         return await svc_create_draft(
             db, tenant_id=tenant_id, actor=current_user,
