@@ -328,6 +328,7 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
     form.rentType === 'revshare' ? !!form.expectedRevshare
     : form.rentType === 'fixed' ? !!form.expectedRent && !!form.expectedEscalation && !!form.expectedEscalationYears
     : form.rentType === 'mg_revshare' ? !!form.expectedRent && !!form.expectedRevshare && !!form.expectedEscalation && !!form.expectedEscalationYears
+    : form.rentType === 'staggered' ? !!form.expectedRent && form.staggeredEscalation.every(e => e.percent !== '' && e.percent != null) && form.staggeredEscalation.length > 0
     : false;
   const ready = form.name && form.visitDate && form.city && form.model && form.googlePin && form.rentType && rentReady;
 

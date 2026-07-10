@@ -190,13 +190,10 @@ async def _apply_pending_migrations() -> None:
     so partial application is safe and a retry on the next deploy will
     converge.
     """
-    files_to_apply = [
-        "202606141_drop_legacy_enum_types.sql",
-        "202606231_supervisor_executive_requests.sql",
-        "202607081_add_sqft_and_staggered_rent.sql",
-        "20260715_add_staggered_rent_type_and_sqft.sql",
-        "20260730_extend_rent_type_constraint.sql",
-    ]
+    files_to_apply = sorted([
+        f for f in os.listdir(_MIGRATION_DIR)
+        if f.endswith(".sql")
+    ])
 
     applied_total = 0
     for filename in files_to_apply:
