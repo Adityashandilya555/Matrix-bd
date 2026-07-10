@@ -28,11 +28,11 @@ from sqlalchemy import (
 )
 from sqlalchemy.types import JSON
 from sqlalchemy.dialects.postgresql import UUID
-JSONB = JSON  # Alias for SQLite compatibility
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
+JSONB = JSON  # Alias for SQLite compatibility
 
 # ── Tenant + User ─────────────────────────────────────────────────────────
 

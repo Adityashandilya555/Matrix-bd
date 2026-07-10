@@ -270,7 +270,7 @@ async def _verify_schema():
         cols = {row[0] for row in res.fetchall()}
         missing = required_columns - cols
         if missing:
-            log.critical(f"Database schema is outdated. Missing sites columns: {', '.join(missing)}. Run latest migrations before deploying.")
+            log.critical("Database schema is outdated. Missing sites columns: %s. Run latest migrations before deploying.", ', '.join(missing))
             raise SystemExit(1)
             
         # 2. Verify sites.model is 'text' and not USER-DEFINED
@@ -303,7 +303,7 @@ async def _verify_schema():
         }
         missing_statuses = [s for s in required_statuses if f"'{s}'" not in constraint_def]
         if missing_statuses:
-            log.critical(f"Database schema is outdated. Missing sites.status values: {', '.join(missing_statuses)}. Run latest migrations before deploying.")
+            log.critical("Database schema is outdated. Missing sites.status values: %s. Run latest migrations before deploying.", ', '.join(missing_statuses))
             raise SystemExit(1)
 
         # 4. Verify chk_site_details_rent_type allows all rent types
@@ -321,7 +321,7 @@ async def _verify_schema():
         required_rent_types = {'fixed', 'revshare', 'mg_revshare', 'staggered'}
         missing_rent_types = [r for r in required_rent_types if f"'{r}'" not in constraint_def]
         if missing_rent_types:
-            log.critical(f"Database schema is outdated. Missing site_details.rent_type values: {', '.join(missing_rent_types)}. Run latest migrations before deploying.")
+            log.critical("Database schema is outdated. Missing site_details.rent_type values: %s. Run latest migrations before deploying.", ', '.join(missing_rent_types))
             raise SystemExit(1)
             
     log.info("Schema verification passed: sites.model=text, status/rent constraints current.")

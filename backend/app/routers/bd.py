@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.deps import DbDep, TenantId
 from app.domain.schemas.common import OkResponse

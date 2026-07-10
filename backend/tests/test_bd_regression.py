@@ -22,7 +22,7 @@ async def test_create_and_transition_custom_model_site():
 
     # 1. Create Draft with custom model "BTC Cafe+"
     # This previously failed because of sites.model still being an enum in the DB.
-    site_dict = await svc_create_draft(
+    _site_dict = await svc_create_draft(
         session,
         tenant_id=tenant_id,
         actor=actor,
