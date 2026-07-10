@@ -191,6 +191,7 @@ async def _apply_pending_migrations() -> None:
     converge.
     """
     files_to_apply = [
+        "202606141_drop_legacy_enum_types.sql",
         "202606231_supervisor_executive_requests.sql",
         "202607081_add_sqft_and_staggered_rent.sql",
         "20260715_add_staggered_rent_type_and_sqft.sql",
