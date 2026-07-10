@@ -180,6 +180,32 @@ _MIGRATION_DIR = os.path.join(
 )
 
 
+def _parse_sql_statements(raw_sql: str) -> list:
+    statements = []
+    current_stmt = []
+    in_dollar_quote = False
+
+    for line in raw_sql.splitlines():
+        if "$$" in line:
+            in_dollar_quote = (line.count("$$") % 2 == 1) ^ in_dollar_quote
+
+        if not in_dollar_quote and line.strip().endswith(";"):
+            current_stmt.append(line)
+            stmt_text = "\n".join(current_stmt).strip()
+            if stmt_text.upper() not in ("BEGIN;", "COMMIT;"):
+                statements.append(stmt_text)
+            current_stmt = []
+        else:
+            current_stmt.append(line)
+
+    if current_stmt and "".join(current_stmt).strip():
+        stmt_text = "\n".join(current_stmt).strip()
+        if stmt_text.upper() not in ("BEGIN;", "COMMIT;"):
+            statements.append(stmt_text)
+            
+    return statements
+
+
 async def _apply_pending_migrations() -> None:
     """Run idempotent SQL migration files on startup.
 
@@ -205,28 +231,7 @@ async def _apply_pending_migrations() -> None:
         with open(resolved, encoding="utf-8") as fh:
             raw_sql = fh.read()
 
-        # Parse SQL file intelligently to protect PL/pgSQL blocks
-        statements = []
-        current_stmt = []
-        in_dollar_quote = False
-
-        for line in raw_sql.splitlines():
-            if "$$" in line:
-                in_dollar_quote = (line.count("$$") % 2 == 1) ^ in_dollar_quote
-
-            if not in_dollar_quote and line.strip().endswith(";"):
-                current_stmt.append(line)
-                stmt_text = "\n".join(current_stmt).strip()
-                if stmt_text.upper() not in ("BEGIN;", "COMMIT;"):
-                    statements.append(stmt_text)
-                current_stmt = []
-            else:
-                current_stmt.append(line)
-
-        if current_stmt and "".join(current_stmt).strip():
-            stmt_text = "\n".join(current_stmt).strip()
-            if stmt_text.upper() not in ("BEGIN;", "COMMIT;"):
-                statements.append(stmt_text)
+        statements = _parse_sql_statements(raw_sql)
 
         applied = 0
         for stmt in statements:
