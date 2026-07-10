@@ -1,6 +1,7 @@
 """Tests for staggered rent type and area_sqft fields on pipeline draft creation."""
 from __future__ import annotations
 
+import datetime
 import pytest
 from app.services.bd_service import svc_create_draft
 from tests.conftest import RecordingSession
@@ -23,7 +24,7 @@ async def test_staggered_rent_sets_staggered_escalation():
         actor=actor,
         name="Test Site",
         city="Mumbai",
-        visit_date="2026-07-10",
+        visit_date=datetime.date(2026, 7, 10),
         expected_rent=100000,
         rent_type="staggered",
         staggered_escalation=staggered_payload,
@@ -52,7 +53,7 @@ async def test_staggered_rent_guard_clears_escalation_if_wrong_rent_type():
         actor=actor,
         name="Test Site",
         city="Mumbai",
-        visit_date="2026-07-10",
+        visit_date=datetime.date(2026, 7, 10),
         expected_rent=100000,
         rent_type="fixed",
         staggered_escalation=staggered_payload,
