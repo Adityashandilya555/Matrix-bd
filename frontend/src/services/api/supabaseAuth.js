@@ -132,6 +132,11 @@ export async function checkAccountState(email, workspaceCode) {
   const res = await axios.post(`${API_BASE}/auth/login/check`, {
     email, workspace_code: workspaceCode,
   }, { headers: { 'X-Matrix-Internal': '1' } });
+  
+  if (res.data?.account_state === 'checked') {
+    return res.data?.password_set ? 'active' : 'needs_password';
+  }
+  
   return res.data?.account_state
     || (res.data?.password_set ? 'active' : 'needs_password');
 }

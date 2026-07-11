@@ -209,6 +209,11 @@ async def login(payload: LoginIn, db: DbDep):
     provided = (payload.password or "").strip()
     is_demo_tenant = payload.workspace_code.strip().upper() in settings.passwordless_demo_code_list
     if stored_hash:
+        if not provided:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=settings.login_missing_password_message,
+            )
         if not await verify_password_async(provided, stored_hash):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -315,12 +320,12 @@ async def login_check(payload: LoginCheckIn, request: Request, db: DbDep) -> dic
     unknown = {"account_state": "unknown", "password_set": False}  # nosec B105 — flags, not a credential
     tenant = await get_tenant_by_workspace_code(db, payload.workspace_code)
     if not tenant:
-        return unknown if _is_internal else {"account_state": "checked"}
+        return unknown if _is_internal else {"account_state": "checked", "password_set": False}
     user = await get_user_by_tenant_email(
         db, tenant["id"], payload.email, columns="is_active, password_hash"
     )
     if not user:
-        return unknown if _is_internal else {"account_state": "checked"}
+        return unknown if _is_internal else {"account_state": "checked", "password_set": False}
 
     # Build the detailed response (only exposed to internal callers).
     if not user["is_active"]:
@@ -333,7 +338,7 @@ async def login_check(payload: LoginCheckIn, request: Request, db: DbDep) -> dic
     if _is_internal:
         return detail
     # External callers get a generic response that doesn't leak membership.
-    return {"account_state": "checked"}
+    return {"account_state": "checked", "password_set": detail["password_set"]}
 
 
 @router.post(
