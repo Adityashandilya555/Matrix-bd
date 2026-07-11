@@ -340,6 +340,7 @@ export default function DesignReviewPage() {
   const onAllocate = async () => {
     if (!chosenExec) return;
     const targetUserId = chosenExec === '__self__' ? myUserId : chosenExec;
+    if (!targetUserId) { setActionError('Could not resolve your user id — refresh and try again.'); return; }
     setActionError(null);
     setBusy(true);
     try {

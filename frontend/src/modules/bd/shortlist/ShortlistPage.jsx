@@ -122,6 +122,7 @@ function DelegationModal({ site, onClose, onChanged, showToast }) {
   async function grant() {
     if (!pickedUserId) return;
     const targetUserId = pickedUserId === '__self__' ? currentUserId : pickedUserId;
+    if (!targetUserId) { showToast?.('Could not resolve your user id — refresh and try again.', 'error'); return; }
     setBusy(true);
     try {
       await siteService.grantDelegation(site.id, { delegateUserId: targetUserId, notes: notes.trim() || null });
@@ -242,6 +243,7 @@ function AssignDetailsModal({ site, currentUserId, onClose, onAssigned, showToas
     setError(null);
     try {
       const targetUserId = pickedUserId === '__self__' ? currentUserId : pickedUserId;
+      if (!targetUserId) throw new Error('Could not resolve your user id — refresh and try again.');
       await siteService.assignSite(site.id, targetUserId);
       const exec = pickedUserId === '__self__' ? { name: 'myself' } : candidates.find((u) => String(u.id) === String(pickedUserId));
       showToast?.(`Delegated · ${site.name} assigned to ${exec?.name || 'executive'}.`, 'success');

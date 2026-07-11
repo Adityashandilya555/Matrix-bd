@@ -341,7 +341,7 @@ export default function ProjectReviewPage() {
                       <option key={member.id} value={member.id}>{member.name || member.email}</option>
                     ))}
                   </select>
-                  <ActionButton disabled={!delegateId || busy} onClick={() => mutate(() => allocateProject(siteId, delegateId === '__self__' ? myUserId : delegateId))}>
+                  <ActionButton disabled={!delegateId || busy || (delegateId === '__self__' && !myUserId)} onClick={() => mutate(() => allocateProject(siteId, delegateId === '__self__' ? myUserId : delegateId))}>
                     Allocate
                   </ActionButton>
                 </div>

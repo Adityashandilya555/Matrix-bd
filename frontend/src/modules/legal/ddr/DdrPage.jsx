@@ -197,6 +197,7 @@ export default function DdrPage() {
   const handleDelegate = async () => {
     if (!selectedExec) return;
     const targetUserId = selectedExec === '__self__' ? myUserId : selectedExec;
+    if (!targetUserId) { showToast?.('Could not resolve your user id — refresh and try again.', 'error'); return; }
     try {
       setDelegating(true);
       await delegateLegal(siteId, targetUserId);

@@ -201,6 +201,7 @@ export default function FinancialClosureReviewPage() {
   const handleAllocate = async () => {
     if (!allocExec) return;
     const targetUserId = allocExec === '__self__' ? myUserId : allocExec;
+    if (!targetUserId) { setError('Could not resolve your user id — refresh and try again.'); return; }
     setSaving(true);
     setError(null);
     try {
