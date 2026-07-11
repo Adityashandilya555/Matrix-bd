@@ -180,8 +180,9 @@ export default function ProjectReviewPage() {
   const { siteId } = useParams();
   const navigate = useNavigate();
   const { showToast } = usePageContext();
-  const { role, dark } = useSession();
+  const { role, dark, session, user } = useSession();
   const isSupervisor = role === 'supervisor';
+  const myUserId = session?.userId || session?.id || session?.sub || user?.id || null;
   const [state, setState] = React.useState({ status: 'loading', review: null, error: null });
   const [team, setTeam] = React.useState([]);
   const [delegateId, setDelegateId] = React.useState('');
@@ -335,11 +336,12 @@ export default function ProjectReviewPage() {
                     }}
                   >
                     <option value="">Choose project executive...</option>
+                    <option value="__self__">Delegate to self (me)</option>
                     {team.map((member) => (
                       <option key={member.id} value={member.id}>{member.name || member.email}</option>
                     ))}
                   </select>
-                  <ActionButton disabled={!delegateId || busy} onClick={() => mutate(() => allocateProject(siteId, delegateId))}>
+                  <ActionButton disabled={!delegateId || busy} onClick={() => mutate(() => allocateProject(siteId, delegateId === '__self__' ? myUserId : delegateId))}>
                     Allocate
                   </ActionButton>
                 </div>
