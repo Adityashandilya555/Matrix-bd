@@ -278,6 +278,11 @@ export function siteFromServer(s) {
     rentType: s.rent_type,
     expectedEscalationPct: s.expected_escalation_pct,
     expectedEscalationYears: s.expected_escalation_years,
+    // Staggered rent schedule + pipeline area — surfaced so the Add Details form
+    // can read them back (previously dropped here, so a staggered site's schedule
+    // could not be shown/edited at shortlist).
+    staggeredEscalation: s.staggered_escalation ?? null,
+    areaSqft: s.area_sqft ?? null,
     expectedRevsharePct: s.expected_revshare_pct,
     score: s.score,
     estSales: s.est_sales,

@@ -6,10 +6,14 @@ import * as siteService from '../../../services/api/siteService.js';
 // Keep in sync with PIPELINE_MODELS in App.jsx (the New Pipeline create form).
 // A model chosen there must be selectable here, or the Model dropdown shows blank.
 const MODELS = ['BTC Cafe', 'BTC Cafe+', 'Blue Tokai Origins', 'Roastries', 'Micro-Cafes & Express Outlets', 'GotTea', 'Others'];
+// Keep rent-type ids in sync with PIPELINE_RENT_TYPES (App.jsx) and the backend
+// RentType literal. A site created as 'staggered' in New Pipeline must be
+// selectable here or its schedule can't be shown/edited and is lost on save.
 const RENT_TYPES = [
   { id: 'revshare', label: 'Revenue share', sub: '% of monthly sales' },
   { id: 'fixed', label: 'Fixed + escalation', sub: 'monthly fixed + % per year' },
   { id: 'mg_revshare', label: 'MG + Revenue share', sub: 'minimum guarantee + escalation + % of sales' },
+  { id: 'staggered', label: 'Staggered Rent with Escalation', sub: 'base rent + yearly stepped schedule' },
 ];
 
 // uploadingIds: Set of local photo IDs currently being uploaded to storage
@@ -130,9 +134,19 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
       revshare: s(item.revshare ?? item.expectedRevsharePct),
       rentFreeDays: s(item.rentFreeDays),
       cadex: s(item.cadex), deposit: s(item.deposit), brokerage: s(item.brokerage), lockin: s(item.lockin), tenure: s(item.tenure),
+      // Staggered rent schedule read back from the site row. Coerce percents to
+      // strings for the inputs; default to a single empty year 1 when absent.
+      staggeredEscalation: Array.isArray(item.staggeredEscalation) && item.staggeredEscalation.length
+        ? item.staggeredEscalation.map((e, i) => ({ year: e.year ?? i + 1, percent: s(e.percent) }))
+        : [{ year: 1, percent: '' }],
     }),
     photos: [], // always override — load from API below
   };
+  // A resumed draft (item.details) may predate staggered support — ensure the
+  // schedule array always exists so the editor and submit payload are safe.
+  if (!Array.isArray(init.staggeredEscalation) || init.staggeredEscalation.length === 0) {
+    init.staggeredEscalation = [{ year: 1, percent: '' }];
+  }
   const [f, setF] = React.useState(init);
   // Track which photo IDs are mid-upload so the tile can show a spinner
   const [uploadingPhotoIds, setUploadingPhotoIds] = React.useState(new Set());
@@ -260,6 +274,11 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
     if (!f.revshare) errors.revshare = 'Set revenue share %';
     if (!f.escalation) errors.escalation = 'Set escalation %';
   }
+  if (f.rentType === 'staggered') {
+    if (!f.rent) errors.rent = 'Set base rent';
+    const sched = Array.isArray(f.staggeredEscalation) ? f.staggeredEscalation : [];
+    if (!sched.some(e => e.percent !== '' && e.percent != null)) errors.staggered = 'Add at least one escalation year';
+  }
   const filled = Object.keys(errors).length === 0;
   // The conditional rent fields (rent/escalation/revshare) count as essentials
   // once a rent type is picked. Photos block is one essential. Anything else is
@@ -268,6 +287,7 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
     fixed: ['rent', 'escalation'],
     revshare: ['revshare'],
     mg_revshare: ['rent', 'revshare', 'escalation'],
+    staggered: ['rent'],
   };
   const rentExtras = RENT_EXTRAS[f.rentType] || [];
   const totalFields = REQUIRED.length + rentExtras.length;
@@ -315,6 +335,34 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
                   {f.rentType === 'fixed' && (<><TextField label="Rent (monthly)" value={f.rent} onChange={upd('rent')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 180000" hint="Full rupees · no commas" error={errors.rent}/><TextField label="Escalation" value={f.escalation} onChange={upd('escalation')} required mono suffix="% / yr" placeholder="e.g. 5" error={errors.escalation}/><TextField label="Rent-free days" value={f.rentFreeDays} onChange={upd('rentFreeDays')} mono suffix="days" hint="Optional fit-out grace"/></>)}
                   {f.rentType === 'revshare' && (<><TextField label="Revenue share" value={f.revshare} onChange={upd('revshare')} required mono suffix="% of sales" placeholder="e.g. 12" error={errors.revshare}/><TextField label="Rent-free days" value={f.rentFreeDays} onChange={upd('rentFreeDays')} mono suffix="days" hint="Optional"/><div/></>)}
                   {f.rentType === 'mg_revshare' && (<><TextField label="Minimum guarantee" value={f.rent} onChange={upd('rent')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 80000" hint="MG floor · full rupees" error={errors.rent}/><TextField label="Revenue share" value={f.revshare} onChange={upd('revshare')} required mono suffix="% of sales" placeholder="e.g. 12" hint="Above MG threshold" error={errors.revshare}/><TextField label="Escalation" value={f.escalation} onChange={upd('escalation')} required mono suffix="% / yr" placeholder="e.g. 5" error={errors.escalation}/><TextField label="Rent-free days" value={f.rentFreeDays} onChange={upd('rentFreeDays')} mono suffix="days" hint="Optional"/></>)}
+                  {f.rentType === 'staggered' && (
+                    <div style={{ gridColumn: 'span 3', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+                        <TextField label="Base rent" value={f.rent} onChange={upd('rent')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 150000" hint="Base monthly rent · full rupees" error={errors.rent}/><div/><div/>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)' }}>Escalation schedule <span style={{ color: 'var(--zm-danger)', fontWeight: 700 }}>*</span></span>
+                          {f.staggeredEscalation.length < 5 && (
+                            <button type="button" onClick={() => setF(prev => ({ ...prev, staggeredEscalation: [...prev.staggeredEscalation, { year: prev.staggeredEscalation.length + 1, percent: '' }] }))} style={{ background: 'transparent', border: 'none', color: 'var(--zm-accent)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="plus" size={14}/> Add year</button>
+                          )}
+                        </div>
+                        {errors.staggered && <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, color: 'var(--zm-danger)' }}>{errors.staggered}</span>}
+                        {f.staggeredEscalation.map((esc, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ flex: '0 0 90px', display: 'flex', alignItems: 'center', height: 38, padding: '0 10px', background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)', borderRadius: 6, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-2)' }}>Year {idx + 1}</div>
+                            <div style={{ flex: 1, display: 'flex', alignItems: 'stretch', height: 38, border: '1px solid var(--zm-line)', borderRadius: 6, background: 'var(--zm-bg)', overflow: 'hidden' }}>
+                              <input type="number" min="0" step="any" value={esc.percent} onChange={(e) => { const val = e.target.value; setF(prev => ({ ...prev, staggeredEscalation: prev.staggeredEscalation.map((x, i) => i === idx ? { ...x, percent: val } : x) })); }} placeholder="Escalation %" style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: 'var(--zm-font-mono)', fontSize: 13.5, color: 'var(--zm-fg)' }}/>
+                              <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)', fontSize: 12, background: 'var(--zm-surface-2)', borderLeft: '1px solid var(--zm-line)' }}>%</span>
+                            </div>
+                            {idx > 0 && idx === f.staggeredEscalation.length - 1 && (
+                              <button type="button" onClick={() => setF(prev => ({ ...prev, staggeredEscalation: prev.staggeredEscalation.slice(0, -1) }))} title="Remove" style={{ width: 34, height: 34, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', color: 'var(--zm-danger)', cursor: 'pointer', flexShrink: 0 }}><Icon name="x" size={16}/></button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {!f.rentType && (<div style={{ gridColumn: 'span 3', padding: 16, background: 'var(--zm-surface-2)', borderRadius: 8, fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-3)', textAlign: 'center' }}>Pick a rent type above to reveal the rent fields.</div>)}
                 </div>
               </div>
