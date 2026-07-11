@@ -260,7 +260,7 @@ async def test_supervisor_can_self_allocate_pe(monkeypatch):
     assert site.project_excellence_status == "allocated"
 
 
-async def test_business_admin_can_review_pe_budget_gate():
+async def test_business_admin_can_review_pe_budget_gate(monkeypatch):
     # Gate check only: a pending_admin budget is not awaiting supervisor, so the
     # call must fail on the 422 state guard — NOT the old 403 role guard.
     budget = models.SiteBudget(
@@ -278,14 +278,14 @@ async def test_business_admin_can_review_pe_budget_gate():
     async def _fetch_or_create(session, *, site, phase):
         return budget
 
-    import unittest.mock as _mock
-    with _mock.patch.object(project_excellence_service, "fetch_site_or_404", _fetch_site), \
-         _mock.patch.object(project_excellence_service.budget_service, "fetch_or_create_budget", _fetch_or_create):
-        with pytest.raises(HTTPException) as exc:
-            await project_excellence_service.svc_review_pe_budget(
-                RecordingSession(), tenant_id=TENANT, actor=_business_admin(),
-                site_id=budget.site_id, body=_Body(),
-            )
+    monkeypatch.setattr(project_excellence_service, "fetch_site_or_404", _fetch_site)
+    monkeypatch.setattr(
+        project_excellence_service.budget_service, "fetch_or_create_budget", _fetch_or_create)
+    with pytest.raises(HTTPException) as exc:
+        await project_excellence_service.svc_review_pe_budget(
+            RecordingSession(), tenant_id=TENANT, actor=_business_admin(),
+            site_id=budget.site_id, body=_Body(),
+        )
     assert exc.value.status_code == 422  # state guard, not the role guard
 
 
