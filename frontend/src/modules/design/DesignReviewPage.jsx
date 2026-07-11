@@ -276,10 +276,11 @@ function DeliverableCard({ kind, deliverable, isActive, isExecutive, isSuperviso
 export default function DesignReviewPage() {
   const { siteId } = useParams();
   const navigate = useNavigate();
-  const { role } = useSession();
+  const { role, session, user } = useSession();
   const { showToast } = usePageContext();
   const isSupervisor = role === 'supervisor';
   const isExecutive = role === 'executive' || role === 'exec';
+  const myUserId = session?.userId || session?.id || session?.sub || user?.id || null;
 
   const [review, setReview] = React.useState(null);
   const [status, setStatus] = React.useState('loading'); // loading | ready | error
@@ -338,10 +339,12 @@ export default function DesignReviewPage() {
 
   const onAllocate = async () => {
     if (!chosenExec) return;
+    const targetUserId = chosenExec === '__self__' ? myUserId : chosenExec;
+    if (!targetUserId) { setActionError('Could not resolve your user id — refresh and try again.'); return; }
     setActionError(null);
     setBusy(true);
     try {
-      const r = await allocateDesign(siteId, chosenExec);
+      const r = await allocateDesign(siteId, targetUserId);
       setReview(r); setChosenExec('');
       const d = await listDesignDelegationsForSite(siteId);
       setAllocation(d.items?.[0] || null);
@@ -456,6 +459,7 @@ export default function DesignReviewPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <select value={chosenExec} onChange={(e) => setChosenExec(e.target.value)} style={{ ...input, width: 240 }}>
                   <option value="">Select a design executive…</option>
+                  <option value="__self__">Delegate to self (me)</option>
                   {team.map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
                 </select>
                 <button type="button" disabled={busy || !chosenExec} onClick={onAllocate} style={{ ...btn('var(--zm-accent)'), opacity: (busy || !chosenExec) ? 0.6 : 1 }}>

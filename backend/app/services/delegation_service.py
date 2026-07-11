@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import models
 from app.db.session import transaction
 from app.domain.schemas.common import OkResponse
-from app.services._common import fetch_site_or_404
+from app.services._common import actor_can_supervise, fetch_site_or_404
 from app.services.audit_service import write_audit_event
 
 logger = logging.getLogger(__name__)
@@ -47,17 +47,19 @@ async def svc_grant_delegation(
     delegate_user_id: str | UUID,
     notes: Optional[str] = None,
 ) -> dict:
-    """Grant a supervisor's shortlist delegation for a site to an active executive delegate."""
-    if (actor.get("role") or "").lower() != "supervisor":
+    """Grant a supervisor's shortlist delegation for a site to an active executive delegate.
+
+    Role flexibility: the delegate may also be the caller themselves (a
+    supervisor or business admin taking ownership of the site's executive work
+    under their own identity). Delegating to another non-executive stays
+    rejected — role flex never grants access through someone else's id.
+    """
+    if not actor_can_supervise(actor):
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="Only the supervisor can delegate a shortlist site.",
+            detail="Only a supervisor or business admin can delegate a shortlist site.",
         )
-    if str(delegate_user_id) == str(actor["sub"]):
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delegate to yourself.",
-        )
+    is_self = str(delegate_user_id) == str(actor["sub"])
 
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
@@ -75,11 +77,11 @@ async def svc_grant_delegation(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Delegate user not found in this workspace, or not active.",
             )
-        # Only executives are eligible delegates.
-        if (delegate.role or "").lower() != "executive":
+        # Only executives are eligible delegates — or the caller themselves.
+        if not is_self and (delegate.role or "").lower() != "executive":
             raise HTTPException(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
-                detail="Delegations can only be granted to executive users.",
+                detail="Delegations can only be granted to executive users, or taken on yourself.",
             )
 
         # Refuse rather than silently double-granting an active delegation for the same (site, delegate).
@@ -132,10 +134,10 @@ async def svc_revoke_delegation(
     delegation_id: str | UUID,
 ) -> OkResponse:
     """Revoke a delegation by id, staying idempotent if it was already revoked."""
-    if (actor.get("role") or "").lower() != "supervisor":
+    if not actor_can_supervise(actor):
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="Only the supervisor can revoke a delegation.",
+            detail="Only a supervisor or business admin can revoke a delegation.",
         )
     async with transaction(session):
         row = (await session.execute(
@@ -279,16 +281,12 @@ async def svc_delegate_legal(
     """
     from app.services.notification_service import enqueue as notify_enqueue
 
-    if (actor.get("role") or "").lower() != "supervisor":
+    if not actor_can_supervise(actor):
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="Only a supervisor can delegate a legal site.",
+            detail="Only a supervisor or business admin can delegate a legal site.",
         )
-    if str(delegate_user_id) == str(actor["sub"]):
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delegate to yourself.",
-        )
+    is_self = str(delegate_user_id) == str(actor["sub"])
 
     module = "legal"
 
@@ -307,10 +305,10 @@ async def svc_delegate_legal(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Delegate user not found in this workspace, or not active.",
             )
-        if (delegate.role or "").lower() != "executive":
+        if not is_self and (delegate.role or "").lower() != "executive":
             raise HTTPException(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
-                detail="Delegations can only be granted to executive users.",
+                detail="Delegations can only be granted to executive users, or taken on yourself.",
             )
 
         existing = (await session.execute(
@@ -388,10 +386,10 @@ async def svc_revoke_legal_delegation(
     Idempotent: a no-op (200 with friendly message) if no active row exists,
     so the UI's "remove" button can always be safely clicked.
     """
-    if (actor.get("role") or "").lower() != "supervisor":
+    if not actor_can_supervise(actor):
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="Only a supervisor can revoke a legal delegation.",
+            detail="Only a supervisor or business admin can revoke a legal delegation.",
         )
 
     async with transaction(session):

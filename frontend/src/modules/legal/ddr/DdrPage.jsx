@@ -196,9 +196,11 @@ export default function DdrPage() {
 
   const handleDelegate = async () => {
     if (!selectedExec) return;
+    const targetUserId = selectedExec === '__self__' ? myUserId : selectedExec;
+    if (!targetUserId) { showToast?.('Could not resolve your user id — refresh and try again.', 'error'); return; }
     try {
       setDelegating(true);
-      await delegateLegal(siteId, selectedExec);
+      await delegateLegal(siteId, targetUserId);
       showToast?.('Site delegated to executive.', 'success');
       setSelectedExec('');
       await refreshDelegations();
@@ -546,6 +548,7 @@ export default function DdrPage() {
             <option value="">
               {executives.length ? 'Delegate to executive…' : 'No legal executives in team'}
             </option>
+            <option value="__self__">Delegate to self (me)</option>
             {executives.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.name || u.email} ({u.email})

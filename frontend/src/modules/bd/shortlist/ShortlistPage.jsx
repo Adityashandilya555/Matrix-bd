@@ -82,6 +82,9 @@ function DelegationModal({ site, onClose, onChanged, showToast }) {
   const [pickedUserId, setPickedUserId] = React.useState('');
   const [notes, setNotes] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+  
+  const { session, user } = useSession();
+  const currentUserId = session?.userId || session?.id || session?.sub || user?.id;
 
   // `isCancelled` lets the mount effect abort its own load: if the modal closes
   // (or reopens for a different site) before the two requests resolve, we skip
@@ -118,9 +121,11 @@ function DelegationModal({ site, onClose, onChanged, showToast }) {
 
   async function grant() {
     if (!pickedUserId) return;
+    const targetUserId = pickedUserId === '__self__' ? currentUserId : pickedUserId;
+    if (!targetUserId) { showToast?.('Could not resolve your user id — refresh and try again.', 'error'); return; }
     setBusy(true);
     try {
-      await siteService.grantDelegation(site.id, { delegateUserId: pickedUserId, notes: notes.trim() || null });
+      await siteService.grantDelegation(site.id, { delegateUserId: targetUserId, notes: notes.trim() || null });
       setPickedUserId(''); setNotes('');
       await load();
       onChanged?.();
@@ -191,6 +196,7 @@ function DelegationModal({ site, onClose, onChanged, showToast }) {
               <>
                 <select value={pickedUserId} onChange={(e) => setPickedUserId(e.target.value)} disabled={busy || loading} style={{ height: 36, padding: '0 10px', background: 'var(--zm-bg)', border: '1px solid var(--zm-line)', borderRadius: 6, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', outline: 'none' }}>
                   <option value="">Pick an executive…</option>
+                  <option value="__self__">Delegate to self (me)</option>
                   {eligible.map(u => (<option key={u.id} value={u.id}>{u.name} · {u.email}{u.assignedCity ? ` · ${u.assignedCity}` : ''}</option>))}
                 </select>
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional note (why this site is being delegated)…" style={{ width: '100%', minHeight: 60, padding: 10, resize: 'vertical', border: '1px solid var(--zm-line)', borderRadius: 8, fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg)', outline: 'none', background: 'var(--zm-bg)' }}/>
@@ -237,6 +243,7 @@ function AssignDetailsModal({ site, currentUserId, onClose, onAssigned, showToas
     setError(null);
     try {
       const targetUserId = pickedUserId === '__self__' ? currentUserId : pickedUserId;
+      if (!targetUserId) throw new Error('Could not resolve your user id — refresh and try again.');
       await siteService.assignSite(site.id, targetUserId);
       const exec = pickedUserId === '__self__' ? { name: 'myself' } : candidates.find((u) => String(u.id) === String(pickedUserId));
       showToast?.(`Delegated · ${site.name} assigned to ${exec?.name || 'executive'}.`, 'success');
@@ -277,7 +284,7 @@ function AssignDetailsModal({ site, currentUserId, onClose, onAssigned, showToas
           <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 750, fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>Executive</span>
           <select value={pickedUserId} onChange={(e) => setPickedUserId(e.target.value)} disabled={busy || loading} style={{ height: 42, padding: '0 12px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-bg)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13.5, outline: 'none' }}>
             <option value="">{loading ? 'Loading executives...' : 'Pick an executive...'}</option>
-            {!loading && <option value="__self__">Delegate to self</option>}
+            {!loading && <option value="__self__">Delegate to self (me)</option>}
             {candidates.map((u) => (
               <option key={u.id} value={u.id}>{u.name} · {u.email}{u.assignedCity ? ` · ${u.assignedCity}` : ''}</option>
             ))}
