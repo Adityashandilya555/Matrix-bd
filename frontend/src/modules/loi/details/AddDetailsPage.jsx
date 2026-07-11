@@ -129,7 +129,11 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
       rentType: item.rentType || '',
       rent: s(item.expectedRent),
       score: s(item.score), estSales: s(item.estSales), nearestStarbucks: s(item.nearestStarbucks), nearestTWC: s(item.nearestTWC),
-      carpet: s(item.carpet), cam: s(item.cam),
+      // Carpet area == the pipeline "Area (sqft)". Until add-details is filled,
+      // site_details.carpet_area_sqft is empty, so fall back to the pipeline
+      // area_sqft captured in New Pipeline (0 is treated as unset). Saving
+      // add-details then persists it to carpet_area_sqft.
+      carpet: s(item.carpet ?? (item.areaSqft || null)), cam: s(item.cam),
       escalation: s(item.escalation ?? item.expectedEscalationPct),
       revshare: s(item.revshare ?? item.expectedRevsharePct),
       rentFreeDays: s(item.rentFreeDays),
