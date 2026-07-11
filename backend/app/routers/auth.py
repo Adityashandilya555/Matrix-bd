@@ -287,7 +287,17 @@ def _is_trusted_internal(request: Request) -> bool:
         if referer:
             parsed = urllib.parse.urlparse(referer)
             origin = f"{parsed.scheme}://{parsed.netloc}"
-    return origin in settings.cors_origin_list
+    if not origin:
+        return False
+    # Trust the SAME origins the CORS middleware admits — both the exact
+    # allow-list AND the regex (e.g. Vercel deploy URLs). Previously this checked
+    # only the exact list, so a first-party SPA served from a regex-allowed origin
+    # passed CORS but was treated as untrusted here, collapsing login/check to the
+    # opaque response and breaking the set-vs-enter-password routing (#313 regression).
+    if origin in settings.cors_origin_list:
+        return True
+    regex = settings.effective_cors_origin_regex
+    return bool(regex and re.match(regex, origin))
 
 
 @router.post(
