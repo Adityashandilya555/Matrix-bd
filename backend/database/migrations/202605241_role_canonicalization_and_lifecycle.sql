@@ -18,9 +18,10 @@
 --   4. Shortlist approval is supervisor-only by default; the supervisor can
 --      opt-in delegate that power on a specific site to a specific
 --      sub_supervisor. shortlist_delegations is the per-site grant table.
---   5. password_hash on users has never been read or written — the auth model
---      is email + workspace_code → backend mints JWT. Removing the column
---      removes the temptation to "add a password fallback".
+--   5. password_hash on users: originally removed here (May 2026) when auth
+--      was passwordless. Re-introduced in migration 202606081 (Jun 2026) for
+--      branded per-user passwords. The DROP below has been removed so that
+--      202606081 owns the column lifecycle and passwords are not wiped on restart.
 
 
 -- ── 1. Role canonicalization ───────────────────────────────────────────────
@@ -43,8 +44,11 @@ ALTER TABLE public.users
     CHECK (role IN ('executive', 'sub_supervisor', 'supervisor'));
 
 
--- ── 2. Drop dead password column ───────────────────────────────────────────
-ALTER TABLE public.users DROP COLUMN IF EXISTS password_hash;
+-- ── 2. password_hash column — INTENTIONALLY NOT DROPPED HERE ─────────────
+-- This statement originally dropped password_hash when auth was passwordless.
+-- Migration 202606081 re-introduced the column for branded login (Jun 2026).
+-- Removing the DROP prevents all user passwords from being wiped on every
+-- server restart (202605241 sorts before 202606081, so DROP ran first).
 
 
 -- ── 3. Trim site_details to the fields the UI actually captures ────────────
