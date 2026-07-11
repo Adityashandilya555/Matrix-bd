@@ -591,6 +591,37 @@ async def test_login_check_external_response_stays_opaque(make_session, fake_res
     assert active_user == {"account_state": "checked"}
 
 
+def test_login_check_trusts_same_regex_origins_as_cors(monkeypatch):
+    from app.routers import auth as auth_router
+
+    class _Request:
+        def __init__(self, headers):
+            self.headers = headers
+
+    monkeypatch.setattr(auth_router.settings, "cors_origins", "https://app.example.com")
+    monkeypatch.setattr(
+        auth_router.settings,
+        "cors_origin_regex",
+        r"https://frontend-[a-z0-9-]+\.vercel\.app",
+    )
+
+    assert auth_router._is_trusted_internal(_Request({
+        "X-Matrix-Internal": "1",
+        "origin": "https://app.example.com",
+    }))
+    assert auth_router._is_trusted_internal(_Request({
+        "X-Matrix-Internal": "1",
+        "origin": "https://frontend-pr342.vercel.app",
+    }))
+    assert not auth_router._is_trusted_internal(_Request({
+        "X-Matrix-Internal": "1",
+        "origin": "https://frontend-pr342.vercel.app.evil.example",
+    }))
+    assert not auth_router._is_trusted_internal(_Request({
+        "origin": "https://frontend-pr342.vercel.app",
+    }))
+
+
 async def test_password_setup_sets_first_password(make_session, fake_result):
     from app.routers.auth import PasswordSetupIn, password_setup
 

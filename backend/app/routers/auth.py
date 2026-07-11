@@ -299,10 +299,12 @@ def _is_trusted_internal(request: Request) -> bool:
     # only the exact list, so a first-party SPA served from a regex-allowed origin
     # passed CORS but was treated as untrusted here, collapsing login/check to the
     # opaque response and breaking the set-vs-enter-password routing (#313 regression).
+    # Starlette's CORSMiddleware uses a full-string regex match, so mirror that
+    # instead of accepting prefix matches.
     if origin in settings.cors_origin_list:
         return True
     regex = settings.effective_cors_origin_regex
-    return bool(regex and re.match(regex, origin))
+    return bool(regex and re.fullmatch(regex, origin))
 
 
 @router.post(
