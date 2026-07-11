@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     # an account with no password_hash can no longer log in (#83) — it must
     # set one through the admin-approved, token-bound reset flow (#85).
     passwordless_demo_codes: str = ""
+    login_missing_password_message: str = "Password required for this account."
 
     @property
     def passwordless_demo_code_list(self) -> list[str]:
