@@ -565,6 +565,32 @@ async def test_login_check_reports_account_state(make_session, fake_result):
     assert active["password_set"] is True
 
 
+async def test_login_check_external_response_stays_opaque(make_session, fake_result):
+    from app.routers.auth import LoginCheckIn, login_check
+
+    class _ExternalRequest:
+        headers = {}
+
+    payload = LoginCheckIn(email="a@b.co", workspace_code="ACME-CODE1")
+
+    unknown_workspace = await login_check(
+        payload,
+        _ExternalRequest(),
+        make_session(fake_result(mappings_rows=[])),
+    )
+    active_user = await login_check(
+        payload,
+        _ExternalRequest(),
+        make_session(
+            fake_result(mappings_rows=[TENANT_ROW]),
+            fake_result(mappings_rows=[{"is_active": True, "password_hash": "bcrypt$"}]),
+        ),
+    )
+
+    assert unknown_workspace == {"account_state": "checked"}
+    assert active_user == {"account_state": "checked"}
+
+
 async def test_password_setup_sets_first_password(make_session, fake_result):
     from app.routers.auth import PasswordSetupIn, password_setup
 
