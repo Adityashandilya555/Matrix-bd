@@ -320,12 +320,12 @@ async def login_check(payload: LoginCheckIn, request: Request, db: DbDep) -> dic
     unknown = {"account_state": "unknown", "password_set": False}  # nosec B105 — flags, not a credential
     tenant = await get_tenant_by_workspace_code(db, payload.workspace_code)
     if not tenant:
-        return unknown if _is_internal else {"account_state": "checked", "password_set": False}
+        return unknown if _is_internal else {"account_state": "checked"}
     user = await get_user_by_tenant_email(
         db, tenant["id"], payload.email, columns="is_active, password_hash"
     )
     if not user:
-        return unknown if _is_internal else {"account_state": "checked", "password_set": False}
+        return unknown if _is_internal else {"account_state": "checked"}
 
     # Build the detailed response (only exposed to internal callers).
     if not user["is_active"]:
@@ -338,7 +338,7 @@ async def login_check(payload: LoginCheckIn, request: Request, db: DbDep) -> dic
     if _is_internal:
         return detail
     # External callers get a generic response that doesn't leak membership.
-    return {"account_state": "checked", "password_set": detail["password_set"]}
+    return {"account_state": "checked"}
 
 
 @router.post(
