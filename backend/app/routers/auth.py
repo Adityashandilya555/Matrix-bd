@@ -209,6 +209,11 @@ async def login(payload: LoginIn, db: DbDep):
     provided = (payload.password or "").strip()
     is_demo_tenant = payload.workspace_code.strip().upper() in settings.passwordless_demo_code_list
     if stored_hash:
+        if not provided:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=settings.login_missing_password_message,
+            )
         if not await verify_password_async(provided, stored_hash):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
