@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import hashlib
 import json
 import logging
 import os
@@ -206,24 +207,99 @@ def _parse_sql_statements(raw_sql: str) -> list:
     return statements
 
 
-async def _apply_pending_migrations() -> None:
-    """Run idempotent SQL migration files on startup.
+def _file_checksum(raw_sql: str) -> str:
+    """Stable content hash of a migration file, used to detect post-apply edits."""
+    return hashlib.sha256(raw_sql.encode("utf-8")).hexdigest()
 
-    Each statement is executed inside its own transaction so that
-    already-applied DDL (guarded by IF NOT EXISTS / IF EXISTS) succeeds
-    silently without rolling back other work.  Errors are logged but do NOT
-    crash the application — the migration file uses IF NOT EXISTS guards,
-    so partial application is safe and a retry on the next deploy will
-    converge.
+
+async def _apply_pending_migrations() -> None:
+    """Apply each SQL migration file EXACTLY ONCE, tracked by a ledger table.
+
+    Why a ledger (public.schema_migrations):
+      The previous runner re-executed every ``.sql`` file on every startup.
+      Most files are guarded with IF EXISTS / IF NOT EXISTS and are therefore
+      idempotent, but a DROP-then-readd pair split across two files is NOT:
+      202605241 dropped ``users.password_hash`` and 202606081 re-added it, so
+      every boot silently wiped all bcrypt hashes. Reviewing individual DROPs
+      is not a durable fix — the architecture guaranteed the bug class would
+      recur. Recording what has run and skipping it is the durable fix.
+
+    Behaviour:
+      * First boot against an ALREADY-PROVISIONED database (the ledger is
+        empty but core tables exist): the DB has, by definition, already had
+        every current migration applied by the old always-run runner, so we
+        BASELINE — record every present file as applied WITHOUT executing it.
+        This is what stops the one final destructive re-run on the deploy that
+        introduces the ledger. (Ship this change without bundling a brand-new
+        migration in the same deploy, or the new file gets baselined unrun.)
+      * Thereafter: only files absent from the ledger are executed, in sorted
+        order, each statement in its own transaction; a file is recorded as
+        applied only when all its statements succeed (a failing statement
+        leaves it unrecorded so it retries next deploy).
+      * A file already in the ledger is never re-run, even if its checksum
+        changed — an edited-after-apply migration is logged, not replayed
+        (fix applied migrations by adding a NEW migration file).
     """
     files_to_apply = sorted([
         f for f in os.listdir(_MIGRATION_DIR)
         if f.endswith(".sql")
     ])
 
-    applied_total = 0
     # Reuse a single connection for all migrations to avoid pool checkout overhead and DB connection limits.
     async with engine.connect() as conn:
+        # ── Ledger bootstrap: create it if absent, load already-applied set. ──
+        async with conn.begin():
+            await conn.exec_driver_sql(
+                """
+                CREATE TABLE IF NOT EXISTS public.schema_migrations (
+                    filename   text PRIMARY KEY,
+                    checksum   text        NOT NULL,
+                    applied_at timestamptz NOT NULL DEFAULT now()
+                );
+                """
+            )
+            res = await conn.exec_driver_sql(
+                "SELECT filename, checksum FROM public.schema_migrations;"
+            )
+            applied_ledger = {row[0]: row[1] for row in res.fetchall()}
+
+        # ── Baseline path: empty ledger on a database that already has schema. ──
+        if not applied_ledger:
+            # Wrap the probe in its own transaction: a bare execute would
+            # auto-begin one that then collides with the begin() blocks below.
+            async with conn.begin():
+                res = await conn.exec_driver_sql("SELECT to_regclass('public.tenants');")
+                already_provisioned = res.scalar() is not None
+            if already_provisioned:
+                async with conn.begin():
+                    for filename in files_to_apply:
+                        resolved = os.path.normpath(os.path.join(_MIGRATION_DIR, filename))
+                        with open(resolved, encoding="utf-8") as fh:
+                            checksum = _file_checksum(fh.read())
+                        await conn.execute(
+                            text(
+                                "INSERT INTO public.schema_migrations (filename, checksum) "
+                                "VALUES (:f, :c) ON CONFLICT (filename) DO NOTHING"
+                            ),
+                            {"f": filename, "c": checksum},
+                        )
+                log.warning(
+                    "startup-migrations: BASELINED %d existing migration(s) on an "
+                    "already-provisioned database — none were re-executed. This is the "
+                    "one-time adoption that stops destructive re-runs (e.g. the "
+                    "password_hash wipe). New migration files added after this deploy "
+                    "will apply normally.",
+                    len(files_to_apply),
+                )
+                return
+            log.info(
+                "startup-migrations: empty ledger and no existing schema detected — "
+                "treating as a fresh database and applying all migrations once."
+            )
+
+        # ── Incremental apply: run only files not already in the ledger. ──
+        applied_total = 0
+        newly_applied = 0
         for filename in files_to_apply:
             resolved = os.path.normpath(os.path.join(_MIGRATION_DIR, filename))
             if not os.path.isfile(resolved):
@@ -232,27 +308,65 @@ async def _apply_pending_migrations() -> None:
 
             with open(resolved, encoding="utf-8") as fh:
                 raw_sql = fh.read()
+            checksum = _file_checksum(raw_sql)
+
+            if filename in applied_ledger:
+                if applied_ledger[filename] != checksum:
+                    log.warning(
+                        "startup-migrations: %s is already applied but its content "
+                        "changed since — NOT re-running. Edit applied migrations only "
+                        "by adding a new migration file.",
+                        filename,
+                    )
+                continue
 
             statements = _parse_sql_statements(raw_sql)
 
             applied = 0
+            file_failed = False
             for stmt in statements:
                 if not stmt:
                     continue
                 try:
-                    # Use a nested transaction block per statement on the same connection
+                    # Each statement in its own transaction on the shared connection.
                     async with conn.begin():
                         await conn.exec_driver_sql(stmt)
                     applied += 1
                     applied_total += 1
                 except SQLAlchemyError:
+                    file_failed = True
                     log.exception(
-                        "startup-migrations: statement failed in %s (may already be applied): %.120s",
+                        "startup-migrations: statement failed in %s: %.120s",
                         filename,
                         stmt,
                     )
-            log.info("startup-migrations: %d/%d statements applied from %s", applied, len(statements), filename)
-    log.info("startup-migrations: %d total statements applied across all files", applied_total)
+
+            if file_failed:
+                log.error(
+                    "startup-migrations: %s had failing statement(s); NOT recording as "
+                    "applied — it will be retried on the next deploy.",
+                    filename,
+                )
+                continue
+
+            async with conn.begin():
+                await conn.execute(
+                    text(
+                        "INSERT INTO public.schema_migrations (filename, checksum) "
+                        "VALUES (:f, :c) ON CONFLICT (filename) "
+                        "DO UPDATE SET checksum = EXCLUDED.checksum, applied_at = now()"
+                    ),
+                    {"f": filename, "c": checksum},
+                )
+            newly_applied += 1
+            log.info("startup-migrations: applied %s (%d statement(s))", filename, applied)
+
+        log.info(
+            "startup-migrations: %d new migration file(s), %d statement(s) applied; %d already in ledger",
+            newly_applied,
+            applied_total,
+            len(applied_ledger),
+        )
 
 
 async def _verify_schema():
