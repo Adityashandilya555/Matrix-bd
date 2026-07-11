@@ -202,9 +202,17 @@ function SiteOverviewTab({ site }) {
       .catch(() => { /* photos are non-blocking — ignore load errors */ });
     return () => { cancelled = true; };
   }, [site.id]);
-  const escalationValue = hasValue(site.escalation)
-    ? `${formatPercent(site.escalation)}${hasValue(site.escalationYears) ? ` every ${site.escalationYears} yr` : ' / yr'}`
-    : 'NA';
+  // Staggered rent stores a per-year schedule (not a single escalation %), so
+  // render the schedule (e.g. "Yr1 9% · Yr2 4%") instead of the empty single field.
+  const staggeredSchedule = Array.isArray(site.staggeredEscalation) ? site.staggeredEscalation : [];
+  const escalationValue = site.rentType === 'staggered' && staggeredSchedule.length
+    ? staggeredSchedule
+        .filter((e) => hasValue(e?.percent))
+        .map((e, i) => `Yr${e.year ?? i + 1} ${formatPercent(e.percent)}`)
+        .join(' · ') || 'NA'
+    : hasValue(site.escalation)
+      ? `${formatPercent(site.escalation)}${hasValue(site.escalationYears) ? ` every ${site.escalationYears} yr` : ' / yr'}`
+      : 'NA';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>

@@ -26,6 +26,7 @@ export function buildDrawerSite(row) {
     tenure: first(row.tenure, details.tenure),
     escalation: first(row.expectedEscalationPct, row.escalation, details.escalation),
     escalationYears: first(row.expectedEscalationYears, details.escalationYears),
+    staggeredEscalation: first(row.staggeredEscalation, row.staggered_escalation, details.staggeredEscalation),
     revshare: first(row.expectedRevsharePct, row.revshare, details.revshare),
     rentFree: first(row.rentFreeDays, details.rentFreeDays),
     estSales: first(row.estSales, details.estSales),
