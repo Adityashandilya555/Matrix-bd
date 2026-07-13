@@ -1,9 +1,9 @@
 import React from 'react';
+import { Navigate } from 'react-router-dom';
 import { clearAuthToken } from '../../services/api/authToken.js';
 import { PRODUCT_NAME } from '../../router/routes.js';
 import { useAuthToken } from '../../state/useAuthToken.js';
 import { decodeJwtPayload } from './jwt.js';
-import GateScreen from './GateScreen.jsx';
 import TeamDashboard from './TeamDashboard.jsx';
 
 class BusinessAdminErrorBoundary extends React.Component {
@@ -59,20 +59,22 @@ class BusinessAdminErrorBoundary extends React.Component {
 
 export default function BusinessAdminPortalPage() {
   // Subscribe to the shared token store so a mid-session 401 (the axios
-  // interceptor clears the token) immediately drops back to the GateScreen,
+  // interceptor clears the token) immediately redirects to the welcome page,
   // instead of leaving the portal stuck rendering with a dead token while every
-  // call 401s until a manual reload. Also reacts to GateScreen sign-in, which
-  // sets the same store. (#129)
+  // call 401s until a manual reload. (#129)
   const token = useAuthToken();
   const role = decodeJwtPayload(token).role;
   const logout = React.useCallback(() => {
-    clearAuthToken(); // useAuthToken flips to null → GateScreen
+    clearAuthToken(); // useAuthToken flips to null → redirect to /welcome
   }, []);
 
   if (!token || role !== 'business_admin') {
-    // GateScreen's sign-in writes the token to the store; useAuthToken reacts,
-    // so onAuth needs no extra wiring here.
-    return <GateScreen onAuth={() => {}}/>;
+    // No standalone business-admin login gate: deep-linking to /business-admin
+    // without a session bounces to the welcome page (the normal workspace-code →
+    // branded-login flow, which routes business admins here once authenticated).
+    // An authenticated non-admin is likewise sent to /welcome, whose
+    // LandingRedirectIfAuthed forwards them to their own module home.
+    return <Navigate to="/welcome" replace/>;
   }
   return (
     <BusinessAdminErrorBoundary key={token} onLogout={logout}>
