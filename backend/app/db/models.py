@@ -110,7 +110,13 @@ class Site(Base):
     area_sqft: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     # Staggered escalation schedule: JSONB array of {year: int, percent: float}.
     # Only used when rent_type == 'staggered'. Max 5 entries.
-    staggered_escalation: Mapped[Optional[dict]] = mapped_column(JSONB)
+    # none_as_null=True is REQUIRED: without it SQLAlchemy binds Python None as the
+    # JSON value 'null' ('null'::jsonb), not SQL NULL. The chk_staggered_escalation
+    # CHECK runs is_valid_staggered_escalation() which returns FALSE for 'null'::jsonb
+    # (json-null is not sql-null; its type is 'null', not 'array'), so EVERY
+    # non-staggered insert (fixed/revshare/mg_revshare) was rejected while staggered
+    # (a real array) passed. See migration 20260731 for the matching DB hardening.
+    staggered_escalation: Mapped[Optional[dict]] = mapped_column(JSONB(none_as_null=True))
 
     # Ownership
     submitted_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
