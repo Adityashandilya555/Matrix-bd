@@ -318,7 +318,7 @@ export default function DdrPage() {
     const payload = {};
     for (const check of DDR_CHECKS) {
       const v = coreStatuses[check.id];
-      if (v === 'yes' || v === 'no') payload[check.id] = v;
+      if (v === 'yes' || v === 'no' || v === 'na') payload[check.id] = v;
     }
     // Slot semantics:
     //   • A row with a typed label (any status) writes BOTH label + status
@@ -335,7 +335,7 @@ export default function DdrPage() {
       filledSlots.add(slot);
       const trimmed = (row.label || '').trim();
       if (trimmed.length > 0) payload[labelKey] = trimmed;
-      if (row.status === 'yes' || row.status === 'no') payload[slot] = row.status;
+      if (row.status === 'yes' || row.status === 'no' || row.status === 'na') payload[slot] = row.status;
     });
     // Explicit clear: any slot index the user did not fill should release
     // its prior label so a stale "Mall NOC" doesn't outlive its row.

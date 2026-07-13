@@ -933,7 +933,7 @@ async def svc_save_licensing(
         five items are 'yes', stage is flipped to 'published'. Partial saves
         leave stage untouched.
 
-    When all five items are 'yes':
+    When all five items are resolved ('yes' or 'na', not applicable):
       - sites.licensing_status → 'complete'
       - sites.status → LEGAL_APPROVED (legal workflow done)
       - BD notified via email + in_app
@@ -973,9 +973,10 @@ async def svc_save_licensing(
             if val is not None:
                 setattr(lic, field, val)
 
-        # Check if all five are now 'yes'
+        # Check if all five are now resolved ('yes' or 'na' — a license that is
+        # not applicable to this site counts the same as 'yes').
         all_done = all(
-            getattr(lic, f) == "yes"
+            getattr(lic, f) in ("yes", "na")
             for f in ("fssai", "health_trade", "shops_estab_reg", "fire_noc", "storage_license")
         )
 

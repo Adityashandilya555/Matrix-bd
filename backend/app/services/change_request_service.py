@@ -46,10 +46,11 @@ _CORE_DD_FIELDS = {
 }
 # other_1/other_2 are optional free-form slots. Schema NOT NULL DEFAULT 'pending'
 # so the values are NEVER NULL in practice; 'pending' is the "not used" signal
-# and must NOT block recovery. Only an active 'no' blocks the positive flip.
+# and must NOT block recovery. 'na' (not applicable) is a resolved state and is
+# likewise non-blocking. Only an active 'no' blocks the positive flip.
 # NULL stays in the allow-list as a defensive guard against schema loosening.
 _OPTIONAL_DD_FIELDS = {"other_1", "other_2"}
-_OPTIONAL_DD_NON_BLOCKING = {None, "pending", "yes"}
+_OPTIONAL_DD_NON_BLOCKING = {None, "pending", "yes", "na"}
 # Full set used by _allowed_field to gate what fields a change-request may touch.
 _DD_FIELDS = _CORE_DD_FIELDS | _OPTIONAL_DD_FIELDS
 _LICENSING_FIELDS = {
@@ -260,7 +261,7 @@ async def _maybe_recover_dd_verdict(
     Defensive defaults — every precondition must hold or this is a no-op:
       - The CR targets `legal_dd_checklist`.
       - A DD row exists for this site (it should, given the CR existed).
-      - All 9 items now read 'yes'.
+      - All 9 items now read 'yes' or 'na' (not applicable).
       - Prior `final_verdict == 'negative'`.
       - `sites.status == LEGAL_REJECTED`.
     """
@@ -273,12 +274,13 @@ async def _maybe_recover_dd_verdict(
     if dd is None:
         return
 
-    # Core fields must all be 'yes'; optional slots (other_1/other_2) must be
-    # in _OPTIONAL_DD_NON_BLOCKING — i.e. None / 'pending' (schema default) /
-    # 'yes'. An active 'no' on either blocks recovery. See the docstring on
-    # _OPTIONAL_DD_FIELDS above for why 'pending' is non-blocking.
+    # Core fields must all be resolved — 'yes' or 'na' (not applicable);
+    # optional slots (other_1/other_2) must be in _OPTIONAL_DD_NON_BLOCKING —
+    # i.e. None / 'pending' (schema default) / 'yes' / 'na'. An active 'no' on
+    # either blocks recovery. See the docstring on _OPTIONAL_DD_FIELDS above for
+    # why 'pending' is non-blocking.
     if not (
-        all(getattr(dd, col) == "yes" for col in _CORE_DD_FIELDS)
+        all(getattr(dd, col) in ("yes", "na") for col in _CORE_DD_FIELDS)
         and all(getattr(dd, col) in _OPTIONAL_DD_NON_BLOCKING for col in _OPTIONAL_DD_FIELDS)
     ):
         return

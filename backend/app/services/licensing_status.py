@@ -16,7 +16,8 @@ from typing import Optional
 
 from app.db import models
 
-# The five legal licensing columns on ``site_licensing`` (each "yes"/"no"/"pending").
+# The five legal licensing columns on ``site_licensing`` (each
+# "yes"/"no"/"pending"/"na", where "na" = not applicable to this site).
 LEGAL_LICENSE_FIELDS: tuple[str, ...] = (
     "fssai",
     "health_trade",
@@ -46,18 +47,22 @@ def legal_license_values(licensing: Optional[models.SiteLicensing]) -> dict[str,
 def legal_licensing_complete(
     site: models.Site, licensing: Optional[models.SiteLicensing],
 ) -> bool:
-    """True only when the licensing rollup is complete and every license is "yes"."""
+    """True only when the licensing rollup is complete and every license is
+    resolved — "yes" or "na" (not applicable). A license that does not apply to
+    a site must not hold completion back."""
     values = legal_license_values(licensing)
     return bool(
         licensing
         and (site.licensing_status or "pending") == "complete"
-        and all(value == "yes" for value in values.values())
+        and all(value in ("yes", "na") for value in values.values())
     )
 
 
 def legacy_done(value: str) -> str:
-    """Map a raw licensing value to the legacy done/pending the *_status fields use."""
-    return "done" if value == "yes" else "pending"
+    """Map a raw licensing value to the legacy done/pending the *_status fields
+    use. A resolved license ("yes" or "na") reads as "done" so an N/A item does
+    not leave the NSO Stage-2 progress stuck on "pending"."""
+    return "done" if value in ("yes", "na") else "pending"
 
 
 def stage_two_canonical_status(

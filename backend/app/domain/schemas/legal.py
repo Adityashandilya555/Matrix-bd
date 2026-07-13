@@ -5,7 +5,7 @@ Three child tables:
   SiteAgreement     — agreement signed/registered (Step 3)
   SiteLicensing     — licensing checklist (Step 4 / Payment module)
 
-Checklist field values: 'pending' | 'yes' | 'no'
+Checklist field values: 'pending' | 'yes' | 'no' | 'na'  ('na' = not applicable)
 DD final_verdict:       'pending' | 'positive' | 'negative'
 """
 from __future__ import annotations
@@ -15,7 +15,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, field_validator
 
-ChecklistValue = Literal["pending", "yes", "no"]
+ChecklistValue = Literal["pending", "yes", "no", "na"]
 ChecklistStage = Literal["draft", "pending_review", "published"]
 
 
@@ -80,7 +80,8 @@ class SaveAgreementRequest(BaseModel):
 class SaveLicensingRequest(BaseModel):
     """Save one or more licensing checklist items.
 
-    When all five are 'yes', sites.licensing_status → 'complete' automatically.
+    When all five are 'yes' or 'na', sites.licensing_status → 'complete'
+    automatically ('na' = not applicable, counts as resolved).
     """
     fssai:          Optional[ChecklistValue] = None
     health_trade:   Optional[ChecklistValue] = None
