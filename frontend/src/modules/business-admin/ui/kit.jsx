@@ -128,25 +128,8 @@ export const Icon = {
   moon:    (p) => <Svg {...p}><path d="M20 13.5A8 8 0 1 1 10.5 4a6.5 6.5 0 0 0 9.5 9.5Z"/></Svg>,
   panel:   (p) => <Svg {...p}><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></Svg>,
   scaleLogo: ({ size = 22, ...p }) => (
-    <svg viewBox="0 0 64 64" width={size} height={size} fill="none" aria-hidden="true" {...p}>
-      <defs>
-        <linearGradient id="re-logo-g-ba" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
-          <stop offset="0%" stopColor="#D040C8"/>
-          <stop offset="20%" stopColor="#F04090"/>
-          <stop offset="38%" stopColor="#FF6020"/>
-          <stop offset="55%" stopColor="#FFB020"/>
-          <stop offset="72%" stopColor="#3060F8"/>
-          <stop offset="88%" stopColor="#20D0F8"/>
-          <stop offset="100%" stopColor="#7030D8"/>
-        </linearGradient>
-      </defs>
-      <rect width="64" height="64" rx="12" fill="#150920"/>
-      <path
-        d="M32 4C40 4 42 14 42 22C42 30 52 32 60 32C52 32 42 34 42 42C42 50 40 60 32 60C24 60 22 50 22 42C22 34 12 32 4 32C12 32 22 30 22 22C22 14 24 4 32 4Z"
-        fill="url(#re-logo-g-ba)"
-      />
-      <path d="M32 22L42 32L32 42L22 32Z" fill="#150920"/>
-    </svg>
+    <img src="/brand-logo.jpeg" alt="Retail Expansion" width={size} height={size}
+      style={{ display: 'block', borderRadius: size * 0.18, objectFit: 'cover' }} {...p} />
   ),
 };
 

@@ -48,25 +48,14 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
         position: 'relative',
         transition: 'width 220ms var(--zm-ease), flex-basis 220ms var(--zm-ease), padding 220ms var(--zm-ease)',
       }}>
-        <svg className="zm-brand-cube" width={sidebarCollapsed ? 28 : 34} height={sidebarCollapsed ? 28 : 34} viewBox="0 0 64 64" fill="none" style={{ display: 'block', flex: '0 0 auto', position: 'relative', zIndex: 1 }}>
-          <defs>
-            <linearGradient id="re-logo-g" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
-              <stop offset="0%" stopColor="#D040C8"/>
-              <stop offset="20%" stopColor="#F04090"/>
-              <stop offset="38%" stopColor="#FF6020"/>
-              <stop offset="55%" stopColor="#FFB020"/>
-              <stop offset="72%" stopColor="#3060F8"/>
-              <stop offset="88%" stopColor="#20D0F8"/>
-              <stop offset="100%" stopColor="#7030D8"/>
-            </linearGradient>
-          </defs>
-          <rect width="64" height="64" rx="12" fill="#150920"/>
-          <path
-            d="M32 4C40 4 42 14 42 22C42 30 52 32 60 32C52 32 42 34 42 42C42 50 40 60 32 60C24 60 22 50 22 42C22 34 12 32 4 32C12 32 22 30 22 22C22 14 24 4 32 4Z"
-            fill="url(#re-logo-g)"
-          />
-          <path d="M32 22L42 32L32 42L22 32Z" fill="#150920"/>
-        </svg>
+        <img
+          className="zm-brand-cube"
+          src="/brand-logo.jpeg"
+          alt="Retail Expansion"
+          width={sidebarCollapsed ? 28 : 34}
+          height={sidebarCollapsed ? 28 : 34}
+          style={{ display: 'block', flex: '0 0 auto', position: 'relative', zIndex: 1, borderRadius: 10, objectFit: 'cover' }}
+        />
         <span className="zm-brand-word" style={{
           fontFamily: 'var(--zm-font-display)', fontStyle: 'normal', fontWeight: 800,
           fontSize: 12, color: 'var(--zm-sidebar-fg)', letterSpacing: '0.06em', lineHeight: 1,
