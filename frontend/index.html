@@ -63,6 +63,17 @@
     ::-webkit-scrollbar-thumb { background: var(--zm-line-strong); border-radius: 999px; }
     ::-webkit-scrollbar-track { background: transparent; }
 
+    /* Native date/time pickers render a black calendar glyph by default, which
+       is invisible on the dark surfaces. color-scheme:dark tells the browser to
+       paint the picker indicator (and popup) light. Scoped to any [data-theme=dark]
+       container so it covers every date field app-wide (app root, BA portal, …). */
+    [data-theme="dark"] input[type="date"],
+    [data-theme="dark"] input[type="datetime-local"],
+    [data-theme="dark"] input[type="month"],
+    [data-theme="dark"] input[type="time"] {
+      color-scheme: dark;
+    }
+
     .zm-brand-plate {
       position: relative; overflow: hidden;
       background:
