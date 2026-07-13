@@ -153,7 +153,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
           <SidebarItem icon="bookmark" label="Shortlisted sites" count={counts.shortlist} active={activeView === 'shortlist'} onClick={() => go(ROUTES.SHORTLIST)} collapsed={collapsed}/>
           <SidebarItem icon="layers" label="Sites in process" count={counts.staging} active={activeView === 'staging'} onClick={() => go(ROUTES.STAGING)} collapsed={collapsed}/>
           {role === 'supervisor' && (
-            <SidebarItem icon="archiveBox" label="Archive" count={counts.archive} active={activeView === 'archive'} onClick={() => go(ROUTES.ARCHIVE)} collapsed={collapsed}/>
+            <SidebarItem icon="archiveBox" label="Archived / Rejected" count={counts.archive} active={activeView === 'archive'} onClick={() => go(ROUTES.ARCHIVE)} collapsed={collapsed}/>
           )}
           <SidebarItem icon="warning" label="DDR negative" active={activeView === 'dd-failed'} onClick={() => go(ROUTES.DD_FAILED)} collapsed={collapsed}/>
           <SidebarItem icon="route" label="Process flow" active={activeView === 'site-tracker'} onClick={() => go(ROUTES.SITE_TRACKER)} collapsed={collapsed}/>
