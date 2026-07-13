@@ -12,7 +12,7 @@ import Icon from './modules/shared/primitives/Icon.jsx';
 import { filterByScope } from './rbac/scope.js';
 import { extractGoogleMapsCoords, looksLikeMapsUrl } from './lib/googleMaps.js';
 import { GRID_LAYERS, GRID_ATTACH, stageVignette, canvasBase } from './lib/surfaces.js';
-import { INDIAN_CITIES } from './constants/indianCities.js';
+import { INDIAN_CITIES_DATA } from './constants/indianCities.js';
 import CitySelect from './modules/shared/primitives/CitySelect.jsx';
 
 // App.jsx is now the chrome shell only.
@@ -398,7 +398,7 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label htmlFor={idSite} style={labelBase}>Site</label><input id={idSite} value={form.name} onChange={set('name')} placeholder="e.g. Powai · Lake Homes" style={inputBase}/></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label htmlFor={idVisitDate} style={labelBase}>Visit date</label><input id={idVisitDate} type="date" value={form.visitDate} onChange={set('visitDate')} style={{ ...inputBase, fontFamily: 'var(--zm-font-mono)', fontSize: 13 }}/></div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label htmlFor={idCity} style={labelBase}>City</label><CitySelect id={idCity} value={form.city} onChange={(c) => setForm(prev => ({ ...prev, city: c }))} options={INDIAN_CITIES}/></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label htmlFor={idCity} style={labelBase}>City</label><CitySelect id={idCity} value={form.city} onChange={(c) => setForm(prev => ({ ...prev, city: c }))} options={INDIAN_CITIES_DATA}/></div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><label htmlFor={idModel} style={labelBase}>Model</label><select id={idModel} value={form.model} onChange={set('model')} style={inputBase}><option value="">Select model…</option>{PIPELINE_MODELS.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
