@@ -80,7 +80,7 @@
     "state": "Uttar Pradesh"
   },
   {
-    "name": "AlipurdUrban Agglomerationr",
+    "name": "Alipurduar",
     "state": "West Bengal"
   },
   {
@@ -336,7 +336,7 @@
     "state": "Bihar"
   },
   {
-    "name": "BhabUrban Agglomeration",
+    "name": "Bhabua",
     "state": "Bihar"
   },
   {
@@ -1136,7 +1136,7 @@
     "state": "Uttarakhand"
   },
   {
-    "name": "KathUrban Agglomeration",
+    "name": "Kathua",
     "state": "Jammu and Kashmir"
   },
   {
@@ -1872,7 +1872,7 @@
     "state": "Madhya Pradesh"
   },
   {
-    "name": "Morinda, India",
+    "name": "Morinda",
     "state": "Punjab"
   },
   {
@@ -2536,7 +2536,7 @@
     "state": "Madhya Pradesh"
   },
   {
-    "name": "PandUrban Agglomeration",
+    "name": "Pandua",
     "state": "West Bengal"
   },
   {
@@ -2936,7 +2936,7 @@
     "state": "Bihar"
   },
   {
-    "name": "PurqUrban Agglomerationzi",
+    "name": "Purquazi",
     "state": "Uttar Pradesh"
   },
   {
@@ -4092,6 +4092,10 @@
     "state": "Tamil Nadu"
   },
   {
+    "name": "Suar",
+    "state": "Uttar Pradesh"
+  },
+  {
     "name": "Sugauli",
     "state": "Bihar"
   },
@@ -4154,10 +4158,6 @@
   {
     "name": "Suratgarh",
     "state": "Rajasthan"
-  },
-  {
-    "name": "SUrban Agglomerationr",
-    "state": "Uttar Pradesh"
   },
   {
     "name": "Suri",
