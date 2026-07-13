@@ -67,6 +67,30 @@ async def fetch_site_for_update_or_404(
     return site
 
 
+def actor_is_business_admin(actor: dict) -> bool:
+    """True when the caller's real identity is a business admin.
+
+    get_current_user always carries the DB role in ``real_role``; ``role`` may
+    hold a simulated role while the admin drives another module via the
+    X-Override-Role workspace-access header. Falls back to ``role`` for callers
+    (tests, legacy actors) that never set ``real_role``.
+    """
+    return "business_admin" in {
+        (actor.get("real_role") or "").lower(),
+        (actor.get("role") or "").lower(),
+    }
+
+
+def actor_can_supervise(actor: dict) -> bool:
+    """Supervisor-tier gate: an effective supervisor, or a business admin.
+
+    Workspace access lets a business admin run any module's supervisor
+    operations, so service-level supervisor checks must not 403 them the way a
+    plain role-string comparison would.
+    """
+    return (actor.get("role") or "").lower() == Role.SUPERVISOR.value or actor_is_business_admin(actor)
+
+
 def assert_executive_owns_site(actor: dict, site: models.Site) -> None:
     """Raise 403 if the caller is an executive who doesn't own or isn't assigned to the site."""
     if (actor.get("role") or "").lower() != Role.EXECUTIVE.value:

@@ -230,25 +230,69 @@ function HistoryDrawer({ site, fetchHistory, onClose }) {
 }
 
 export default function SitesTab({ data, fetchHistory, onRetry }) {
+  const [filter, setFilter] = React.useState('active'); // 'active' | 'rejected'
   const [query, setQuery] = React.useState('');
   const [openSite, setOpenSite] = React.useState(null);
 
   const sites = data.items || [];
+
+  const isSiteRejected = React.useCallback((s) => {
+    if (REJECTED.has(s.status)) return true;
+    if (s.status === 'legal_rejected' || s.legalDdStatus === 'negative') return true;
+    if (s.designStatus === 'rejected') return true;
+    return false;
+  }, []);
+
+  const counts = React.useMemo(() => {
+    let active = 0;
+    let rejected = 0;
+    for (const s of sites) {
+      if (isSiteRejected(s)) rejected++;
+      else active++;
+    }
+    return { active, rejected };
+  }, [sites, isSiteRejected]);
+
   const visible = React.useMemo(() => {
+    let filtered = sites.filter((s) => filter === 'rejected' ? isSiteRejected(s) : !isSiteRejected(s));
     const q = query.trim().toLowerCase();
-    if (!q) return sites;
-    return sites.filter((s) => `${s.siteCode} ${s.siteName} ${s.city}`.toLowerCase().includes(q));
-  }, [sites, query]);
+    if (q) {
+      filtered = filtered.filter((s) => `${s.siteCode} ${s.siteName} ${s.city}`.toLowerCase().includes(q));
+    }
+    return filtered;
+  }, [sites, filter, query, isSiteRejected]);
 
   if (data.status === 'error') return <ErrorState message={data.error} onRetry={() => onRetry(false)} />;
 
   return (
     <div>
-      <div style={{ position: 'relative', marginBottom: 16, maxWidth: 380 }}>
-        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: T.textFaint }}><Icon.search size={16} /></span>
-        <input className="ac-input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search sites by name, code, or city"
-          style={{ width: '100%', boxSizing: 'border-box', height: 38, padding: '0 12px 0 36px', borderRadius: T.radiusSm,
-            border: `1px solid ${T.lineStrong}`, background: T.surfaceInset, color: T.text, fontSize: 13, outline: 'none' }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div role="tablist" style={{ display: 'inline-flex', gap: 4, padding: 4, background: T.chip, border: `1px solid ${T.line}`, borderRadius: T.radiusPill }}>
+          {['active', 'rejected'].map((key) => {
+            const isActive = filter === key;
+            const label = key === 'active' ? 'Active' : 'Rejected';
+            const n = counts[key] || 0;
+            return (
+              <button key={key} role="tab" aria-selected={isActive} onClick={() => setFilter(key)}
+                className={`ac-tab${isActive ? ' is-active' : ''}`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 32, padding: '0 14px',
+                  borderRadius: T.radiusPill, border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 650,
+                  background: isActive ? T.invBg : 'transparent', color: isActive ? T.invText : T.textMuted }}>
+                {label}
+                <span style={{ minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, fontSize: 10.5, fontWeight: 700,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', ...TABULAR,
+                  background: isActive ? T.invSoft : (n > 0 ? T.warnSoft : T.chip),
+                  color: isActive ? T.invText : (n > 0 ? T.warnText : T.textFaint) }}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ position: 'relative', flex: 1, maxWidth: 380 }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: T.textFaint }}><Icon.search size={16} /></span>
+          <input className="ac-input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search sites by name, code, or city"
+            style={{ width: '100%', boxSizing: 'border-box', height: 38, padding: '0 12px 0 36px', borderRadius: T.radiusSm,
+              border: `1px solid ${T.lineStrong}`, background: T.surfaceInset, color: T.text, fontSize: 13, outline: 'none' }} />
+        </div>
       </div>
 
       {data.status === 'loading' && (

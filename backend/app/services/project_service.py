@@ -33,7 +33,13 @@ from app.domain.schemas.project import (
     ReviewRequest,
 )
 from app.services import budget_service
-from app.services._common import count_rows, fetch_site_or_404, fetch_user_name, fetch_user_names
+from app.services._common import (
+    actor_is_business_admin,
+    count_rows,
+    fetch_site_or_404,
+    fetch_user_name,
+    fetch_user_names,
+)
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_is_delegated
 
@@ -43,7 +49,13 @@ def _is_supervisor(actor: dict) -> bool:
 
 
 def _is_business_admin(actor: dict) -> bool:
-    return (actor.get("role") or "").lower() == "business_admin"
+    return actor_is_business_admin(actor)
+
+
+def _can_supervise(actor: dict) -> bool:
+    """Supervisor-tier actions are open to supervisors and business admins
+    (workspace access) — a plain role-string check would 403 the admin."""
+    return _is_supervisor(actor) or _is_business_admin(actor)
 
 
 def _assert_project_unlocked(site: models.Site) -> None:
@@ -256,7 +268,7 @@ async def _assert_can_work_project(
     actor: dict,
     site_id: str | UUID,
 ) -> None:
-    if _is_supervisor(actor):
+    if _can_supervise(actor):
         return
     if (actor.get("role") or "").lower() != "executive":
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Project access denied.")
@@ -481,11 +493,11 @@ async def svc_allocate_project(
     delegate_user_id: str | UUID,
     notes: Optional[str] = None,
 ) -> ProjectStateResponse:
-    """Allocate a site's project to an active executive; only a supervisor may do so."""
-    if not _is_supervisor(actor):
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can allocate.")
-    if str(delegate_user_id) == str(actor["sub"]):
-        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Cannot allocate to yourself.")
+    """Allocate a site's project to an active executive — or to the caller
+    themselves (supervisor/business admin taking ownership under their own id)."""
+    if not _can_supervise(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor or business admin can allocate.")
+    is_self = str(delegate_user_id) == str(actor["sub"])
 
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
@@ -497,7 +509,7 @@ async def svc_allocate_project(
                 models.User.is_active.is_(True),
             )
         )).scalar_one_or_none()
-        if delegate is None or (delegate.role or "").lower() != "executive":
+        if delegate is None or (not is_self and (delegate.role or "").lower() != "executive"):
             raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Active executive not found.")
         existing = (await session.execute(
             select(models.SiteDelegation).where(
@@ -545,8 +557,8 @@ async def svc_revoke_project_delegation(
     delegate_user_id: str | UUID,
 ) -> OkResponse:
     """Revoke a site's active project delegation; only a supervisor may do so."""
-    if not _is_supervisor(actor):
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can revoke.")
+    if not _can_supervise(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor or business admin can revoke.")
     async with transaction(session):
         row = (await session.execute(
             select(models.SiteDelegation).where(
@@ -629,8 +641,8 @@ async def svc_review_milestone(
     body: ReviewRequest,
 ) -> ProjectStateResponse:
     """Approve or reject a submitted expected-completion milestone; supervisor only."""
-    if not _is_supervisor(actor):
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can review milestones.")
+    if not _can_supervise(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor or business admin can review milestones.")
     if field != "expected_completion_date":
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="This milestone does not need supervisor review.")
     async with transaction(session):
@@ -670,8 +682,8 @@ async def svc_propose_initialization(
     to start the exchange. Only fires while still pending so it can never clobber
     an in-flight proposed/approved/rejected date.
     """
-    if not _is_supervisor(actor):
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can set the initialization date.")
+    if not _can_supervise(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor or business admin can set the initialization date.")
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_create(session, site=site)
@@ -734,8 +746,8 @@ async def svc_finalize_initialization(
     body: InitializationFinalizeRequest,
 ) -> ProjectStateResponse:
     """Supervisor sets the final initialization date after an executive rejection."""
-    if not _is_supervisor(actor):
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can finalize the initialization date.")
+    if not _can_supervise(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor or business admin can finalize the initialization date.")
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_create(session, site=site)
@@ -764,8 +776,8 @@ async def svc_set_mid_visit(
     body: MidVisitRequest,
 ) -> ProjectStateResponse:
     """Supervisor sets the mid-project visit date (after expected completion is approved)."""
-    if not _is_supervisor(actor):
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can set the mid-project visit date.")
+    if not _can_supervise(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor or business admin can set the mid-project visit date.")
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_create(session, site=site)
@@ -823,8 +835,8 @@ async def svc_supervisor_approve_quality_audit(
     body: ReviewRequest,
 ) -> ProjectStateResponse:
     """First tier: the project supervisor approves the inspection date (or rejects)."""
-    if not _is_supervisor(actor):
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can approve the quality audit.")
+    if not _can_supervise(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor or business admin can approve the quality audit.")
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_create(session, site=site)
@@ -954,8 +966,8 @@ async def svc_push_to_nso(
     """Supervisor pushes a project-completed site from the NSO Handover tab into
     NSO, opening the NSO record directly at stage three."""
     from app.services import nso_service  # local import avoids an import cycle
-    if not _is_supervisor(actor):
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can push to NSO.")
+    if not _can_supervise(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor or business admin can push to NSO.")
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_create(session, site=site)
@@ -1053,8 +1065,8 @@ async def svc_pe_complete_quality_audit(
     supervisor still pushes it from the Project module's 'NSO Handover' tab,
     which is the only thing that opens NSO stage three (see svc_push_to_nso).
     """
-    if not _is_supervisor(actor):
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project excellence supervisor can complete the quality audit.")
+    if not _can_supervise(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project excellence supervisor or business admin can complete the quality audit.")
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_create(session, site=site)

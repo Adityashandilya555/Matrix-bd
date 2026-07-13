@@ -32,7 +32,7 @@ from app.domain.schemas.financial_closure import (
     SaveFCBudgetRequest,
 )
 from app.services import budget_service
-from app.services._common import count_rows, fetch_site_or_404, fetch_user_name, fetch_user_names
+from app.services._common import actor_is_business_admin, count_rows, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_is_delegated
 
@@ -45,7 +45,13 @@ def _is_supervisor(actor: dict) -> bool:
 
 
 def _is_business_admin(actor: dict) -> bool:
-    return (actor.get("role") or "").lower() == "business_admin"
+    return actor_is_business_admin(actor)
+
+
+def _can_supervise(actor: dict) -> bool:
+    """Supervisor-tier actions are open to supervisors and business admins
+    (workspace access) — a plain role-string check would 403 the admin."""
+    return _is_supervisor(actor) or _is_business_admin(actor)
 
 
 def _assert_launched(site: models.Site) -> None:
@@ -213,7 +219,7 @@ async def _build_fc_state(
 async def _assert_can_work_fc(
     session: AsyncSession, *, tenant_id: str | UUID, actor: dict, site_id: str | UUID,
 ) -> None:
-    if _is_supervisor(actor):
+    if _can_supervise(actor):
         return
     if (actor.get("role") or "").lower() != "executive":
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Financial Closure access denied.")
@@ -367,11 +373,11 @@ async def svc_allocate_fc(
     session: AsyncSession, *, tenant_id: str | UUID, actor: dict,
     site_id: str | UUID, delegate_user_id: str | UUID, notes: Optional[str] = None,
 ) -> FCStateResponse:
-    """Delegate financial closure on a site to another user (supervisor only, not self)."""
-    if not _is_supervisor(actor):
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can allocate financial closure.")
-    if str(delegate_user_id) == str(actor["sub"]):
-        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Cannot allocate to yourself.")
+    """Delegate financial closure on a site to an active executive — or to the
+    caller themselves (supervisor/business admin taking ownership under their own id)."""
+    if not _can_supervise(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor or business admin can allocate financial closure.")
+    is_self = str(delegate_user_id) == str(actor["sub"])
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_closure_open(site)
@@ -382,7 +388,7 @@ async def svc_allocate_fc(
                 models.User.is_active.is_(True),
             )
         )).scalar_one_or_none()
-        if delegate is None or (delegate.role or "").lower() != "executive":
+        if delegate is None or (not is_self and (delegate.role or "").lower() != "executive"):
             raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Active executive not found.")
         existing = (await session.execute(
             select(models.SiteDelegation).where(
@@ -415,8 +421,8 @@ async def svc_revoke_fc_delegation(
     site_id: str | UUID, delegate_user_id: str | UUID,
 ) -> OkResponse:
     """Revoke a user's active financial-closure delegation on a site (supervisor only)."""
-    if not _is_supervisor(actor):
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can revoke financial closure.")
+    if not _can_supervise(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor or business admin can revoke financial closure.")
     async with transaction(session):
         row = (await session.execute(
             select(models.SiteDelegation).where(
@@ -476,8 +482,8 @@ async def svc_review_fc_budget(
     site_id: str | UUID, body: FCReviewRequest,
 ) -> FCStateResponse:
     """Supervisor review of a submitted closure budget; approve escalates to admin, else reject."""
-    if not _is_supervisor(actor):
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor can review financial closure.")
+    if not _can_supervise(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor or business admin can review financial closure.")
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         closure = await budget_service.fetch_or_create_budget(session, site=site, phase=_PHASE)

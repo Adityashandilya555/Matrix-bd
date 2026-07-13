@@ -628,10 +628,14 @@ async def svc_reassign_site(
                 detail="Executive not found in this workspace.",
             )
         assignee_role = (assignee.role or "").lower()
-        if assignee_role not in ("executive", "business_admin"):
+        is_self = str(new_owner_id) == str(actor["sub"])
+        # Executives (and business admins) are always assignable; a supervisor
+        # may also take the site on THEMSELVES (role flexibility) — but never
+        # hand it to another supervisor's id.
+        if assignee_role not in ("executive", "business_admin") and not is_self:
             raise HTTPException(
                 status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Sites can only be assigned to an executive.",
+                detail="Sites can only be assigned to an executive, or taken on yourself.",
             )
         old_owner_id = site.assigned_to
         site.assigned_to = new_owner_id
