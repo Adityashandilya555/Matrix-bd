@@ -446,15 +446,15 @@ CREATE INDEX idx_pwd_reset_tenant_email ON public.password_reset_requests(tenant
 -- 1:1 with sites. Added by migration 202605268.
 CREATE TABLE public.legal_dd_checklist (
   site_id          uuid NOT NULL,
-  title_doc        text NOT NULL DEFAULT 'pending' CHECK (title_doc        IN ('pending','yes','no')),
-  sanctioned_plan  text NOT NULL DEFAULT 'pending' CHECK (sanctioned_plan  IN ('pending','yes','no')),
-  oc_cc            text NOT NULL DEFAULT 'pending' CHECK (oc_cc            IN ('pending','yes','no')),
-  commercial_use   text NOT NULL DEFAULT 'pending' CHECK (commercial_use   IN ('pending','yes','no')),
-  property_tax     text NOT NULL DEFAULT 'pending' CHECK (property_tax     IN ('pending','yes','no')),
-  electricity      text NOT NULL DEFAULT 'pending' CHECK (electricity      IN ('pending','yes','no')),
-  fire_noc         text NOT NULL DEFAULT 'pending' CHECK (fire_noc         IN ('pending','yes','no')),
-  other_1          text NOT NULL DEFAULT 'pending' CHECK (other_1          IN ('pending','yes','no')),
-  other_2          text NOT NULL DEFAULT 'pending' CHECK (other_2          IN ('pending','yes','no')),
+  title_doc        text NOT NULL DEFAULT 'pending' CHECK (title_doc        IN ('pending','yes','no','na')),
+  sanctioned_plan  text NOT NULL DEFAULT 'pending' CHECK (sanctioned_plan  IN ('pending','yes','no','na')),
+  oc_cc            text NOT NULL DEFAULT 'pending' CHECK (oc_cc            IN ('pending','yes','no','na')),
+  commercial_use   text NOT NULL DEFAULT 'pending' CHECK (commercial_use   IN ('pending','yes','no','na')),
+  property_tax     text NOT NULL DEFAULT 'pending' CHECK (property_tax     IN ('pending','yes','no','na')),
+  electricity      text NOT NULL DEFAULT 'pending' CHECK (electricity      IN ('pending','yes','no','na')),
+  fire_noc         text NOT NULL DEFAULT 'pending' CHECK (fire_noc         IN ('pending','yes','no','na')),
+  other_1          text NOT NULL DEFAULT 'pending' CHECK (other_1          IN ('pending','yes','no','na')),
+  other_2          text NOT NULL DEFAULT 'pending' CHECK (other_2          IN ('pending','yes','no','na')),
   other_1_label    text,                           -- custom label for the free-form slot
   other_2_label    text,
   final_verdict    text NOT NULL DEFAULT 'pending' CHECK (final_verdict    IN ('pending','positive','negative')),
@@ -486,11 +486,11 @@ CREATE TABLE public.site_agreement (
 -- 1:1 with sites. Added by migration 202605268.
 CREATE TABLE public.site_licensing (
   site_id         uuid NOT NULL,
-  fssai           text NOT NULL DEFAULT 'pending' CHECK (fssai           IN ('pending','yes','no')),
-  health_trade    text NOT NULL DEFAULT 'pending' CHECK (health_trade    IN ('pending','yes','no')),
-  shops_estab_reg text NOT NULL DEFAULT 'pending' CHECK (shops_estab_reg IN ('pending','yes','no')),
-  fire_noc        text NOT NULL DEFAULT 'pending' CHECK (fire_noc        IN ('pending','yes','no')),
-  storage_license text NOT NULL DEFAULT 'pending' CHECK (storage_license IN ('pending','yes','no')),
+  fssai           text NOT NULL DEFAULT 'pending' CHECK (fssai           IN ('pending','yes','no','na')),
+  health_trade    text NOT NULL DEFAULT 'pending' CHECK (health_trade    IN ('pending','yes','no','na')),
+  shops_estab_reg text NOT NULL DEFAULT 'pending' CHECK (shops_estab_reg IN ('pending','yes','no','na')),
+  fire_noc        text NOT NULL DEFAULT 'pending' CHECK (fire_noc        IN ('pending','yes','no','na')),
+  storage_license text NOT NULL DEFAULT 'pending' CHECK (storage_license IN ('pending','yes','no','na')),
   stage           text NOT NULL DEFAULT 'published'
                     CHECK (stage IN ('draft','pending_review','published')),
   updated_at      timestamp with time zone NOT NULL DEFAULT now(),

@@ -21,6 +21,15 @@ function yesNoTone(value, active) {
       mark: 'var(--zm-success)',
     };
   }
+  if (value === 'na') {
+    // Neutral tone — "not applicable" is resolved, not a flag.
+    return {
+      border: 'var(--zm-line-strong)',
+      bg: 'var(--zm-surface-2)',
+      color: 'var(--zm-fg-2)',
+      mark: 'var(--zm-fg-3)',
+    };
+  }
   return {
     border: 'var(--zm-danger)',
     bg: 'var(--zm-danger-soft)',
@@ -87,14 +96,14 @@ function StageBadge({ stage }) {
 
 function StatusCheckbox({ value, checked, onChange, disabled = false }) {
   const tone = yesNoTone(value, checked);
-  const label = value === 'yes' ? 'Yes' : 'No';
+  const label = value === 'yes' ? 'Yes' : value === 'na' ? 'N/A' : 'No';
   return (
     <label
       className="zm-pill"
       style={{
-        minWidth: 82,
+        minWidth: 68,
         height: 34,
-        padding: '0 12px',
+        padding: '0 10px',
         border: `1px solid ${tone.border}`,
         borderRadius: 8,
         background: tone.bg,
@@ -138,7 +147,7 @@ function ChecklistRow({ no, label, status, onStatus, children, readOnly = false 
       className="zm-row checklist-row"
       style={{
         display: 'grid',
-        gridTemplateColumns: '48px minmax(180px, 1fr) 184px',
+        gridTemplateColumns: '48px minmax(180px, 1fr) 240px',
         alignItems: 'center',
         gap: 14,
         padding: '14px 16px',
@@ -183,15 +192,17 @@ function ChecklistRow({ no, label, status, onStatus, children, readOnly = false 
           style={{
             fontFamily: 'var(--zm-font-mono)',
             fontSize: 10.5,
-            color: status ? (status === 'yes' ? 'var(--zm-success)' : 'var(--zm-danger)') : 'var(--zm-fg-4)',
+            color: status
+              ? (status === 'yes' ? 'var(--zm-success)' : status === 'na' ? 'var(--zm-fg-2)' : 'var(--zm-danger)')
+              : 'var(--zm-fg-4)',
             textTransform: 'uppercase',
           }}
         >
-          {status ? `Marked ${status}` : 'Awaiting yes / no'}
+          {status ? (status === 'na' ? 'Marked N/A' : `Marked ${status}`) : 'Awaiting response'}
         </span>
       </div>
 
-      <div className="checklist-status" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+      <div className="checklist-status" style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, flexWrap: 'wrap' }}>
         <StatusCheckbox
           value="yes"
           checked={status === 'yes'}
@@ -203,6 +214,12 @@ function ChecklistRow({ no, label, status, onStatus, children, readOnly = false 
           checked={status === 'no'}
           disabled={readOnly}
           onChange={() => onStatus(status === 'no' ? null : 'no')}
+        />
+        <StatusCheckbox
+          value="na"
+          checked={status === 'na'}
+          disabled={readOnly}
+          onChange={() => onStatus(status === 'na' ? null : 'na')}
         />
       </div>
     </div>
@@ -668,7 +685,7 @@ export default function ModuleChecklistPage({
               className="checklist-table-head"
               style={{
                 display: 'grid',
-                gridTemplateColumns: '48px minmax(180px, 1fr) 184px',
+                gridTemplateColumns: '48px minmax(180px, 1fr) 240px',
                 alignItems: 'center',
                 gap: 14,
                 padding: '12px 16px',

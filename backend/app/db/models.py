@@ -402,8 +402,9 @@ class SiteDelegation(Base):
 class LegalDdChecklist(Base):
     """Due-diligence checklist. site_id is the PK (one row per site).
 
-    Checklist items use a three-value text enum: 'pending' | 'yes' | 'no'.
-    final_verdict is set by the legal supervisor: 'pending' | 'positive' | 'negative'.
+    Checklist items use a four-value text enum: 'pending' | 'yes' | 'no' | 'na'
+    ('na' = not applicable). final_verdict is set by the legal supervisor:
+    'pending' | 'positive' | 'negative'.
     """
     __tablename__ = "legal_dd_checklist"
 
@@ -447,11 +448,11 @@ class LegalDdChecklist(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "title_doc IN ('pending','yes','no') AND sanctioned_plan IN ('pending','yes','no') "
-            "AND oc_cc IN ('pending','yes','no') AND commercial_use IN ('pending','yes','no') "
-            "AND property_tax IN ('pending','yes','no') AND electricity IN ('pending','yes','no') "
-            "AND fire_noc IN ('pending','yes','no') AND other_1 IN ('pending','yes','no') "
-            "AND other_2 IN ('pending','yes','no')",
+            "title_doc IN ('pending','yes','no','na') AND sanctioned_plan IN ('pending','yes','no','na') "
+            "AND oc_cc IN ('pending','yes','no','na') AND commercial_use IN ('pending','yes','no','na') "
+            "AND property_tax IN ('pending','yes','no','na') AND electricity IN ('pending','yes','no','na') "
+            "AND fire_noc IN ('pending','yes','no','na') AND other_1 IN ('pending','yes','no','na') "
+            "AND other_2 IN ('pending','yes','no','na')",
             name="chk_dd_checklist_values",
         ),
         CheckConstraint(
@@ -513,9 +514,9 @@ class SiteLicensing(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "fssai IN ('pending','yes','no') AND health_trade IN ('pending','yes','no') "
-            "AND shops_estab_reg IN ('pending','yes','no') AND fire_noc IN ('pending','yes','no') "
-            "AND storage_license IN ('pending','yes','no')",
+            "fssai IN ('pending','yes','no','na') AND health_trade IN ('pending','yes','no','na') "
+            "AND shops_estab_reg IN ('pending','yes','no','na') AND fire_noc IN ('pending','yes','no','na') "
+            "AND storage_license IN ('pending','yes','no','na')",
             name="chk_licensing_values",
         ),
         CheckConstraint(

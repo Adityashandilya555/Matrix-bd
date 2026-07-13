@@ -127,7 +127,7 @@ function StatusChip({ value }) {
 
 function stageStatus(stage) {
   const value = String(stage.status || '').toLowerCase();
-  const done = ['yes', 'positive', 'signed', 'registered', 'complete', 'approved', 'done', 'recorded'].includes(value);
+  const done = ['yes', 'na', 'positive', 'signed', 'registered', 'complete', 'approved', 'done', 'recorded'].includes(value);
   const bad = ['no', 'negative', 'rejected'].includes(value);
   return bad ? 'rejected' : done ? 'done' : value || 'pending';
 }

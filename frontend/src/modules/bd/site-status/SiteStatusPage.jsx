@@ -34,6 +34,7 @@ const LIC_CHECKS = [
 function tone(value) {
   if (value === 'yes')  return { color: 'var(--zm-success)', label: 'Yes' };
   if (value === 'no')   return { color: 'var(--zm-danger)',  label: 'No'  };
+  if (value === 'na')   return { color: 'var(--zm-fg-2)',    label: 'N/A' };
   return { color: 'var(--zm-fg-3)', label: 'Pending' };
 }
 

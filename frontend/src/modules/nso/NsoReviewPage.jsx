@@ -35,6 +35,7 @@ function statusTone(done, unlocked) {
 function licenseTone(value) {
   if (value === 'yes') return { label: 'Yes', color: 'var(--zm-success)', bg: 'rgba(47, 125, 82, 0.1)', border: 'rgba(47, 125, 82, 0.35)' };
   if (value === 'no') return { label: 'No', color: 'var(--zm-danger)', bg: 'rgba(160, 42, 42, 0.08)', border: 'rgba(160, 42, 42, 0.28)' };
+  if (value === 'na') return { label: 'N/A', color: 'var(--zm-fg-2)', bg: 'var(--zm-surface-2)', border: 'var(--zm-line-strong)' };
   return { label: 'Pending', color: 'var(--zm-fg-3)', bg: 'var(--zm-surface)', border: 'var(--zm-line)' };
 }
 

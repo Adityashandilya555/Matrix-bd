@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 
 DoneStatus = Literal["pending", "done"]
-LegalLicenseStatus = Literal["pending", "yes", "no"]
+LegalLicenseStatus = Literal["pending", "yes", "no", "na"]
 DryStockStatus = Literal["pending", "ordered", "received"]
 OnlineDeliveryStatus = Literal["pending", "ready", "active"]
 

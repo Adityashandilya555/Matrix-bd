@@ -118,7 +118,7 @@ export default function LicensingPage() {
     const payload = {};
     for (const check of LICENSING_CHECKS) {
       const v = coreStatuses[check.id];
-      if (v === 'yes' || v === 'no') payload[check.id] = v;
+      if (v === 'yes' || v === 'no' || v === 'na') payload[check.id] = v;
     }
     return payload;
   };
@@ -149,9 +149,12 @@ export default function LicensingPage() {
       setSubmitting(true);
       const next = await saveLicensing(siteId, buildPayload(snapshot));
       setReview(next);
-      const allYes = LICENSING_CHECKS.every((c) => snapshot.coreStatuses[c.id] === 'yes');
-      if (allYes) showToast?.('Licensing complete — site auto-approved.', 'success');
-      else        showToast?.('Licensing submitted.', 'success');
+      const allResolved = LICENSING_CHECKS.every((c) => {
+        const v = snapshot.coreStatuses[c.id];
+        return v === 'yes' || v === 'na';
+      });
+      if (allResolved) showToast?.('Licensing complete — site auto-approved.', 'success');
+      else             showToast?.('Licensing submitted.', 'success');
       // End of the legal chain → back to the Legal queue for the next site.
       navigate(ROUTES.LEGAL);
     } catch (err) {
@@ -207,7 +210,7 @@ export default function LicensingPage() {
         file: 'No. 06',
         eyebrow: 'Legal module · Licensing',
         title: <>Licensing <em>review</em></>,
-        lede: 'Mark each statutory license check as Yes or No before the final payment-side handoff is cleared.',
+        lede: 'Mark each statutory license check as Yes, No, or N/A (not applicable) before the final payment-side handoff is cleared.',
         tagIcon: 'card',
       }}
       tableLabel="Licensing field"
