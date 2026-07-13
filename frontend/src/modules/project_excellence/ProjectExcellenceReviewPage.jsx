@@ -84,9 +84,10 @@ export default function ProjectExcellenceReviewPage() {
   const { siteId } = useParams();
   const navigate = useNavigate();
   const { showToast } = usePageContext();
-  const { role } = useSession();
+  const { role, session, user } = useSession();
   const isSupervisor = role === 'supervisor';
   const isBusinessAdmin = role === 'business_admin';
+  const myUserId = session?.userId || session?.id || session?.sub || user?.id || null;
 
   const [state, setState] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -181,9 +182,11 @@ export default function ProjectExcellenceReviewPage() {
 
   const handleAllocate = async () => {
     if (!allocExec) return;
+    const targetUserId = allocExec === '__self__' ? myUserId : allocExec;
+    if (!targetUserId) { setError('Could not resolve your user id — refresh and try again.'); return; }
     setSaving(true);
     try {
-      const data = await allocatePE(siteId, allocExec);
+      const data = await allocatePE(siteId, targetUserId);
       setState(data);
     } catch (err) {
       setError(err?.detail || err?.message || 'Allocation failed');
@@ -301,6 +304,7 @@ export default function ProjectExcellenceReviewPage() {
               }}
             >
               <option value="">Select executive…</option>
+              <option value="__self__">Delegate to self (me)</option>
               {execList.map((u) => (
                 <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
               ))}

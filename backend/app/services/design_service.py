@@ -56,7 +56,7 @@ from app.domain.schemas.design import (
     SubmitDeliverableRequest,
 )
 from app.services.storage_service import signed_url as storage_signed_url
-from app.services._common import count_rows, fetch_site_or_404, fetch_user_name, fetch_user_names
+from app.services._common import actor_can_supervise, actor_is_business_admin, count_rows, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_is_delegated
 from app.services import budget_service
@@ -439,16 +439,12 @@ async def svc_allocate_design(
     Creates a site_delegations row (module='design'), opens the design_reviews
     row at stage 'recce', and mirrors sites.design_status = 'allocated'.
     """
-    if (actor.get("role") or "").lower() != "supervisor":
+    if not actor_can_supervise(actor):
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="Only a supervisor can allocate a design site.",
+            detail="Only a supervisor or business admin can allocate a design site.",
         )
-    if str(delegate_user_id) == str(actor["sub"]):
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail="Cannot allocate to yourself.",
-        )
+    is_self = str(delegate_user_id) == str(actor["sub"])
 
     async with transaction(session):
         site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
@@ -466,10 +462,10 @@ async def svc_allocate_design(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Delegate user not found in this workspace, or not active.",
             )
-        if (delegate.role or "").lower() != "executive":
+        if not is_self and (delegate.role or "").lower() != "executive":
             raise HTTPException(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
-                detail="Sites can only be allocated to executive users.",
+                detail="Sites can only be allocated to executive users, or taken on yourself.",
             )
 
         existing = (await session.execute(
@@ -578,10 +574,10 @@ async def svc_revoke_design_delegation(
     delegate_user_id: str | UUID,
 ) -> OkResponse:
     """Supervisor revokes an active design allocation by (site, user). Idempotent."""
-    if (actor.get("role") or "").lower() != "supervisor":
+    if not actor_can_supervise(actor):
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="Only a supervisor can revoke a design allocation.",
+            detail="Only a supervisor or business admin can revoke a design allocation.",
         )
     async with transaction(session):
         row = (await session.execute(
@@ -753,7 +749,7 @@ async def _resolve_design_review(
     Behaviour-preserving extract of svc_submit_deliverable (#240)."""
     review = await _fetch_review_or_none(session, site_id=site.id)
     if review is None:
-        if is_supervisor:
+        if is_supervisor or actor_is_business_admin(actor):
             # Supervisor handles the site directly (no executive). Open the design
             # folder lazily on their first upload — no allocation needed.
             review = models.DesignReview(
@@ -769,8 +765,10 @@ async def _resolve_design_review(
                     "allocate the site (or handle it directly) before uploads."
                 ),
             )
-    # Executives must hold an active design allocation; supervisors are free.
-    if not is_supervisor:
+    # Executives must hold an active design allocation; supervisors are free,
+    # and so are business admins (workspace access — real_role stays
+    # business_admin even while simulating an executive).
+    if not is_supervisor and not actor_is_business_admin(actor):
         ok = await svc_is_delegated(
             session, tenant_id=tenant_id, site_id=site.id,
             user_id=actor["sub"], module="design",
@@ -953,10 +951,10 @@ async def svc_review_deliverable(
              approval before advancing; BOQ admin approval completes Design.
     reject  → store comments (visible to the executive); executive re-uploads.
     """
-    if (actor.get("role") or "").lower() != "supervisor":
+    if not actor_can_supervise(actor):
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="Only a supervisor can review a design deliverable.",
+            detail="Only a supervisor or business admin can review a design deliverable.",
         )
     if kind not in _DELIVERABLE_KINDS:
         raise HTTPException(
