@@ -6,6 +6,8 @@ import { getSiteActivity, colorForAction, labelForEntry } from '../../../service
 import { getSiteDocuments } from '../../../services/api/siteService.js';
 import { SiteStatus } from '../../../lib/stateMachine.js';
 import { safeHref } from '../../../lib/safeHref.js';
+import { useSession } from '../../../state/SessionContext.jsx';
+import { useSites } from '../../../state/SitesContext.jsx';
 
 // Relative time formatter for the activity tab. Keeps the rendering format from
 // the mock data ("12 min ago", "3 days ago") so the visual identity is preserved.
@@ -50,13 +52,29 @@ const formatDate = (value) => {
   return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-function Field({ label, value, mono, span = 1 }) {
+function EyeBadge({ title = 'Edited by supervisor' }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: `span ${span}` }}>
+    <span title={title} aria-label={title} style={{ display: 'inline-flex', alignItems: 'center', color: '#B45309' }}>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+    </span>
+  );
+}
+
+function Field({ label, value, mono, span = 1, edited = false }) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 4, gridColumn: `span ${span}`,
+      ...(edited ? {
+        background: 'rgba(217,119,6,0.10)', border: '1px solid rgba(217,119,6,0.38)',
+        borderRadius: 8, padding: '6px 9px', margin: '-6px -9px',
+      } : null),
+    }}>
       <span style={{
         fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5,
-        letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--zm-fg-3)',
-      }}>{label}</span>
+        letterSpacing: '0.1em', textTransform: 'uppercase',
+        color: edited ? '#B45309' : 'var(--zm-fg-3)',
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+      }}>{label}{edited && <EyeBadge/>}</span>
       <span style={{
         fontFamily: mono ? 'var(--zm-font-mono)' : 'var(--zm-font-body)',
         fontFeatureSettings: mono ? "'tnum' 1" : 'normal',
@@ -178,7 +196,8 @@ function PhotoTile({ photo }) {
   );
 }
 
-function SiteOverviewTab({ site }) {
+function SiteOverviewTab({ site, editedFields = [] }) {
+  const edits = new Set(editedFields);
   const mapHref = safeHref(site.googleMapsUrl)
     || (hasValue(site.pin) && site.pin !== '—'
       ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.pin)}`
@@ -225,11 +244,11 @@ function SiteOverviewTab({ site }) {
           padding: '20px 22px', background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 10,
         }}>
           <Field label="Site code" value={display(site.code, '—')} mono/>
-          <Field label="Model" value={display(site.model)}/>
+          <Field label="Model" value={display(site.model)} edited={edits.has('model')}/>
           <Field label="City" value={display(site.city, '—')}/>
-          <Field label="Carpet area" value={formatNumber(site.carpet, ' sqft')} mono/>
-          <Field label="Rent / month" value={formatINR(site.rent, '/mo')} mono/>
-          <Field label="Rent type" value={display(site.rentType)}/>
+          <Field label="Carpet area" value={formatNumber(site.carpet, ' sqft')} mono edited={edits.has('area_sqft')}/>
+          <Field label="Rent / month" value={formatINR(site.rent, '/mo')} mono edited={edits.has('expected_rent')}/>
+          <Field label="Rent type" value={display(site.rentType)} edited={edits.has('rent_type')}/>
           <Field label="CAM" value={formatINR(site.cam, '/mo')} mono/>
           <Field label="Total op cost" value={formatINR(site.opCost, '/mo')} mono/>
           <Field label="Lock-in" value={formatNumber(site.lockin, ' months')} mono/>
@@ -261,7 +280,7 @@ function SiteOverviewTab({ site }) {
           display: 'grid', gridTemplateColumns: 'minmax(180px, 0.8fr) 1fr', gap: 20,
         }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <Field label="Google pin" value={display(site.pin)} mono/>
+            <Field label="Google pin" value={display(site.pin)} mono edited={edits.has('google_pin')}/>
           </div>
           <div style={{
             borderRadius: 8, position: 'relative', overflow: 'hidden',
@@ -421,6 +440,29 @@ function SitePaymentsTab({ site }) {
 
 export default function SiteDrawer({ site, onClose }) {
   const [tab, setTab] = useState('overview');
+  const { role, user, session } = useSession();
+  const { markSiteViewed } = useSites();
+  // Snapshot the supervisor-edited fields at open time so the eye highlights
+  // persist for this viewing session even after the yellow flag clears in the
+  // background (once the exec acknowledges below).
+  const [editedFields] = useState(() => site?.supervisorEditedFields || []);
+
+  useEffect(() => {
+    if (!site || !editedFields.length) return;
+    // Clear the flag only for the site's own executive re-reading it — that is
+    // what "until the executive views it" means. A supervisor viewing keeps it
+    // lit. "exec" is the mock alias for the 'executive' role; anyone who is not a
+    // supervisor/business-admin is acting as the executive here.
+    const actingAsExec = role !== 'supervisor' && role !== 'business_admin';
+    const myId = String(session?.id || session?.sub || user?.id || '');
+    const owns = !!myId && [site.submittedBy, site.createdBy?.id, site.assignedTo?.id]
+      .some((v) => String(v || '') === myId);
+    if (actingAsExec && owns) {
+      markSiteViewed?.(site.id).catch(() => { /* non-blocking */ });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [site?.id]);
+
   if (!site) return null;
   return (
     <>
@@ -452,6 +494,17 @@ export default function SiteDrawer({ site, onClose }) {
             <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>
               {display(site.city, '—')} · {display(site.model)} · Created by {display(site.createdBy, '—')} · {formatDate(site.createdAt)}
             </span>
+            {editedFields.length > 0 && (
+              <span style={{
+                marginTop: 4, alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '4px 10px', borderRadius: 999,
+                background: 'rgba(217,119,6,0.12)', border: '1px solid rgba(217,119,6,0.38)',
+                color: '#B45309', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, fontWeight: 600,
+              }}>
+                <EyeBadge title="Supervisor edits"/>
+                {editedFields.length} field{editedFields.length === 1 ? '' : 's'} edited by supervisor
+              </span>
+            )}
             <div style={{ marginTop: 18, display: 'flex', gap: 0, borderTop: '1px solid var(--zm-line)' }}>
               <Tab label="Overview"  active={tab === 'overview'}  onClick={() => setTab('overview')}/>
               <Tab label="Activity"  active={tab === 'activity'} onClick={() => setTab('activity')}/>
@@ -467,7 +520,7 @@ export default function SiteDrawer({ site, onClose }) {
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
-          {tab === 'overview'  && <SiteOverviewTab site={site}/>}
+          {tab === 'overview'  && <SiteOverviewTab site={site} editedFields={editedFields}/>}
           {tab === 'activity'  && <SiteActivityTab site={site}/>}
           {tab === 'docs'      && <SiteDocsTab site={site}/>}
           {tab === 'payments'  && <SitePaymentsTab site={site}/>}

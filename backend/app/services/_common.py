@@ -208,6 +208,57 @@ def _extract_nso(nso: models.NsoReview | None) -> dict:
         "nso_current_stage": nso.current_stage,
     }
 
+async def compute_unseen_supervisor_edits(
+    session: AsyncSession, *, tenant_id: str | UUID, site_ids,
+) -> dict:
+    """Per site, the pipeline fields a supervisor changed that the site's
+    executive has not re-viewed yet.
+
+    Audit-derived (no schema change): for each site, collect the field names of
+    ``supervisor_field_edited`` events that occurred *after* the most recent
+    ``exec_viewed_details`` marker. An empty/absent entry means nothing to flag.
+    One query over audit_logs for the whole batch keeps the list view O(1).
+    """
+    from collections import defaultdict
+
+    from app.services.audit_service import EXEC_VIEWED_ACTION, SUPERVISOR_EDIT_ACTION
+
+    ids = [s for s in site_ids if s]
+    if not ids:
+        return {}
+    rows = (await session.execute(
+        select(
+            models.AuditLog.site_id,
+            models.AuditLog.action,
+            models.AuditLog.field_name,
+            models.AuditLog.created_at,
+        ).where(
+            models.AuditLog.tenant_id == tenant_id,
+            models.AuditLog.site_id.in_(ids),
+            models.AuditLog.action.in_([SUPERVISOR_EDIT_ACTION, EXEC_VIEWED_ACTION]),
+        ).order_by(models.AuditLog.created_at)
+    )).all()
+
+    last_view: dict = {}
+    edits: dict = defaultdict(list)
+    for site_id, action, field_name, created_at in rows:
+        if action == EXEC_VIEWED_ACTION:
+            last_view[site_id] = created_at
+        elif field_name:
+            edits[site_id].append((created_at, field_name))
+
+    result: dict = {}
+    for site_id, entries in edits.items():
+        seen_at = last_view.get(site_id)
+        unseen: list = []
+        for created_at, field_name in entries:
+            if (seen_at is None or created_at > seen_at) and field_name not in unseen:
+                unseen.append(field_name)
+        if unseen:
+            result[site_id] = unseen
+    return result
+
+
 def site_to_response(
     site: models.Site,
     created_by_name: str | None = None,
@@ -218,6 +269,7 @@ def site_to_response(
     approved_by_name: str | None = None,
     nso: models.NsoReview | None = None,
     launch: models.LaunchApproval | None = None,
+    supervisor_edited_fields: list | None = None,
 ) -> SiteResponse:
     """Map an ORM Site into the API SiteResponse Pydantic model."""
     rent = _float_or_none(site.expected_rent)
@@ -247,7 +299,7 @@ def site_to_response(
         "expected_escalation_pct": _float_or_none(site.expected_escalation_pct),
         "expected_escalation_years": site.expected_escalation_years,
         "expected_revshare_pct": _float_or_none(site.expected_revshare_pct),
-        "area_sqft": site.area_sqft if site.area_sqft is not None else 0,
+        "area_sqft": float(site.area_sqft) if site.area_sqft is not None else 0,
         "staggered_escalation": site.staggered_escalation,
         "legal_dd_status": site.legal_dd_status,
         "agreement_status": site.agreement_status,
@@ -268,6 +320,7 @@ def site_to_response(
         "updated_at": site.updated_at,
         "launch_status": launch.status if launch else None,
         "expected_loi_days": approval.expected_loi_days if approval else None,
+        "supervisor_edited_fields": supervisor_edited_fields or [],
     }
 
     data.update(_extract_details(details, rent))

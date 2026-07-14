@@ -33,6 +33,7 @@ from app.services.bd_service import (
     svc_approve_shortlist,
     svc_archive_site,
     svc_create_draft,
+    svc_mark_details_viewed,
     svc_push_to_payments,
     svc_reassign_site,
     svc_reject_site,
@@ -263,12 +264,32 @@ async def patch_site_details(
     site_id: str,
     body: PatchSiteDetailsRequest,
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE))],
+    # Executives edit their own/assigned sites; supervisors may amend an exec's
+    # details (tagged as a supervisor edit and flagged until the exec re-reads).
+    current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))],
     tenant_id: TenantId,
 ) -> OkResponse:
     return await svc_save_details(
         db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
         details=body.details.model_dump(),
+    )
+
+
+@router.post(
+    "/{site_id}/viewed",
+    response_model=OkResponse,
+    summary="Acknowledge supervisor edits (clears the yellow flag)",
+)
+async def mark_site_viewed(
+    site_id: str,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))],
+    tenant_id: TenantId,
+) -> OkResponse:
+    """Called when the site's executive re-opens a site a supervisor amended, so
+    the per-field eye highlight and yellow site flag clear for them."""
+    return await svc_mark_details_viewed(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
     )
 
 

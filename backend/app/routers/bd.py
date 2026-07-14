@@ -152,7 +152,9 @@ async def save_draft_details(
     site_id: str,
     body: SaveDetailsRequest,
     db: DbDep,
-    current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE))],
+    # Executives fill their own sites; supervisors may amend an exec's submission
+    # (tagged as a supervisor edit in the audit + flagged until the exec re-reads).
+    current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))],
     tenant_id: TenantId,
 ) -> OkResponse:
     return await svc_save_details(

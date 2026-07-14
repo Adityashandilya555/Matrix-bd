@@ -163,6 +163,12 @@ export async function saveDraftDetails(siteId, formData) {
   return adapter.patchSiteDetails(siteId, { ...coerced, _savedAt: new Date().toISOString() });
 }
 
+// Acknowledge supervisor edits on a site so its yellow flag + per-field eye
+// highlight clear for the executive. No-op server-side when nothing is unseen.
+export async function markSiteViewed(siteId) {
+  return adapter.markSiteViewed(siteId);
+}
+
 // ── Shortlist delegations ──────────────────────────────────────────────────
 
 export async function listSiteDelegations(siteId) {

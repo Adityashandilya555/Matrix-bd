@@ -277,8 +277,17 @@ export function SitesProvider({ children }) {
   }, [refreshAndBroadcast]);
 
   const saveDraftDetails = useCallback(async (item, formData) => {
-    await siteService.saveDraftDetails(item.id, formData);
+    // Tag who is editing so a supervisor amending an exec's details is recorded
+    // distinctly (yellow flag + eye highlight until the exec re-reads). Over HTTP
+    // the server derives this from the JWT and ignores the hint; the mock reads it.
+    const editorRole = (role === 'supervisor' || role === 'business_admin') ? 'supervisor' : 'executive';
+    await siteService.saveDraftDetails(item.id, { ...formData, _editorRole: editorRole, _actor: user?.name });
     await refreshAndBroadcast('save_details');
+  }, [refreshAndBroadcast, role, user]);
+
+  const markSiteViewed = useCallback(async (siteId) => {
+    await siteService.markSiteViewed(siteId);
+    await refreshAndBroadcast('mark_viewed');
   }, [refreshAndBroadcast]);
 
   const submitDetailsForReview = useCallback(async (item, formData) => {
@@ -349,11 +358,11 @@ export function SitesProvider({ children }) {
     drafts, shortlist, staging, archive,
     loading, error,
     moveDraftToShortlist, rejectDraft, archiveDraft, reviveSite,
-    saveDraftDetails, submitDetailsForReview, approveShortlistToStaging,
+    saveDraftDetails, submitDetailsForReview, approveShortlistToStaging, markSiteViewed,
     uploadLOI, pushSite, createDraft,
     sites,
     refresh,
-  }), [drafts, shortlist, staging, archive, loading, error, moveDraftToShortlist, rejectDraft, archiveDraft, reviveSite, saveDraftDetails, submitDetailsForReview, approveShortlistToStaging, uploadLOI, pushSite, createDraft, sites, refresh]);
+  }), [drafts, shortlist, staging, archive, loading, error, moveDraftToShortlist, rejectDraft, archiveDraft, reviveSite, saveDraftDetails, submitDetailsForReview, approveShortlistToStaging, markSiteViewed, uploadLOI, pushSite, createDraft, sites, refresh]);
 
   return (
     <SitesContext.Provider value={value}>

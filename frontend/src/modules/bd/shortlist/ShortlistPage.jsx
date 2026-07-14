@@ -375,14 +375,25 @@ function ShortlistCard({ item, role, currentUserId, onView, onAddDetails, onAppr
   const waitingForAssignedDetails = supervisorCreatedShortlist && !!assignedToId && !item.inReview;
   const reviewable = item.inReview === true;
   const hasDraft = !!item.details && !reviewable;
+  const supEdits = item.supervisorEditedFields || [];
+  const hasSupEdits = supEdits.length > 0;
   return (
-    <div data-site-id={item.code} style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, boxShadow: 'var(--zm-shadow-1)' }}>
+    <div data-site-id={item.code} style={{
+      background: hasSupEdits ? 'rgba(217,119,6,0.05)' : 'var(--zm-surface)',
+      border: '1px solid ' + (hasSupEdits ? 'rgba(217,119,6,0.45)' : 'var(--zm-line)'),
+      borderRadius: 12, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, boxShadow: 'var(--zm-shadow-1)',
+    }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
         <div style={{ width: 64, height: 64, borderRadius: 10, flex: '0 0 64px', background: `linear-gradient(135deg, hsl(${item.hue} 30% 80%), hsl(${item.hue+30} 30% 60%))` }}/>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11, color: 'var(--zm-fg-3)' }}>{item.code}</span>
             {reviewable ? <StatusPill stage="inReview"/> : <StatusPill stage="shortlist"/>}
+            {hasSupEdits && (
+              <span title="A supervisor edited this site's details" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999, background: 'rgba(217,119,6,0.12)', border: '1px solid rgba(217,119,6,0.40)', color: '#B45309', fontFamily: 'var(--zm-font-body)', fontSize: 10.5, fontWeight: 700 }}>
+                <EyeIcon size={11}/> Supervisor edited {supEdits.length}
+              </span>
+            )}
           </span>
           <h3 style={{ margin: 0, fontFamily: 'var(--zm-font-display)', fontWeight: 600, fontSize: 17, color: 'var(--zm-fg)' }}>{item.name}</h3>
           <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>{item.city} · Visit {item.visitDate} · Created by {item.createdBy}</span>
@@ -404,6 +415,7 @@ function ShortlistCard({ item, role, currentUserId, onView, onAddDetails, onAppr
         <span style={{ flex: 1 }}/>
         {supervisor ? (
           <>
+            <button onClick={() => onAddDetails(item)} className="zm-btn" title="Edit the executive's details — changes are flagged until the exec re-reads them" style={{ height: 34, padding: '0 13px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="folder" size={13}/> Edit details</button>
             <button onClick={() => onReject(item)} className="zm-btn" title="Reject this shortlisted site" style={{ height: 34, padding: '0 13px', border: '1px solid rgba(155,42,42,0.30)', borderRadius: 7, background: 'rgba(155,42,42,0.06)', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="alert" size={13}/> Reject</button>
             {(needsAssignment || waitingForAssignedDetails) && (
               <button onClick={() => onDelegate(item)} className="zm-btn-primary" title={needsAssignment ? 'Assign this site to a BD executive for Add Details' : 'Change the assigned executive'} style={{ height: 34, padding: '0 13px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', boxShadow: 'var(--zm-shadow-1)', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="user" size={13}/> {needsAssignment ? 'Delegate for details' : 'Reassign'}</button>
@@ -555,7 +567,7 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
         </div>
       )}
       {approving && <LOITimelineModal site={approving} onCancel={() => setApproving(null)} onSubmit={onTimelineSubmit}/>}
-      {detailing && <AddDetailsPage key={detailing.id} item={detailing} onClose={() => { if (!detailSaving) setDetailing(null); }} onSubmit={(formData) => onDetailsSubmit(detailing, formData)} onSaveDraft={(formData) => onDetailsSaveDraft(detailing, formData)} savingDraft={detailSaving} saveError={detailError}/>}
+      {detailing && <AddDetailsPage key={detailing.id} item={detailing} onClose={() => { if (!detailSaving) setDetailing(null); }} onSubmit={(formData) => onDetailsSubmit(detailing, formData)} onSaveDraft={(formData) => onDetailsSaveDraft(detailing, formData)} savingDraft={detailSaving} saveError={detailError} supervisorEdit={role === 'supervisor' || role === 'business_admin'}/>}
       {rejecting && <RejectShortlistModal site={rejecting} onClose={() => setRejecting(null)} onReject={onRejectShortlist}/>}
       {delegating && (
         <AssignDetailsModal

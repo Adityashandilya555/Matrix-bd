@@ -107,7 +107,9 @@ class Site(Base):
     rent_set_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     # Pipeline-stage area (sqft). Captured at draft creation; flows to
     # site_details.carpet_area_sqft when the Add Details form is filled.
-    area_sqft: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # Numeric so fractional square footage (e.g. 1120.50) is preserved — see
+    # migration 20260801_widen_area_sqft_to_numeric.sql.
+    area_sqft: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, server_default="0")
     # Staggered escalation schedule: JSONB array of {year: int, percent: float}.
     # Only used when rent_type == 'staggered'. Max 5 entries.
     # none_as_null=True is REQUIRED: without it SQLAlchemy binds Python None as the

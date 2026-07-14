@@ -155,7 +155,7 @@ class SaveDetailsRequest(BaseModel):
     tenure: Optional[int] = None
     total_op_cost: Optional[float] = Field(default=None, validation_alias=AliasChoices("total_op_cost", "totalOpCost"))
     # Pipeline-stage area (sqft) — editable via Add Details
-    area_sqft: Optional[int] = Field(default=None, ge=0, validation_alias=AliasChoices("area_sqft", "areaSqft"))
+    area_sqft: Optional[float] = Field(default=None, ge=0, validation_alias=AliasChoices("area_sqft", "areaSqft"))
     # Staggered escalation schedule — passed through to sites row
     staggered_escalation: Optional[List[StaggeredEscalationItem]] = Field(
         default=None,
@@ -220,7 +220,7 @@ class SiteResponse(BaseModel):
     expected_escalation_pct: Optional[float] = None
     expected_escalation_years: Optional[int] = None
     expected_revshare_pct: Optional[float] = None
-    area_sqft: int = 0
+    area_sqft: float = 0
     staggered_escalation: Optional[list] = None
 
     @field_validator("staggered_escalation", mode="before")
@@ -283,6 +283,10 @@ class SiteResponse(BaseModel):
     archive_note: Optional[str] = None
     archived_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    # Pipeline fields a supervisor amended that the site's executive hasn't
+    # re-viewed yet. Drives the yellow site flag + per-field eye highlight;
+    # audit-derived, cleared once the exec re-opens the site. Empty by default.
+    supervisor_edited_fields: List[str] = Field(default_factory=list)
 
 
 class SiteListResponse(BaseModel):
