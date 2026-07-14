@@ -110,7 +110,7 @@ function applyDraftFilters(drafts, f) {
   });
 }
 
-function DraftRow({ draft, role, canDecide, onApprove, onReject, onArchive, onOpen }) {
+function DraftRow({ draft, role, canDecide, isOwn, onApprove, onReject, onArchive, onOpen }) {
   const overdue = canDecide && draft.days > 7;
   return (
     <div className="zm-row" data-site-id={draft.id} style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1fr 0.8fr 0.7fr ' + (canDecide ? '230px' : '90px'), alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: overdue ? 'rgba(185,28,28,0.05)' : 'transparent', position: 'relative' }}>
@@ -122,11 +122,15 @@ function DraftRow({ draft, role, canDecide, onApprove, onReject, onArchive, onOp
       <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{draft.visitDate}</span>
       <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 13, fontWeight: 600, color: overdue ? 'var(--zm-danger)' : 'var(--zm-fg)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>{overdue && <Icon name="alert" size={12}/>}{String(draft.days).padStart(2,'0')}d</span>
       {canDecide ? (
-        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+          {/* A supervisor cannot approve/reject a draft they submitted themselves
+              (backend blocks self-approval). Hide Yes/No on own drafts and explain
+              why, keeping View + Archive available. */}
+          {isOwn && <span title="You submitted this draft — another reviewer must approve or reject it" style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, color: 'var(--zm-fg-4)', marginRight: 2, whiteSpace: 'nowrap' }}>Your draft</span>}
           <button onClick={() => onOpen(draft)} title="View" className="zm-icon-btn" style={{ width: 32, height: 32, padding: 0, border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><EyeIcon/></button>
           <button onClick={() => onArchive(draft)} title="Archive" className="zm-icon-btn" style={{ width: 32, height: 32, padding: 0, border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="folder" size={14}/></button>
-          <button onClick={() => onReject(draft)} className="zm-btn-danger" style={{ height: 32, padding: '0 10px', border: '1px solid #F2B6B6', borderRadius: 7, background: '#fff', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>No</button>
-          <button onClick={() => onApprove(draft)} className="zm-btn-primary" style={{ height: 32, padding: '0 14px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 700, cursor: 'pointer', boxShadow: 'var(--zm-shadow-1)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="check" size={12}/> Yes</button>
+          {!isOwn && <button onClick={() => onReject(draft)} className="zm-btn-danger" style={{ height: 32, padding: '0 10px', border: '1px solid #F2B6B6', borderRadius: 7, background: '#fff', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>No</button>}
+          {!isOwn && <button onClick={() => onApprove(draft)} className="zm-btn-primary" style={{ height: 32, padding: '0 14px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 700, cursor: 'pointer', boxShadow: 'var(--zm-shadow-1)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="check" size={12}/> Yes</button>}
         </div>
       ) : (
         <button onClick={() => onOpen(draft)} className="zm-btn" style={{ height: 32, padding: '0 12px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', justifySelf: 'end', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}><EyeIcon/> View</button>
@@ -193,7 +197,7 @@ export default function DraftsPage({ onOpenSite: onOpenSiteProp, showToast: show
           {filtered.map(d => {
             const canDecideHere = can(role, 'shortlist') || role === 'supervisor' || role === 'business_admin';
             return (
-              <DraftRow key={d.id} draft={d} role={role} canDecide={canDecideHere} onApprove={onApprove} onReject={onReject} onArchive={onArchive} onOpen={onOpenSite || (() => {})}/>
+              <DraftRow key={d.id} draft={d} role={role} canDecide={canDecideHere} isOwn={d.createdBy === ME} onApprove={onApprove} onReject={onReject} onArchive={onArchive} onOpen={onOpenSite || (() => {})}/>
             );
           })}
           {filtered.length === 0 && (<div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>No drafts match these filters.</div>)}
