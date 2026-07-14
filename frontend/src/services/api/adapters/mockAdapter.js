@@ -41,8 +41,9 @@ export async function createSite(payload) {
   maybeFail();
   const id = 'site_' + Math.random().toString(36).slice(2, 10);
   const cityCode = (payload.city || 'UNK').slice(0, 3).toUpperCase();
-  const isSupervisor = payload.role === 'supervisor' || payload.createdBy?.role === 'supervisor';
-  const initialStatus = isSupervisor ? SiteStatus.SHORTLISTED : SiteStatus.DRAFT_SUBMITTED;
+  // Every draft — including a supervisor's own — enters the pipeline as
+  // DRAFT_SUBMITTED and is shortlisted through the normal approval step. Mirrors
+  // bd_service.svc_create_draft: there is no supervisor auto-promote.
   const submittedBy = payload.createdBy?.id || 'mock_user';
   const site = {
     id,
@@ -50,10 +51,10 @@ export async function createSite(payload) {
     name: payload.name,
     city: payload.city,
     tenantId: payload.tenantId || 'bt-tenant-001',
-    status: initialStatus,
+    status: SiteStatus.DRAFT_SUBMITTED,
     createdBy: payload.createdBy,
     submittedBy,
-    supervisorId: isSupervisor ? submittedBy : null,
+    supervisorId: null,
     assignedTo: null,
     visitDate: payload.visitDate,
     expectedLoiDays: null,
@@ -66,8 +67,8 @@ export async function createSite(payload) {
     auditTrail: [
       { id: 'a_' + Math.random().toString(36).slice(2, 8), action: 'create_draft',
         actor: payload.createdBy?.name || 'unknown',
-        toStatus: initialStatus,
-        detail: isSupervisor ? 'supervisor auto-promote' : null,
+        toStatus: SiteStatus.DRAFT_SUBMITTED,
+        detail: null,
         createdAt: new Date().toISOString() },
     ],
     // Pipeline-stage fields — also rendered into the shortlist edit form.
