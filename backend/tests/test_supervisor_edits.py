@@ -16,8 +16,10 @@ import datetime as dt
 import uuid
 
 import pytest
+from fastapi import HTTPException
 
 from app.db import models
+from app.domain.state_machine import SiteStatus
 from app.services import bd_service
 from app.services._common import compute_unseen_supervisor_edits
 from app.services.audit_service import EXEC_VIEWED_ACTION, SUPERVISOR_EDIT_ACTION
@@ -148,3 +150,52 @@ async def test_mark_viewed_noop_when_nothing_unseen(monkeypatch):
     site = _site()
     wrote = await _run_mark_viewed(monkeypatch, {}, site)
     assert wrote == []
+
+
+# ── 4. edit-after-submit is executive-forbidden (Problem 1) ─────────────────
+
+async def test_executive_cannot_edit_after_submit():
+    """Once submitted for review the executive can no longer edit — 403."""
+    me = uuid.uuid4()
+    site = _site(status=SiteStatus.DETAILS_SUBMITTED.value, submitted_by=me)
+    with pytest.raises(HTTPException) as exc:
+        bd_service._assert_can_edit_details(_executive(me), site)
+    assert exc.value.status_code == 403
+
+
+async def test_executive_can_edit_while_shortlisted():
+    """Before submission (SHORTLISTED) the owning executive may still edit."""
+    me = uuid.uuid4()
+    site = _site(status=SiteStatus.SHORTLISTED.value, submitted_by=me)
+    bd_service._assert_can_edit_details(_executive(me), site)  # must not raise
+
+
+async def test_supervisor_can_edit_after_submit():
+    """Supervisors keep edit rights at any stage, including DETAILS_SUBMITTED."""
+    site = _site(status=SiteStatus.DETAILS_SUBMITTED.value)
+    bd_service._assert_can_edit_details(_supervisor(), site)  # must not raise
+
+
+# ── 5. name/city propagate through save-details (Problem 3) ─────────────────
+
+async def test_save_details_updates_name_and_city(monkeypatch):
+    """Editing name/city in Add Details writes them back onto the site row."""
+    me = uuid.uuid4()
+    site = _site(status=SiteStatus.SHORTLISTED.value, submitted_by=me, name="Old", city="Pune")
+
+    async def _fetch(session, *, site_id, tenant_id):
+        return site
+
+    async def _noop(*a, **k):
+        return None
+
+    monkeypatch.setattr(bd_service, "fetch_site_for_update_or_404", _fetch)
+    monkeypatch.setattr(bd_service, "diff_and_log_pipeline_fields", _noop)
+    monkeypatch.setattr(bd_service, "_upsert_site_details", _noop)
+
+    await bd_service.svc_save_details(
+        RecordingSession(), tenant_id=TENANT, actor=_executive(me), site_id=site.id,
+        details={"name": "Bandra Flagship", "city": "Mumbai"},
+    )
+    assert site.name == "Bandra Flagship"
+    assert site.city == "Mumbai"

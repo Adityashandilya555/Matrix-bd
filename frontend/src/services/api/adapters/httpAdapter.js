@@ -171,6 +171,8 @@ function detailsToServer(details = {}) {
   if (!details || typeof details !== 'object') return details;
   const clean = (value) => value === '' ? null : value;
   return {
+    name: clean(details.name ?? null),
+    city: clean(details.city ?? null),
     model: clean(details.model ?? null),
     spoc_name: clean(details.spoc_name ?? details.spocName ?? null),
     google_pin: clean(details.google_pin ?? details.googlePin ?? null),
@@ -229,6 +231,9 @@ export function siteFromServer(s) {
     googlePin: s.google_pin ?? '',
     rentType: s.rent_type ?? '',
     rent: s.rent ?? s.expected_rent ?? '',
+    // Carry the staggered schedule inside the details blob too, so a resumed
+    // draft's Add Details form reads it back instead of a blank year 1.
+    staggeredEscalation: s.staggered_escalation ?? null,
     revshare: s.revshare ?? s.expected_revshare_pct ?? '',
     _savedAt: s.details_saved_at ?? '',
     score: s.score ?? '',

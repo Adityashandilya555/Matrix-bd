@@ -81,9 +81,17 @@ def _assert_not_self_approval(actor: dict, site: models.Site) -> None:
 
 
 def _assert_can_edit_details(actor: dict, site: models.Site) -> None:
-    """Executives may fill details only for their own or assigned sites."""
+    """Executives may fill details only for their own or assigned sites,
+    and only while the site is still in SHORTLISTED status (i.e. before
+    they submit for review). After submission, only supervisors may edit."""
     if (actor.get("role") or "").lower() != "executive":
         return
+    # Executives cannot edit after submitting for review.
+    if site.status != SiteStatus.SHORTLISTED.value:
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Cannot edit details after submitting for review. Only the supervisor can edit at this stage.",
+        )
     actor_id = str(actor["sub"])
     if str(site.submitted_by) == actor_id or str(site.assigned_to or "") == actor_id:
         return
@@ -256,6 +264,8 @@ def _pipeline_before_incoming(site: models.Site, details: dict) -> tuple[dict, d
     """Build the (before, incoming) pipeline-field snapshots the audit differ
     compares. Shared by save + submit so the field set can't drift."""
     before = {
+        "name": site.name,
+        "city": site.city,
         "model": site.model,
         "spoc_name": site.spoc_name,
         "google_pin": site.google_maps_pin,
@@ -264,6 +274,8 @@ def _pipeline_before_incoming(site: models.Site, details: dict) -> tuple[dict, d
         "area_sqft": float(site.area_sqft) if site.area_sqft is not None else None,
     }
     incoming = {
+        "name": details.get("name"),
+        "city": details.get("city"),
         "model": details.get("model"),
         "spoc_name": details.get("spoc_name"),
         "google_pin": details.get("google_pin"),
