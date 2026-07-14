@@ -49,5 +49,9 @@ class SiteStageStatusResponse(BaseModel):
     site_name: str
     city: Optional[str] = None
     headline: str
+    # True when the legal due-diligence has a negative verdict OR any individual
+    # DD check is "no" — the client highlights the "Open Legal status" action so
+    # BD can raise a flip-to-Yes request.
+    legal_has_negative: bool = False
     stages: list[StageBlock] = []
     timeline: list[StageTimelineEntry] = []

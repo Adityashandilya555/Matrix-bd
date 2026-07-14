@@ -3,9 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Icon from '../../shared/primitives/Icon.jsx';
 import { listSites } from '../../../services/api/siteService.js';
-import { siteTrackerDetailRoute } from '../../../router/routes.js';
+import { siteTrackerDetailRoute, bdSiteStagesRoute, bdSiteFinanceRoute } from '../../../router/routes.js';
 import { useSiteDataRefresh } from '../../../hooks/useSiteDataRefresh.js';
-import StageStatusModal from '../../shared/stage-status/StageStatusModal.jsx';
 
 // A site becomes a staging tracker item as soon as BD uploads the signed LOI.
 // Legal owns the editable checklist data; this BD surface reads the live mirror
@@ -38,17 +37,18 @@ const STAGE_LABELS = {
   pushed_to_payments: 'Payments handoff',
 };
 
-// Every node is clickable — clicking opens the read-only stage-status popup
-// focused on that stage, so BD can see what each downstream module has done
-// (recce/2D/3D/BOQ, quality audit, licences) the same way they see Legal.
+// Every node is clickable — clicking opens that department's focused detail page
+// so BD can see what each downstream module has done (recce/2D/3D/BOQ, quality
+// audit, licences, budgeting). CA opens the finance workflow page instead.
 const PIPELINE_NODES = [
-  { id: 'loi',     label: 'BD LOI Signed',       short: 'LOI',     icon: 'file' },
-  { id: 'legal',  label: 'Legal & Compliance',  short: 'Legal',   icon: 'shield' },
-  { id: 'ca',     label: 'CA / Commercial Code', short: 'CA Code', icon: 'rupee' },
-  { id: 'design', label: 'Design / Technical',  short: 'Design',  icon: 'grid' },
-  { id: 'project', label: 'Project Execution',  short: 'Project', icon: 'box' },
-  { id: 'nso',    label: 'NSO',                 short: 'NSO',     icon: 'home' },
-  { id: 'launch', label: 'Site Launched',       short: 'Launch',  icon: 'flag' },
+  { id: 'loi',        label: 'BD LOI Signed',       short: 'LOI',        icon: 'file' },
+  { id: 'legal',      label: 'Legal & Compliance',  short: 'Legal',      icon: 'shield' },
+  { id: 'ca',         label: 'CA / Commercial Code', short: 'CA Code',   icon: 'rupee' },
+  { id: 'design',     label: 'Design / Technical',  short: 'Design',     icon: 'grid' },
+  { id: 'excellence', label: 'Project Excellence',  short: 'Excellence', icon: 'trend' },
+  { id: 'project',    label: 'Project Execution',   short: 'Project',    icon: 'box' },
+  { id: 'nso',        label: 'NSO',                 short: 'NSO',        icon: 'home' },
+  { id: 'launch',     label: 'Site Launched',       short: 'Launch',     icon: 'flag' },
 ];
 
 const PIPELINE_NODE_WIDTH = 142;
@@ -67,18 +67,6 @@ const ACTIVE_PROJECT_STATUSES = new Set(['pending', 'allocated', 'budgeting', 'i
 function pretty(value) {
   if (!value) return 'Pending';
   return String(value).replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
-}
-
-function statusTone(value) {
-  const displayValue = value === 'signed' ? 'executed' : value;
-  if (!displayValue || displayValue === 'pending') return { color: 'var(--zm-fg-3)', label: 'Pending' };
-  if (['positive', 'complete', 'executed', 'registered', 'yes'].includes(displayValue)) {
-    return { color: 'var(--zm-success, #2D7A48)', label: pretty(displayValue) };
-  }
-  if (['negative', 'rejected', 'no'].includes(displayValue)) {
-    return { color: 'var(--zm-danger, #B91C1C)', label: pretty(displayValue) };
-  }
-  return { color: 'var(--zm-accent)', label: pretty(displayValue) };
 }
 
 function legalNodeState(site) {
@@ -115,6 +103,13 @@ function nodeState(site, nodeId) {
     if (site.designStatus === 'approved') return 'complete';
     if (site.financeStatus === 'approved' && site.status === 'pushed_to_payments') return 'active';
   }
+  if (nodeId === 'excellence') {
+    // Budgeting (post-GFC). Approximate node colour; the detail page reads the
+    // real budget row. Active once design is approved, complete once execution done.
+    if (site.designStatus === 'approved') {
+      return site.projectStatus === 'done' ? 'complete' : 'active';
+    }
+  }
   if (nodeId === 'project') {
     if (site.projectStatus === 'done') return 'complete';
     if (site.designStatus === 'approved') {
@@ -132,33 +127,8 @@ function nodeState(site, nodeId) {
   return 'future';
 }
 
-// The stage narrative ("Design approved, Project Execution is active", etc.) is
-// now computed server-side as the stage-status `headline` and shown in the
-// View-status popup, so it no longer renders inline on the row.
-
-function StatusChip({ value, compact = false }) {
-  const t = statusTone(value);
-  return (
-    <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: compact ? 20 : 22,
-      padding: compact ? '0 7px' : '0 8px',
-      borderRadius: 999,
-      border: `1px solid ${t.color}`,
-      color: t.color,
-      fontFamily: 'var(--zm-font-body)',
-      fontWeight: 800,
-      fontSize: compact ? 10 : 10.5,
-      letterSpacing: '0.1em',
-      textTransform: 'uppercase',
-      whiteSpace: 'nowrap',
-    }}>
-      {t.label}
-    </span>
-  );
-}
+// The stage narrative and per-stage chips now live behind the clickable nodes
+// and the detail page, so nothing status-related renders inline on the row.
 
 function FilterBar({ filter, setFilter, query, setQuery }) {
   return (
@@ -236,7 +206,7 @@ function PipelineNode({ site, node, onOpenStage }) {
   const tone = STATUS_TONES[state] || STATUS_TONES.future;
   const label =
     state === 'complete' ? (node.id === 'loi' ? 'Done' : 'Complete') :
-    state === 'active' ? (['ca', 'project', 'nso', 'launch'].includes(node.id) ? 'Pending' : 'Open') :
+    state === 'active' ? (['ca', 'excellence', 'project', 'nso', 'launch'].includes(node.id) ? 'Pending' : 'Open') :
     state === 'rejected' ? 'Rejected' :
     'Queued';
 
@@ -363,32 +333,28 @@ function PipelineRow({ site, onOpenStage, onOpenDetail }) {
       boxShadow: 'var(--zm-shadow-1)',
       overflow: 'hidden',
     }}>
-      {/* Header: identity only. The stage narrative now lives in the View-status popup. */}
+      {/* Header: code chip · site name, then a muted city/stage subline. */}
       <div style={{
-        display: 'flex',
-        alignItems: 'baseline',
-        gap: 12,
-        flexWrap: 'wrap',
+        display: 'flex', flexDirection: 'column', gap: 3,
         padding: '14px 16px 10px',
       }}>
-        <span style={{
-          fontFamily: 'var(--zm-font-mono)',
-          fontSize: 11,
-          color: 'var(--zm-fg-3)',
-          letterSpacing: '0.06em',
-        }}>
-          {site.code || site.id}
-        </span>
-        <span style={{
-          fontFamily: 'var(--zm-font-body)',
-          fontSize: 15,
-          fontWeight: 800,
-          color: 'var(--zm-fg)',
-          lineHeight: 1.2,
-        }}>
-          {site.name}
-        </span>
-        <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{
+            fontFamily: 'var(--zm-font-mono)', fontSize: 10.5,
+            color: 'var(--zm-fg-3)', letterSpacing: '0.06em',
+            padding: '2px 7px', borderRadius: 5,
+            border: '1px solid var(--zm-line)', background: 'var(--zm-surface-2)',
+          }}>
+            {site.code || site.id}
+          </span>
+          <span style={{
+            fontFamily: 'var(--zm-font-body)', fontSize: 16, fontWeight: 800,
+            color: 'var(--zm-fg)', lineHeight: 1.2,
+          }}>
+            {site.name}
+          </span>
+        </div>
+        <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)' }}>
           {site.city || 'City not set'} · {STAGE_LABELS[site.status] || pretty(site.status)}
         </span>
       </div>
@@ -420,7 +386,8 @@ function PipelineRow({ site, onOpenStage, onOpenDetail }) {
         </div>
       </div>
 
-      {/* Footer: status chips on the left, actions pinned bottom-right. */}
+      {/* Footer: a hint on the left, the single "View details" action bottom-right.
+          Per-stage status now lives behind each clickable node / the detail page. */}
       <div style={{
         display: 'flex',
         flexWrap: 'wrap',
@@ -432,17 +399,12 @@ function PipelineRow({ site, onOpenStage, onOpenDetail }) {
         borderTop: '1px solid var(--zm-line-faint)',
         background: 'var(--zm-surface-2)',
       }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          <StatusChip value={site.legalDdStatus}/>
-          <StatusChip value={site.agreementStatus}/>
-          <StatusChip value={site.licensingStatus}/>
-        </div>
+        <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>
+          Click any stage to view its detail.
+        </span>
         <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
-          <FooterButton onClick={() => onOpenStage(site, null)} icon="activity" primary>
-            View status
-          </FooterButton>
-          <FooterButton onClick={() => onOpenDetail(site)} icon="arrow">
-            Detail
+          <FooterButton onClick={() => onOpenDetail(site)} icon="arrow" primary>
+            View details
           </FooterButton>
         </div>
       </div>
@@ -455,8 +417,6 @@ export default function SiteTrackerListPage() {
   const [state, setState] = React.useState({ status: 'loading', items: [], error: null });
   const [filter, setFilter] = React.useState('all');
   const [query, setQuery] = React.useState('');
-  // Read-only stage-status popup: { siteId, focusStage }.
-  const [statusView, setStatusView] = React.useState(null);
 
   const loadSites = React.useCallback((silent = false) => {
     let cancelled = false;
@@ -523,11 +483,12 @@ export default function SiteTrackerListPage() {
     navigate(siteTrackerDetailRoute(site.id));
   }, [navigate]);
 
-  // Any pipeline node — and the footer "View status" button — opens the same
-  // read-only stage-status popup. A null focusStage shows the full flow.
-  const openStage = React.useCallback((site, focusStage) => {
-    setStatusView({ siteId: site.id, focusStage });
-  }, []);
+  // Clicking a pipeline node opens that department's focused detail page. CA
+  // goes to the finance workflow page; every other node shows read-only detail.
+  const openStage = React.useCallback((site, nodeId) => {
+    if (nodeId === 'ca') { navigate(bdSiteFinanceRoute(site.id)); return; }
+    navigate(bdSiteStagesRoute(site.id, nodeId));
+  }, [navigate]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -586,14 +547,6 @@ export default function SiteTrackerListPage() {
             />
           ))}
         </div>
-      )}
-
-      {statusView && (
-        <StageStatusModal
-          siteId={statusView.siteId}
-          focusStage={statusView.focusStage}
-          onClose={() => setStatusView(null)}
-        />
       )}
     </div>
   );

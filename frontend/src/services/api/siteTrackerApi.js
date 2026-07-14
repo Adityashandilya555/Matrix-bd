@@ -103,6 +103,7 @@ function stageStatusFromServer(row) {
     siteName: row.site_name,
     city:     row.city,
     headline: row.headline,
+    legalHasNegative: Boolean(row.legal_has_negative),
     stages: (row.stages || []).map((s) => ({
       id:         s.id,
       title:      s.title,
@@ -123,28 +124,57 @@ function stageStatusFromServer(row) {
 }
 
 // Minimal mock projection built from the tracker view — keeps mock-mode / tests
-// working without a live backend.
+// working without a live backend. Mirrors the server's stage/row structure.
 function stageStatusFromTracker(t) {
-  const row = (label, value) => ({ label, value: value || 'Pending', tone: 'neutral' });
+  const tone = (v) => {
+    const s = String(v || '').toLowerCase();
+    if (['positive', 'complete', 'approved', 'registered', 'executed', 'signed', 'done', 'yes', 'completed'].includes(s)) return 'positive';
+    if (['negative', 'rejected', 'no', 'failed'].includes(s)) return 'negative';
+    if (['', 'pending', 'not started', 'queued', 'null', 'undefined'].includes(s)) return 'neutral';
+    return 'active';
+  };
+  const pretty = (v) => (v == null || v === '' ? 'Pending' : String(v).replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase()));
+  const row = (label, value) => ({ label, value: pretty(value), tone: tone(value) });
   const block = (id, title, rows, note = null) => ({ id, title, state: 'future', stateLabel: 'QUEUED', rows, note });
+  const designApproved = t.designStatus === 'approved';
   return {
     siteId: t.siteId, siteCode: t.siteCode, siteName: t.siteName, city: t.city,
     headline: 'Stage status',
+    legalHasNegative: t.legalDdStatus === 'negative',
     stages: [
-      block('loi', 'BD LOI Signed', [row('LOI', 'Signed')]),
+      block('loi', 'BD LOI Signed', [{ label: 'LOI', value: 'Signed', tone: 'positive' }]),
       block('legal', 'Legal & Compliance', [
         row('Due-diligence verdict', t.legalDdStatus),
         row('Agreement', t.agreementStatus),
         row('Licensing', t.licensingStatus),
       ]),
       block('ca', 'CA / Commercial Code', [
-        row('CA / commercial code', t.caCode || 'Not set'),
+        { label: 'CA / commercial code', value: t.caCode || 'Not set', tone: t.caCode ? 'positive' : 'neutral' },
         row('Finance approval', t.financeStatus),
       ]),
-      block('design', 'Design / Technical', [row('Design', t.designStatus)]),
-      block('project', 'Project Execution', [row('Project status', t.projectStatus)]),
-      block('nso', 'NSO', [row('NSO status', t.nsoStatus)]),
-      block('launch', 'Site Launched', [row('Launch', t.launchStatus)]),
+      block('design', 'Design / Technical', [
+        row('Recce', designApproved ? 'approved' : 'pending'),
+        row('2D drawings', designApproved ? 'approved' : 'pending'),
+        row('3D drawings', designApproved ? 'approved' : 'pending'),
+        row('BOQ', designApproved ? 'approved' : 'pending'),
+        row('GFC gate', designApproved ? 'approved' : 'pending'),
+      ]),
+      block('excellence', 'Project Excellence', [
+        row('Budgeting', designApproved ? 'in progress' : 'not started'),
+      ]),
+      block('project', 'Project Execution', [
+        row('Project status', t.projectStatus),
+        row('Initialization', 'pending'),
+        row('Expected completion', 'pending'),
+        row('Quality audit', 'pending'),
+      ]),
+      block('nso', 'NSO', [
+        row('NSO status', t.nsoStatus),
+        row('Stage 1 · Property & docs', 'pending'),
+        row('Stage 2 · Licences', 'pending'),
+        row('Stage 3 · Handover & launch', 'pending'),
+      ]),
+      block('launch', 'Site Launched', [row('Launch approval', t.launchStatus)]),
     ],
     timeline: [],
   };

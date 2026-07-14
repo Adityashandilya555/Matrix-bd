@@ -69,7 +69,27 @@ def _legal_state(site) -> str:
     return "active"
 
 
-def _stage_state(site, node_id, *, project, nso, launch, finance_status, design_status) -> str:
+def _budget_approved(excellence) -> bool:
+    return bool(excellence) and excellence.status == "approved"
+
+
+_NSO_STAGE_ORDER = {"stage_one": 1, "stage_two": 2, "stage_three": 3}
+
+
+def _nso_stage_value(nso, idx: int) -> str:
+    """complete / active / pending for NSO stage `idx` (1..3)."""
+    completed = getattr(nso, f"stage_{['one', 'two', 'three'][idx - 1]}_completed_at", None)
+    if completed:
+        return "complete"
+    current = _NSO_STAGE_ORDER.get(nso.current_stage, 1)
+    if idx < current:
+        return "complete"
+    if idx == current:
+        return "active"
+    return "pending"
+
+
+def _stage_state(site, node_id, *, project, nso, launch, finance_status, design_status, excellence) -> str:
     if node_id == "loi":
         return "complete"
     if node_id == "legal":
@@ -83,6 +103,11 @@ def _stage_state(site, node_id, *, project, nso, launch, finance_status, design_
         if design_status == "approved":
             return "complete"
         if finance_status == "approved" and site.status == "pushed_to_payments":
+            return "active"
+    if node_id == "excellence":
+        if _budget_approved(excellence):
+            return "complete"
+        if design_status == "approved":
             return "active"
     if node_id == "project":
         pstatus = project.project_status if project else None
@@ -107,7 +132,7 @@ def _state_label(node_id, state) -> str:
     if state == "complete":
         return "DONE" if node_id == "loi" else "COMPLETE"
     if state == "active":
-        return "PENDING" if node_id in ("ca", "project", "nso", "launch") else "OPEN"
+        return "PENDING" if node_id in ("ca", "excellence", "project", "nso", "launch") else "OPEN"
     if state == "rejected":
         return "REJECTED"
     return "QUEUED"
@@ -163,10 +188,22 @@ async def build_stage_status_response(
     design_review = (await db.execute(
         select(models.DesignReview).where(models.DesignReview.site_id == site.id)
     )).scalar_one_or_none()
+    dd = (await db.execute(
+        select(models.LegalDdChecklist).where(models.LegalDdChecklist.site_id == site.id)
+    )).scalar_one_or_none()
+    # Project Excellence lives in the shared budget table at the post-GFC 'gfc'
+    # phase (the private project_excellence_reviews table is retired).
+    excellence = (await db.execute(
+        select(models.SiteBudget).where(
+            models.SiteBudget.site_id == site.id,
+            models.SiteBudget.phase == "gfc",
+        )
+    )).scalar_one_or_none()
 
     common = dict(
         project=project, nso=nso, launch=launch,
         finance_status=finance_status, design_status=design_status,
+        excellence=excellence,
     )
 
     def block(node_id, title, rows, note=None) -> StageBlock:
@@ -177,12 +214,35 @@ async def build_stage_status_response(
             rows=rows, note=note,
         )
 
-    # ── Legal ──
+    # ── Legal ── (verdict + agreement/licensing + per-check DD detail)
+    _DD_CHECKS = [
+        ("title_doc", "Title / ownership"),
+        ("sanctioned_plan", "Sanctioned plan"),
+        ("oc_cc", "OC / CC"),
+        ("commercial_use", "Commercial usage"),
+        ("property_tax", "Property tax"),
+        ("electricity", "Electricity"),
+        ("fire_noc", "Fire NOC"),
+    ]
     legal_rows = [
         _row("Due-diligence verdict", site.legal_dd_status),
         _row("Agreement", site.agreement_status),
         _row("Licensing", site.licensing_status),
     ]
+    legal_has_negative = str(site.legal_dd_status or "").lower() == "negative"
+    if dd:
+        legal_has_negative = legal_has_negative or str(dd.final_verdict or "").lower() == "negative"
+        for field, label in _DD_CHECKS:
+            value = getattr(dd, field, None)
+            legal_rows.append(_row(label, value))
+            if str(value or "").lower() == "no":
+                legal_has_negative = True
+        for field, label_field in (("other_1", "other_1_label"), ("other_2", "other_2_label")):
+            value = getattr(dd, field, None)
+            if value and str(value).lower() != "pending":
+                legal_rows.append(_row(getattr(dd, label_field, None) or label_field.replace("_label", ""), value))
+                if str(value).lower() == "no":
+                    legal_has_negative = True
 
     # ── CA / Finance ──
     ca_rows = [
@@ -207,28 +267,41 @@ async def build_stage_status_response(
     if design_review:
         design_note = f"Active stage: {_pretty(design_review.current_stage)}"
 
-    # ── Project execution ──
+    # ── Project Excellence ── (budget/GFC phase). Kept to a single high-level
+    # status — no line-item budget detail on this BD-facing surface.
+    if _budget_approved(excellence):
+        excellence_rows = [_row("Budgeting", "completed")]
+    elif excellence is not None:
+        excellence_rows = [_row("Budgeting", "in progress")]
+    elif design_status == "approved":
+        excellence_rows = [_row("Budgeting", "pending")]
+    else:
+        excellence_rows = [_row("Budgeting", "not started")]
+
+    # ── Project execution ── (every milestone stage)
     if project:
         project_rows = [
             _row("Project status", project.project_status),
             _row("Initialization", project.initialization_status),
             _row("Expected completion", project.expected_completion_status),
             _row("Quality audit", project.quality_audit_status),
+            _row("NSO handoff", project.nso_status),
         ]
         project_note = f"Active stage: {_pretty(project.current_stage)}"
     else:
         project_rows = [_row("Project status", "pending")]
         project_note = None
 
-    # ── NSO ── (statutory licences)
+    # ── NSO ── (staged: property → licences → handover/launch)
     if nso:
         nso_rows = [
             _row("NSO status", nso.nso_status),
+            _row("Stage 1 · Property & docs", _nso_stage_value(nso, 1)),
+            _row("Stage 2 · Licences", _nso_stage_value(nso, 2)),
+            _row("Stage 3 · Handover & launch", _nso_stage_value(nso, 3)),
             _row("FSSAI", nso.fssai_status),
             _row("Health / trade", nso.health_trade_status),
-            _row("Shops & establishment", nso.shops_estab_status),
             _row("Fire NOC", nso.fire_noc_status),
-            _row("Storage licence", nso.storage_license_status),
         ]
         nso_note = f"Active stage: {_pretty(nso.current_stage)}"
     else:
@@ -252,6 +325,7 @@ async def build_stage_status_response(
         block("legal", "Legal & Compliance", legal_rows),
         block("ca", "CA / Commercial Code", ca_rows),
         block("design", "Design / Technical", design_rows, design_note),
+        block("excellence", "Project Excellence", excellence_rows),
         block("project", "Project Execution", project_rows, project_note),
         block("nso", "NSO", nso_rows, nso_note),
         block("launch", "Site Launched", launch_rows),
@@ -283,6 +357,7 @@ async def build_stage_status_response(
         site_name=site.name,
         city=site.city,
         headline=_headline(site, **{k: common[k] for k in ("project", "nso", "launch", "design_status")}),
+        legal_has_negative=legal_has_negative,
         stages=stages,
         timeline=timeline,
     )
