@@ -261,7 +261,7 @@ def _pipeline_before_incoming(site: models.Site, details: dict) -> tuple[dict, d
         "google_pin": site.google_maps_pin,
         "expected_rent": float(site.expected_rent) if site.expected_rent is not None else None,
         "rent_type": site.rent_type,
-        "area_sqft": site.area_sqft,
+        "area_sqft": float(site.area_sqft) if site.area_sqft is not None else None,
     }
     incoming = {
         "model": details.get("model"),
@@ -269,7 +269,7 @@ def _pipeline_before_incoming(site: models.Site, details: dict) -> tuple[dict, d
         "google_pin": details.get("google_pin"),
         "expected_rent": _to_float(details.get("rent")),
         "rent_type": details.get("rent_type"),
-        "area_sqft": _to_int(details.get("area_sqft")),
+        "area_sqft": _to_float(details.get("area_sqft")),
     }
     return before, incoming
 
@@ -699,15 +699,6 @@ def _to_float(v) -> float | None:
         return None
     try:
         return float(v)
-    except (TypeError, ValueError):
-        return None
-
-
-def _to_int(v) -> int | None:
-    if v is None or v == "":
-        return None
-    try:
-        return int(v)
     except (TypeError, ValueError):
         return None
 

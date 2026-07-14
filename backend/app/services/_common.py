@@ -299,7 +299,7 @@ def site_to_response(
         "expected_escalation_pct": _float_or_none(site.expected_escalation_pct),
         "expected_escalation_years": site.expected_escalation_years,
         "expected_revshare_pct": _float_or_none(site.expected_revshare_pct),
-        "area_sqft": site.area_sqft if site.area_sqft is not None else 0,
+        "area_sqft": float(site.area_sqft) if site.area_sqft is not None else 0,
         "staggered_escalation": site.staggered_escalation,
         "legal_dd_status": site.legal_dd_status,
         "agreement_status": site.agreement_status,

@@ -155,7 +155,7 @@ class SaveDetailsRequest(BaseModel):
     tenure: Optional[int] = None
     total_op_cost: Optional[float] = Field(default=None, validation_alias=AliasChoices("total_op_cost", "totalOpCost"))
     # Pipeline-stage area (sqft) — editable via Add Details
-    area_sqft: Optional[int] = Field(default=None, ge=0, validation_alias=AliasChoices("area_sqft", "areaSqft"))
+    area_sqft: Optional[float] = Field(default=None, ge=0, validation_alias=AliasChoices("area_sqft", "areaSqft"))
     # Staggered escalation schedule — passed through to sites row
     staggered_escalation: Optional[List[StaggeredEscalationItem]] = Field(
         default=None,
@@ -220,7 +220,7 @@ class SiteResponse(BaseModel):
     expected_escalation_pct: Optional[float] = None
     expected_escalation_years: Optional[int] = None
     expected_revshare_pct: Optional[float] = None
-    area_sqft: int = 0
+    area_sqft: float = 0
     staggered_escalation: Optional[list] = None
 
     @field_validator("staggered_escalation", mode="before")
