@@ -90,6 +90,75 @@ export async function getSiteTrackerView(siteId) {
   return trackerFromServer(data);
 }
 
+// ── Read-only per-stage status detail (BD process-flow visibility) ─────────────
+// Powers the "View status" popup and clickable pipeline nodes: sub-status for
+// each downstream module (recce/2D/3D/BOQ, quality audit, licences) + a recent
+// stage-events timeline. Visibility only — no action controls.
+
+function stageStatusFromServer(row) {
+  if (!row) return row;
+  return {
+    siteId:   row.site_id,
+    siteCode: row.site_code,
+    siteName: row.site_name,
+    city:     row.city,
+    headline: row.headline,
+    stages: (row.stages || []).map((s) => ({
+      id:         s.id,
+      title:      s.title,
+      state:      s.state,
+      stateLabel: s.state_label,
+      note:       s.note ?? null,
+      rows:       (s.rows || []).map((r) => ({ label: r.label, value: r.value, tone: r.tone })),
+    })),
+    timeline: (row.timeline || []).map((t) => ({
+      eventType:  t.event_type,
+      fromStatus: t.from_status,
+      toStatus:   t.to_status,
+      actorRole:  t.actor_role,
+      actorName:  t.actor_name,
+      occurredAt: t.occurred_at,
+    })),
+  };
+}
+
+// Minimal mock projection built from the tracker view — keeps mock-mode / tests
+// working without a live backend.
+function stageStatusFromTracker(t) {
+  const row = (label, value) => ({ label, value: value || 'Pending', tone: 'neutral' });
+  const block = (id, title, rows, note = null) => ({ id, title, state: 'future', stateLabel: 'QUEUED', rows, note });
+  return {
+    siteId: t.siteId, siteCode: t.siteCode, siteName: t.siteName, city: t.city,
+    headline: 'Stage status',
+    stages: [
+      block('loi', 'BD LOI Signed', [row('LOI', 'Signed')]),
+      block('legal', 'Legal & Compliance', [
+        row('Due-diligence verdict', t.legalDdStatus),
+        row('Agreement', t.agreementStatus),
+        row('Licensing', t.licensingStatus),
+      ]),
+      block('ca', 'CA / Commercial Code', [
+        row('CA / commercial code', t.caCode || 'Not set'),
+        row('Finance approval', t.financeStatus),
+      ]),
+      block('design', 'Design / Technical', [row('Design', t.designStatus)]),
+      block('project', 'Project Execution', [row('Project status', t.projectStatus)]),
+      block('nso', 'NSO', [row('NSO status', t.nsoStatus)]),
+      block('launch', 'Site Launched', [row('Launch', t.launchStatus)]),
+    ],
+    timeline: [],
+  };
+}
+
+export async function getSiteStageStatus(siteId) {
+  if (USE_MOCK) {
+    const site = await adapter.getSite(siteId);
+    return stageStatusFromTracker(trackerFromMockSite(site));
+  }
+  const data = await client.get(`/sites/${siteId}/stage-status`).then((r) => r.data);
+  return stageStatusFromServer(data);
+}
+
 // ── Finance actions ───────────────────────────────────────────────────────────
 
 export async function saveFinanceDraft(siteId, { kycVerified, caCode, financeAmount } = {}) {

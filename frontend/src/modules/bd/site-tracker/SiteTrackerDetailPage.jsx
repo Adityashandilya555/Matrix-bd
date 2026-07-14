@@ -625,6 +625,30 @@ function FinancePanel({ data, role, onClose, onUpdate }) {
   );
 }
 
+// Centred overlay so an opened node panel (finance / coming-soon) is presented
+// as a proper modal instead of being squeezed inline next to the page content.
+function PanelModal({ onClose, children }) {
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 1000,
+      display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+      padding: '48px 16px', overflowY: 'auto',
+    }}>
+      {/* Presentational scrim — click dismisses; each panel has its own close button. */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,20,0.42)' }}/>
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function ComingSoonPanel({ node, onClose }) {
   return (
     <aside style={{
@@ -735,8 +759,8 @@ export default function SiteTrackerDetailPage() {
         data={data}
       />
 
-      <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div style={{ flex: '1 1 360px', minWidth: 0 }}>
+      <div>
+        <div style={{ minWidth: 0 }}>
           <div className="zm-glass" style={{
             padding: 16, borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 8,
             border: '1px solid var(--zm-line)', background: 'var(--zm-surface)',
@@ -779,18 +803,23 @@ export default function SiteTrackerDetailPage() {
           </div>
         </div>
 
-        {activeNode?.id === 'ca' && (
+      </div>
+
+      {activeNode?.id === 'ca' && (
+        <PanelModal onClose={() => setSelectedNode(null)}>
           <FinancePanel
             data={data}
             role={role}
             onClose={() => setSelectedNode(null)}
             onUpdate={() => load(true)}
           />
-        )}
-        {activeNode && !activeNode.interactive && activeNode.id !== 'legal' && activeNode.id !== 'ca' && (
+        </PanelModal>
+      )}
+      {activeNode && !activeNode.interactive && activeNode.id !== 'legal' && activeNode.id !== 'ca' && (
+        <PanelModal onClose={() => setSelectedNode(null)}>
           <ComingSoonPanel node={activeNode} onClose={() => setSelectedNode(null)}/>
-        )}
-      </div>
+        </PanelModal>
+      )}
 
       <div>
         <button
