@@ -29,6 +29,7 @@ from app.domain.schemas.common import OkResponse
 from app.domain.schemas.site import SiteResponse
 from app.domain.state_machine import SiteStatus, assert_transition
 from app.services._common import (
+    actor_can_supervise,
     fetch_site_for_update_or_404,
     fetch_site_or_404,
     fetch_user_name,
@@ -46,28 +47,27 @@ from app.services.notification_service import (
 
 # ── Authorisation guards ──────────────────────────────────────────────────
 #
-# Self-approval rule: whoever submitted the draft cannot also be the one who
-# approves / rejects it. The supervisor's own drafts skip approval entirely
-# via the auto-promote rule (see Todo #10) — they never reach these guards as
-# a self-approval. This is purely defensive.
+# Self-approval rule: segregation of duties for whoever *approves* a draft.
+# Supervisors are the approval authority — they may act on their own drafts,
+# including a draft they created while acting as an executive via role-switch
+# (X-Override-Role), where submitted_by == their own user id. A caller with no
+# supervisor authority cannot approve their own submission. Every approval
+# route already requires the supervisor role (see routers/bd.py and the
+# _supervisor_only set in routers/sites.py), so this guard is defence-in-depth.
 
 
 def _assert_not_self_approval(actor: dict, site: models.Site) -> None:
-    """Self-approval guard. The submitter cannot also be the approver/rejecter
-    of the same draft. A supervisor draft never reaches here because it
-    auto-promotes — see svc_create_draft."""
-    if actor.get("real_role") == "business_admin":
-        return
+    """Block self-approval only for callers who cannot supervise.
 
-    delegated_supervisor_created_site = (
-        (actor.get("role") or "").lower() == "supervisor"
-        and site.status == SiteStatus.DETAILS_SUBMITTED.value
-        and site.assigned_to is not None
-        and str(site.assigned_to) != str(actor["sub"])
-        and str(site.submitted_by) == str(actor["sub"])
-        and str(site.supervisor_id or "") == str(actor["sub"])
-    )
-    if str(site.submitted_by) == str(actor["sub"]) and not delegated_supervisor_created_site:
+    An effective supervisor — or a business admin driving the module via
+    workspace override — is the approval authority and may act on a draft they
+    themselves submitted. This is what un-deadlocks the role-switch flow: a
+    supervisor who created a pipeline while simulating the executive role then
+    approves it as themselves (same user id, so ``submitted_by == actor.sub``).
+    """
+    if actor_can_supervise(actor):
+        return
+    if str(site.submitted_by) == str(actor["sub"]):
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
             detail="You cannot approve or reject a draft you submitted.",
@@ -106,18 +106,19 @@ def _determine_rent_set_at(
         return now
     return None
 
-async def _notify_draft_submission(session, tenant_id, site_id, name, city, is_supervisor):
-    if not is_supervisor:
-        recipients = await recipients_for_supervisors(session, tenant_id=tenant_id)
-        await notify_enqueue(
-            session,
-            tenant_id=tenant_id,
-            event="draft_submitted",
-            recipient_ids=recipients,
-            site_id=site_id,
-            channels=("email", "slack", "in_app"),
-            payload={"site_id": str(site_id), "site_name": name, "city": city},
-        )
+async def _notify_draft_submission(session, tenant_id, site_id, name, city):
+    # Every new draft lands in the pipeline as DRAFT_SUBMITTED and needs a
+    # supervisor to shortlist it, so supervisors are always notified.
+    recipients = await recipients_for_supervisors(session, tenant_id=tenant_id)
+    await notify_enqueue(
+        session,
+        tenant_id=tenant_id,
+        event="draft_submitted",
+        recipient_ids=recipients,
+        site_id=site_id,
+        channels=("email", "slack", "in_app"),
+        payload={"site_id": str(site_id), "site_name": name, "city": city},
+    )
 
 async def svc_create_draft(
     session: AsyncSession,
@@ -142,20 +143,19 @@ async def svc_create_draft(
     """Create a pipeline draft. One canonical implementation used by both
     `POST /api/bd/drafts` and `POST /api/sites`.
 
-    Auto-promote rule (Todo #10): when the *supervisor* submits the draft
-    themselves we skip the queue and put it straight into SHORTLISTED with
-    themselves as the supervising party. The product spec is explicit:
-    supervisor drafts must not need their own approval.
+    Every draft — whoever creates it — enters the pipeline as DRAFT_SUBMITTED
+    and is shortlisted by a supervisor through the normal approval step. There
+    is no supervisor auto-promote: a supervisor's own draft goes into the
+    pipeline like any other, giving one consistent lifecycle. (A supervisor may
+    approve their own draft; see `_assert_not_self_approval`.)
     """
-    is_supervisor = (actor.get("role") or "").lower() == "supervisor"
     now = datetime.now(timezone.utc)
-    initial_status = SiteStatus.SHORTLISTED if is_supervisor else SiteStatus.DRAFT_SUBMITTED
 
     async with transaction(session):
         site = models.Site(
             tenant_id=tenant_id,
             code=make_site_code(city),
-            status=initial_status.value,
+            status=SiteStatus.DRAFT_SUBMITTED.value,
             name=name,
             city=city,
             visit_date=visit_date,
@@ -174,8 +174,8 @@ async def svc_create_draft(
                 now, expected_rent, expected_escalation_pct, expected_revshare_pct, staggered_escalation
             ),
             submitted_by=actor["sub"],
-            shortlisted_at=now if is_supervisor else None,
-            supervisor_id=actor["sub"] if is_supervisor else None,
+            shortlisted_at=None,
+            supervisor_id=None,
         )
         session.add(site)
         from sqlalchemy.exc import SQLAlchemyError
@@ -195,12 +195,12 @@ async def svc_create_draft(
             site_id=site.id,
             actor_id=actor["sub"],
             actor_name=actor["name"],
-            action="create_draft_auto_shortlist" if is_supervisor else "create_draft",
+            action="create_draft",
             from_status=None,
-            to_status=initial_status.value,
-            detail="supervisor auto-promote" if is_supervisor else None,
+            to_status=SiteStatus.DRAFT_SUBMITTED.value,
+            detail=None,
         )
-        await _notify_draft_submission(session, tenant_id, site.id, name, city, is_supervisor)
+        await _notify_draft_submission(session, tenant_id, site.id, name, city)
 
     return site_to_response(site, created_by_name=actor["name"])
 
