@@ -151,6 +151,15 @@ export async function saveDraftDetails(siteId, formData) {
       coerced[key] = toNumber(coerced[key]);
     }
   }
+  // Only send the staggered schedule for staggered rent, and drop partial/empty
+  // rows. The form always seeds a [{ year: 1, percent: '' }] row, and the backend
+  // StaggeredEscalationItem.percent is a required float — sending percent: ''
+  // (e.g. on a revshare draft) fails numeric validation. Mirrors submitDetails.
+  coerced.staggeredEscalation = formData.rentType === 'staggered'
+    ? (formData.staggeredEscalation || [])
+        .filter(e => e.year !== '' && e.year != null && e.percent !== '' && e.percent != null)
+        .map(e => ({ year: Number(e.year), percent: Number(e.percent) }))
+    : undefined;
   return adapter.patchSiteDetails(siteId, { ...coerced, _savedAt: new Date().toISOString() });
 }
 
