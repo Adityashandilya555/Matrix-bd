@@ -280,6 +280,9 @@ export async function patchSiteDetails(id, details) {
     googlePin: details.googlePin ?? site.googlePin,
     rentType: details.rentType ?? site.rentType,
     expectedRent: details.rent != null && details.rent !== '' ? Number(details.rent) : site.expectedRent,
+    staggeredEscalation: details.rentType === 'staggered'
+      ? (details.staggeredEscalation ?? site.staggeredEscalation ?? null)
+      : site.staggeredEscalation,
     supervisorEditedFields,
     auditTrail: [...(site.auditTrail || []), ...diffEntries],
     updatedAt: new Date().toISOString(),

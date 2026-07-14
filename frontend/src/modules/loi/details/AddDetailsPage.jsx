@@ -138,19 +138,26 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
       revshare: s(item.revshare ?? item.expectedRevsharePct),
       rentFreeDays: s(item.rentFreeDays),
       cadex: s(item.cadex), deposit: s(item.deposit), brokerage: s(item.brokerage), lockin: s(item.lockin), tenure: s(item.tenure),
-      // Staggered rent schedule read back from the site row. Coerce percents to
-      // strings for the inputs; default to a single empty year 1 when absent.
-      staggeredEscalation: Array.isArray(item.staggeredEscalation) && item.staggeredEscalation.length
-        ? item.staggeredEscalation.map((e, i) => ({ year: e.year ?? i + 1, percent: s(e.percent) }))
-        : [{ year: 1, percent: '' }],
+      // Staggered rent schedule read back from the site row (normalized below).
+      staggeredEscalation: item.staggeredEscalation,
     }),
     photos: [], // always override — load from API below
   };
-  // A resumed draft (item.details) may predate staggered support — ensure the
-  // schedule array always exists so the editor and submit payload are safe.
-  if (!Array.isArray(init.staggeredEscalation) || init.staggeredEscalation.length === 0) {
-    init.staggeredEscalation = [{ year: 1, percent: '' }];
-  }
+  // Normalize a staggered schedule into the editor shape ({ year, percent-as-string }).
+  const normStaggered = (arr) =>
+    Array.isArray(arr) && arr.length
+      ? arr.map((e, i) => ({ year: e.year ?? i + 1, percent: s(e.percent) }))
+      : null;
+  // A resumed draft (item.details) can carry a details blob that predates
+  // staggered support and drops the schedule — so fall back to the site-row
+  // schedule (item.staggeredEscalation, surfaced flat by the API) before
+  // defaulting to a blank year 1. Previously this blanked the schedule whenever
+  // details existed, hiding a carried-forward pipeline schedule even though it
+  // was stored on the site row and diff-logged into the activity feed.
+  init.staggeredEscalation =
+    normStaggered(init.staggeredEscalation) ||
+    normStaggered(item.staggeredEscalation) ||
+    [{ year: 1, percent: '' }];
   const [f, setF] = React.useState(init);
   // Track which photo IDs are mid-upload so the tile can show a spinner
   const [uploadingPhotoIds, setUploadingPhotoIds] = React.useState(new Set());

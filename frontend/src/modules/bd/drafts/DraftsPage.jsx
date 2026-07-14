@@ -110,7 +110,7 @@ function applyDraftFilters(drafts, f) {
   });
 }
 
-function DraftRow({ draft, role, canDecide, onApprove, onReject, onArchive, onOpen }) {
+function DraftRow({ draft, role, canDecide, onApprove, onReject, onArchive, onOpen, busy = false }) {
   const overdue = canDecide && draft.days > 7;
   return (
     <div className="zm-row" data-site-id={draft.id} style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1fr 0.8fr 0.7fr ' + (canDecide ? '230px' : '90px'), alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: overdue ? 'rgba(185,28,28,0.05)' : 'transparent', position: 'relative' }}>
@@ -124,9 +124,9 @@ function DraftRow({ draft, role, canDecide, onApprove, onReject, onArchive, onOp
       {canDecide ? (
         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
           <button onClick={() => onOpen(draft)} title="View" className="zm-icon-btn" style={{ width: 32, height: 32, padding: 0, border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><EyeIcon/></button>
-          <button onClick={() => onArchive(draft)} title="Archive" className="zm-icon-btn" style={{ width: 32, height: 32, padding: 0, border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="folder" size={14}/></button>
-          <button onClick={() => onReject(draft)} className="zm-btn-danger" style={{ height: 32, padding: '0 10px', border: '1px solid #F2B6B6', borderRadius: 7, background: '#fff', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>No</button>
-          <button onClick={() => onApprove(draft)} className="zm-btn-primary" style={{ height: 32, padding: '0 14px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 700, cursor: 'pointer', boxShadow: 'var(--zm-shadow-1)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="check" size={12}/> Yes</button>
+          <button onClick={() => onArchive(draft)} disabled={busy} title="Archive" className="zm-icon-btn" style={{ width: 32, height: 32, padding: 0, border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.55 : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="folder" size={14}/></button>
+          <button onClick={() => onReject(draft)} disabled={busy} className="zm-btn-danger" style={{ height: 32, padding: '0 10px', border: '1px solid #F2B6B6', borderRadius: 7, background: '#fff', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.55 : 1 }}>No</button>
+          <button onClick={() => onApprove(draft)} disabled={busy} className="zm-btn-primary" style={{ height: 32, padding: '0 14px', border: 'none', borderRadius: 7, background: busy ? 'var(--zm-surface-sunken)' : 'var(--zm-accent)', color: busy ? 'var(--zm-fg-4)' : '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 700, cursor: busy ? 'wait' : 'pointer', boxShadow: busy ? 'none' : 'var(--zm-shadow-1)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="check" size={12}/> {busy ? 'Moving…' : 'Yes'}</button>
         </div>
       ) : (
         <button onClick={() => onOpen(draft)} className="zm-btn" style={{ height: 32, padding: '0 12px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', justifySelf: 'end', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}><EyeIcon/> View</button>
@@ -145,6 +145,12 @@ export default function DraftsPage({ onOpenSite: onOpenSiteProp, showToast: show
   const [filters, setFilters] = React.useState({ q: '', city: 'All', month: 'All', days: 'all' });
   const [rejecting, setRejecting] = React.useState(null);
   const [archiving, setArchiving] = React.useState(null);
+  // Track draft ids with an in-flight decision so the Yes/No/Archive buttons
+  // disable until the transition (and its refresh) resolve — a second Yes click
+  // during the pipeline→shortlist hand-off double-fires the state transition.
+  const [busyIds, setBusyIds] = React.useState(new Set());
+  const markBusy = (id) => setBusyIds(prev => new Set([...prev, id]));
+  const clearBusy = (id) => setBusyIds(prev => { const s = new Set(prev); s.delete(id); return s; });
 
   const ME = user.name;
   // RBAC: use can() for permission checks. isExec kept as derived alias for render body compat.
@@ -158,7 +164,18 @@ export default function DraftsPage({ onOpenSite: onOpenSiteProp, showToast: show
   const filtered = applyDraftFilters(visibleDrafts, filters);
   const overdueCount = role === 'supervisor' ? visibleDrafts.filter(d => d.days > 7).length : 0;
 
-  const onApprove = (d) => { moveDraftToShortlist(d); showToast?.(`Shortlisted · ${d.name} moved to shortlist queue`); };
+  const onApprove = async (d) => {
+    if (busyIds.has(d.id)) return;
+    markBusy(d.id);
+    try {
+      await moveDraftToShortlist(d);
+      showToast?.(`Shortlisted · ${d.name} moved to shortlist queue`);
+    } catch (err) {
+      showToast?.(err?.detail || err?.message || 'Could not shortlist draft', 'danger');
+    } finally {
+      clearBusy(d.id);
+    }
+  };
   const onReject = (d) => setRejecting(d);
   const onRejectConfirm = (d, reasons, comment) => { setRejecting(null); rejectDraft(d, reasons, comment); showToast?.(`Rejected · ${d.name} · archived with ${reasons.length} reason${reasons.length === 1 ? '' : 's'}`, 'danger'); };
   const onArchive = (d) => setArchiving(d);
@@ -193,7 +210,7 @@ export default function DraftsPage({ onOpenSite: onOpenSiteProp, showToast: show
           {filtered.map(d => {
             const canDecideHere = can(role, 'shortlist') || role === 'supervisor' || role === 'business_admin';
             return (
-              <DraftRow key={d.id} draft={d} role={role} canDecide={canDecideHere} onApprove={onApprove} onReject={onReject} onArchive={onArchive} onOpen={onOpenSite || (() => {})}/>
+              <DraftRow key={d.id} draft={d} role={role} canDecide={canDecideHere} onApprove={onApprove} onReject={onReject} onArchive={onArchive} onOpen={onOpenSite || (() => {})} busy={busyIds.has(d.id)}/>
             );
           })}
           {filtered.length === 0 && (<div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>No drafts match these filters.</div>)}
