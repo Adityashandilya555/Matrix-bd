@@ -74,11 +74,13 @@ async def write_audit_event(
     return row
 
 
-PIPELINE_FIELDS = ("model", "spoc_name", "google_pin", "expected_rent", "rent_type", "area_sqft")
+PIPELINE_FIELDS = ("name", "city", "model", "spoc_name", "google_pin", "expected_rent", "rent_type", "area_sqft")
 
 # Map the public/incoming key → the audit field_name we want to record.
 # Special-case: `google_pin` is what the UI calls it; the DB column is google_maps_pin.
 _FIELD_AUDIT_LABEL = {
+    "name": "name",
+    "city": "city",
     "model": "model",
     "spoc_name": "spoc_name",
     "google_pin": "google_pin",

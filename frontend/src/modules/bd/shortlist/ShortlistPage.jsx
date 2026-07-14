@@ -360,7 +360,7 @@ function RejectShortlistModal({ site, onClose, onReject }) {
   );
 }
 
-function ShortlistCard({ item, role, currentUserId, onView, onAddDetails, onApprove, onDelegate, onReject }) {
+function ShortlistCard({ item, role, currentUserId, onView, onAddDetails, onApprove, onDelegate, onReject, actionBusy = false }) {
   const supervisor = can(role, 'shortlist') || role === 'supervisor' || role === 'business_admin';
   const assignedToId = item.assignedToId || item.assignedTo?.id || '';
   const assignedToName = item.assignedToName || item.assignedTo?.name || '';
@@ -410,13 +410,13 @@ function ShortlistCard({ item, role, currentUserId, onView, onAddDetails, onAppr
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button onClick={() => onView(item)} title="View" className="zm-icon-btn" style={{ width: 34, height: 34, border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><EyeIcon size={16}/></button>
-        {!supervisor && (<button onClick={() => onAddDetails(item)} className="zm-btn" style={{ height: 34, padding: '0 14px', borderRadius: 7, border: '1px solid ' + (hasDraft ? 'var(--zm-accent-line)' : 'var(--zm-line)'), background: hasDraft ? 'var(--zm-accent-soft)' : 'var(--zm-surface)', color: hasDraft ? 'var(--zm-accent)' : 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name={hasDraft ? 'folder' : 'plus'} size={13}/>{reviewable ? 'Edit details' : hasDraft ? 'Continue draft' : 'Add details'}</button>)}
+        {!supervisor && !reviewable && (<button onClick={() => onAddDetails(item)} disabled={actionBusy} className="zm-btn" style={{ height: 34, padding: '0 14px', borderRadius: 7, border: '1px solid ' + (hasDraft ? 'var(--zm-accent-line)' : 'var(--zm-line)'), background: hasDraft ? 'var(--zm-accent-soft)' : 'var(--zm-surface)', color: hasDraft ? 'var(--zm-accent)' : 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: actionBusy ? 'wait' : 'pointer', opacity: actionBusy ? 0.65 : 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name={hasDraft ? 'folder' : 'plus'} size={13}/>{hasDraft ? 'Continue draft' : 'Add details'}</button>)}
         {hasDraft && !supervisor && (<span style={{ padding: '4px 8px', borderRadius: 999, background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-mono)', fontSize: 10.5, color: 'var(--zm-fg-3)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Draft saved</span>)}
         <span style={{ flex: 1 }}/>
         {supervisor ? (
           <>
-            <button onClick={() => onAddDetails(item)} className="zm-btn" title="Edit the executive's details — changes are flagged until the exec re-reads them" style={{ height: 34, padding: '0 13px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="folder" size={13}/> Edit details</button>
-            <button onClick={() => onReject(item)} className="zm-btn" title="Reject this shortlisted site" style={{ height: 34, padding: '0 13px', border: '1px solid rgba(155,42,42,0.30)', borderRadius: 7, background: 'rgba(155,42,42,0.06)', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="alert" size={13}/> Reject</button>
+            <button onClick={() => onAddDetails(item)} disabled={actionBusy} className="zm-btn" title="Edit the executive's details — changes are flagged until the exec re-reads them" style={{ height: 34, padding: '0 13px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: actionBusy ? 'var(--zm-fg-4)' : 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600, cursor: actionBusy ? 'wait' : 'pointer', opacity: actionBusy ? 0.65 : 1, display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="folder" size={13}/> Edit details</button>
+            <button onClick={() => onReject(item)} disabled={actionBusy} className="zm-btn" title="Reject this shortlisted site" style={{ height: 34, padding: '0 13px', border: '1px solid rgba(155,42,42,0.30)', borderRadius: 7, background: 'rgba(155,42,42,0.06)', color: actionBusy ? 'var(--zm-fg-4)' : 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: actionBusy ? 'wait' : 'pointer', opacity: actionBusy ? 0.65 : 1, display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="alert" size={13}/> Reject</button>
             {(needsAssignment || waitingForAssignedDetails) && (
               <button onClick={() => onDelegate(item)} className="zm-btn-primary" title={needsAssignment ? 'Assign this site to a BD executive for Add Details' : 'Change the assigned executive'} style={{ height: 34, padding: '0 13px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', boxShadow: 'var(--zm-shadow-1)', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="user" size={13}/> {needsAssignment ? 'Delegate for details' : 'Reassign'}</button>
             )}
@@ -426,7 +426,7 @@ function ShortlistCard({ item, role, currentUserId, onView, onAddDetails, onAppr
               </span>
             )}
             {!needsAssignment && !waitingForAssignedDetails && (
-              <button onClick={() => onApprove(item)} disabled={!reviewable} className="zm-btn-primary" title={!reviewable ? 'BD exec must Send for review before approving' : 'Approve and advance to Sites in process'} style={{ height: 34, padding: '0 14px', border: 'none', borderRadius: 7, background: reviewable ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: reviewable ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: reviewable ? 'pointer' : 'not-allowed', boxShadow: reviewable ? 'var(--zm-shadow-1)' : 'none', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="check" size={13}/> Approve shortlist</button>
+              <button onClick={() => onApprove(item)} disabled={!reviewable || actionBusy} className="zm-btn-primary" title={!reviewable ? 'BD exec must Send for review before approving' : 'Approve and advance to Sites in process'} style={{ height: 34, padding: '0 14px', border: 'none', borderRadius: 7, background: reviewable && !actionBusy ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: reviewable && !actionBusy ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: reviewable && !actionBusy ? 'pointer' : 'not-allowed', boxShadow: reviewable && !actionBusy ? 'var(--zm-shadow-1)' : 'none', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="check" size={13}/> {actionBusy ? 'Processing…' : 'Approve shortlist'}</button>
             )}
           </>
         ) : reviewable ? (
@@ -452,6 +452,11 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
   const [detailError, setDetailError] = React.useState(null);
   const [delegating, setDelegating] = React.useState(null);
   const [rejecting, setRejecting] = React.useState(null);
+  // Track site IDs with an in-flight action so card buttons stay disabled
+  // until the operation finishes (prevents double-submits/approvals).
+  const [busySiteIds, setBusySiteIds] = React.useState(new Set());
+  const markBusy = (id) => setBusySiteIds(prev => new Set([...prev, id]));
+  const clearBusy = (id) => setBusySiteIds(prev => { const s = new Set(prev); s.delete(id); return s; });
 
   const ME = user.name;
   const currentUserId = session?.userId || session?.id || session?.sub || user?.id || null;
@@ -477,14 +482,20 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
     stateFilter === 'pending' ? pendingApproval :
     visibleShortlist;
 
-  const onApprove = (item) => setApproving(item);
+  // Opening the LOI modal must NOT mark the card busy — otherwise cancelling the
+  // modal (which doesn't run the submit handler) would leave the card stuck on
+  // "Processing…". Busy is set only for the duration of the actual API call.
+  const onApprove = (item) => { setApproving(item); };
   const onTimelineSubmit = async (item, days) => {
+    markBusy(item.id);
     try {
       await approveShortlistToStaging(item, days);
       setApproving(null);
       showToast?.(`Approved · ${item.name}. LOI expected in ${days}d. Moved to Sites in process.`);
     } catch (err) {
       showToast?.(`Approval failed: ${err?.detail || err?.message || 'Unknown error'}`, 'danger');
+    } finally {
+      clearBusy(item.id);
     }
   };
   const onAddDetails = (item) => {
@@ -498,6 +509,7 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
     // the message inline). (#97)
     setDetailError(null);
     setDetailSaving(true);
+    markBusy(item.id);
     try {
       await submitDetailsForReview(item, formData);
       setDetailing(null);
@@ -508,11 +520,13 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
       showToast?.(`Submit failed: ${message}`, 'danger');
     } finally {
       setDetailSaving(false);
+      clearBusy(item.id);
     }
   };
   const onDetailsSaveDraft = async (item, formData) => {
     setDetailError(null);
     setDetailSaving(true);
+    markBusy(item.id);
     try {
       await saveDraftDetails(item, formData);
       setDetailing(null);
@@ -523,12 +537,20 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
       showToast?.(`Draft save failed: ${message}`, 'danger');
     } finally {
       setDetailSaving(false);
+      clearBusy(item.id);
     }
   };
   const onRejectShortlist = async (item, reasons, comment) => {
-    await siteService.rejectSite(item.id, reasons, comment);
-    await refresh?.();
-    showToast?.(`Rejected · ${item.name}.`, 'success');
+    markBusy(item.id);
+    try {
+      await siteService.rejectSite(item.id, reasons, comment);
+      await refresh?.();
+      showToast?.(`Rejected · ${item.name}.`, 'success');
+    } catch (err) {
+      showToast?.(`Reject failed: ${err?.detail || err?.message || 'Unknown error'}`, 'danger');
+    } finally {
+      clearBusy(item.id);
+    }
   };
 
   return (
@@ -556,7 +578,7 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
       {filteredShortlist.map(item => (
         <ShortlistCard key={item.code} item={item} role={role} currentUserId={currentUserId}
           onView={onOpenSite || (() => {})} onAddDetails={onAddDetails} onApprove={onApprove}
-          onDelegate={setDelegating} onReject={setRejecting}/>
+          onDelegate={setDelegating} onReject={setRejecting} actionBusy={busySiteIds.has(item.id)}/>
       ))}
       {filteredShortlist.length === 0 && (
         <div style={{ padding: 48, textAlign: 'center', background: 'var(--zm-surface)', border: '1px dashed var(--zm-line)', borderRadius: 12 }}>

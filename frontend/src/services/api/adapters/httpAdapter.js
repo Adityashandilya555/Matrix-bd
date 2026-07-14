@@ -171,6 +171,8 @@ function detailsToServer(details = {}) {
   if (!details || typeof details !== 'object') return details;
   const clean = (value) => value === '' ? null : value;
   return {
+    name: clean(details.name ?? null),
+    city: clean(details.city ?? null),
     model: clean(details.model ?? null),
     spoc_name: clean(details.spoc_name ?? details.spocName ?? null),
     google_pin: clean(details.google_pin ?? details.googlePin ?? null),
