@@ -360,20 +360,19 @@ function RejectShortlistModal({ site, onClose, onReject }) {
   );
 }
 
-function ShortlistCard({ item, role, currentUserId, onView, onAddDetails, onApprove, onDelegate, onReject, actionBusy = false }) {
+function ShortlistCard({ item, role, onView, onAddDetails, onApprove, onDelegate, onReject, actionBusy = false }) {
   const supervisor = can(role, 'shortlist') || role === 'supervisor' || role === 'business_admin';
   const assignedToId = item.assignedToId || item.assignedTo?.id || '';
   const assignedToName = item.assignedToName || item.assignedTo?.name || '';
-  const supervisorCreatedShortlist =
-    supervisor &&
-    item.status === 'shortlisted' &&
-    item.submittedBy &&
-    item.supervisorId &&
-    String(item.submittedBy) === String(currentUserId) &&
-    String(item.supervisorId) === String(currentUserId);
-  const needsAssignment = supervisorCreatedShortlist && !assignedToId;
-  const waitingForAssignedDetails = supervisorCreatedShortlist && !!assignedToId && !item.inReview;
+  // Delegation is the mechanism that hands a shortlisted site to a BD exec —
+  // regardless of who created it. A supervisor can always delegate (or reassign);
+  // an exec only ever sees / works a site delegated (assigned) to them.
+  const delegated = !!assignedToId;
   const reviewable = item.inReview === true;
+  // While the assigned exec still holds the site (delegated, not yet sent back
+  // for review) the supervisor's inline edit is locked — they Reassign instead —
+  // so a supervisor save can't clobber the exec's in-progress details.
+  const awaitingAssignedExec = delegated && !reviewable;
   const hasDraft = !!item.details && !reviewable;
   const supEdits = item.supervisorEditedFields || [];
   const hasSupEdits = supEdits.length > 0;
@@ -415,25 +414,24 @@ function ShortlistCard({ item, role, currentUserId, onView, onAddDetails, onAppr
         <span style={{ flex: 1 }}/>
         {supervisor ? (
           <>
-            {/* Once the site is delegated to an exec, the supervisor's edit is
-                locked until the exec re-submits for review — otherwise the
-                supervisor could overwrite the exec's in-progress details. The
-                Edit button returns as soon as the site is back inReview. */}
-            {!waitingForAssignedDetails && (
+            {/* Supervisor edit is locked while the assigned exec still holds the
+                site (delegated, not yet re-submitted) — the supervisor reassigns
+                instead. The Edit button returns once the exec sends it back for
+                review, so a supervisor save never clobbers in-progress details. */}
+            {!awaitingAssignedExec && (
               <button onClick={() => onAddDetails(item)} disabled={actionBusy} className="zm-btn" title="Edit the executive's details — changes are flagged until the exec re-reads them" style={{ height: 34, padding: '0 13px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: actionBusy ? 'var(--zm-fg-4)' : 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600, cursor: actionBusy ? 'wait' : 'pointer', opacity: actionBusy ? 0.65 : 1, display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="folder" size={13}/> Edit details</button>
             )}
             <button onClick={() => onReject(item)} disabled={actionBusy} className="zm-btn" title="Reject this shortlisted site" style={{ height: 34, padding: '0 13px', border: '1px solid rgba(155,42,42,0.30)', borderRadius: 7, background: 'rgba(155,42,42,0.06)', color: actionBusy ? 'var(--zm-fg-4)' : 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: actionBusy ? 'wait' : 'pointer', opacity: actionBusy ? 0.65 : 1, display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="alert" size={13}/> Reject</button>
-            {(needsAssignment || waitingForAssignedDetails) && (
-              <button onClick={() => onDelegate(item)} className="zm-btn-primary" title={needsAssignment ? 'Assign this site to a BD executive for Add Details' : 'Change the assigned executive'} style={{ height: 34, padding: '0 13px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', boxShadow: 'var(--zm-shadow-1)', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="user" size={13}/> {needsAssignment ? 'Delegate for details' : 'Reassign'}</button>
-            )}
-            {waitingForAssignedDetails && (
+            {/* Delegation is always available: assign the site to a BD exec (or
+                reassign). It is the ONLY way an exec gains access to a shortlisted
+                site — a save never delegates on its own. */}
+            <button onClick={() => onDelegate(item)} disabled={actionBusy} className="zm-btn-primary" title={delegated ? 'Change the assigned executive' : 'Assign this site to a BD executive for Add Details'} style={{ height: 34, padding: '0 13px', border: 'none', borderRadius: 7, background: actionBusy ? 'var(--zm-surface-sunken)' : 'var(--zm-accent)', color: actionBusy ? 'var(--zm-fg-4)' : '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: actionBusy ? 'wait' : 'pointer', boxShadow: actionBusy ? 'none' : 'var(--zm-shadow-1)', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="user" size={13}/> {delegated ? 'Reassign' : 'Delegate for details'}</button>
+            {awaitingAssignedExec && (
               <span style={{ padding: '6px 10px', borderRadius: 7, background: 'var(--zm-accent-soft)', border: '1px solid var(--zm-accent-line)', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-accent)', fontWeight: 650, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <Icon name="clock" size={12}/> Awaiting details{assignedToName ? ` · ${assignedToName}` : ''}
               </span>
             )}
-            {!needsAssignment && !waitingForAssignedDetails && (
-              <button onClick={() => onApprove(item)} disabled={!reviewable || actionBusy} className="zm-btn-primary" title={!reviewable ? 'BD exec must Send for review before approving' : 'Approve and advance to Sites in process'} style={{ height: 34, padding: '0 14px', border: 'none', borderRadius: 7, background: reviewable && !actionBusy ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: reviewable && !actionBusy ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: reviewable && !actionBusy ? 'pointer' : 'not-allowed', boxShadow: reviewable && !actionBusy ? 'var(--zm-shadow-1)' : 'none', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="check" size={13}/> {actionBusy ? 'Processing…' : 'Approve shortlist'}</button>
-            )}
+            <button onClick={() => onApprove(item)} disabled={!reviewable || actionBusy} className="zm-btn-primary" title={!reviewable ? 'BD exec must Send for review before approving' : 'Approve and advance to Sites in process'} style={{ height: 34, padding: '0 14px', border: 'none', borderRadius: 7, background: reviewable && !actionBusy ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: reviewable && !actionBusy ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: reviewable && !actionBusy ? 'pointer' : 'not-allowed', boxShadow: reviewable && !actionBusy ? 'var(--zm-shadow-1)' : 'none', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}><Icon name="check" size={13}/> {actionBusy ? 'Processing…' : 'Approve shortlist'}</button>
           </>
         ) : reviewable ? (
           <span style={{ padding: '6px 10px', borderRadius: 7, background: 'var(--zm-accent-soft)', border: '1px solid var(--zm-accent-line)', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-accent)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="clock" size={12}/> Awaiting supervisor approval</span>
@@ -464,18 +462,17 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
   const markBusy = (id) => setBusySiteIds(prev => new Set([...prev, id]));
   const clearBusy = (id) => setBusySiteIds(prev => { const s = new Set(prev); s.delete(id); return s; });
 
-  const ME = user.name;
   const currentUserId = session?.userId || session?.id || session?.sub || user?.id || null;
   // RBAC: isExec = cannot approve shortlist (only supervisor can; executives need a delegation)
   const isExec = !can(role, 'shortlist');
+  // An exec sees a shortlisted site ONLY once a supervisor has delegated
+  // (assigned) it to them — never merely because they created or submitted the
+  // pipeline. This holds even for a supervisor viewing in the executive role:
+  // their own site stays out of the exec shortlist until it is delegated.
   const visibleShortlist = isExec
     ? shortlist.filter((s) => {
         const assignedToId = s.assignedToId || s.assignedTo?.id || '';
-        return (
-          String(s.submittedBy || '') === String(currentUserId || '') ||
-          String(assignedToId || '') === String(currentUserId || '') ||
-          s.createdBy === ME
-        );
+        return String(assignedToId || '') === String(currentUserId || '');
       })
     : shortlist;
 
@@ -582,7 +579,7 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
         />
       </div>
       {filteredShortlist.map(item => (
-        <ShortlistCard key={item.code} item={item} role={role} currentUserId={currentUserId}
+        <ShortlistCard key={item.code} item={item} role={role}
           onView={onOpenSite || (() => {})} onAddDetails={onAddDetails} onApprove={onApprove}
           onDelegate={setDelegating} onReject={setRejecting} actionBusy={busySiteIds.has(item.id)}/>
       ))}
