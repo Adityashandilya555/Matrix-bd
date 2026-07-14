@@ -252,6 +252,50 @@ async def svc_shortlist_draft(
 
 # ── Save partial details ──────────────────────────────────────────────────
 
+def _pipeline_before_incoming(site: models.Site, details: dict) -> tuple[dict, dict]:
+    """Build the (before, incoming) pipeline-field snapshots the audit differ
+    compares. Shared by save + submit so the field set can't drift."""
+    before = {
+        "model": site.model,
+        "spoc_name": site.spoc_name,
+        "google_pin": site.google_maps_pin,
+        "expected_rent": float(site.expected_rent) if site.expected_rent is not None else None,
+        "rent_type": site.rent_type,
+        "area_sqft": site.area_sqft,
+    }
+    incoming = {
+        "model": details.get("model"),
+        "spoc_name": details.get("spoc_name"),
+        "google_pin": details.get("google_pin"),
+        "expected_rent": _to_float(details.get("rent")),
+        "rent_type": details.get("rent_type"),
+        "area_sqft": _to_int(details.get("area_sqft")),
+    }
+    return before, incoming
+
+
+def _apply_incoming_pipeline_fields(site: models.Site, incoming: dict) -> None:
+    """Promote non-empty incoming pipeline fields onto the site row."""
+    for k, v in incoming.items():
+        if v is None or v == "":
+            continue
+        if k == "google_pin":
+            site.google_maps_pin = v
+        else:
+            setattr(site, k, v)
+
+
+def _apply_staggered_escalation(site: models.Site, details: dict, incoming: dict) -> None:
+    """Set or clear the staggered schedule based on the effective rent_type."""
+    current_rent_type = incoming.get("rent_type") or site.rent_type
+    esc_raw = details.get("staggered_escalation")
+    if current_rent_type == "staggered":
+        if esc_raw is not None:
+            site.staggered_escalation = [e if isinstance(e, dict) else e.model_dump() for e in esc_raw]
+    else:
+        site.staggered_escalation = None
+
+
 async def svc_save_details(
     session: AsyncSession,
     *,
@@ -275,23 +319,7 @@ async def svc_save_details(
             actor_can_supervise(actor) and (actor.get("role") or "").lower() != "executive"
         )
         edit_action = SUPERVISOR_EDIT_ACTION if acting_as_supervisor else "pipeline_field_edited"
-        before = {
-            "model": site.model,
-            "spoc_name": site.spoc_name,
-            "google_pin": site.google_maps_pin,
-            "expected_rent": float(site.expected_rent) if site.expected_rent is not None else None,
-            "rent_type": site.rent_type,
-            "area_sqft": site.area_sqft,
-        }
-        # Normalise incoming keys to the audit key shape
-        incoming = {
-            "model": details.get("model"),
-            "spoc_name": details.get("spoc_name"),
-            "google_pin": details.get("google_pin"),
-            "expected_rent": _to_float(details.get("rent")),
-            "rent_type": details.get("rent_type"),
-            "area_sqft": _to_int(details.get("area_sqft")),
-        }
+        before, incoming = _pipeline_before_incoming(site, details)
         await diff_and_log_pipeline_fields(
             session,
             tenant_id=tenant_id,
@@ -303,25 +331,10 @@ async def svc_save_details(
             action=edit_action,
             actor_role=(actor.get("role") or None),
         )
-        # Apply pipeline-field updates onto the site row
-        for k, v in incoming.items():
-            if v is None or v == "":
-                continue
-            if k == "google_pin":
-                site.google_maps_pin = v
-            else:
-                setattr(site, k, v)
+        _apply_incoming_pipeline_fields(site, incoming)
         if incoming.get("expected_rent") is not None:
             site.rent_set_at = datetime.now(timezone.utc)
-        # Staggered escalation — update directly (not diff-logged field-by-field)
-        esc_raw = details.get("staggered_escalation")
-        current_rent_type = incoming.get("rent_type") or site.rent_type
-        if current_rent_type == "staggered":
-            if esc_raw is not None:
-                site.staggered_escalation = [e if isinstance(e, dict) else e.model_dump() for e in esc_raw]
-        else:
-            site.staggered_escalation = None
-
+        _apply_staggered_escalation(site, details, incoming)
         await _upsert_site_details(session, tenant_id=tenant_id, site_id=site.id, details=details)
 
     return OkResponse(message=f"Details draft saved for site {site_id}")
@@ -376,40 +389,14 @@ async def svc_submit_details(
         _assert_can_edit_details(actor, site)
         assert_transition(SiteStatus(site.status), SiteStatus.DETAILS_SUBMITTED)
         if details:
-            before = {
-                "model": site.model, "spoc_name": site.spoc_name,
-                "google_pin": site.google_maps_pin,
-                "expected_rent": float(site.expected_rent) if site.expected_rent is not None else None,
-                "rent_type": site.rent_type,
-                "area_sqft": site.area_sqft,
-            }
-            incoming = {
-                "model": details.get("model"), "spoc_name": details.get("spoc_name"),
-                "google_pin": details.get("google_pin"),
-                "expected_rent": _to_float(details.get("rent")),
-                "rent_type": details.get("rent_type"),
-                "area_sqft": _to_int(details.get("area_sqft")),
-            }
+            before, incoming = _pipeline_before_incoming(site, details)
             await diff_and_log_pipeline_fields(
                 session, tenant_id=tenant_id, site_id=site.id,
                 actor_id=actor["sub"], actor_name=actor["name"],
                 before=before, after=incoming,
             )
-            for k, v in incoming.items():
-                if v is None or v == "":
-                    continue
-                if k == "google_pin":
-                    site.google_maps_pin = v
-                else:
-                    setattr(site, k, v)
-            # Staggered escalation
-            esc_raw = details.get("staggered_escalation")
-            current_rent_type = incoming.get("rent_type") or site.rent_type
-            if current_rent_type == "staggered":
-                if esc_raw is not None:
-                    site.staggered_escalation = [e if isinstance(e, dict) else e.model_dump() for e in esc_raw]
-            else:
-                site.staggered_escalation = None
+            _apply_incoming_pipeline_fields(site, incoming)
+            _apply_staggered_escalation(site, details, incoming)
             await _upsert_site_details(session, tenant_id=tenant_id, site_id=site.id, details=details)
 
         site.status = SiteStatus.DETAILS_SUBMITTED.value
