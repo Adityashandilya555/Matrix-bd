@@ -607,18 +607,26 @@ async def svc_revive_site(
     the column), we fall back to draft_submitted so the site is at least
     re-visible in the pipeline.
     """
-    if (actor.get("role") or "").lower() != "supervisor":
+    role = (actor.get("role") or "").lower()
+    if role not in ["supervisor", "business_admin"]:
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="Only the supervisor can revive an archived site.",
+            detail="Only the supervisor or business admin can revive a site.",
         )
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        if site.status != SiteStatus.ARCHIVED.value:
+        
+        allowed_statuses = [SiteStatus.ARCHIVED.value]
+        if role == "business_admin":
+            allowed_statuses.append(SiteStatus.REJECTED.value)
+
+        if site.status not in allowed_statuses:
             raise HTTPException(
                 status_code=http_status.HTTP_409_CONFLICT,
-                detail=f"Site is not archived (current status={site.status}).",
+                detail=f"Site cannot be revived from its current status (current status={site.status}).",
             )
+            
+        old_status = site.status
         prev = site.archived_from_status or SiteStatus.DRAFT_SUBMITTED.value
         site.status = prev
         site.archived_at = None
@@ -628,7 +636,7 @@ async def svc_revive_site(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor["name"],
             action="revive",
-            from_status=SiteStatus.ARCHIVED.value, to_status=prev,
+            from_status=old_status, to_status=prev,
             detail=f"reason={(note or '').strip() or 'n/a'}",
         )
         owners = await recipients_for_site_owner(session, site=site)

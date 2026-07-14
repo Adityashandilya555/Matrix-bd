@@ -197,7 +197,9 @@ export default function ArchivePage({ onOpenSite: onOpenSiteProp, showToast: sho
                 </div>
                 <button onClick={() => onOpenSite?.(a)} className="zm-btn zm-row-cta" style={{ height: 28, padding: '0 10px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', justifySelf: 'end', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><EyeIcon size={12}/> View</button>
                 {canRevive && (
-                  <button onClick={() => setReviving(a)} className="zm-btn-primary" style={{ height: 28, padding: '0 10px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', justifySelf: 'end', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="refresh" size={12}/> Revive</button>
+                  !isRejectedRow(a)
+                    ? <button onClick={() => setReviving(a)} className="zm-btn-primary" style={{ height: 28, padding: '0 10px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', justifySelf: 'end', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="refresh" size={12}/> Revive</button>
+                    : <span />
                 )}
               </div>
             );
