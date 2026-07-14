@@ -15,6 +15,8 @@ const ACTION_TO_TAG = {
   shortlist: 'submit',
   submit_details_for_review: 'submit',
   pipeline_field_edited: 'edit',
+  supervisor_field_edited: 'supervisor',
+  exec_viewed_details: 'view',
   approve_details: 'approve',
   set_loi_timeline: 'edit',
   upload_loi: 'doc',
@@ -71,6 +73,10 @@ const TAG_TO_COLOR = {
   edit: '#005F60',
   approve: '#047857',
   doc: '#1E40AF',
+  // Supervisor amended an executive's submission — amber, matches the site's
+  // yellow flag and the per-field eye highlight in the drawer.
+  supervisor: '#B45309',
+  view: '#6B7280',
 };
 
 const MODULE_ACTION_FILTERS = {
@@ -157,6 +163,10 @@ export function labelForEntry(e) {
     case 'reassign_site':             return 'reassigned site';
     case 'pipeline_field_edited':
       return `updated ${e.fieldName || 'field'}${e.toValue ? ` to ${e.toValue}` : ''}`;
+    case 'supervisor_field_edited':
+      return `supervisor edited ${e.fieldName || 'field'}${e.toValue ? ` to ${e.toValue}` : ''}`;
+    case 'exec_viewed_details':
+      return 'reviewed supervisor edits';
     default:
       return e.action.replace(/_/g, ' ');
   }

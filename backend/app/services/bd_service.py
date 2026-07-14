@@ -30,13 +30,19 @@ from app.domain.schemas.site import SiteResponse
 from app.domain.state_machine import SiteStatus, assert_transition
 from app.services._common import (
     actor_can_supervise,
+    compute_unseen_supervisor_edits,
     fetch_site_for_update_or_404,
     fetch_site_or_404,
     fetch_user_name,
     make_site_code,
     site_to_response,
 )
-from app.services.audit_service import diff_and_log_pipeline_fields, write_audit_event
+from app.services.audit_service import (
+    EXEC_VIEWED_ACTION,
+    SUPERVISOR_EDIT_ACTION,
+    diff_and_log_pipeline_fields,
+    write_audit_event,
+)
 from app.services.notification_service import (
     enqueue as notify_enqueue,
     recipients_for_legal_supervisors,
@@ -261,6 +267,14 @@ async def svc_save_details(
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_can_edit_details(actor, site)
+        # A supervisor (or business admin) amending an executive's submission tags
+        # the field diffs distinctly, so the activity feed can highlight them and
+        # the UI can flag the site yellow until the exec re-reads it. Editing while
+        # acting as the executive (role == executive) stays a normal edit.
+        acting_as_supervisor = (
+            actor_can_supervise(actor) and (actor.get("role") or "").lower() != "executive"
+        )
+        edit_action = SUPERVISOR_EDIT_ACTION if acting_as_supervisor else "pipeline_field_edited"
         before = {
             "model": site.model,
             "spoc_name": site.spoc_name,
@@ -286,6 +300,8 @@ async def svc_save_details(
             actor_name=actor["name"],
             before=before,
             after=incoming,
+            action=edit_action,
+            actor_role=(actor.get("role") or None),
         )
         # Apply pipeline-field updates onto the site row
         for k, v in incoming.items():
@@ -309,6 +325,38 @@ async def svc_save_details(
         await _upsert_site_details(session, tenant_id=tenant_id, site_id=site.id, details=details)
 
     return OkResponse(message=f"Details draft saved for site {site_id}")
+
+
+# ── Mark supervisor edits as seen ──────────────────────────────────────────
+
+async def svc_mark_details_viewed(
+    session: AsyncSession, *, tenant_id: str | UUID, actor: dict, site_id: str | UUID,
+) -> OkResponse:
+    """Record that the site's executive has re-read the details, clearing the
+    supervisor-edit flag (yellow site + per-field eye highlight).
+
+    Writes an ``exec_viewed_details`` audit marker only when there are unseen
+    supervisor edits, so the activity feed isn't spammed on every open. The read
+    side compares this marker's timestamp against later supervisor edits.
+    """
+    async with transaction(session):
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        unseen = await compute_unseen_supervisor_edits(
+            session, tenant_id=tenant_id, site_ids=[site.id],
+        )
+        if not unseen.get(site.id):
+            return OkResponse(message="No supervisor edits to acknowledge")
+        await write_audit_event(
+            session,
+            tenant_id=tenant_id,
+            site_id=site.id,
+            actor_id=actor["sub"],
+            actor_name=actor["name"],
+            action=EXEC_VIEWED_ACTION,
+            actor_role=(actor.get("role") or None),
+            detail="Executive reviewed supervisor edits",
+        )
+    return OkResponse(message="Supervisor edits acknowledged")
 
 
 # ── Submit details for review ─────────────────────────────────────────────

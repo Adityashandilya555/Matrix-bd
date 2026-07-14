@@ -97,11 +97,18 @@ async def diff_and_log_pipeline_fields(
     actor_name: str | None,
     before: dict,
     after: dict,
+    action: str = "pipeline_field_edited",
+    actor_role: str | None = None,
 ) -> int:
     """Compare pipeline-stage fields before/after; emit one row per change.
 
     `before` is the current state pulled from the sites row; `after` is the
     incoming payload. Skips fields whose new value is None (partial-save).
+
+    `action` lets the caller distinguish who edited: a supervisor amending an
+    executive's submission passes ``supervisor_field_edited`` so the activity
+    feed can highlight it and the UI can flag the site until the exec re-reads
+    it. Defaults to the executive-authored ``pipeline_field_edited``.
     """
     written = 0
     for field in PIPELINE_FIELDS:
@@ -117,10 +124,18 @@ async def diff_and_log_pipeline_fields(
             site_id=site_id,
             actor_id=actor_id,
             actor_name=actor_name,
-            action="pipeline_field_edited",
+            action=action,
+            actor_role=actor_role,
             field_name=_FIELD_AUDIT_LABEL[field],
             from_value=None if old_val is None else str(old_val),
             to_value=str(new_val),
         )
         written += 1
     return written
+
+
+# Audit actions that participate in the "supervisor edited an exec's details"
+# highlight flow. Kept here so the read side (query_service) and the write side
+# agree on the exact strings.
+SUPERVISOR_EDIT_ACTION = "supervisor_field_edited"
+EXEC_VIEWED_ACTION = "exec_viewed_details"

@@ -233,7 +233,7 @@ const PIPELINE_FIELDS_FE = [
   ['rent', 'expected_rent'],
 ];
 
-function diffPipelineEntries(site, incoming, actor) {
+function diffPipelineEntries(site, incoming, actor, action = 'pipeline_field_edited') {
   const entries = [];
   for (const [formKey, fieldName] of PIPELINE_FIELDS_FE) {
     const nextRaw = incoming[formKey];
@@ -246,7 +246,7 @@ function diffPipelineEntries(site, incoming, actor) {
       id: 'a_' + Math.random().toString(36).slice(2, 8),
       at: new Date().toISOString(),
       by: actor,
-      action: 'pipeline_field_edited',
+      action,
       fieldName, fromValue: prev, toValue: next,
     });
   }
@@ -259,7 +259,15 @@ export async function patchSiteDetails(id, details) {
   const site = getSiteById(id);
   if (!site) throw new Error(`Site not found: ${id}`);
   const actor = details._actor || site.createdBy?.name || 'exec';
-  const diffEntries = diffPipelineEntries(site, details, actor);
+  // A supervisor amending an exec's details tags the diffs distinctly and flags
+  // the changed fields until the exec re-reads them (mirrors the backend).
+  const bySupervisor = details._editorRole === 'supervisor';
+  const action = bySupervisor ? 'supervisor_field_edited' : 'pipeline_field_edited';
+  const diffEntries = diffPipelineEntries(site, details, actor, action);
+  const changedFields = diffEntries.map(e => e.fieldName);
+  const supervisorEditedFields = bySupervisor
+    ? Array.from(new Set([...(site.supervisorEditedFields || []), ...changedFields]))
+    : (site.supervisorEditedFields || []);
   const updated = {
     ...site,
     details: { ...(site.details || {}), ...details },
@@ -268,10 +276,34 @@ export async function patchSiteDetails(id, details) {
     googlePin: details.googlePin ?? site.googlePin,
     rentType: details.rentType ?? site.rentType,
     expectedRent: details.rent != null && details.rent !== '' ? Number(details.rent) : site.expectedRent,
+    supervisorEditedFields,
     auditTrail: [...(site.auditTrail || []), ...diffEntries],
     updatedAt: new Date().toISOString(),
   };
   return upsertSite(updated);
+}
+
+// Acknowledge supervisor edits: clear the flag and log the exec-viewed marker,
+// but only when there is actually something unseen (keeps the feed clean).
+export async function markSiteViewed(id) {
+  await delay(60, 160);
+  const site = getSiteById(id);
+  if (!site) throw new Error(`Site not found: ${id}`);
+  if (!(site.supervisorEditedFields || []).length) return { ok: true, message: 'nothing to acknowledge' };
+  const updated = {
+    ...site,
+    supervisorEditedFields: [],
+    auditTrail: [...(site.auditTrail || []), {
+      id: 'a_' + Math.random().toString(36).slice(2, 8),
+      at: new Date().toISOString(),
+      by: site.createdBy?.name || 'exec',
+      action: 'exec_viewed_details',
+      detail: 'Executive reviewed supervisor edits',
+    }],
+    updatedAt: new Date().toISOString(),
+  };
+  upsertSite(updated);
+  return { ok: true, message: 'acknowledged' };
 }
 
 // Activity feed for one site — canonical entry shape consumed by SiteActivityTab.

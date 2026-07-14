@@ -283,6 +283,10 @@ class SiteResponse(BaseModel):
     archive_note: Optional[str] = None
     archived_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    # Pipeline fields a supervisor amended that the site's executive hasn't
+    # re-viewed yet. Drives the yellow site flag + per-field eye highlight;
+    # audit-derived, cleared once the exec re-opens the site. Empty by default.
+    supervisor_edited_fields: List[str] = Field(default_factory=list)
 
 
 class SiteListResponse(BaseModel):

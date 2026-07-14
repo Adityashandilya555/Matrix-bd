@@ -106,7 +106,7 @@ function FormSection({ title, n, children }) {
   );
 }
 
-export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, savingDraft = false, saveError = null }) {
+export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, savingDraft = false, saveError = null, supervisorEdit = false }) {
   // Pipeline-stage fields (model, googlePin, rentType, expectedRent) are now
   // captured at draft creation. Prefill them here so the BE picks up where they left off;
   // any edit before submit/save is diff-logged into the activity feed by the backend.
@@ -386,8 +386,10 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
           <span style={{ flex: 1 }}/>
           {saveError && <span style={{ maxWidth: 260, fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-danger)' }}>Save failed: {saveError}</span>}
           <button onClick={onClose} disabled={savingDraft} className="zm-btn" style={{ height: 36, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: savingDraft ? 'var(--zm-fg-4)' : 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: savingDraft ? 'wait' : 'pointer', opacity: savingDraft ? 0.65 : 1 }}>Cancel</button>
-          <button onClick={handleSaveDraft} disabled={savingDraft} className="zm-btn" title="Save partial progress · continue later" style={{ height: 36, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: savingDraft ? 'var(--zm-fg-3)' : 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: savingDraft ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: savingDraft ? 0.75 : 1 }}><Icon name="folder" size={13}/> {savingDraft ? 'Saving...' : 'Save draft'}</button>
-          <button onClick={handleSubmit} disabled={!filled || savingDraft} className="zm-btn-primary" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: filled && !savingDraft ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: filled && !savingDraft ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: filled && !savingDraft ? 'pointer' : 'not-allowed', boxShadow: filled && !savingDraft ? 'var(--zm-shadow-1)' : 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>Send for review <Icon name="arrow" size={14}/></button>
+          <button onClick={handleSaveDraft} disabled={savingDraft} className={supervisorEdit ? 'zm-btn-primary' : 'zm-btn'} title={supervisorEdit ? 'Save your edits to this site' : 'Save partial progress · continue later'} style={{ height: 36, padding: supervisorEdit ? '0 16px' : '0 14px', borderRadius: 8, border: supervisorEdit ? 'none' : '1px solid var(--zm-line)', background: supervisorEdit ? 'var(--zm-accent)' : 'var(--zm-surface)', color: supervisorEdit ? '#fff' : (savingDraft ? 'var(--zm-fg-3)' : 'var(--zm-fg)'), fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: supervisorEdit ? 700 : 600, cursor: savingDraft ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: savingDraft ? 0.75 : 1, boxShadow: supervisorEdit && !savingDraft ? 'var(--zm-shadow-1)' : 'none' }}><Icon name="folder" size={13}/> {savingDraft ? 'Saving...' : (supervisorEdit ? 'Save changes' : 'Save draft')}</button>
+          {!supervisorEdit && (
+            <button onClick={handleSubmit} disabled={!filled || savingDraft} className="zm-btn-primary" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: filled && !savingDraft ? 'var(--zm-accent)' : 'var(--zm-surface-sunken)', color: filled && !savingDraft ? '#fff' : 'var(--zm-fg-4)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: filled && !savingDraft ? 'pointer' : 'not-allowed', boxShadow: filled && !savingDraft ? 'var(--zm-shadow-1)' : 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>Send for review <Icon name="arrow" size={14}/></button>
+          )}
         </footer>
       </div>
     </div>

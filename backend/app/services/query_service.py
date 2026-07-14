@@ -15,7 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import models
 from app.domain.schemas.audit import AuditEvent, AuditListResponse
 from app.domain.schemas.site import SiteListResponse, SiteResponse
-from app.services._common import apply_role_scope, fetch_site_or_404, site_to_response
+from app.services._common import (
+    apply_role_scope,
+    compute_unseen_supervisor_edits,
+    fetch_site_or_404,
+    site_to_response,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -103,9 +108,11 @@ async def _resolve_site_names(session: AsyncSession, rows, approval_by_site: dic
 def _build_site_items(
     rows, *, names: dict, detail_by_site: dict, project_by_site: dict,
     approval_by_site: dict, nso_by_site: dict, launch_by_site: dict,
+    supervisor_edits: dict | None = None,
 ) -> list:
     """Map site rows + prefetched sources into SiteResponse items. Split out to
     keep list_sites' complexity low (#240, PY-R1000)."""
+    supervisor_edits = supervisor_edits or {}
     return [
         site_to_response(
             r,
@@ -119,6 +126,7 @@ def _build_site_items(
             ),
             nso=nso_by_site.get(r.id),
             launch=launch_by_site.get(r.id),
+            supervisor_edited_fields=supervisor_edits.get(r.id),
         )
         for r in rows
     ]
@@ -146,10 +154,14 @@ async def list_sites(
     (detail_by_site, project_by_site, approval_by_site,
      nso_by_site, launch_by_site) = await _gather_site_sources(session, site_ids)
     names = await _resolve_site_names(session, rows, approval_by_site)
+    supervisor_edits = await compute_unseen_supervisor_edits(
+        session, tenant_id=tenant_id, site_ids=site_ids,
+    )
 
     items = _build_site_items(
         rows, names=names, detail_by_site=detail_by_site, project_by_site=project_by_site,
         approval_by_site=approval_by_site, nso_by_site=nso_by_site, launch_by_site=launch_by_site,
+        supervisor_edits=supervisor_edits,
     )
     return SiteListResponse(items=items, total=len(items))
 
@@ -200,6 +212,9 @@ async def get_site(
     nso = (await session.execute(nso_stmt)).scalar_one_or_none()
     launch_stmt = select(models.LaunchApproval).where(models.LaunchApproval.site_id == site.id)
     launch = (await session.execute(launch_stmt)).scalar_one_or_none()
+    supervisor_edits = await compute_unseen_supervisor_edits(
+        session, tenant_id=tenant_id, site_ids=[site.id],
+    )
     return site_to_response(
         site,
         created_by_name=name or "",
@@ -210,6 +225,7 @@ async def get_site(
         approved_by_name=approved_by_name,
         nso=nso,
         launch=launch,
+        supervisor_edited_fields=supervisor_edits.get(site.id),
     )
 
 

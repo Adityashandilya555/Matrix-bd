@@ -331,6 +331,10 @@ export function siteFromServer(s) {
     archiveNote: s.archive_note ?? '',
     updatedAt: s.updated_at,
     _archivedAt: s.archived_at ? String(s.archived_at).slice(0, 10) : undefined,
+    // Pipeline fields a supervisor amended that the exec hasn't re-read yet.
+    // Drives the yellow site flag + per-field eye highlight; cleared once the
+    // exec re-opens the site (POST /sites/{id}/viewed).
+    supervisorEditedFields: s.supervisor_edited_fields ?? [],
   };
 }
 
@@ -383,6 +387,12 @@ export async function patchSiteStatus(id, status, payload = {}) {
 export async function patchSiteDetails(id, details) {
   // The UI form is camelCase; the API contract is snake_case.
   return patch(`/sites/${id}/details`, { details: detailsToServer(details) });
+}
+
+// Acknowledge supervisor edits so the yellow flag + eye highlight clear for the
+// exec. No-op server-side when there is nothing unseen.
+export async function markSiteViewed(id) {
+  return post(`/sites/${id}/viewed`, {});
 }
 
 export async function getSiteActivity(id, options = {}) {
