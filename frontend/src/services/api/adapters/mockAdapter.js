@@ -226,6 +226,8 @@ export async function assignSite(id, execId) {
 // Emits one `pipeline_field_edited` audit row per changed pipeline-stage field so the
 // site activity tab can render the diff (mirrors the backend service contract).
 const PIPELINE_FIELDS_FE = [
+  ['name', 'name'],
+  ['city', 'city'],
   ['model', 'model'],
   ['googlePin', 'google_pin'],
   ['rentType', 'rent_type'],
@@ -272,6 +274,8 @@ export async function patchSiteDetails(id, details) {
     ...site,
     details: { ...(site.details || {}), ...details },
     // Promote the pipeline-stage fields back onto the site row (single source of truth).
+    name: (details.name != null && details.name !== '') ? details.name : site.name,
+    city: (details.city != null && details.city !== '') ? details.city : site.city,
     model: details.model ?? site.model,
     googlePin: details.googlePin ?? site.googlePin,
     rentType: details.rentType ?? site.rentType,
