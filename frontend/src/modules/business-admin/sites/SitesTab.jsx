@@ -2,10 +2,38 @@ import React from 'react';
 import { T, Icon, Card, Drawer, Skeleton, EmptyState, ErrorState, Avatar, TABULAR } from '../ui/kit.jsx';
 import { MODULE_META, moduleForAction, labelForEntry, dotColor } from './historyMeta.js';
 import { getAdminSiteDocuments } from '../../../services/api/businessAdminApi.js';
-
-// A compilation of every site as a BD-style pipeline (LOI → Legal → Payment →
+import { reviveSite } from '../../../services/api/adapters/httpAdapter.js';
+import { usePageContext } from '../../../App.jsx';
 // Design → Project → NSO → Launch), coloured by each module's status. Click a site for its
 // full cross-module history (the /sites/{id}/activity audit feed).
+
+function ReviveDialog({ site, onCancel, onConfirm, busy }) {
+  const [note, setNote] = React.useState('');
+  const noteId = React.useId();
+  if (!site) return null;
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 14, width: 520, padding: 26, boxShadow: 'var(--zm-shadow-pop)', display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-accent)' }}>Reviving · {site.siteCode || site.code}</span>
+            <h2 style={{ margin: '4px 0 6px', fontFamily: 'var(--zm-font-display)', fontWeight: 700, fontSize: 20, letterSpacing: '-0.02em', color: 'var(--zm-fg)' }}>Pull this back into pipeline?</h2>
+            <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>The site will return to the active pipeline. Add an optional note for the audit trail.</p>
+          </div>
+          <button onClick={onCancel} className="zm-icon-btn" style={{ background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)', borderRadius: 8, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--zm-fg-2)', cursor: 'pointer' }}><Icon.x size={14}/></button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label htmlFor={noteId} style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)' }}>Revive note <span style={{ color: 'var(--zm-fg-3)', fontWeight: 500 }}>(optional)</span></label>
+          <textarea id={noteId} autoFocus value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. landlord called back with revised rent…" style={{ width: '100%', minHeight: 80, padding: 10, resize: 'vertical', border: '1px solid var(--zm-line)', borderRadius: 8, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', outline: 'none', background: 'var(--zm-bg)' }}/>
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onCancel} disabled={busy} className="zm-btn" style={{ height: 36, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: busy ? 'not-allowed' : 'pointer' }}>Cancel</button>
+          <button onClick={() => onConfirm(site, note.trim())} disabled={busy} className="zm-btn-primary" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer' }}>{busy ? 'Reviving…' : 'Revive site'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const NODES = [
   { key: 'loi', label: 'LOI' },
@@ -230,9 +258,13 @@ function HistoryDrawer({ site, fetchHistory, onClose }) {
 }
 
 export default function SitesTab({ data, fetchHistory, onRetry }) {
-  const [filter, setFilter] = React.useState('active'); // 'active' | 'rejected'
+  const [filter, setFilter] = React.useState('active'); // 'active' | 'launching' | 'completed' | 'rejected'
   const [query, setQuery] = React.useState('');
   const [openSite, setOpenSite] = React.useState(null);
+  
+  const [reviving, setReviving] = React.useState(null);
+  const [busy, setBusy] = React.useState(false);
+  const { showToast } = usePageContext() || {};
 
   const sites = data.items || [];
 
@@ -243,24 +275,56 @@ export default function SitesTab({ data, fetchHistory, onRetry }) {
     return false;
   }, []);
 
+  const isSiteCompleted = React.useCallback((s) => {
+    return s.isLaunched || s.launchStatus === 'launched' || s.status === 'launched';
+  }, []);
+
+  const isSiteLaunching = React.useCallback((s) => {
+    return s.nsoStatus === 'complete' && !isSiteCompleted(s) && !isSiteRejected(s);
+  }, [isSiteCompleted, isSiteRejected]);
+
+  const isSiteActive = React.useCallback((s) => {
+    return !isSiteRejected(s) && !isSiteCompleted(s) && !isSiteLaunching(s);
+  }, [isSiteRejected, isSiteCompleted, isSiteLaunching]);
+
   const counts = React.useMemo(() => {
-    let active = 0;
-    let rejected = 0;
+    let active = 0; let launching = 0; let completed = 0; let rejected = 0;
     for (const s of sites) {
       if (isSiteRejected(s)) rejected++;
+      else if (isSiteCompleted(s)) completed++;
+      else if (isSiteLaunching(s)) launching++;
       else active++;
     }
-    return { active, rejected };
-  }, [sites, isSiteRejected]);
+    return { active, launching, completed, rejected };
+  }, [sites, isSiteRejected, isSiteCompleted, isSiteLaunching]);
 
   const visible = React.useMemo(() => {
-    let filtered = sites.filter((s) => filter === 'rejected' ? isSiteRejected(s) : !isSiteRejected(s));
+    let filtered = sites.filter((s) => {
+      if (filter === 'rejected') return isSiteRejected(s);
+      if (filter === 'completed') return isSiteCompleted(s) && !isSiteRejected(s);
+      if (filter === 'launching') return isSiteLaunching(s);
+      return isSiteActive(s);
+    });
     const q = query.trim().toLowerCase();
     if (q) {
       filtered = filtered.filter((s) => `${s.siteCode} ${s.siteName} ${s.city}`.toLowerCase().includes(q));
     }
     return filtered;
-  }, [sites, filter, query, isSiteRejected]);
+  }, [sites, filter, query, isSiteRejected, isSiteCompleted, isSiteLaunching, isSiteActive]);
+
+  const onReviveConfirm = async (site, note) => {
+    setBusy(true);
+    try {
+      await reviveSite(site.siteId, note);
+      setReviving(null);
+      showToast?.(`Revived · ${site.siteName} is back in pipeline`);
+      onRetry?.(true); // reload sites
+    } catch (err) {
+      showToast?.(err?.message || 'Could not revive site', 'danger');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   if (data.status === 'error') return <ErrorState message={data.error} onRetry={() => onRetry(false)} />;
 
@@ -268,9 +332,9 @@ export default function SitesTab({ data, fetchHistory, onRetry }) {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
         <div role="tablist" style={{ display: 'inline-flex', gap: 4, padding: 4, background: T.chip, border: `1px solid ${T.line}`, borderRadius: T.radiusPill }}>
-          {['active', 'rejected'].map((key) => {
+          {['active', 'launching', 'completed', 'rejected'].map((key) => {
             const isActive = filter === key;
-            const label = key === 'active' ? 'Active' : 'Rejected';
+            const label = key === 'active' ? 'Active' : key === 'launching' ? 'Launching' : key === 'completed' ? 'Completed' : 'Rejected';
             const n = counts[key] || 0;
             return (
               <button key={key} role="tab" aria-selected={isActive} onClick={() => setFilter(key)}
@@ -319,6 +383,11 @@ export default function SitesTab({ data, fetchHistory, onRetry }) {
                 </div>
               </div>
               <Pipeline site={s} />
+              
+              {filter === 'rejected' && (
+                 <button onClick={(e) => { e.stopPropagation(); setReviving(s); }} className="zm-btn-primary" style={{ height: 28, padding: '0 10px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', justifySelf: 'end', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon.refresh size={12}/> Revive</button>
+              )}
+
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: T.textFaint }}>
                 <Icon.clock size={14} /> History <Icon.caret size={14} />
               </span>
@@ -328,6 +397,7 @@ export default function SitesTab({ data, fetchHistory, onRetry }) {
       )}
 
       <HistoryDrawer site={openSite} fetchHistory={fetchHistory} onClose={() => setOpenSite(null)} />
+      {reviving && <ReviveDialog site={reviving} onCancel={() => setReviving(null)} onConfirm={onReviveConfirm} busy={busy}/>}
     </div>
   );
 }
