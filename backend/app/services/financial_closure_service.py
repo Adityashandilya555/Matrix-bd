@@ -171,20 +171,25 @@ async def _batch_fc_prefetch(
     return gfc_by_site, gfc_items_by_budget, closure_items_by_budget, delegates_by_site, names
 
 
-async def _build_fc_state(
-    session: AsyncSession, site: models.Site, closure: Optional[models.SiteBudget],
-) -> FCStateResponse:
-    gfc = await budget_service.fetch_budget(session, site_id=site.id, phase=budget_service.GFC, tenant_id=site.tenant_id)
-    gfc_items = {i.idx: i for i in (await budget_service.budget_items(session, budget_id=gfc.id, tenant_id=site.tenant_id) if gfc else [])}
-    closure_items = {i.idx: i for i in (await budget_service.budget_items(session, budget_id=closure.id, tenant_id=site.tenant_id) if closure else [])}
+def _opt_float(obj: Optional[object], attr: str) -> Optional[float]:
+    value = getattr(obj, attr, None) if obj is not None else None
+    return float(value) if value is not None else None
 
+
+def _opt_int(obj: Optional[object], attr: str) -> Optional[int]:
+    value = getattr(obj, attr, None) if obj is not None else None
+    return int(value) if value is not None else None
+
+
+def _fc_budget_lines(gfc_items: dict, closure_items: dict) -> tuple[list[FCBudgetLineOut], float]:
+    """Build the 11 comparison lines (gfc/closure/variation) and their total."""
     lines: list[FCBudgetLineOut] = []
     variation_total = 0.0
     for idx in range(1, len(budget_service.BUDGET_LABELS) + 1):
         g = gfc_items.get(idx)
         c = closure_items.get(idx)
-        gfc_amount = float(g.amount) if g and g.amount is not None else None
-        closure_amount = float(c.amount) if c and c.amount is not None else None
+        gfc_amount = _opt_float(g, "amount")
+        closure_amount = _opt_float(c, "amount")
         variation = round((closure_amount or 0.0) - (gfc_amount or 0.0), 2)
         variation_total += variation
         label = (c.label if c else None) or (g.label if g else None) or budget_service.BUDGET_LABELS[idx - 1]
@@ -192,6 +197,16 @@ async def _build_fc_state(
             idx=idx, label=label,
             gfc_amount=gfc_amount, closure_amount=closure_amount, variation=variation,
         ))
+    return lines, variation_total
+
+
+async def _build_fc_state(
+    session: AsyncSession, site: models.Site, closure: Optional[models.SiteBudget],
+) -> FCStateResponse:
+    gfc = await budget_service.fetch_budget(session, site_id=site.id, phase=budget_service.GFC, tenant_id=site.tenant_id)
+    gfc_items = {i.idx: i for i in (await budget_service.budget_items(session, budget_id=gfc.id, tenant_id=site.tenant_id) if gfc else [])}
+    closure_items = {i.idx: i for i in (await budget_service.budget_items(session, budget_id=closure.id, tenant_id=site.tenant_id) if closure else [])}
+    lines, variation_total = _fc_budget_lines(gfc_items, closure_items)
 
     delegate = await _active_fc_delegate(session, site_id=site.id)
     return FCStateResponse(
@@ -206,12 +221,12 @@ async def _build_fc_state(
         closure_status=(closure.status if closure else "draft"),
         allocated_to=str(closure.allocated_to) if closure and closure.allocated_to else None,
         allocated_to_name=(delegate[1] if delegate else None),
-        gfc_budget_total=float(gfc.budget_total) if gfc and gfc.budget_total is not None else None,
-        closure_budget_total=float(closure.budget_total) if closure and closure.budget_total is not None else None,
+        gfc_budget_total=_opt_float(gfc, "budget_total"),
+        closure_budget_total=_opt_float(closure, "budget_total"),
         variation_total=round(variation_total, 2),
-        total_indoor_area_sqft=float(gfc.total_indoor_area_sqft) if gfc and gfc.total_indoor_area_sqft is not None else None,
-        total_area_sqft=float(gfc.total_area_sqft) if gfc and gfc.total_area_sqft is not None else None,
-        covers=int(gfc.covers) if gfc and gfc.covers is not None else None,
+        total_indoor_area_sqft=_opt_float(gfc, "total_indoor_area_sqft"),
+        total_area_sqft=_opt_float(gfc, "total_area_sqft"),
+        covers=_opt_int(gfc, "covers"),
         lines=lines,
         supervisor_comments=closure.supervisor_comments if closure else None,
         admin_comments=closure.admin_comments if closure else None,

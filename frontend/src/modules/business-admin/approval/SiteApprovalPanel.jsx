@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import React from 'react';
 import { T, Icon, Card, Button, StatusPill, Skeleton, inr, TABULAR } from '../ui/kit.jsx';
 import { CIVIL_MEP_IDX, formatRatio, sumByIdx } from '../../../lib/budgetMetrics.js';

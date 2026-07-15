@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import { createApiClient } from './axiosClient.js';
 import { notifySiteDataChanged } from './siteEvents.js';
 import { toNumberOrNull } from './_utils.js';

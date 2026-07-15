@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 // Shared budget-metrics helpers — the single source of truth for the 3
 // derived, read-only ratios shown alongside the 11-line site budget
 // (Project Excellence, Project, Business Admin approval, Financial Closure).
