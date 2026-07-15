@@ -133,6 +133,8 @@ class RejectSiteRequest(BaseModel):
 
 class SaveDetailsRequest(BaseModel):
     """Partial 17-field form save — all fields optional so exec can save incrementally."""
+    name: Optional[str] = None
+    city: Optional[str] = None
     model: Optional[str] = None
     spoc_name: Optional[str] = Field(default=None, validation_alias=AliasChoices("spoc_name", "spocName"))
     google_pin: Optional[str] = Field(default=None, validation_alias=AliasChoices("google_pin", "googlePin"))

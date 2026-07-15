@@ -81,9 +81,17 @@ def _assert_not_self_approval(actor: dict, site: models.Site) -> None:
 
 
 def _assert_can_edit_details(actor: dict, site: models.Site) -> None:
-    """Executives may fill details only for their own or assigned sites."""
+    """Executives may fill details only for their own or assigned sites,
+    and only while the site is still in SHORTLISTED status (i.e. before
+    they submit for review). After submission, only supervisors may edit."""
     if (actor.get("role") or "").lower() != "executive":
         return
+    # Executives cannot edit after submitting for review.
+    if site.status != SiteStatus.SHORTLISTED.value:
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Cannot edit details after submitting for review. Only the supervisor can edit at this stage.",
+        )
     actor_id = str(actor["sub"])
     if str(site.submitted_by) == actor_id or str(site.assigned_to or "") == actor_id:
         return
@@ -256,6 +264,8 @@ def _pipeline_before_incoming(site: models.Site, details: dict) -> tuple[dict, d
     """Build the (before, incoming) pipeline-field snapshots the audit differ
     compares. Shared by save + submit so the field set can't drift."""
     before = {
+        "name": site.name,
+        "city": site.city,
         "model": site.model,
         "spoc_name": site.spoc_name,
         "google_pin": site.google_maps_pin,
@@ -264,6 +274,8 @@ def _pipeline_before_incoming(site: models.Site, details: dict) -> tuple[dict, d
         "area_sqft": float(site.area_sqft) if site.area_sqft is not None else None,
     }
     incoming = {
+        "name": details.get("name"),
+        "city": details.get("city"),
         "model": details.get("model"),
         "spoc_name": details.get("spoc_name"),
         "google_pin": details.get("google_pin"),
@@ -607,18 +619,26 @@ async def svc_revive_site(
     the column), we fall back to draft_submitted so the site is at least
     re-visible in the pipeline.
     """
-    if (actor.get("role") or "").lower() != "supervisor":
+    role = (actor.get("role") or "").lower()
+    if role not in ["supervisor", "business_admin"]:
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="Only the supervisor can revive an archived site.",
+            detail="Only the supervisor or business admin can revive a site.",
         )
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        if site.status != SiteStatus.ARCHIVED.value:
+        
+        allowed_statuses = [SiteStatus.ARCHIVED.value]
+        if role == "business_admin":
+            allowed_statuses.append(SiteStatus.REJECTED.value)
+
+        if site.status not in allowed_statuses:
             raise HTTPException(
                 status_code=http_status.HTTP_409_CONFLICT,
-                detail=f"Site is not archived (current status={site.status}).",
+                detail=f"Site cannot be revived from its current status (current status={site.status}).",
             )
+            
+        old_status = site.status
         prev = site.archived_from_status or SiteStatus.DRAFT_SUBMITTED.value
         site.status = prev
         site.archived_at = None
@@ -628,7 +648,7 @@ async def svc_revive_site(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor["name"],
             action="revive",
-            from_status=SiteStatus.ARCHIVED.value, to_status=prev,
+            from_status=old_status, to_status=prev,
             detail=f"reason={(note or '').strip() or 'n/a'}",
         )
         owners = await recipients_for_site_owner(session, site=site)

@@ -77,20 +77,16 @@ function snapshotValue(value, suffix = '') {
   return `${value}${suffix}`;
 }
 
-function money(value) {
-  if (value == null || value === '') return '—';
-  const num = Number(value);
-  if (!Number.isFinite(num)) return '—';
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(num);
+// Commercial figures — rupee amounts and percentages — are masked in the NSO
+// property-readiness snapshot. NSO reviewers audit the physical property, not
+// the deal terms, so the raw values are hidden here. A present value shows as
+// dots; an empty field stays '—' so the layout reads the same as before.
+function maskMoney(value) {
+  return (value == null || value === '') ? '—' : '₹ ••••••';
 }
 
-function percent(value) {
-  if (value == null || value === '') return '—';
-  return `${value}%`;
+function maskPercent(value) {
+  return (value == null || value === '') ? '—' : '•• %';
 }
 
 function SnapshotItem({ label, value, mono = false, wide = false }) {
@@ -136,26 +132,22 @@ function PropertySnapshotPanel({ snapshot = {} }) {
         <SnapshotItem label="Visit date" value={snapshotValue(snapshot.visitDate)} mono />
         <SnapshotItem label="Model" value={snapshotValue(snapshot.model)} />
         <SnapshotItem label="CA code" value={snapshotValue(snapshot.caCode)} mono />
-        <SnapshotItem label="Finance amount" value={money(snapshot.financeAmount)} mono />
+        <SnapshotItem label="Finance amount" value={maskMoney(snapshot.financeAmount)} mono />
         <SnapshotItem label="KYC" value={snapshot.kycVerified ? 'Verified' : 'Pending'} />
         <SnapshotItem label="Rent type" value={snapshot.rentType ? pretty(snapshot.rentType) : '—'} />
-        <SnapshotItem label="Rent / MG" value={money(snapshot.expectedRent)} mono />
-        <SnapshotItem label="Revenue share" value={percent(snapshot.expectedRevsharePct)} mono />
+        <SnapshotItem label="Rent / MG" value={maskMoney(snapshot.expectedRent)} mono />
+        <SnapshotItem label="Revenue share" value={maskPercent(snapshot.expectedRevsharePct)} mono />
         <SnapshotItem
           label="Escalation"
-          value={
-            snapshot.expectedEscalationPct != null
-              ? `${snapshot.expectedEscalationPct}% every ${snapshot.expectedEscalationYears || 1} yr`
-              : '—'
-          }
+          value={maskPercent(snapshot.expectedEscalationPct)}
           mono
         />
         <SnapshotItem label="Score" value={snapshotValue(snapshot.score)} mono />
-        <SnapshotItem label="Est. sales" value={money(snapshot.estimatedMonthlySales)} mono />
+        <SnapshotItem label="Est. sales" value={maskMoney(snapshot.estimatedMonthlySales)} mono />
         <SnapshotItem label="Carpet area" value={snapshotValue(snapshot.carpetAreaSqft, ' sqft')} mono />
-        <SnapshotItem label="CAM" value={money(snapshot.camCharges)} mono />
-        <SnapshotItem label="Deposit" value={money(snapshot.securityDeposit)} mono />
-        <SnapshotItem label="Brokerage" value={money(snapshot.brokerage)} mono />
+        <SnapshotItem label="CAM" value={maskMoney(snapshot.camCharges)} mono />
+        <SnapshotItem label="Deposit" value={maskMoney(snapshot.securityDeposit)} mono />
+        <SnapshotItem label="Brokerage" value={maskMoney(snapshot.brokerage)} mono />
         <SnapshotItem label="Lock-in" value={snapshotValue(snapshot.lockInMonths, ' months')} mono />
         <SnapshotItem label="Tenure" value={snapshotValue(snapshot.tenureMonths, ' months')} mono />
         <SnapshotItem label="Rent-free" value={snapshotValue(snapshot.rentFreeDays, ' days')} mono />
