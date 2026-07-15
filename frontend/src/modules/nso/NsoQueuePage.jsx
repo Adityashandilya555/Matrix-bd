@@ -139,7 +139,7 @@ export default function NsoQueuePage() {
       ? items
       : items.filter((item) => TILE_STAGES[filter].includes(stageOf(item)))
   ), [items, filter]);
-  const COLS = '120px minmax(220px, 1fr) 130px 150px 150px 160px 110px';
+  const COLS = '120px minmax(220px, 1fr) 130px 150px 160px 110px';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18, height: 'calc(100vh - 152px)', minHeight: 400 }}>
@@ -201,7 +201,6 @@ export default function NsoQueuePage() {
             <span>Code</span>
             <span>Site</span>
             <span>City</span>
-            <span>CA code</span>
             <span>Project</span>
             <span>NSO stage</span>
             <span style={{ textAlign: 'right' }}>Action</span>
@@ -238,7 +237,6 @@ export default function NsoQueuePage() {
                 </span>
               </span>
               <span style={{ color: 'var(--zm-fg-2)' }}>{row.city}</span>
-              <span style={{ fontFamily: 'var(--zm-font-mono)', color: 'var(--zm-fg)' }}>{row.caCode || '—'}</span>
               <StatusPill value={row.projectStatus} tone={row.projectStatus === 'done' ? 'var(--zm-success)' : 'var(--zm-copper)'}/>
               <StatusPill value={STATUS_LABELS[row.currentStage] || row.currentStage} tone={row.nsoStatus === 'complete' ? 'var(--zm-success)' : 'var(--zm-accent)'}/>
               <button

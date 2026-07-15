@@ -597,7 +597,7 @@ export default function NsoReviewPage() {
         file="No. 10"
         eyebrow={`NSO · ${review.siteCode}`}
         title={`${review.siteName} opening`}
-        lede={`${review.city} · CA ${review.caCode || 'pending'} · Project ${pretty(review.projectStatus)}`}
+        lede={`${review.city} · ${review.caCode || 'CA pending'} · Project ${pretty(review.projectStatus)}`}
         right={<HeaderTag icon="home" label={pretty(review.nsoStatus)}/>}
       />
 
@@ -796,7 +796,7 @@ export default function NsoReviewPage() {
             Readiness summary
           </div>
           <div style={{ display: 'grid', gap: 12, marginTop: 14 }}>
-            <div><strong>Finance</strong><br/><span style={{ color: 'var(--zm-fg-3)' }}>{pretty(review.financeStatus)} · CA {review.caCode || 'Pending'}</span></div>
+            <div><strong>Finance</strong><br/><span style={{ color: 'var(--zm-fg-3)' }}>{pretty(review.financeStatus)} · {review.caCode || 'CA pending'}</span></div>
             <div><strong>Project</strong><br/><span style={{ color: 'var(--zm-fg-3)' }}>{pretty(review.projectStatus)} · {pretty(review.projectCurrentStage)}</span></div>
             <div><strong>NSO</strong><br/><span style={{ color: 'var(--zm-fg-3)' }}>{pretty(review.nsoStatus)} · {pretty(review.currentStage)}</span></div>
           </div>
