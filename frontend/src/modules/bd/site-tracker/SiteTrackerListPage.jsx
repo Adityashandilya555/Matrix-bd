@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Icon from '../../shared/primitives/Icon.jsx';
 import { listSites } from '../../../services/api/siteService.js';
-import { siteTrackerDetailRoute, bdSiteStatusRoute } from '../../../router/routes.js';
+import { siteTrackerDetailRoute, bdSiteStagesRoute, bdSiteFinanceRoute } from '../../../router/routes.js';
 import { useSiteDataRefresh } from '../../../hooks/useSiteDataRefresh.js';
 
 // A site becomes a staging tracker item as soon as BD uploads the signed LOI.
@@ -37,14 +37,18 @@ const STAGE_LABELS = {
   pushed_to_payments: 'Payments handoff',
 };
 
+// Every node is clickable — clicking opens that department's focused detail page
+// so BD can see what each downstream module has done (recce/2D/3D/BOQ, quality
+// audit, licences, budgeting). CA opens the finance workflow page instead.
 const PIPELINE_NODES = [
-  { id: 'loi',     label: 'BD LOI Signed',       short: 'LOI',     icon: 'file' },
-  { id: 'legal',  label: 'Legal & Compliance',  short: 'Legal',   icon: 'shield', interactive: true },
-  { id: 'ca',     label: 'CA / Commercial Code', short: 'CA Code', icon: 'rupee' },
-  { id: 'design', label: 'Design / Technical',  short: 'Design',  icon: 'grid' },
-  { id: 'project', label: 'Project Execution',  short: 'Project', icon: 'box' },
-  { id: 'nso',    label: 'NSO',                 short: 'NSO',     icon: 'home' },
-  { id: 'launch', label: 'Site Launched',       short: 'Launch',  icon: 'flag' },
+  { id: 'loi',        label: 'BD LOI Signed',       short: 'LOI',        icon: 'file' },
+  { id: 'legal',      label: 'Legal & Compliance',  short: 'Legal',      icon: 'shield' },
+  { id: 'ca',         label: 'CA / Commercial Code', short: 'CA Code',   icon: 'rupee' },
+  { id: 'design',     label: 'Design / Technical',  short: 'Design',     icon: 'grid' },
+  { id: 'excellence', label: 'Project Excellence',  short: 'Excellence', icon: 'trend' },
+  { id: 'project',    label: 'Project Execution',   short: 'Project',    icon: 'box' },
+  { id: 'nso',        label: 'NSO',                 short: 'NSO',        icon: 'home' },
+  { id: 'launch',     label: 'Site Launched',       short: 'Launch',     icon: 'flag' },
 ];
 
 const PIPELINE_NODE_WIDTH = 142;
@@ -63,18 +67,6 @@ const ACTIVE_PROJECT_STATUSES = new Set(['pending', 'allocated', 'budgeting', 'i
 function pretty(value) {
   if (!value) return 'Pending';
   return String(value).replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
-}
-
-function statusTone(value) {
-  const displayValue = value === 'signed' ? 'executed' : value;
-  if (!displayValue || displayValue === 'pending') return { color: 'var(--zm-fg-3)', label: 'Pending' };
-  if (['positive', 'complete', 'executed', 'registered', 'yes'].includes(displayValue)) {
-    return { color: 'var(--zm-success, #2D7A48)', label: pretty(displayValue) };
-  }
-  if (['negative', 'rejected', 'no'].includes(displayValue)) {
-    return { color: 'var(--zm-danger, #B91C1C)', label: pretty(displayValue) };
-  }
-  return { color: 'var(--zm-accent)', label: pretty(displayValue) };
 }
 
 function legalNodeState(site) {
@@ -111,6 +103,13 @@ function nodeState(site, nodeId) {
     if (site.designStatus === 'approved') return 'complete';
     if (site.financeStatus === 'approved' && site.status === 'pushed_to_payments') return 'active';
   }
+  if (nodeId === 'excellence') {
+    // Budgeting (post-GFC). Approximate node colour; the detail page reads the
+    // real budget row. Active once design is approved, complete once execution done.
+    if (site.designStatus === 'approved') {
+      return site.projectStatus === 'done' ? 'complete' : 'active';
+    }
+  }
   if (nodeId === 'project') {
     if (site.projectStatus === 'done') return 'complete';
     if (site.designStatus === 'approved') {
@@ -128,41 +127,8 @@ function nodeState(site, nodeId) {
   return 'future';
 }
 
-function stageCopy(site) {
-  if (site.isLaunched || site.launchStatus === 'launched') return 'Site launched and workflow complete';
-  if (site.nsoStatus === 'complete') return 'NSO complete, launch approval is active';
-  if (site.projectStatus === 'done') return 'Project completed, NSO is active';
-  if (site.designStatus === 'approved') return 'Design approved, Project Execution is active';
-  const legalState = legalNodeState(site);
-  if (legalState === 'rejected') return 'BD notified, legal correction required';
-  if (legalState === 'complete') return 'Legal cleared, ready for downstream handoff';
-  if (legalState === 'active') return 'Legal team is updating DDR, agreement, or licensing';
-  return 'Signed LOI received, awaiting Legal action';
-}
-
-function StatusChip({ value, compact = false }) {
-  const t = statusTone(value);
-  return (
-    <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: compact ? 20 : 22,
-      padding: compact ? '0 7px' : '0 8px',
-      borderRadius: 999,
-      border: `1px solid ${t.color}`,
-      color: t.color,
-      fontFamily: 'var(--zm-font-body)',
-      fontWeight: 800,
-      fontSize: compact ? 10 : 10.5,
-      letterSpacing: '0.1em',
-      textTransform: 'uppercase',
-      whiteSpace: 'nowrap',
-    }}>
-      {t.label}
-    </span>
-  );
-}
+// The stage narrative and per-stage chips now live behind the clickable nodes
+// and the detail page, so nothing status-related renders inline on the row.
 
 function FilterBar({ filter, setFilter, query, setQuery }) {
   return (
@@ -235,22 +201,20 @@ function FilterBar({ filter, setFilter, query, setQuery }) {
   );
 }
 
-function PipelineNode({ site, node, onOpenLegal }) {
+function PipelineNode({ site, node, onOpenStage }) {
   const state = nodeState(site, node.id);
   const tone = STATUS_TONES[state] || STATUS_TONES.future;
-  const interactive = node.interactive;
   const label =
     state === 'complete' ? (node.id === 'loi' ? 'Done' : 'Complete') :
-    state === 'active' ? (['ca', 'project', 'nso', 'launch'].includes(node.id) ? 'Pending' : 'Open') :
+    state === 'active' ? (['ca', 'excellence', 'project', 'nso', 'launch'].includes(node.id) ? 'Pending' : 'Open') :
     state === 'rejected' ? 'Rejected' :
     'Queued';
 
   return (
     <button
       type="button"
-      onClick={interactive ? () => onOpenLegal(site) : undefined}
-      disabled={!interactive}
-      title={interactive ? 'Open Legal status' : `${node.label} will be connected in a later module`}
+      onClick={() => onOpenStage(site, node.id)}
+      title={`View ${node.label} status`}
       style={{
         position: 'relative',
         zIndex: 2,
@@ -261,13 +225,13 @@ function PipelineNode({ site, node, onOpenLegal }) {
         border: `1px solid ${tone.border}`,
         background: tone.bg,
         color: state === 'future' ? 'var(--zm-fg-3)' : 'var(--zm-fg)',
-        cursor: interactive ? 'pointer' : 'default',
-        opacity: state === 'future' ? 0.76 : 1,
+        cursor: 'pointer',
+        opacity: state === 'future' ? 0.82 : 1,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'flex-start',
         justifyContent: 'space-between',
-        boxShadow: interactive ? 'var(--zm-shadow-1)' : 'none',
+        boxShadow: 'var(--zm-shadow-1)',
         textAlign: 'left',
         textDecoration: 'none',
       }}
@@ -332,7 +296,35 @@ function PipelineConnector({ from, to }) {
   );
 }
 
-function PipelineRow({ site, onOpenLegal, onOpenDetail }) {
+function FooterButton({ onClick, icon, children, primary = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        height: 34,
+        padding: '0 14px',
+        border: primary ? '1px solid var(--zm-accent)' : '1px solid var(--zm-line)',
+        borderRadius: 8,
+        background: primary ? 'var(--zm-accent-soft, var(--zm-surface-2))' : 'var(--zm-surface)',
+        color: primary ? 'var(--zm-accent)' : 'var(--zm-fg)',
+        fontFamily: 'var(--zm-font-body)',
+        fontSize: 12,
+        fontWeight: 800,
+        cursor: 'pointer',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {icon && <Icon name={icon} size={12}/>}
+      {children}
+    </button>
+  );
+}
+
+function PipelineRow({ site, onOpenStage, onOpenDetail }) {
   return (
     <section style={{
       background: 'var(--zm-surface)',
@@ -341,101 +333,80 @@ function PipelineRow({ site, onOpenLegal, onOpenDetail }) {
       boxShadow: 'var(--zm-shadow-1)',
       overflow: 'hidden',
     }}>
+      {/* Header: code chip · site name, then a muted city/stage subline. */}
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(220px, 0.72fr) minmax(620px, 1.7fr) 120px',
-        gap: 16,
-        alignItems: 'center',
-        padding: '16px 16px 14px',
+        display: 'flex', flexDirection: 'column', gap: 3,
+        padding: '14px 16px 10px',
       }}>
-        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span style={{
-            fontFamily: 'var(--zm-font-mono)',
-            fontSize: 11,
-            color: 'var(--zm-fg-3)',
-            letterSpacing: '0.06em',
+            fontFamily: 'var(--zm-font-mono)', fontSize: 10.5,
+            color: 'var(--zm-fg-3)', letterSpacing: '0.06em',
+            padding: '2px 7px', borderRadius: 5,
+            border: '1px solid var(--zm-line)', background: 'var(--zm-surface-2)',
           }}>
             {site.code || site.id}
           </span>
           <span style={{
-            fontFamily: 'var(--zm-font-body)',
-            fontSize: 15,
-            fontWeight: 800,
-            color: 'var(--zm-fg)',
-            lineHeight: 1.2,
+            fontFamily: 'var(--zm-font-body)', fontSize: 16, fontWeight: 800,
+            color: 'var(--zm-fg)', lineHeight: 1.2,
           }}>
             {site.name}
           </span>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>
-            {site.city || 'City not set'} - {STAGE_LABELS[site.status] || pretty(site.status)}
-          </span>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)' }}>
-            {stageCopy(site)}
-          </span>
         </div>
+        <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)' }}>
+          {site.city || 'City not set'} · {STAGE_LABELS[site.status] || pretty(site.status)}
+        </span>
+      </div>
 
-        <div style={{ minWidth: 0, overflowX: 'auto', padding: '4px 2px' }}>
-          <div style={{
-            position: 'relative',
-            display: 'flex',
-            alignItems: 'center',
-            width: 'max-content',
-            minWidth: '100%',
-          }}>
-            {PIPELINE_NODES.map((node, index) => (
-              <React.Fragment key={node.id}>
-                {index > 0 && (
-                  <PipelineConnector
-                    from={{ site, node: PIPELINE_NODES[index - 1] }}
-                    to={{ site, node }}
-                  />
-                )}
-                <PipelineNode
-                  site={site}
-                  node={node}
-                  onOpenLegal={onOpenLegal}
+      {/* Pipeline — full width, scrolls horizontally without clipping any control. */}
+      <div style={{ minWidth: 0, overflowX: 'auto', padding: '4px 16px 12px' }}>
+        <div style={{
+          position: 'relative',
+          display: 'flex',
+          alignItems: 'center',
+          width: 'max-content',
+          minWidth: '100%',
+        }}>
+          {PIPELINE_NODES.map((node, index) => (
+            <React.Fragment key={node.id}>
+              {index > 0 && (
+                <PipelineConnector
+                  from={{ site, node: PIPELINE_NODES[index - 1] }}
+                  to={{ site, node }}
                 />
-              </React.Fragment>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button
-            type="button"
-            onClick={() => onOpenDetail(site)}
-            style={{
-              height: 34,
-              padding: '0 12px',
-              border: '1px solid var(--zm-line)',
-              borderRadius: 8,
-              background: 'var(--zm-bg)',
-              color: 'var(--zm-fg)',
-              fontFamily: 'var(--zm-font-body)',
-              fontSize: 12,
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Detail <Icon name="arrow" size={12}/>
-          </button>
+              )}
+              <PipelineNode
+                site={site}
+                node={node}
+                onOpenStage={onOpenStage}
+              />
+            </React.Fragment>
+          ))}
         </div>
       </div>
+
+      {/* Footer: a hint on the left, the single "View details" action bottom-right.
+          Per-stage status now lives behind each clickable node / the detail page. */}
       <div style={{
         display: 'flex',
         flexWrap: 'wrap',
-        gap: 8,
+        gap: 10,
+        rowGap: 8,
+        alignItems: 'center',
+        justifyContent: 'space-between',
         padding: '10px 16px',
         borderTop: '1px solid var(--zm-line-faint)',
         background: 'var(--zm-surface-2)',
       }}>
-        <StatusChip value={site.legalDdStatus}/>
-        <StatusChip value={site.agreementStatus}/>
-        <StatusChip value={site.licensingStatus}/>
+        <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>
+          Click any stage to view its detail.
+        </span>
+        <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+          <FooterButton onClick={() => onOpenDetail(site)} icon="arrow" primary>
+            View details
+          </FooterButton>
+        </div>
       </div>
     </section>
   );
@@ -512,10 +483,11 @@ export default function SiteTrackerListPage() {
     navigate(siteTrackerDetailRoute(site.id));
   }, [navigate]);
 
-  // Legal node opens the single canonical Legal status page — the same page the
-  // staging "View" button and the DD-failed queue navigate to. One Legal surface.
-  const openLegal = React.useCallback((site) => {
-    navigate(bdSiteStatusRoute(site.id));
+  // Clicking a pipeline node opens that department's focused detail page. CA
+  // goes to the finance workflow page; every other node shows read-only detail.
+  const openStage = React.useCallback((site, nodeId) => {
+    if (nodeId === 'ca') { navigate(bdSiteFinanceRoute(site.id)); return; }
+    navigate(bdSiteStagesRoute(site.id, nodeId));
   }, [navigate]);
 
   return (
@@ -570,7 +542,7 @@ export default function SiteTrackerListPage() {
             <PipelineRow
               key={site.id}
               site={site}
-              onOpenLegal={openLegal}
+              onOpenStage={openStage}
               onOpenDetail={openDetail}
             />
           ))}

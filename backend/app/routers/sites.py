@@ -25,6 +25,7 @@ from app.domain.schemas.site import (
     SiteListResponse,
     SiteResponse,
 )
+from app.domain.schemas.site_stage_status import SiteStageStatusResponse
 from app.domain.schemas.site_tracker import SiteTrackerResponse
 from app.domain.state_machine import SiteStatus
 from app.rbac.guards import require_role
@@ -137,6 +138,28 @@ async def get_site_tracker(
     """Return the site mirror columns + DD/agreement/licensing payloads."""
     from app.services.site_tracker_service import build_tracker_response
     return await build_tracker_response(db, site_id=site_id, tenant_id=tenant_id, current_user=current_user)
+
+
+@router.get(
+    "/{site_id}/stage-status",
+    response_model=SiteStageStatusResponse,
+    summary="BD-safe read-only per-stage status detail (design/project/nso sub-status + timeline)",
+)
+async def get_site_stage_status(
+    site_id: str,
+    db: DbDep,
+    current_user: Annotated[
+        dict, Depends(require_role(Role.EXECUTIVE, Role.SUPERVISOR))
+    ],
+    tenant_id: TenantId,
+) -> SiteStageStatusResponse:
+    """Return per-stage sub-status detail so BD can *view* what each downstream
+    module has completed (recce/2D/3D/BOQ, quality audit, licences, …) plus a
+    recent stage-events timeline. Visibility only — no action controls."""
+    from app.services.site_stage_status_service import build_stage_status_response
+    return await build_stage_status_response(
+        db, site_id=site_id, tenant_id=tenant_id, current_user=current_user,
+    )
 
 
 # ── Action aliases ─────────────────────────────────────────────────────────

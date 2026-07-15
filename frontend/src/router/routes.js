@@ -10,6 +10,8 @@ export const ROUTES = {
   TEAM:                   '/team',
   DD_FAILED:              '/dd-failed',
   BD_SITE_STATUS:         '/sites/:siteId/status',
+  BD_SITE_FINANCE:        '/sites/:siteId/finance',
+  BD_SITE_STAGES:         '/sites/:siteId/stages',
   LEGAL:                  '/legal',
   LEGAL_OVERVIEW:         '/legal/overview',
   LEGAL_CHANGE_REQUESTS:  '/legal/change-requests',
@@ -130,6 +132,15 @@ export function projectExcellenceSiteRoute(siteId) {
 
 export function bdSiteStatusRoute(siteId) {
   return ROUTES.BD_SITE_STATUS.replace(':siteId', siteId);
+}
+
+export function bdSiteFinanceRoute(siteId) {
+  return ROUTES.BD_SITE_FINANCE.replace(':siteId', siteId);
+}
+
+export function bdSiteStagesRoute(siteId, focusStage) {
+  const base = ROUTES.BD_SITE_STAGES.replace(':siteId', siteId);
+  return focusStage ? `${base}?stage=${encodeURIComponent(focusStage)}` : base;
 }
 
 export function siteTrackerDetailRoute(siteId) {

@@ -28,6 +28,8 @@ import DesignReviewPage      from '../modules/design/DesignReviewPage.jsx';
 import ModuleHistoryPage     from '../modules/module-history/ModuleHistoryPage.jsx';
 import ModuleProcessFlowPage from '../modules/module-process-flow/ModuleProcessFlowPage.jsx';
 import SiteStatusPage        from '../modules/bd/site-status/SiteStatusPage.jsx';
+import SiteFinancePage       from '../modules/bd/site-finance/SiteFinancePage.jsx';
+import SiteStageStatusPage   from '../modules/bd/site-stage-status/SiteStageStatusPage.jsx';
 import DdFailedPage          from '../modules/bd/dd-failed/DdFailedPage.jsx';
 import SiteTrackerListPage   from '../modules/bd/site-tracker/SiteTrackerListPage.jsx';
 import SiteTrackerDetailPage from '../modules/bd/site-tracker/SiteTrackerDetailPage.jsx';
@@ -498,6 +500,16 @@ export default function AppRouter() {
         <Route path={ROUTES.BD_SITE_STATUS} element={
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <SiteStatusPage/>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.BD_SITE_FINANCE} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <SiteFinancePage/>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.BD_SITE_STAGES} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <SiteStageStatusPage/>
           </RequireRole>
         }/>
 
