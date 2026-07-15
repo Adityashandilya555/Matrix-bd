@@ -86,7 +86,7 @@ function StatusPill({ value, tone = 'var(--zm-accent)' }) {
   );
 }
 
-const COLS = '120px minmax(220px, 1fr) 130px 150px 160px';
+const COLS = '120px minmax(220px, 1fr) 130px 160px';
 
 function QueueTable({ rows, onOpen, limit, style }) {
   const displayRows = limit ? rows.slice(0, limit) : rows;
@@ -110,7 +110,6 @@ function QueueTable({ rows, onOpen, limit, style }) {
         <span>Code</span>
         <span>Site</span>
         <span>City</span>
-        <span>CA code</span>
         <span>NSO stage</span>
       </div>
       <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -146,7 +145,6 @@ function QueueTable({ rows, onOpen, limit, style }) {
               )}
             </span>
             <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-2)' }}>{row.city}</span>
-            <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, color: 'var(--zm-fg)' }}>{row.caCode || '—'}</span>
             <StatusPill
               value={STAGE_LABELS[stageOf(row)] || row.currentStage}
               tone={stageOf(row) === 'complete' ? 'var(--zm-success)' : 'var(--zm-accent)'}
