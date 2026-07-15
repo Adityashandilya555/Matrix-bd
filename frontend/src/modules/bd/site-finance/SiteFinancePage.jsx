@@ -3,6 +3,7 @@ import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import { getSiteTrackerView } from '../../../services/api/siteTrackerApi.js';
+import { siteTrackerDetailRoute } from '../../../router/routes.js';
 import { useSession } from '../../../state/SessionContext.jsx';
 import { useSiteDataRefresh } from '../../../hooks/useSiteDataRefresh.js';
 import FinancePanel from './FinancePanel.jsx';
@@ -68,7 +69,7 @@ export default function SiteFinancePage() {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger, #B91C1C)' }}>{state.error}</div>
-        <BackButton onClick={() => navigate(-1)}/>
+        <BackButton onClick={() => navigate(siteTrackerDetailRoute(siteId))}/>
       </div>
     );
   }
@@ -79,7 +80,7 @@ export default function SiteFinancePage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <BackButton onClick={() => navigate(-1)}/>
+      <BackButton onClick={() => navigate(siteTrackerDetailRoute(siteId))}/>
       <PageHeader
         file="No. 08"
         eyebrow={`Site · ${displayCode}`}

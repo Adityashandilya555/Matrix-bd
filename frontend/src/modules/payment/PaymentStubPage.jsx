@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import { listSites } from '../../services/api/siteService.js';
-import { ROUTES, siteTrackerDetailRoute } from '../../router/routes.js';
+import { ROUTES, bdSiteFinanceRoute } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 import { useSession } from '../../state/SessionContext.jsx';
 import { filterByScope } from '../../rbac/scope.js';
@@ -414,7 +414,7 @@ export default function PaymentStubPage() {
   }, [rows, q, filter]);
 
   const openPayment = (site) => {
-    navigate(`${siteTrackerDetailRoute(site.siteId)}?node=ca`);
+    navigate(bdSiteFinanceRoute(site.siteId));
   };
 
   return (
