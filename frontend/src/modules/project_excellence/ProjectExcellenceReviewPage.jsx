@@ -13,6 +13,7 @@ import {
 } from '../../services/api/projectExcellenceApi.js';
 import { ROUTES } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
+import { CIVIL_MEP_IDX, formatRatio, sumByIdx } from '../../lib/budgetMetrics.js';
 
 const DEFAULT_BUDGET = [
   'Professional Fees',
@@ -242,6 +243,7 @@ export default function ProjectExcellenceReviewPage() {
   );
 
   const budgetTotal = budgetItems.reduce((s, item) => s + (Number(item.amount) || 0), 0);
+  const civilMepSum = sumByIdx(budgetItems, CIVIL_MEP_IDX);
   const canEditBudget = !isBusinessAdmin && state?.budgetStatus && ['draft', 'rejected'].includes(state.budgetStatus);
   const canSupervisorReview = isSupervisor && state?.budgetStatus === 'pending_supervisor';
   const canAdminReview = isBusinessAdmin && state?.budgetStatus === 'pending_admin';
@@ -355,6 +357,23 @@ export default function ProjectExcellenceReviewPage() {
               />
             </div>
           ))}
+        </div>
+
+        {/* Auto-calculated, read-only. Recompute live; "—" when divisor is empty/0. */}
+        <div className="zm-label">Calculated metrics · read-only</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(240px, 1fr))', gap: 10, marginBottom: 18 }}>
+          <MetricField
+            label="Civil, Interior & MEP Cost per sqft"
+            value={formatRatio(civilMepSum, areaFields.total_indoor_area_sqft)}
+          />
+          <MetricField
+            label="CAPEX Cost per sqft"
+            value={formatRatio(budgetTotal, areaFields.total_area_sqft)}
+          />
+          <MetricField
+            label="CAPEX per Cover"
+            value={formatRatio(budgetTotal, areaFields.covers)}
+          />
         </div>
 
         {/* Line items */}
@@ -500,6 +519,25 @@ export default function ProjectExcellenceReviewPage() {
           </div>
         )}
       </SectionCard>
+    </div>
+  );
+}
+
+function MetricField({ label, value }) {
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'minmax(140px, 1fr) auto',
+      gap: 10,
+      alignItems: 'center',
+      minHeight: 44,
+      padding: '6px 12px',
+      borderRadius: 8,
+      border: '1px dashed var(--zm-line)',
+      background: 'var(--zm-surface-2)',
+    }}>
+      <span style={{ fontWeight: 700, fontSize: 12.5, color: 'var(--zm-fg-3)' }}>{label}</span>
+      <span style={{ fontFamily: 'var(--zm-font-mono)', fontWeight: 900, color: 'var(--zm-fg)' }}>{value}</span>
     </div>
   );
 }
