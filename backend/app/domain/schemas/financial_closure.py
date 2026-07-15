@@ -62,6 +62,12 @@ class FCStateResponse(BaseModel):
     gfc_budget_total: Optional[float] = None
     closure_budget_total: Optional[float] = None
     variation_total: Optional[float] = None
+    # Area & covers are entered once at Project Excellence (gfc phase) and are
+    # not re-edited at closure — surfaced read-only so Closure can show the
+    # per-sqft / per-cover metrics without asking the user to re-enter them.
+    total_indoor_area_sqft: Optional[float] = None
+    total_area_sqft: Optional[float] = None
+    covers: Optional[int] = None
     lines: list[FCBudgetLineOut] = Field(default_factory=list)
     supervisor_comments: Optional[str] = None
     admin_comments: Optional[str] = None

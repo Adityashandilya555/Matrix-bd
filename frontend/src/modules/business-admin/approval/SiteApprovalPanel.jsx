@@ -1,5 +1,7 @@
+// skipcq: JS-0833
 import React from 'react';
 import { T, Icon, Card, Button, StatusPill, Skeleton, inr, TABULAR } from '../ui/kit.jsx';
+import { CIVIL_MEP_IDX, formatRatio, sumByIdx } from '../../../lib/budgetMetrics.js';
 
 // Everything pending on a single site, grouped by approval type, actionable in
 // one place. Rendered inside the Approval Center drawer. Each block owns its own
@@ -207,9 +209,6 @@ function PaymentBlock({ site, onApprove, onReject }) {
 }
 
 // ── Project budget (tier-2 admin) ────────────────────────────────────────────
-// Indices (1-based) whose sum feeds the "Civil, Interior & MEP" metric — must
-// match the same constant on the executive form (ProjectReviewPage).
-const CIVIL_MEP_IDX = [2, 3, 4, 5, 8];
 
 const present = (value, fallback = '—') => (value == null || value === '' ? fallback : value);
 
@@ -505,10 +504,7 @@ function BudgetBlock({ site, fetchDetail, onDecide }) {
   const total = detail.budgetTotal != null
     ? detail.budgetTotal
     : items.reduce((s, it) => s + (Number(it.amount) || 0), 0);
-  const amountAt = (idx) => Number(items.find((it) => it.idx === idx)?.amount) || 0;
-  const civilMepSum = CIVIL_MEP_IDX.reduce((s, idx) => s + amountAt(idx), 0);
-  // ratio in whole rupees, or "—" when the divisor is missing / zero.
-  const metric = (numer, div) => (div > 0 ? inr(Math.round(numer / div)) : '—');
+  const civilMepSum = sumByIdx(items, CIVIL_MEP_IDX);
   const dim = (v, suffix = '') => (v != null ? `${v}${suffix}` : '—');
   return (
     <>
@@ -578,9 +574,9 @@ function BudgetBlock({ site, fetchDetail, onDecide }) {
 
       {/* Derived, read-only metrics. */}
       <div style={{ display: 'grid', gap: 6, marginBottom: 12 }}>
-        {metricRow('Civil, Interior & MEP / sqft', metric(civilMepSum, detail.totalIndoorAreaSqft))}
-        {metricRow('CAPEX / sqft', metric(total, detail.totalAreaSqft))}
-        {metricRow('CAPEX / cover', metric(total, detail.covers))}
+        {metricRow('Civil, Interior & MEP / sqft', formatRatio(civilMepSum, detail.totalIndoorAreaSqft))}
+        {metricRow('CAPEX / sqft', formatRatio(total, detail.totalAreaSqft))}
+        {metricRow('CAPEX / cover', formatRatio(total, detail.covers))}
       </div>
 
       {/* Admin sets the project initialization date as part of approval. */}

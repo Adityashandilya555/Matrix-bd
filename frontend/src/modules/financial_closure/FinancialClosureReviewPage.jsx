@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
@@ -14,6 +15,16 @@ import {
 } from '../../services/api/financialClosureApi.js';
 import { ROUTES } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
+import {
+  CIVIL_MEP_IDX,
+  computeRatio,
+  formatINR,
+  formatRatio,
+  formatRatioVariation,
+  formatVariation,
+  sumByIdx,
+  variationTone,
+} from '../../lib/budgetMetrics.js';
 
 const DEFAULT_LABELS = [
   'Professional Fees',
@@ -42,27 +53,6 @@ function linesFromState(state) {
       closureAmount: saved?.closureAmount == null ? '' : saved.closureAmount,
     };
   });
-}
-
-function formatINR(value) {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return '₹0';
-  return `₹${amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
-}
-
-// Variation = closure actual − GFC baseline. Over budget (positive) is red,
-// under budget (negative) is green, exactly on budget is muted.
-function variationTone(variation) {
-  const v = Number(variation) || 0;
-  if (v > 0) return 'var(--zm-danger)';
-  if (v < 0) return 'var(--zm-success)';
-  return 'var(--zm-fg-3)';
-}
-
-function formatVariation(variation) {
-  const v = Number(variation) || 0;
-  const sign = v > 0 ? '+' : v < 0 ? '−' : '';
-  return `${sign}${formatINR(Math.abs(v))}`;
 }
 
 function statusPill(value, tone = 'var(--zm-accent)') {
@@ -293,6 +283,49 @@ export default function FinancialClosureReviewPage() {
   const gfcTotal = lines.reduce((s, item) => s + (Number(item.gfcAmount) || 0), 0);
   const closureTotal = lines.reduce((s, item) => s + (Number(item.closureAmount) || 0), 0);
   const variationTotal = closureTotal - gfcTotal;
+  const displayGfcTotal = state?.gfcBudgetTotal ?? gfcTotal;
+  const displayClosureTotal = canEditBudget ? closureTotal : (state?.closureBudgetTotal ?? closureTotal);
+
+  // Area & covers are entered once at Project Excellence and carried through
+  // read-only — the 3 derived metrics below diff the GFC baseline against the
+  // closure actuals over the same fixed denominators.
+  const totalIndoorAreaSqft = state?.totalIndoorAreaSqft;
+  const totalAreaSqft = state?.totalAreaSqft;
+  const covers = state?.covers;
+  const civilMepGfcSum = sumByIdx(lines, CIVIL_MEP_IDX, 'gfcAmount');
+  const civilMepClosureSum = sumByIdx(lines, CIVIL_MEP_IDX, 'closureAmount');
+  const derivedMetrics = [
+    {
+      label: 'Civil, Interior & MEP per sqft',
+      gfc: formatRatio(civilMepGfcSum, totalIndoorAreaSqft),
+      closure: formatRatio(civilMepClosureSum, totalIndoorAreaSqft),
+      variation: formatRatioVariation(
+        computeRatio(civilMepClosureSum, totalIndoorAreaSqft),
+        computeRatio(civilMepGfcSum, totalIndoorAreaSqft),
+      ),
+      variationValue: (computeRatio(civilMepClosureSum, totalIndoorAreaSqft) ?? 0) - (computeRatio(civilMepGfcSum, totalIndoorAreaSqft) ?? 0),
+    },
+    {
+      label: 'CAPEX per sqft',
+      gfc: formatRatio(displayGfcTotal, totalAreaSqft),
+      closure: formatRatio(displayClosureTotal, totalAreaSqft),
+      variation: formatRatioVariation(
+        computeRatio(displayClosureTotal, totalAreaSqft),
+        computeRatio(displayGfcTotal, totalAreaSqft),
+      ),
+      variationValue: (computeRatio(displayClosureTotal, totalAreaSqft) ?? 0) - (computeRatio(displayGfcTotal, totalAreaSqft) ?? 0),
+    },
+    {
+      label: 'CAPEX per cover',
+      gfc: formatRatio(displayGfcTotal, covers),
+      closure: formatRatio(displayClosureTotal, covers),
+      variation: formatRatioVariation(
+        computeRatio(displayClosureTotal, covers),
+        computeRatio(displayGfcTotal, covers),
+      ),
+      variationValue: (computeRatio(displayClosureTotal, covers) ?? 0) - (computeRatio(displayGfcTotal, covers) ?? 0),
+    },
+  ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -504,14 +537,62 @@ export default function FinancialClosureReviewPage() {
             Total
           </div>
           <div style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 13, fontWeight: 700, textAlign: 'right', color: 'var(--zm-fg-2)' }}>
-            {formatINR(state?.gfcBudgetTotal ?? gfcTotal)}
+            {formatINR(displayGfcTotal)}
           </div>
           <div style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 13, fontWeight: 700, textAlign: 'right', color: 'var(--zm-fg)' }}>
-            {formatINR(canEditBudget ? closureTotal : (state?.closureBudgetTotal ?? closureTotal))}
+            {formatINR(displayClosureTotal)}
           </div>
           <div style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 13, fontWeight: 800, textAlign: 'right', color: variationTone(canEditBudget ? variationTotal : (state?.variationTotal ?? variationTotal)) }}>
             {formatVariation(canEditBudget ? variationTotal : (state?.variationTotal ?? variationTotal))}
           </div>
+        </div>
+
+        {/* Area & covers — entered once at Project Excellence, carried through read-only. */}
+        <div style={{
+          display: 'flex', gap: 20, flexWrap: 'wrap', marginTop: 16, padding: '10px 12px',
+          borderRadius: 8, background: 'var(--zm-surface-2)',
+        }}>
+          <div><div style={{ color: 'var(--zm-fg-3)', fontSize: 11 }}>Total Indoor Area</div>
+            <div style={{ fontFamily: 'var(--zm-font-mono)', color: 'var(--zm-fg)', fontSize: 12.5 }}>
+              {totalIndoorAreaSqft != null ? `${totalIndoorAreaSqft} sqft` : '—'}
+            </div></div>
+          <div><div style={{ color: 'var(--zm-fg-3)', fontSize: 11 }}>Total Area</div>
+            <div style={{ fontFamily: 'var(--zm-font-mono)', color: 'var(--zm-fg)', fontSize: 12.5 }}>
+              {totalAreaSqft != null ? `${totalAreaSqft} sqft` : '—'}
+            </div></div>
+          <div><div style={{ color: 'var(--zm-fg-3)', fontSize: 11 }}>Covers</div>
+            <div style={{ fontFamily: 'var(--zm-font-mono)', color: 'var(--zm-fg)', fontSize: 12.5 }}>
+              {covers != null ? covers : '—'}
+            </div></div>
+        </div>
+
+        {/* Calculated metrics — GFC baseline / Closure actual / Variation, same pattern as the line items above. */}
+        <div style={{ marginTop: 16 }}>
+          <div className="zm-label" style={{ marginBottom: 10 }}>Calculated metrics · read-only</div>
+          <div style={{
+            display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 10, marginBottom: 10,
+            paddingBottom: 8, borderBottom: '1px solid var(--zm-line)',
+          }}>
+            <div />
+            {['GFC', 'Closure actual', 'Variation'].map((h) => (
+              <div key={h} style={{
+                fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase',
+                color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', textAlign: 'right',
+              }}>
+                {h}
+              </div>
+            ))}
+          </div>
+          {derivedMetrics.map((metric) => (
+            <div key={metric.label} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 10, marginBottom: 8, alignItems: 'center' }}>
+              <div style={{ fontSize: 13, color: 'var(--zm-fg-2)' }}>{metric.label}</div>
+              <div style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 13, textAlign: 'right', color: 'var(--zm-fg-2)' }}>{metric.gfc}</div>
+              <div style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 13, textAlign: 'right', color: 'var(--zm-fg)' }}>{metric.closure}</div>
+              <div style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 13, fontWeight: 700, textAlign: 'right', color: variationTone(metric.variationValue) }}>
+                {metric.variation}
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* Comments (read-only feedback) */}

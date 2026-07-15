@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import { createApiClient } from './axiosClient.js';
 import { notifySiteDataChanged } from './siteEvents.js';
 import { toNumberOrNull } from './_utils.js';
@@ -47,6 +48,9 @@ function stateFromServer(row) {
     gfcBudgetTotal: row.gfc_budget_total,
     closureBudgetTotal: row.closure_budget_total,
     variationTotal: row.variation_total,
+    totalIndoorAreaSqft: row.total_indoor_area_sqft,
+    totalAreaSqft: row.total_area_sqft,
+    covers: row.covers,
     lines: (row.lines || []).map(lineFromServer),
     supervisorComments: row.supervisor_comments,
     adminComments: row.admin_comments,

@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
@@ -18,6 +19,7 @@ import {
 } from '../../services/api/projectApi.js';
 import { ROUTES } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
+import { CIVIL_MEP_IDX, formatRatio, sumByIdx } from '../../lib/budgetMetrics.js';
 
 const DEFAULT_BUDGET = [
   'Professional Fees',
@@ -32,9 +34,6 @@ const DEFAULT_BUDGET = [
   'BD Cost',
   'Misc',
 ].map((label, index) => ({ idx: index + 1, label, amount: '' }));
-
-// Indices (1-based) whose sum feeds the "Civil, Interior & MEP" metric.
-const CIVIL_MEP_IDX = [2, 3, 4, 5, 8];
 
 function budgetFromReview(review) {
   return DEFAULT_BUDGET.map((item) => {
@@ -82,22 +81,6 @@ function formatMoney(value) {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return 'Not set';
   return `₹${amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
-}
-
-// Indian-grouped rupee value for the live header total and the read-only
-// metrics (e.g. 804670 -> "₹8,04,670").
-function formatINR(value) {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return '₹0';
-  return `₹${amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
-}
-
-// A calculated ratio renders the rupee value, or "—" when its divisor is
-// missing / zero (so we never show Infinity or NaN).
-function formatRatio(numerator, divisor) {
-  const d = Number(divisor);
-  if (!Number.isFinite(d) || d === 0) return '—';
-  return formatINR(numerator / d);
 }
 
 function statusPill(value, tone = 'var(--zm-accent)') {
@@ -254,8 +237,7 @@ export default function ProjectReviewPage() {
 
   const review = state.review;
   const budgetTotal = budget.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
-  const amountAt = (idx) => Number(budget.find((item) => item.idx === idx)?.amount) || 0;
-  const civilMepSum = CIVIL_MEP_IDX.reduce((sum, idx) => sum + amountAt(idx), 0);
+  const civilMepSum = sumByIdx(budget, CIVIL_MEP_IDX);
   // Payload shared by every save/submit path so the area / cover inputs always
   // travel with the budget items.
   const budgetPayload = {
