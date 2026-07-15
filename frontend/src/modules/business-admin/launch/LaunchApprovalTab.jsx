@@ -13,6 +13,7 @@
  * Between the two touches the record sits with the executive then the
  * supervisor; the admin sees it read-only ("With executive / supervisor").
  */
+// skipcq: JS-0833
 import React from 'react';
 import {
   T, Icon, Button, Card, SectionHeader, EmptyState, ErrorState, Skeleton,

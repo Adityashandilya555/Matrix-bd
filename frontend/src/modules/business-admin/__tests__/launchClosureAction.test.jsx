@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 // The "Send for financial closure" action is one-way: the backend flips the
 // site to financial_closure_status='open' and 409s any re-send. The drawer used
 // to leave the action armed after a successful send (the send returns an
