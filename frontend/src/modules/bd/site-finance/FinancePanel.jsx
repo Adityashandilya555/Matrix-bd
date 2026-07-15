@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import React from 'react';
 import Icon from '../../shared/primitives/Icon.jsx';
 import {

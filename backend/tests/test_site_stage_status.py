@@ -111,7 +111,8 @@ def test_stage_status_flags_negative_dd(make_session, fake_result):
     )
     resp = _run(session, site)
     assert resp.legal_has_negative is True
-    legal = next(s for s in resp.stages if s.id == "legal")
+    legal = next((s for s in resp.stages if s.id == "legal"), None)
+    assert legal is not None
     negatives = [r.label for r in legal.rows if r.value == "No"]
     assert "OC / CC" in negatives and "Fire NOC" in negatives
 

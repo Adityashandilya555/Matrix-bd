@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import React from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';

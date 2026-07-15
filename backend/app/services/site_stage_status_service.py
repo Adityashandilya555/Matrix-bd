@@ -89,31 +89,32 @@ def _nso_stage_value(nso, idx: int) -> str:
     return "pending"
 
 
-# Per-node state derivation. Each takes (site, ctx) where ctx carries the
-# pre-fetched project / nso / launch / excellence rows + finance & design status.
-# Split into small functions so no single function trips the complexity gate.
+# Per-node state derivation. Each takes the shared `ctx` (which carries `site`
+# plus the pre-fetched project / nso / launch / excellence rows + finance &
+# design status). Split into small functions so none trips the complexity gate.
 
-def _st_ca(site, ctx) -> str:
+def _st_ca(ctx) -> str:
+    site = ctx["site"]
     if ctx["finance_status"] == "approved" or site.status == "pushed_to_payments":
         return "complete"
     return "active" if _legal_state(site) == "complete" else "future"
 
 
-def _st_design(site, ctx) -> str:
+def _st_design(ctx) -> str:
     if ctx["design_status"] == "approved":
         return "complete"
-    if ctx["finance_status"] == "approved" and site.status == "pushed_to_payments":
+    if ctx["finance_status"] == "approved" and ctx["site"].status == "pushed_to_payments":
         return "active"
     return "future"
 
 
-def _st_excellence(site, ctx) -> str:
+def _st_excellence(ctx) -> str:
     if _budget_approved(ctx["excellence"]):
         return "complete"
     return "active" if ctx["design_status"] == "approved" else "future"
 
 
-def _st_project(site, ctx) -> str:
+def _st_project(ctx) -> str:
     pstatus = ctx["project"].project_status if ctx["project"] else None
     if pstatus == "done":
         return "complete"
@@ -122,23 +123,21 @@ def _st_project(site, ctx) -> str:
     return "future"
 
 
-def _st_nso(site, ctx) -> str:
+def _st_nso(ctx) -> str:
     nso = ctx["nso"]
     if nso and nso.nso_status == "complete":
         return "complete"
     return "active" if (ctx["project"] and ctx["project"].project_status == "done") else "future"
 
 
-def _st_launch(site, ctx) -> str:
-    launch, nso = ctx["launch"], ctx["nso"]
+def _st_launch(ctx) -> str:
+    site, launch, nso = ctx["site"], ctx["launch"], ctx["nso"]
     if getattr(site, "is_launched", False) or (launch and launch.status == "launched"):
         return "complete"
     return "active" if (nso and nso.nso_status == "complete") else "future"
 
 
 _STATE_FNS = {
-    "loi": lambda site, ctx: "complete",
-    "legal": lambda site, ctx: _legal_state(site),
     "ca": _st_ca,
     "design": _st_design,
     "excellence": _st_excellence,
@@ -148,9 +147,13 @@ _STATE_FNS = {
 }
 
 
-def _stage_state(site, node_id, ctx) -> str:
+def _stage_state(node_id, ctx) -> str:
+    if node_id == "loi":
+        return "complete"
+    if node_id == "legal":
+        return _legal_state(ctx["site"])
     fn = _STATE_FNS.get(node_id)
-    return fn(site, ctx) if fn else "future"
+    return fn(ctx) if fn else "future"
 
 
 def _state_label(node_id, state) -> str:
@@ -286,31 +289,32 @@ def _launch_rows(site, launch):
     return rows
 
 
-def _make_block(site, node_id, title, ctx, rows, note=None) -> StageBlock:
-    state = _stage_state(site, node_id, ctx)
+def _make_block(node_id, title, ctx, rows, note=None) -> StageBlock:
+    state = _stage_state(node_id, ctx)
     return StageBlock(
         id=node_id, title=title, state=state,
         state_label=_state_label(node_id, state), rows=rows, note=note,
     )
 
 
-def _build_stage_blocks(site, ctx, *, dd, deliverables, design_review):
+def _build_stage_blocks(ctx, *, dd, deliverables, design_review):
     """Assemble every stage block + the legal-negative flag from prefetched rows."""
+    site = ctx["site"]
     legal_rows, legal_negative = _legal_rows(site, dd)
     design_rows, design_note = _design_rows(deliverables, design_review)
     project_rows, project_note = _project_rows(ctx["project"])
     nso_rows, nso_note = _nso_rows(ctx["nso"])
     blocks = [
-        _make_block(site, "loi", "BD LOI Signed", ctx,
+        _make_block("loi", "BD LOI Signed", ctx,
                     [StageStatusRow(label="LOI", value="Signed", tone="positive")]),
-        _make_block(site, "legal", "Legal & Compliance", ctx, legal_rows),
-        _make_block(site, "ca", "CA / Commercial Code", ctx, _ca_rows(site, ctx["finance_status"])),
-        _make_block(site, "design", "Design / Technical", ctx, design_rows, design_note),
-        _make_block(site, "excellence", "Project Excellence", ctx,
+        _make_block("legal", "Legal & Compliance", ctx, legal_rows),
+        _make_block("ca", "CA / Commercial Code", ctx, _ca_rows(site, ctx["finance_status"])),
+        _make_block("design", "Design / Technical", ctx, design_rows, design_note),
+        _make_block("excellence", "Project Excellence", ctx,
                     _excellence_rows(ctx["excellence"], ctx["design_status"])),
-        _make_block(site, "project", "Project Execution", ctx, project_rows, project_note),
-        _make_block(site, "nso", "NSO", ctx, nso_rows, nso_note),
-        _make_block(site, "launch", "Site Launched", ctx, _launch_rows(site, ctx["launch"])),
+        _make_block("project", "Project Execution", ctx, project_rows, project_note),
+        _make_block("nso", "NSO", ctx, nso_rows, nso_note),
+        _make_block("launch", "Site Launched", ctx, _launch_rows(site, ctx["launch"])),
     ]
     return blocks, legal_negative
 
@@ -322,6 +326,12 @@ async def build_stage_status_response(
     tenant_id: str | UUID,
     current_user: dict,
 ) -> SiteStageStatusResponse:
+    """Build the read-only per-department stage-status projection for a site.
+
+    Folds the cross-module foreign-key tables (legal DD checklist, design
+    deliverables, project milestones, NSO stages, budget) into labelled rows,
+    derives the legal-negative flag, and attaches a recent stage-events timeline.
+    """
     site = await fetch_site_or_404(db, site_id=site_id, tenant_id=tenant_id)
 
     caller_module = (current_user.get("module") or "").lower()
@@ -359,13 +369,13 @@ async def build_stage_status_response(
     )).scalar_one_or_none()
 
     ctx = dict(
-        project=project, nso=nso, launch=launch,
+        site=site, project=project, nso=nso, launch=launch,
         finance_status=finance_status, design_status=design_status,
         excellence=excellence,
     )
 
     stages, legal_has_negative = _build_stage_blocks(
-        site, ctx, dd=dd, deliverables=deliverables, design_review=design_review,
+        ctx, dd=dd, deliverables=deliverables, design_review=design_review,
     )
 
     # ── Timeline (recent stage transitions) ──
