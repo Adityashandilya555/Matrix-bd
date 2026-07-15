@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import React from 'react';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
@@ -7,7 +8,7 @@ import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 
 // Project Excellence → Quality Audit tab. The chain: the project executive sets
 // the quality-audit date → the project supervisor approves it → it lands here,
-// where the PE supervisor clicks "Completed". That marks the project complete
+// where the PE supervisor clicks "Mark as completed". That marks the project complete
 // (recording the completion date) and the site then appears in the Project
 // module's NSO Handover tab for the supervisor to push (which opens NSO stage 3).
 function fmtDate(d) {
@@ -55,7 +56,7 @@ export default function ProjectExcellenceQualityAuditPage() {
       .finally(() => setCompletingId(null));
   }, [load]);
 
-  const COLS = '120px minmax(220px, 1fr) 140px 150px 180px';
+  const COLS = '120px minmax(220px, 1fr) 140px 150px 200px';
   const pendingCount = state.items.filter((r) => r.qualityAuditStatus === 'supervisor_approved').length;
 
   return (
@@ -144,10 +145,10 @@ export default function ProjectExcellenceQualityAuditPage() {
                       fontSize: 12, fontWeight: 800,
                       cursor: completing || !!completingId ? 'not-allowed' : 'pointer',
                       opacity: completing || (!!completingId && !completing) ? 0.6 : 1,
-                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
                     }}
                   >
-                    {completing ? 'Saving…' : <>Completed<Icon name="check" size={12}/></>}
+                    {completing ? 'Saving…' : <>Mark as completed<Icon name="check" size={12}/></>}
                   </button>
                 ) : (
                   <span style={{

@@ -199,6 +199,30 @@ def _apply_rent_edits(row: models.LaunchApproval, body: LaunchRentFieldsRequest)
 
 # ── Response builder ─────────────────────────────────────────────────────────────
 
+def _details_snapshot(
+    site: models.Site, detail: Optional[models.SiteDetail],
+) -> SiteDetailsSnapshot:
+    """Read-only site snapshot. `detail` is optional (a site may have no
+    SiteDetail row yet), so every field it backs falls back to None."""
+    return SiteDetailsSnapshot(
+        name=site.name,
+        city=site.city,
+        model=site.model,
+        google_pin=site.google_maps_pin,
+        google_maps_url=site.google_maps_url,
+        visit_date=site.visit_date,
+        score=_num(detail.score) if detail else None,
+        estimated_monthly_sales=_num(detail.estimated_monthly_sales) if detail else None,
+        nearest_starbucks=detail.nearest_starbucks_m if detail else None,
+        nearest_twc=detail.nearest_twc_m if detail else None,
+        carpet_area_sqft=_num(detail.carpet_area_sqft) if detail else None,
+        cam_charges=_num(detail.cam_charges) if detail else None,
+        capex=_num(detail.capex) if detail else None,
+        security_deposit=_num(detail.security_deposit) if detail else None,
+        brokerage=_num(detail.brokerage) if detail else None,
+    )
+
+
 async def _build_response(
     session: AsyncSession,
     *,
@@ -234,23 +258,7 @@ async def _build_response(
     def _name(uid: Optional[UUID]) -> Optional[str]:
         return names_map.get(uid) if uid else None
 
-    details = SiteDetailsSnapshot(
-        name=site.name,
-        city=site.city,
-        model=site.model,
-        google_pin=site.google_maps_pin,
-        google_maps_url=site.google_maps_url,
-        visit_date=site.visit_date,
-        score=_num(detail.score) if detail else None,
-        estimated_monthly_sales=_num(detail.estimated_monthly_sales) if detail else None,
-        nearest_starbucks=detail.nearest_starbucks_m if detail else None,
-        nearest_twc=detail.nearest_twc_m if detail else None,
-        carpet_area_sqft=_num(detail.carpet_area_sqft) if detail else None,
-        cam_charges=_num(detail.cam_charges) if detail else None,
-        capex=_num(detail.capex) if detail else None,
-        security_deposit=_num(detail.security_deposit) if detail else None,
-        brokerage=_num(detail.brokerage) if detail else None,
-    )
+    details = _details_snapshot(site, detail)
 
     departments = DepartmentStatuses(
         legal_dd_status=site.legal_dd_status,
@@ -307,6 +315,7 @@ async def _build_response(
         notes=row.notes,
         details=details,
         departments=departments,
+        financial_closure_status=site.financial_closure_status or "pending",
         # Stage verdicts / comments
         admin_review_comment=row.admin_review_comment,
         admin_sent_for_review_at=row.admin_sent_for_review_at,

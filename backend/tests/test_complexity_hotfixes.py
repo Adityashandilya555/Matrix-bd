@@ -46,7 +46,7 @@ def _site():
         google_maps_pin=None, google_maps_url=None, visit_date=None, code="S-1",
         legal_dd_status="positive", agreement_status="done", licensing_status="done",
         design_status="approved", project_status="done", finance_status="approved",
-        kyc_verified=True, ca_code="CA-1",
+        kyc_verified=True, ca_code="CA-1", financial_closure_status="pending",
     )
 
 
