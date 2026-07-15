@@ -189,6 +189,10 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   React.useEffect(() => { if (siteId) load(); }, [load, siteId]);
 
   const status = data?.status;
+  // Closure is one-way (pending → open) and the backend 409s a re-send, so the
+  // action is offered only while it's still pending — on a fresh drawer open too,
+  // not just right after this session sent it.
+  const closureSent = (data?.financial_closure_status || 'pending') !== 'pending';
   const canEdit = status === 'pending_admin_review' || status === 'pending_admin_final';
   const isFinal = status === 'pending_admin_final';
   const handleRentChange = (key, val) => setForm((f) => ({ ...f, [key]: val }));
@@ -216,6 +220,11 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
       else if (action === 'launch') { d = await launchSite(siteId); msg = 'Site launched successfully!'; }
       else if (action === 'send_closure') {
         await sendForFinancialClosure(siteId);
+        // The send returns an FC-state record, not a launch-approval one, so it
+        // can't go through hydrate(). Flip the closure flag on the loaded record
+        // instead — otherwise `status` stays 'launched', the action re-arms once
+        // `acting` clears, and a second click 409s ("already open for this site").
+        setData((prev) => (prev ? { ...prev, financial_closure_status: 'open' } : prev));
         showToast('Sent for financial closure');
         onRefresh();
         return;
@@ -276,11 +285,15 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
               Launch Site
             </Button>
           )}
-          {status === 'launched' && (
+          {status === 'launched' && (closureSent ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, color: T.successText }}>
+              <Icon.check size={14} /> Sent for financial closure
+            </span>
+          ) : (
             <Button variant="accent" size="md" loading={acting} onClick={() => handleAction('send_closure')}>
               Send for financial closure →
             </Button>
-          )}
+          ))}
           {(status === 'under_exec_review' || status === 'under_supervisor_review') && (
             <span style={{ fontSize: 12.5, color: T.textMuted }}>Awaiting {status === 'under_exec_review' ? 'executive' : 'supervisor'} review — read-only.</span>
           )}

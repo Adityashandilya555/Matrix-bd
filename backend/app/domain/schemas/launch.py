@@ -171,6 +171,10 @@ class LaunchApprovalResponse(BaseModel):
     # Read-only context
     details: SiteDetailsSnapshot = SiteDetailsSnapshot()
     departments: DepartmentStatuses = DepartmentStatuses()
+    # 'pending' until the admin opens Financial Closure, then 'open'. Lets the
+    # launch drawer render the "Send for financial closure" action as already
+    # sent instead of offering a re-send that the backend 409s.
+    financial_closure_status: Optional[str] = None
 
     # Stage verdicts / comments / actors
     admin_review_comment: Optional[str] = None

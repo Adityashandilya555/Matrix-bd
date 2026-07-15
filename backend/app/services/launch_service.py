@@ -307,6 +307,7 @@ async def _build_response(
         notes=row.notes,
         details=details,
         departments=departments,
+        financial_closure_status=site.financial_closure_status or "pending",
         # Stage verdicts / comments
         admin_review_comment=row.admin_review_comment,
         admin_sent_for_review_at=row.admin_sent_for_review_at,
