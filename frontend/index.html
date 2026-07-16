@@ -37,6 +37,22 @@
     @keyframes zm-slide { from { transform: translateX(40px); opacity: 0 } to { transform: translateX(0); opacity: 1 } }
     @keyframes zm-rise  { from { transform: translateY(12px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
     @keyframes zm-enter { from { transform: translateY(10px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+    /* Toast: spring-ish rise + subtle scale on entrance, and a shrinking
+       auto-dismiss progress bar. */
+    @keyframes zm-toast-in {
+      0%   { transform: translate(-50%, 16px) scale(0.96); opacity: 0 }
+      60%  { transform: translate(-50%, -2px) scale(1.006); opacity: 1 }
+      100% { transform: translate(-50%, 0) scale(1); opacity: 1 }
+    }
+    @keyframes zm-toast-progress { from { transform: scaleX(1) } to { transform: scaleX(0) } }
+    .zm-toast { animation: zm-toast-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+    .zm-toast:hover .zm-toast-bar { animation-play-state: paused; }
+    .zm-toast-close { opacity: 0.5; transition: opacity 140ms ease, background 140ms ease; }
+    .zm-toast-close:hover { opacity: 1; }
+    @media (prefers-reduced-motion: reduce) {
+      .zm-toast { animation-duration: 1ms; }
+      .zm-toast-bar { animation: none !important; }
+    }
     .zm-stagger > * { opacity: 0; animation: zm-enter 0.52s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
     .zm-stagger > *:nth-child(1) { animation-delay: 0.04s }
     .zm-stagger > *:nth-child(2) { animation-delay: 0.10s }

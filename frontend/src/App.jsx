@@ -272,20 +272,50 @@ export default function App() {
         </div>
       )}
 
-      {toast && (
-        <div style={{
-          position: 'fixed', bottom: 22, left: '50%', transform: 'translateX(-50%)',
-          background: 'var(--zm-fg)', color: '#fff',
-          padding: '10px 16px', borderRadius: 10,
-          boxShadow: 'var(--zm-shadow-pop)',
-          fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 500,
-          display: 'inline-flex', alignItems: 'center', gap: 10, zIndex: 200,
-          animation: 'zm-rise 240ms var(--zm-ease-emp)',
-        }}>
-          <span style={{ width: 6, height: 6, borderRadius: 999, background: toast.tone === 'danger' ? 'var(--zm-danger)' : 'var(--zm-success)' }}/>
-          {toast.msg}
-        </div>
-      )}
+      {toast && (() => {
+        const tone = toast.tone === 'error' ? 'danger' : (toast.tone || 'success');
+        const TONES = {
+          success: { color: 'var(--zm-success)', soft: 'var(--zm-success-soft)', icon: 'check' },
+          danger:  { color: 'var(--zm-danger)',  soft: 'var(--zm-danger-soft)',  icon: 'alert' },
+          warning: { color: 'var(--zm-warning)', soft: 'var(--zm-warning-soft)', icon: 'warning' },
+          info:    { color: 'var(--zm-accent)',  soft: 'var(--zm-accent-soft)',  icon: 'message' },
+        };
+        const c = TONES[tone] || TONES.success;
+        return (
+          <div className="zm-toast" role="status" aria-live="polite" style={{
+            position: 'fixed', bottom: 26, left: '50%', zIndex: 300, maxWidth: 'min(92vw, 460px)',
+          }}>
+            <div style={{
+              position: 'relative', overflow: 'hidden',
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '12px 12px 13px 13px', borderRadius: 14,
+              background: 'var(--zm-surface)', border: '1px solid var(--zm-line)',
+              boxShadow: 'var(--zm-shadow-pop)',
+              backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+            }}>
+              <span style={{
+                flex: '0 0 auto', width: 30, height: 30, borderRadius: 9,
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                background: c.soft, color: c.color,
+              }}><Icon name={c.icon} size={16}/></span>
+              <span style={{
+                fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 550,
+                lineHeight: 1.4, color: 'var(--zm-fg)', paddingRight: 2,
+              }}>{toast.msg}</span>
+              <button className="zm-toast-close" type="button" aria-label="Dismiss" onClick={() => setToast(null)} style={{
+                flex: '0 0 auto', width: 24, height: 24, marginLeft: 2, padding: 0, cursor: 'pointer',
+                border: 'none', borderRadius: 7, background: 'transparent', color: 'var(--zm-fg-3)',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              }}><Icon name="x" size={13}/></button>
+              <span className="zm-toast-bar" aria-hidden="true" style={{
+                position: 'absolute', left: 0, bottom: 0, height: 3, width: '100%',
+                transformOrigin: 'left', background: c.color, opacity: 0.9, borderRadius: '0 2px 2px 0',
+                animation: 'zm-toast-progress 3400ms linear forwards',
+              }}/>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
