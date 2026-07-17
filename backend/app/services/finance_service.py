@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import transaction
 from app.domain.state_machine import SiteStatus
-from app.services._common import assert_executive_owns_site, fetch_site_or_404
+from app.services._common import assert_executive_owns_site, fetch_site_for_update_or_404
 from app.services.audit_service import write_audit_event
 from app.services.workflow_unlocks import maybe_unlock_design
 from app.services.notification_service import (
@@ -57,7 +57,7 @@ async def svc_save_finance_draft(
     'pending' (once submitted for approval the fields are locked).
     """
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         assert_executive_owns_site(actor, site)
 
         if site.status not in _LOI_AND_BEYOND:
@@ -104,7 +104,7 @@ async def svc_finance_request_approval(
     Transitions finance_status: pending → awaiting_supervisor.
     """
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         assert_executive_owns_site(actor, site)
 
         if site.status not in _LOI_AND_BEYOND:
@@ -189,7 +189,7 @@ async def svc_finance_reject(
         )
 
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
 
         allowed = {"awaiting_admin"} if actor_role == "business_admin" else {"awaiting_supervisor"}
         if site.finance_status not in allowed:
@@ -250,7 +250,7 @@ async def svc_finance_approve(
     actor_role = (actor.get("role") or "").lower()
 
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         safe_ca = re.sub(r"[^\w\-]", "", site.ca_code or "")
 
         if actor_role == "supervisor":

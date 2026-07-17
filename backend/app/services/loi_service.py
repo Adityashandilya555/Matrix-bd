@@ -145,7 +145,7 @@ async def svc_set_loi_timeline(
     from sqlalchemy import select
 
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         stmt = (
             select(models.Approval)
             .where(models.Approval.site_id == site.id)
