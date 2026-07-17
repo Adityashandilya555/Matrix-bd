@@ -19,6 +19,7 @@ from app.services._common import (
     apply_role_scope,
     compute_unseen_supervisor_edits,
     fetch_site_or_404,
+    fetch_user_names,
     site_to_response,
 )
 
@@ -186,43 +187,39 @@ async def get_site(
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
     _assert_can_read_site(user, site)
 
-    name_stmt = select(models.User.name).where(models.User.id == site.submitted_by)
-    name = (await session.execute(name_stmt)).scalar_one_or_none()
-    assigned_to_name = None
-    if site.assigned_to:
-        assigned_name_stmt = select(models.User.name).where(models.User.id == site.assigned_to)
-        assigned_to_name = (await session.execute(assigned_name_stmt)).scalar_one_or_none()
-    detail_stmt = select(models.SiteDetail).where(models.SiteDetail.site_id == site.id)
-    details = (await session.execute(detail_stmt)).scalar_one_or_none()
-    project_stmt = select(models.ProjectReview).where(models.ProjectReview.site_id == site.id)
-    project = (await session.execute(project_stmt)).scalar_one_or_none()
-    # Latest approval → expected_loi_days + approver name for the LOI SLA view.
-    approval_stmt = (
-        select(models.Approval)
-        .where(models.Approval.site_id == site.id)
-        .order_by(desc(models.Approval.created_at))
-        .limit(1)
+    # Reuse the list-path batch loaders with a single-element list (#376): one
+    # query per source table plus ONE name lookup, instead of five separate
+    # single-row selects and up to three sequential scalar name queries — with
+    # the pooler RTT on every roundtrip, the old chain was most of this
+    # endpoint's latency. _gather_site_sources keeps the latest-approval
+    # semantics (newest first, first-wins) the old LIMIT 1 query had.
+    (detail_by, project_by, approval_by, nso_by, launch_by) = await _gather_site_sources(
+        session, [site.id],
     )
-    approval = (await session.execute(approval_stmt)).scalar_one_or_none()
-    approved_by_name = None
-    if approval and approval.approver_id:
-        approver_stmt = select(models.User.name).where(models.User.id == approval.approver_id)
-        approved_by_name = (await session.execute(approver_stmt)).scalar_one_or_none()
-    nso_stmt = select(models.NsoReview).where(models.NsoReview.site_id == site.id)
-    nso = (await session.execute(nso_stmt)).scalar_one_or_none()
-    launch_stmt = select(models.LaunchApproval).where(models.LaunchApproval.site_id == site.id)
-    launch = (await session.execute(launch_stmt)).scalar_one_or_none()
+    details = detail_by.get(site.id)
+    project = project_by.get(site.id)
+    approval = approval_by.get(site.id)
+    nso = nso_by.get(site.id)
+    launch = launch_by.get(site.id)
+
+    names = await fetch_user_names(session, [
+        site.submitted_by,
+        site.assigned_to,
+        approval.approver_id if approval else None,
+    ])
     supervisor_edits = await compute_unseen_supervisor_edits(
         session, tenant_id=tenant_id, site_ids=[site.id],
     )
     return site_to_response(
         site,
-        created_by_name=name or "",
-        assigned_to_name=assigned_to_name,
+        created_by_name=names.get(site.submitted_by) or "",
+        assigned_to_name=(names.get(site.assigned_to) if site.assigned_to else None),
         details=details,
         project=project,
         approval=approval,
-        approved_by_name=approved_by_name,
+        approved_by_name=(
+            names.get(approval.approver_id) if approval and approval.approver_id else None
+        ),
         nso=nso,
         launch=launch,
         supervisor_edited_fields=supervisor_edits.get(site.id),
