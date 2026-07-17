@@ -20,6 +20,7 @@ from app.services.audit_service import write_audit_event
 from app.services.workflow_unlocks import maybe_unlock_design
 from app.services.notification_service import (
     enqueue as notify_enqueue,
+    recipients_for_business_admins,
     recipients_for_supervisors,
     recipients_for_site_owner,
 )
@@ -263,18 +264,10 @@ async def svc_finance_approve(
             action = "finance_supervisor_approved"
             detail = f"Supervisor approved — forwarded to admin. ca_code={site.ca_code}"
 
-            from sqlalchemy import select
-            from app.db import models as _m
-            admin_ids = (await session.execute(
-                select(_m.User.id).where(
-                    _m.User.tenant_id == site.tenant_id,
-                    _m.User.role == "business_admin",
-                    _m.User.is_active.is_(True),
-                )
-            )).scalars().all()
+            admin_ids = await recipients_for_business_admins(session, tenant_id=tenant_id)
             await notify_enqueue(
                 session, tenant_id=tenant_id, event="finance_awaiting_admin",
-                recipient_ids=list(admin_ids), site_id=site.id,
+                recipient_ids=admin_ids, site_id=site.id,
                 channels=("in_app",),
                 payload={"site_id": str(site.id), "site_name": site.name},
                 subject=f"Finance approval needed: {safe_ca or site.name}",
