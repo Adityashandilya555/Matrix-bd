@@ -183,7 +183,14 @@ export default function App() {
             </div>
           )}
           <PageContext.Provider value={pageContextValue}>
-            <Outlet key={role}/>
+            {/* Content-area boundary for lazily-loaded pages (#385): a chunk
+                load shows this placeholder INSIDE the chrome — TopBar/Sidebar
+                stay mounted — instead of blanking the whole screen. */}
+            <React.Suspense fallback={
+              <div style={{ padding: '4rem', textAlign: 'center', opacity: 0.6 }}>Loading…</div>
+            }>
+              <Outlet key={role}/>
+            </React.Suspense>
           </PageContext.Provider>
         </main>
 
