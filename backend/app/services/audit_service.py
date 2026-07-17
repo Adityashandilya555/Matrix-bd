@@ -31,6 +31,7 @@ async def write_audit_event(
     entity_id: str | UUID | None = None,
     entity_type: str | None = None,
     actor_role: str | None = None,
+    flush: bool = True,
 ) -> models.AuditLog:
     """Persist an audit row *and* (when a status transition is present) a
     stage_events row.  The caller's transaction is reused.
@@ -38,6 +39,12 @@ async def write_audit_event(
     `actor_name` is denormalised so the activity tab can render without a join.
     `actor_role` is stored in stage_events for SLA/analytics attribution; it is
     silently ignored by the audit_logs row (which identifies actors via actor_id).
+
+    ``flush=False`` lets loop callers batch many events into one roundtrip:
+    each flush is a full INSERT roundtrip through the pgBouncer pooler, so a
+    field-diff loop emitting N events pays N roundtrips with per-call flushes
+    (#374). Loop callers pass flush=False and flush once after the loop; the
+    default stays True so one-off callers still get `row.id` populated.
     """
     row = models.AuditLog(
         tenant_id=tenant_id,
@@ -55,11 +62,10 @@ async def write_audit_event(
         entity_type=entity_type,
     )
     session.add(row)
-    await session.flush()  # ensure id is populated
 
     # Co-write stage_events for status transitions — the immutable SLA/analytics ledger.
     if site_id is not None and (from_status is not None or to_status is not None):
-        stage = models.StageEvent(
+        session.add(models.StageEvent(
             tenant_id=tenant_id,
             site_id=site_id,
             actor_id=actor_id,
@@ -67,10 +73,10 @@ async def write_audit_event(
             from_status=from_status,
             to_status=to_status,
             actor_role=actor_role,
-        )
-        session.add(stage)
-        await session.flush()
+        ))
 
+    if flush:
+        await session.flush()  # one roundtrip for both rows; populates row.id
     return row
 
 
@@ -131,8 +137,11 @@ async def diff_and_log_pipeline_fields(
             field_name=_FIELD_AUDIT_LABEL[field],
             from_value=None if old_val is None else str(old_val),
             to_value=str(new_val),
+            flush=False,  # batched — one flush below covers the whole diff (#374)
         )
         written += 1
+    if written:
+        await session.flush()
     return written
 
 

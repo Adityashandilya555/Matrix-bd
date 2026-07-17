@@ -526,7 +526,9 @@ async def svc_save_rent_fields(
                 actor_id=actor.get("sub"), actor_name=actor.get("name"),
                 action="launch_rent_edited",
                 field_name=ch["field"], from_value=ch["from"], to_value=ch["to"],
+                flush=False,  # batched — one flush below covers all changes (#374)
             )
+        await session.flush()
         return await _build_response(session, row=row, site=site)
 
 
