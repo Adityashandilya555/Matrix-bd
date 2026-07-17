@@ -144,9 +144,10 @@ async def list_admin_sites(
     db: DbDep,
     _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
-    limit: int = 80,
+    limit: int = 200,
+    offset: int = 0,
 ) -> dict:
-    return await svc.list_admin_sites(db, tenant_id, limit=limit)
+    return await svc.list_admin_sites(db, tenant_id, limit=limit, offset=offset)
 
 
 @router.get("/finance-approvals", response_model=list[FinanceApprovalOut])

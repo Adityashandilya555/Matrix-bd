@@ -183,7 +183,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   const designSites = approvalSites.filter((s) => (s.design.deliverables.length + (s.design.gfcPending ? 1 : 0)) > 0).length;
   const paymentSites = approvalSites.filter((s) => s.payment).length;
   const supCount = supervisors.items.length;
-  const sitesCount = sites.items.length;
+  const sitesCount = sites.total || sites.items.length;
   const completedSites = (sites.items || []).filter((s) => s.projectStatus === 'done' || s.projectStatus === 'completed').length;
 
   // ── handlers ──

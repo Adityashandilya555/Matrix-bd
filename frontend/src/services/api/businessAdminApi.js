@@ -175,19 +175,37 @@ export async function getOrg() {
 
 // ── All sites + per-site cross-module history ────────────────────────────────
 
-export async function getAllSites() {
-  // main exposes a business-admin-scoped site list with all cross-module statuses.
-  const d = await client.get('/business-admin/sites').then((r) => r.data);
+const PAGE_SIZE = 200;
+
+function _mapSiteRow(s) {
   return {
-    items: (d.items || []).map((s) => ({
-      siteId: s.site_id, siteCode: s.site_code || '', siteName: s.site_name, city: s.city, status: s.site_status,
-      createdByName: s.submitted_by_name, assignedToName: s.assigned_to_name,
-      legalDdStatus: s.legal_dd_status, agreementStatus: s.agreement_status, licensingStatus: s.licensing_status,
-      designStatus: s.design_status, projectStatus: s.project_status, financeStatus: s.finance_status,
-      nsoStatus: s.nso_status, launchStatus: s.launch_status, isLaunched: Boolean(s.is_launched),
-    })),
-    total: d.total ?? 0,
+    siteId: s.site_id, siteCode: s.site_code || '', siteName: s.site_name, city: s.city, status: s.site_status,
+    createdByName: s.submitted_by_name, assignedToName: s.assigned_to_name,
+    legalDdStatus: s.legal_dd_status, agreementStatus: s.agreement_status, licensingStatus: s.licensing_status,
+    designStatus: s.design_status, projectStatus: s.project_status, financeStatus: s.finance_status,
+    nsoStatus: s.nso_status, launchStatus: s.launch_status, isLaunched: Boolean(s.is_launched),
   };
+}
+
+export async function getAllSites() {
+  // Auto-paginate: fetch pages of PAGE_SIZE until we have all sites.
+  const allItems = [];
+  let total = 0;
+  let offset = 0;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const d = await client.get('/business-admin/sites', { params: { limit: PAGE_SIZE, offset } }).then((r) => r.data);
+    const pageItems = (d.items || []).map(_mapSiteRow);
+    allItems.push(...pageItems);
+    total = d.total ?? allItems.length;
+
+    // Stop when we've fetched everything or the server returned fewer than a full page
+    if (allItems.length >= total || pageItems.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
+  return { items: allItems, total };
 }
 
 export async function getSiteHistory(siteId) {
