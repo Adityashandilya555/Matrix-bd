@@ -23,6 +23,7 @@ from typing import Any, Mapping, Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.passwords import hash_password_async
@@ -229,26 +230,40 @@ async def _create_tenant_with_retry(db, company: str, seat_limit: int, request_i
                 },
             )
             return inserted.mappings().one()
-        except Exception as e:  # noqa: BLE001
-            msg = str(e).lower()
-            last_error = msg[:240]
-            logger.warning(
-                "approve: tenant insert attempt %d failed slug=%r code=%r err=%s",
-                attempt, slug_try, ws_code, last_error,
+        except IntegrityError as e:
+            # Only a unique violation (SQLSTATE 23505 — slug/workspace_code
+            # collision) is retryable with a re-rolled code. Any other
+            # integrity error (FK, NOT NULL, CHECK) is a real failure. The
+            # asyncpg exception sits behind SQLAlchemy's DBAPI adapter, so
+            # probe orig and its __cause__ for the sqlstate; fall back to the
+            # message only if neither exposes one. (#379)
+            orig = getattr(e, "orig", None)
+            sqlstate = (
+                getattr(orig, "sqlstate", None)
+                or getattr(orig, "pgcode", None)
+                or getattr(getattr(orig, "__cause__", None), "sqlstate", None)
             )
-            if "duplicate" in msg or "unique" in msg or "already exists" in msg:
-                await db.rollback()
-                still = (await db.execute(
-                    text("SELECT status FROM workspace_requests WHERE id=:rid FOR UPDATE"),
-                    {"rid": request_id},
-                )).mappings().first()
-                if not still or still["status"] != "pending":
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail="Concurrent approve detected.",
-                    )
-                continue
-            raise
+            is_unique = sqlstate == "23505" or (
+                sqlstate is None and "unique" in str(e).lower()
+            )
+            last_error = str(orig or e)[:240]
+            logger.warning(
+                "approve: tenant insert attempt %d failed slug=%r code=%r sqlstate=%s err=%s",
+                attempt, slug_try, ws_code, sqlstate, last_error,
+            )
+            if not is_unique:
+                raise
+            await db.rollback()
+            still = (await db.execute(
+                text("SELECT status FROM workspace_requests WHERE id=:rid FOR UPDATE"),
+                {"rid": request_id},
+            )).mappings().first()
+            if not still or still["status"] != "pending":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Concurrent approve detected.",
+                )
+            continue
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail=f"Could not create tenant after 5 attempts. Last error: {last_error}",
