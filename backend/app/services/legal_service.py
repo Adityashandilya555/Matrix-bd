@@ -43,7 +43,7 @@ from app.domain.schemas.legal import (
     SaveVerificationRequest,
 )
 from app.domain.state_machine import SiteStatus, assert_transition
-from app.services._common import count_rows, fetch_site_or_404, fetch_user_name, fetch_user_names
+from app.services._common import count_rows, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.notification_service import (
     enqueue as notify_enqueue,
@@ -552,7 +552,7 @@ async def svc_save_verification(
         accidentally stamped published by the previous Save Draft path.
     """
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
 
         _VALID_EDIT_STATUSES = {
             SiteStatus.LEGAL_REVIEW.value,
@@ -661,7 +661,7 @@ async def svc_submit_dd_for_review(
     Notifies the legal supervisor pool that a review is queued.
     """
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         dd   = await _fetch_dd_or_404(session, site_id=site.id)
 
         await _require_executive_legal_delegation(session, site_id=site.id, actor=actor)
@@ -714,7 +714,7 @@ async def svc_save_due_diligence(
 ) -> LegalReviewResponse:
     """Supervisor stamps the final verdict on the DD checklist."""
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         dd   = await _fetch_dd_or_404(session, site_id=site.id)
 
         # Positive verdicts may also be submitted on a LEGAL_REJECTED site —
@@ -875,7 +875,7 @@ async def svc_save_agreement(
 ) -> LegalReviewResponse:
     """Create or update the agreement row; mirror to sites.agreement_status."""
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         dd   = await _fetch_dd_or_404(session, site_id=site.id)
 
         if _row_stage(dd) != "published" or dd.final_verdict != "positive":
@@ -939,7 +939,7 @@ async def svc_save_licensing(
       - BD notified via email + in_app
     """
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         dd   = await _fetch_dd_or_404(session, site_id=site.id)
         ag   = await _fetch_agreement_or_none(session, site_id=site.id)
 
@@ -1045,7 +1045,7 @@ async def svc_submit_licensing_for_review(
     Notifies the legal supervisor pool that a review is queued.
     """
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         lic  = await _fetch_licensing_or_none(session, site_id=site.id)
         if lic is None:
             raise HTTPException(
