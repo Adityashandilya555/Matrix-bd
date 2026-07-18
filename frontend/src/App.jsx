@@ -110,7 +110,10 @@ export default function App() {
       .catch(() => { /* ignore — empty badge is fine */ });
     refresh();
     // Cheap poll so a supervisor reviewing the queue sees joiners show up.
-    const t = window.setInterval(refresh, 30_000);
+    // Hidden tabs skip the tick — no reason to poll a badge nobody sees. (#386)
+    const t = window.setInterval(() => {
+      if (document.visibilityState !== 'hidden') refresh();
+    }, 30_000);
     return () => { alive = false; clearInterval(t); };
   }, [authReady, role]);
 
@@ -183,7 +186,14 @@ export default function App() {
             </div>
           )}
           <PageContext.Provider value={pageContextValue}>
-            <Outlet key={role}/>
+            {/* Content-area boundary for lazily-loaded pages (#385): a chunk
+                load shows this placeholder INSIDE the chrome — TopBar/Sidebar
+                stay mounted — instead of blanking the whole screen. */}
+            <React.Suspense fallback={
+              <div style={{ padding: '4rem', textAlign: 'center', opacity: 0.6 }}>Loading…</div>
+            }>
+              <Outlet key={role}/>
+            </React.Suspense>
           </PageContext.Provider>
         </main>
 

@@ -56,7 +56,7 @@ from app.domain.schemas.design import (
     SubmitDeliverableRequest,
 )
 from app.services.storage_service import signed_url as storage_signed_url
-from app.services._common import actor_can_supervise, actor_is_business_admin, count_rows, fetch_site_or_404, fetch_user_name, fetch_user_names
+from app.services._common import actor_can_supervise, actor_is_business_admin, count_rows, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_is_delegated
 from app.services import budget_service
@@ -447,7 +447,7 @@ async def svc_allocate_design(
     is_self = str(delegate_user_id) == str(actor["sub"])
 
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_design_unlocked(site)
 
         delegate = (await session.execute(
@@ -903,7 +903,7 @@ async def svc_submit_deliverable(
         )
 
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_design_unlocked(site)
         is_supervisor = (actor.get("role") or "").lower() == "supervisor"
         review = await _resolve_design_review(
@@ -963,7 +963,7 @@ async def svc_review_deliverable(
         )
 
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_design_unlocked(site)
         review = await _fetch_review_or_404(session, site_id=site.id)
         deliverable = await _fetch_deliverable_or_none(session, site_id=site.id, kind=kind)

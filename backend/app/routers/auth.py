@@ -31,7 +31,6 @@ from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, DbDep
@@ -43,6 +42,7 @@ from app.core.security import (
 )
 from app.core.passwords import hash_password_async, verify_password_async
 from app.domain.schemas.common import OkResponse
+from app.services import auth_repo
 from app.services.auth_repo import get_tenant_by_workspace_code, get_user_by_tenant_email
 
 logger = logging.getLogger("matrix.auth")
@@ -148,29 +148,11 @@ class SignupAcceptedOut(BaseModel):
 )
 async def login(payload: LoginIn, db: DbDep):
     # 1+2. Resolve workspace → tenant AND the (tenant, email) user in ONE round
-    # trip (#234). A LEFT JOIN anchored on tenants collapses two serial Supabase
-    # -pooler round-trips into one while keeping the two distinct "no tenant" vs
-    # "no user" branches below distinguishable. The membership lookup (step 4)
-    # stays a separate query — it depends on user_id and carries its own ORDER BY.
-    row = (await db.execute(
-        text("""
-            SELECT t.id   AS tenant_id,
-                   t.name AS tenant_name,
-                   t.seat_limit,
-                   u.id   AS user_id,
-                   u.email,
-                   u.name AS user_name,
-                   u.role,
-                   u.is_active,
-                   u.assigned_city,
-                   u.password_hash
-              FROM tenants t
-              LEFT JOIN users u
-                ON u.tenant_id = t.id AND lower(u.email) = lower(:email)
-             WHERE upper(t.workspace_code) = upper(:code)
-        """),
-        {"code": payload.workspace_code, "email": payload.email},
-    )).mappings().first()
+    # trip (#234). The membership lookup (step 4) stays a separate query — it
+    # depends on user_id and carries its own ORDER BY.
+    row = await auth_repo.get_login_row(
+        db, workspace_code=payload.workspace_code, email=payload.email,
+    )
     if row is None:
         # Same soft 202 a valid code + unknown email gets — a 404 here was a
         # valid-code enumeration oracle (#84). Discriminator logged server-side.
@@ -229,22 +211,9 @@ async def login(payload: LoginIn, db: DbDep):
             ),
         )
 
-    # 4. Active user → mint a JWT. Optionally enrich with module membership.
-    # A user may belong to multiple modules (the table only enforces
-    # UNIQUE(user_id, module)). Without an ORDER BY, Postgres returns an
-    # arbitrary row, so the JWT's module claim — and therefore which
-    # require_module routes the user can reach — flips between logins (#124).
-    # Order deterministically so the chosen module is stable across sessions.
-    membership = (await db.execute(
-        text("""
-            SELECT module, role_in_module, supervisor_id
-              FROM user_module_memberships
-             WHERE user_id = :uid
-             ORDER BY module
-             LIMIT 1
-        """),
-        {"uid": row["user_id"]},
-    )).mappings().first() or {}
+    # 4. Active user → mint a JWT. Optionally enrich with module membership
+    # (deterministic primary module — see get_primary_membership, #124).
+    membership = await auth_repo.get_primary_membership(db, row["user_id"])
     supervisor_id = membership.get("supervisor_id")
     token = issue_token(
         sub=str(row["user_id"]),
@@ -371,16 +340,10 @@ async def password_reset_request(payload: ResetRequestIn, db: DbDep) -> dict:
     user = await get_user_by_tenant_email(db, tenant["id"], payload.email)
     if not user:
         return soft
-    dup = (await db.execute(
-        text("""SELECT id FROM password_reset_requests
-                 WHERE tenant_id = :tid AND lower(email) = lower(:email) AND status = 'pending'"""),
-        {"tid": tenant["id"], "email": payload.email},
-    )).mappings().first()
+    dup = await auth_repo.get_pending_reset_request(db, tenant_id=tenant["id"], email=payload.email)
     if not dup:
-        await db.execute(
-            text("""INSERT INTO password_reset_requests (tenant_id, user_id, email)
-                    VALUES (:tid, :uid, :email)"""),
-            {"tid": tenant["id"], "uid": user["id"], "email": payload.email},
+        await auth_repo.insert_password_reset_request(
+            db, tenant_id=tenant["id"], user_id=user["id"], email=payload.email,
         )
         await db.commit()
         # PII hygiene (#82): log the user id, not the email.
@@ -400,13 +363,7 @@ async def password_reset_complete(payload: ResetCompleteIn, db: DbDep) -> dict:
     user = await get_user_by_tenant_email(db, tenant["id"], payload.email)
     if not user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset request.")
-    req = (await db.execute(
-        text("""SELECT id, reset_token_hash FROM password_reset_requests
-                 WHERE tenant_id = :tid AND user_id = :uid AND status = 'approved'
-                   AND (token_expires_at IS NULL OR token_expires_at > now())
-                 ORDER BY created_at DESC LIMIT 1"""),
-        {"tid": tenant["id"], "uid": user["id"]},
-    )).mappings().first()
+    req = await auth_repo.get_approved_reset_request(db, tenant_id=tenant["id"], user_id=user["id"])
     if not req:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -422,14 +379,10 @@ async def password_reset_complete(payload: ResetCompleteIn, db: DbDep) -> dict:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid or expired reset code. Ask the platform admin for the code issued with the approval.",
         )
-    await db.execute(
-        text("UPDATE users SET password_hash = :h WHERE id = :uid"),
-        {"h": await hash_password_async(payload.new_password), "uid": user["id"]},
+    await auth_repo.update_user_password(
+        db, user_id=user["id"], password_hash=await hash_password_async(payload.new_password),
     )
-    await db.execute(
-        text("UPDATE password_reset_requests SET status = 'completed', completed_at = now() WHERE id = :id"),
-        {"id": req["id"]},
-    )
+    await auth_repo.mark_reset_completed(db, req["id"])
     await db.commit()
     logger.info("password reset completed tenant_id=%s user_id=%s", tenant["id"], user["id"])
     return {"status": "reset", "message": "Password updated. You can now sign in with your new password."}
@@ -482,10 +435,8 @@ async def password_setup(payload: PasswordSetupIn, db: DbDep) -> dict:
             status_code=status.HTTP_409_CONFLICT,
             detail="This account already has a password. Use 'Forgot your password?' to reset it.",
         )
-    result = await db.execute(
-        text("""UPDATE users SET password_hash = :h
-                 WHERE id = :uid AND password_hash IS NULL"""),
-        {"h": await hash_password_async(payload.new_password), "uid": user["id"]},
+    result = await auth_repo.set_first_password_if_null(
+        db, user_id=user["id"], password_hash=await hash_password_async(payload.new_password),
     )
     if result.rowcount == 0:
         # Lost the race: another setup call set the password between our SELECT
@@ -514,14 +465,7 @@ async def password_setup(payload: PasswordSetupIn, db: DbDep) -> dict:
 async def signup_supervisor(
     payload: SupervisorSignupIn, db: DbDep,
 ) -> SignupAcceptedOut:
-    code_row = (await db.execute(
-        text("""
-            SELECT tenant_id, module
-              FROM module_codes
-             WHERE code = :code AND revoked_at IS NULL
-        """),
-        {"code": payload.dept_code},
-    )).mappings().first()
+    code_row = await auth_repo.get_module_code(db, payload.dept_code)
     if not code_row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -550,14 +494,7 @@ async def signup_supervisor(
 async def signup_executive(
     payload: ExecutiveSignupIn, db: DbDep,
 ) -> SignupAcceptedOut:
-    code_row = (await db.execute(
-        text("""
-            SELECT tenant_id, supervisor_id, module
-              FROM supervisor_invite_codes
-             WHERE code = :code AND revoked_at IS NULL
-        """),
-        {"code": payload.supervisor_code},
-    )).mappings().first()
+    code_row = await auth_repo.get_supervisor_invite_code(db, payload.supervisor_code)
     if not code_row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -603,19 +540,9 @@ async def _enqueue_signup(
         )
 
     new_id = uuid.uuid4()
-    await db.execute(
-        text("""
-            INSERT INTO users (id, tenant_id, role, email, name, is_active, notes)
-            VALUES (:id, :tid, :role, :email, :name, false, :notes)
-        """),
-        {
-            "id":    new_id,
-            "tid":   tenant_id,
-            "role":  role,
-            "email": email,
-            "name":  email.split("@")[0],
-            "notes": notes,
-        },
+    await auth_repo.insert_pending_signup(
+        db, user_id=new_id, tenant_id=tenant_id, role=role,
+        email=email, name=email.split("@")[0], notes=notes,
     )
     await db.commit()
     logger.info(
@@ -678,32 +605,14 @@ async def refresh(
     token = authorization.split(" ", 1)[1].strip()
     claims = decode_token_for_refresh(token)
 
-    row = (await db.execute(
-        text("""
-            SELECT u.id, u.email, u.name, u.role, u.assigned_city,
-                   t.id AS tenant_id, t.name AS tenant_name
-              FROM users u
-              JOIN tenants t ON t.id = u.tenant_id
-             WHERE u.id = :uid AND u.is_active = true
-        """),
-        {"uid": claims["sub"]},
-    )).mappings().first()
+    row = await auth_repo.get_active_user_for_refresh(db, claims["sub"])
     if not row:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Account is inactive or no longer exists. Sign in again.",
         )
 
-    membership = (await db.execute(
-        text("""
-            SELECT module, role_in_module, supervisor_id
-              FROM user_module_memberships
-             WHERE user_id = :uid
-             ORDER BY module
-             LIMIT 1
-        """),
-        {"uid": row["id"]},
-    )).mappings().first() or {}
+    membership = await auth_repo.get_primary_membership(db, row["id"])
     supervisor_id = membership.get("supervisor_id")
     token = issue_token(
         sub=str(row["id"]),

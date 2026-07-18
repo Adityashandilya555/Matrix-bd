@@ -217,7 +217,11 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   };
 
   React.useEffect(() => {
-    const pollId = window.setInterval(() => refreshAll(true), 30000);
+    // Hidden tabs skip the tick — refreshAll fans out five requests, so a
+    // forgotten background tab must not keep hammering the backend. (#386)
+    const pollId = window.setInterval(() => {
+      if (document.visibilityState !== 'hidden') refreshAll(true);
+    }, 30000);
     return () => window.clearInterval(pollId);
   }, [reloadApprovals, loadSupervisors, loadExecutiveRequests, loadOrg, loadSites]);
 

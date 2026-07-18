@@ -7,7 +7,6 @@ from typing import Annotated, Optional
 from fastapi import Depends, Header
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
 from app.core.security import AuthError, decode_token
@@ -96,21 +95,12 @@ async def get_current_user(
          AND umm.tenant_id = :tid
         WHERE u.id = :uid
     """
-    _FALLBACK_QUERY = """\
-        SELECT u.role, u.is_active
-        FROM users u
-        WHERE u.id = :uid
-    """
     params = {"uid": claims["sub"], "mod": module_to_check, "tid": claims["tenant_id"]}
-    try:
-        row = (await db.execute(text(_FULL_QUERY), params)).mappings().first()
-    except SQLAlchemyError:
-        _log.warning(
-            "executive-access query failed (migration not yet applied?), "
-            "falling back to basic user lookup"
-        )
-        await db.rollback()
-        row = (await db.execute(text(_FALLBACK_QUERY), params)).mappings().first()
+    # The migration adding supervisor_executive_requests / has_executive_access
+    # landed long ago (the ledger runner guarantees migrations on boot), so the
+    # old try/except fallback only masked genuine DB errors behind a warning +
+    # second query. Removed (#373) — a real failure now surfaces to the caller.
+    row = (await db.execute(text(_FULL_QUERY), params)).mappings().first()
 
     if not row or not row["is_active"]:
         raise AuthError("Account is inactive or no longer exists. Sign in again.")
