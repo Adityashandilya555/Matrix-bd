@@ -27,12 +27,13 @@ async def list_exec_staging(
     current_user: Annotated[dict, Depends(require_role(Role.EXECUTIVE))],
     tenant_id: TenantId,
 ) -> SiteListResponse:
-    out = SiteListResponse(items=[], total=0)
-    for st in ("approved", "loi_uploaded", "pushed_to_payments"):
-        chunk = await list_sites(db, tenant_id=tenant_id, user=current_user, status=st)
-        out.items.extend(chunk.items)
-        out.total += chunk.total
-    return out
+    # One comma-status call runs the list_sites pipeline once (~7 queries)
+    # instead of 3× (~21). _apply_status_filter already splits on commas, and the
+    # single-call `total` equals the summed len(items) the loop produced (#372).
+    return await list_sites(
+        db, tenant_id=tenant_id, user=current_user,
+        status="approved,loi_uploaded,pushed_to_payments",
+    )
 
 
 @router.get("/supervisor", response_model=SiteListResponse, summary="List supervisor staging sites")
