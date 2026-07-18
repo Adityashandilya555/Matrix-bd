@@ -12,54 +12,54 @@ import App from '../App.jsx';
 const ScaleLandingPage = lazy(() => import('../modules/landing/ScaleLandingPage.jsx'));
 // Per-company customized login page reached via the workspace-code dialog.
 const BrandedLoginPage = lazy(() => import('../modules/landing/BrandedLoginPage.jsx'));
-import OverviewPage          from '../modules/bd/overview/OverviewPage.jsx';
-import DraftsPage            from '../modules/bd/drafts/DraftsPage.jsx';
-import ShortlistPage         from '../modules/bd/shortlist/ShortlistPage.jsx';
-import ExecStagingPage       from '../modules/staging/exec/ExecStagingPage.jsx';
-import SupervisorStagingPage from '../modules/staging/supervisor/SupervisorStagingPage.jsx';
-import ArchivePage           from '../modules/archive/ArchivePage.jsx';
-import TeamPage              from '../modules/team/TeamPage.jsx';
-import LegalQueuePage       from '../modules/legal/LegalQueuePage.jsx';
-import ChangeRequestsPage    from '../modules/legal/ChangeRequestsPage.jsx';
-import DdrPage               from '../modules/legal/ddr/DdrPage.jsx';
-import AgreementPage         from '../modules/legal/agreement/AgreementPage.jsx';
-import DesignQueuePage       from '../modules/design/DesignQueuePage.jsx';
-import DesignReviewPage      from '../modules/design/DesignReviewPage.jsx';
-import ModuleHistoryPage     from '../modules/module-history/ModuleHistoryPage.jsx';
-import ModuleProcessFlowPage from '../modules/module-process-flow/ModuleProcessFlowPage.jsx';
-import SiteStatusPage        from '../modules/bd/site-status/SiteStatusPage.jsx';
-import SiteFinancePage       from '../modules/bd/site-finance/SiteFinancePage.jsx';
-import SiteStageStatusPage   from '../modules/bd/site-stage-status/SiteStageStatusPage.jsx';
-import DdFailedPage          from '../modules/bd/dd-failed/DdFailedPage.jsx';
-import SiteTrackerListPage   from '../modules/bd/site-tracker/SiteTrackerListPage.jsx';
-import SiteTrackerDetailPage from '../modules/bd/site-tracker/SiteTrackerDetailPage.jsx';
-import DashboardMinimalPreview from '../modules/bd/dashboard-preview/DashboardMinimalPreview.jsx';
-import LicensingPage         from '../modules/payment/licensing/LicensingPage.jsx';
-import PaymentStubPage       from '../modules/payment/PaymentStubPage.jsx';
-import LaunchPage            from '../modules/launch/LaunchPage.jsx';
-import LegalOverviewPage     from '../modules/legal/LegalOverviewPage.jsx';
-import DesignOverviewPage    from '../modules/design/DesignOverviewPage.jsx';
-import ProjectOverviewPage   from '../modules/project/ProjectOverviewPage.jsx';
-import NsoOverviewPage       from '../modules/nso/NsoOverviewPage.jsx';
-import AdminPortalPage          from '../modules/admin/AdminPortalPage.jsx';
-import BusinessAdminPortalPage  from '../modules/business-admin/BusinessAdminPortalPage.jsx';
-import ProjectQueuePage         from '../modules/project/ProjectQueuePage.jsx';
+const OverviewPage = lazy(() => import('../modules/bd/overview/OverviewPage.jsx'));
+const DraftsPage = lazy(() => import('../modules/bd/drafts/DraftsPage.jsx'));
+const ShortlistPage = lazy(() => import('../modules/bd/shortlist/ShortlistPage.jsx'));
+const ExecStagingPage = lazy(() => import('../modules/staging/exec/ExecStagingPage.jsx'));
+const SupervisorStagingPage = lazy(() => import('../modules/staging/supervisor/SupervisorStagingPage.jsx'));
+const ArchivePage = lazy(() => import('../modules/archive/ArchivePage.jsx'));
+const TeamPage = lazy(() => import('../modules/team/TeamPage.jsx'));
+const LegalQueuePage = lazy(() => import('../modules/legal/LegalQueuePage.jsx'));
+const ChangeRequestsPage = lazy(() => import('../modules/legal/ChangeRequestsPage.jsx'));
+const DdrPage = lazy(() => import('../modules/legal/ddr/DdrPage.jsx'));
+const AgreementPage = lazy(() => import('../modules/legal/agreement/AgreementPage.jsx'));
+const DesignQueuePage = lazy(() => import('../modules/design/DesignQueuePage.jsx'));
+const DesignReviewPage = lazy(() => import('../modules/design/DesignReviewPage.jsx'));
+const ModuleHistoryPage = lazy(() => import('../modules/module-history/ModuleHistoryPage.jsx'));
+const ModuleProcessFlowPage = lazy(() => import('../modules/module-process-flow/ModuleProcessFlowPage.jsx'));
+const SiteStatusPage = lazy(() => import('../modules/bd/site-status/SiteStatusPage.jsx'));
+const SiteFinancePage = lazy(() => import('../modules/bd/site-finance/SiteFinancePage.jsx'));
+const SiteStageStatusPage = lazy(() => import('../modules/bd/site-stage-status/SiteStageStatusPage.jsx'));
+const DdFailedPage = lazy(() => import('../modules/bd/dd-failed/DdFailedPage.jsx'));
+const SiteTrackerListPage = lazy(() => import('../modules/bd/site-tracker/SiteTrackerListPage.jsx'));
+const SiteTrackerDetailPage = lazy(() => import('../modules/bd/site-tracker/SiteTrackerDetailPage.jsx'));
+const DashboardMinimalPreview = lazy(() => import('../modules/bd/dashboard-preview/DashboardMinimalPreview.jsx'));
+const LicensingPage = lazy(() => import('../modules/payment/licensing/LicensingPage.jsx'));
+const PaymentStubPage = lazy(() => import('../modules/payment/PaymentStubPage.jsx'));
+const LaunchPage = lazy(() => import('../modules/launch/LaunchPage.jsx'));
+const LegalOverviewPage = lazy(() => import('../modules/legal/LegalOverviewPage.jsx'));
+const DesignOverviewPage = lazy(() => import('../modules/design/DesignOverviewPage.jsx'));
+const ProjectOverviewPage = lazy(() => import('../modules/project/ProjectOverviewPage.jsx'));
+const NsoOverviewPage = lazy(() => import('../modules/nso/NsoOverviewPage.jsx'));
+const AdminPortalPage = lazy(() => import('../modules/admin/AdminPortalPage.jsx'));
+const BusinessAdminPortalPage = lazy(() => import('../modules/business-admin/BusinessAdminPortalPage.jsx'));
+const ProjectQueuePage = lazy(() => import('../modules/project/ProjectQueuePage.jsx'));
 
 // Dev-only: Approval Center UI preview with mock data (no backend / no login).
 // DEV gate makes the dynamic import dead code in production (tree-shaken out).
 const ApprovalCenterPreview = import.meta.env.DEV
   ? lazy(() => import('../modules/business-admin/_preview/ApprovalCenterPreview.jsx'))
   : null;
-import ProjectReviewPage        from '../modules/project/ProjectReviewPage.jsx';
-import NsoQueuePage             from '../modules/nso/NsoQueuePage.jsx';
-import NsoReviewPage            from '../modules/nso/NsoReviewPage.jsx';
-import ProjectExcellenceQueuePage  from '../modules/project_excellence/ProjectExcellenceQueuePage.jsx';
-import ProjectExcellenceReviewPage from '../modules/project_excellence/ProjectExcellenceReviewPage.jsx';
-import ProjectExcellenceOverviewPage from '../modules/project_excellence/ProjectExcellenceOverviewPage.jsx';
-import ProjectExcellenceQualityAuditPage from '../modules/project_excellence/ProjectExcellenceQualityAuditPage.jsx';
-import NsoHandoverPage             from '../modules/project/NsoHandoverPage.jsx';
-import FinancialClosureQueuePage   from '../modules/financial_closure/FinancialClosureQueuePage.jsx';
-import FinancialClosureReviewPage  from '../modules/financial_closure/FinancialClosureReviewPage.jsx';
+const ProjectReviewPage = lazy(() => import('../modules/project/ProjectReviewPage.jsx'));
+const NsoQueuePage = lazy(() => import('../modules/nso/NsoQueuePage.jsx'));
+const NsoReviewPage = lazy(() => import('../modules/nso/NsoReviewPage.jsx'));
+const ProjectExcellenceQueuePage = lazy(() => import('../modules/project_excellence/ProjectExcellenceQueuePage.jsx'));
+const ProjectExcellenceReviewPage = lazy(() => import('../modules/project_excellence/ProjectExcellenceReviewPage.jsx'));
+const ProjectExcellenceOverviewPage = lazy(() => import('../modules/project_excellence/ProjectExcellenceOverviewPage.jsx'));
+const ProjectExcellenceQualityAuditPage = lazy(() => import('../modules/project_excellence/ProjectExcellenceQualityAuditPage.jsx'));
+const NsoHandoverPage = lazy(() => import('../modules/project/NsoHandoverPage.jsx'));
+const FinancialClosureQueuePage = lazy(() => import('../modules/financial_closure/FinancialClosureQueuePage.jsx'));
+const FinancialClosureReviewPage = lazy(() => import('../modules/financial_closure/FinancialClosureReviewPage.jsx'));
 
 // In HTTP (non-mock) mode the landing page is the unauthenticated entry. The
 // existing app chrome only renders after a Supabase session is established.
@@ -129,6 +129,11 @@ function IndexRedirect() {
 
 export default function AppRouter() {
   return (
+    // Outer boundary: safety net for lazy TOP-LEVEL routes (/admin,
+    // /business-admin). Pages under the App shell suspend against the
+    // content-area boundary wrapping <Outlet/> in App.jsx instead (nearest
+    // boundary wins), so the chrome never unmounts during a chunk load. (#385)
+    <Suspense fallback={<LandingFallback/>}>
     <Routes>
       <Route path={LANDING_PATH} element={
         <Suspense fallback={<LandingFallback/>}>
@@ -542,6 +547,7 @@ export default function AppRouter() {
         <Route path="*" element={<Navigate to={ROUTES.OVERVIEW} replace/>}/>
       </Route>
     </Routes>
+    </Suspense>
   );
 }
 
