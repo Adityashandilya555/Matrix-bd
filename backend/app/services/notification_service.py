@@ -253,8 +253,9 @@ async def drain_pending_emails(*, resend_api_key: str, batch_size: int = 20) -> 
     if not rows:
         return 0
 
-    # ── 2. Dispatch each row, update status per-row ───────────────────────────
-    processed = 0
+    # ── 2. Dispatch each row via Resend, collecting the outcome (no DB writes
+    #       inside the HTTP loop — see step 3). ──────────────────────────────
+    outcomes: list[dict] = []  # {"id": str, "status": str, "reason": str | None}
     async with httpx.AsyncClient(timeout=15.0) as client:
         for row in rows:
             try:
@@ -277,23 +278,29 @@ async def drain_pending_emails(*, resend_api_key: str, batch_size: int = 20) -> 
                 new_status = "failed"
                 reason = str(exc)[:200]
 
-            # Optimistic update: skip if another drain already processed this row.
-            async with SessionLocal() as upd, upd.begin():
-                await upd.execute(
-                    text("""
-                            UPDATE notification_outbox
-                               SET status        = :status,
-                                   failed_reason = :reason,
-                                   attempts      = attempts + 1,
-                                   sent_at       = CASE WHEN :status = 'sent'
-                                                        THEN now() ELSE sent_at END
-                             WHERE id = :id AND status = 'pending'
-                        """),
-                    {"status": new_status, "reason": reason, "id": str(row["id"])},
-                )
-
             if new_status == "failed":
                 log.warning("email_drain: failed to send row=%s reason=%s", row["id"], reason)
-            processed += 1
+            outcomes.append({"id": str(row["id"]), "status": new_status, "reason": reason})
 
-    return processed
+    # ── 3. Apply all status updates in ONE session/transaction ────────────────
+    # Under NullPool (pgBouncer transaction pooler) every SessionLocal() use is a
+    # fresh TCP connection, so the old per-row update opened one connection per
+    # email. Batching the writes into a single session turns N connections into
+    # one (#375). Each row keeps its `WHERE status = 'pending'` optimistic guard,
+    # so a concurrent drain that already processed a row is still a no-op here.
+    async with SessionLocal() as upd, upd.begin():
+        for o in outcomes:
+            await upd.execute(
+                text("""
+                    UPDATE notification_outbox
+                       SET status        = :status,
+                           failed_reason = :reason,
+                           attempts      = attempts + 1,
+                           sent_at       = CASE WHEN :status = 'sent'
+                                                THEN now() ELSE sent_at END
+                     WHERE id = :id AND status = 'pending'
+                """),
+                o,
+            )
+
+    return len(outcomes)
