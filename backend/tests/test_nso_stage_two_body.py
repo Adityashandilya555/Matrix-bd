@@ -62,7 +62,7 @@ def _patch_stage_two(monkeypatch, *, row, canonical=None):
     async def _state(*a, **k):
         return SimpleNamespace(site_id=site.id)
 
-    monkeypatch.setattr(nso_service, "fetch_site_or_404", _site)
+    monkeypatch.setattr(nso_service, "fetch_site_for_update_or_404", _site)
     monkeypatch.setattr(nso_service, "_fetch_project", _none)
     monkeypatch.setattr(nso_service, "_fetch_licensing", _none)
     monkeypatch.setattr(nso_service, "_fetch_nso_or_create", _row)

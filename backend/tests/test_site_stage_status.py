@@ -53,18 +53,14 @@ def test_stage_status_folds_design_and_project_substatus(make_session, fake_resu
     ]
     design_review = types.SimpleNamespace(current_stage="3d", gfc_status="pending")
 
-    # Execute order mirrors the service: site, project, nso, launch,
-    # deliverables, design_review, dd, excellence, stage_events. No user lookup.
+    # Execute order mirrors the service: site, then one LEFT JOIN over the six
+    # 1:1 child tables (project, nso, launch, design_review, dd, excellence),
+    # then deliverables and stage_events. No user lookup (no events).
     session = make_session(
-        fake_result(scalar=site),                    # fetch_site_or_404
-        fake_result(scalar=project),                 # ProjectReview
-        fake_result(scalar=None),                    # NsoReview
-        fake_result(scalar=None),                    # LaunchApproval
-        fake_result(scalars_list=deliverables),      # DesignDeliverable
-        fake_result(scalar=design_review),           # DesignReview
-        fake_result(scalar=None),                    # LegalDdChecklist
-        fake_result(scalar=None),                    # SiteBudget (gfc)
-        fake_result(scalars_list=[]),                # StageEvent
+        fake_result(scalar=site),                                                 # fetch_site_or_404
+        fake_result(all_rows=[(project, None, None, design_review, None, None)]),  # 6-table JOIN
+        fake_result(scalars_list=deliverables),                                   # DesignDeliverable
+        fake_result(scalars_list=[]),                                             # StageEvent
     )
     resp = _run(session, site)
 
@@ -99,15 +95,10 @@ def test_stage_status_flags_negative_dd(make_session, fake_result):
         other_1="pending", other_2="pending", other_1_label=None, other_2_label=None,
     )
     session = make_session(
-        fake_result(scalar=site),               # fetch_site_or_404
-        fake_result(scalar=None),               # ProjectReview
-        fake_result(scalar=None),               # NsoReview
-        fake_result(scalar=None),               # LaunchApproval
-        fake_result(scalars_list=[]),           # DesignDeliverable
-        fake_result(scalar=None),               # DesignReview
-        fake_result(scalar=dd),                 # LegalDdChecklist
-        fake_result(scalar=None),               # SiteBudget (gfc)
-        fake_result(scalars_list=[]),           # StageEvent
+        fake_result(scalar=site),                                      # fetch_site_or_404
+        fake_result(all_rows=[(None, None, None, None, dd, None)]),    # 6-table JOIN
+        fake_result(scalars_list=[]),                                  # DesignDeliverable
+        fake_result(scalars_list=[]),                                  # StageEvent
     )
     resp = _run(session, site)
     assert resp.legal_has_negative is True
@@ -126,16 +117,11 @@ def test_stage_status_timeline_maps_events(make_session, fake_result):
         occurred_at=datetime(2026, 7, 14, tzinfo=timezone.utc),
     )
     session = make_session(
-        fake_result(scalar=site),               # fetch_site_or_404
-        fake_result(scalar=None),               # ProjectReview
-        fake_result(scalar=None),               # NsoReview
-        fake_result(scalar=None),               # LaunchApproval
-        fake_result(scalars_list=[]),           # DesignDeliverable
-        fake_result(scalar=None),               # DesignReview
-        fake_result(scalar=None),               # LegalDdChecklist
-        fake_result(scalar=None),               # SiteBudget (gfc)
-        fake_result(scalars_list=[event]),      # StageEvent
-        fake_result(all_rows=[(actor_id, "Asha B.")]),  # fetch_user_names
+        fake_result(scalar=site),                                       # fetch_site_or_404
+        fake_result(all_rows=[(None, None, None, None, None, None)]),   # 6-table JOIN
+        fake_result(scalars_list=[]),                                   # DesignDeliverable
+        fake_result(scalars_list=[event]),                              # StageEvent
+        fake_result(all_rows=[(actor_id, "Asha B.")]),                  # fetch_user_names
     )
     resp = _run(session, site)
     assert len(resp.timeline) == 1

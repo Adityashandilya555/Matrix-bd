@@ -110,7 +110,10 @@ export default function App() {
       .catch(() => { /* ignore — empty badge is fine */ });
     refresh();
     // Cheap poll so a supervisor reviewing the queue sees joiners show up.
-    const t = window.setInterval(refresh, 30_000);
+    // Hidden tabs skip the tick — no reason to poll a badge nobody sees. (#386)
+    const t = window.setInterval(() => {
+      if (document.visibilityState !== 'hidden') refresh();
+    }, 30_000);
     return () => { alive = false; clearInterval(t); };
   }, [authReady, role]);
 

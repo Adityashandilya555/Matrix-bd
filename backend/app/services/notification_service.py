@@ -5,9 +5,10 @@ Write path (enqueue):
   it also populates `recipient_email` by looking up the user row — without
   this the email rows are un-sendable even if a drain exists (#112).
 
-  Call enqueue() AFTER you have committed the business write — if the outbox
-  row is in the same transaction as the state change, both succeed or both
-  roll back, so you never notify about a phantom event.
+  Call enqueue() INSIDE the same transaction as the business write — the
+  outbox row then commits or rolls back atomically with the state change,
+  so you never notify about a phantom event (and never lose a notification
+  for a committed one).
 
 Drain path (drain_pending_emails):
   Fetches up to `batch_size` pending email rows and dispatches each via the
@@ -56,25 +57,12 @@ async def recipients_for_legal_supervisors(
 ) -> list[UUID]:
     """Supervisors whose module membership is 'legal' in this tenant.
 
-    Queries user_module_memberships (the authoritative membership table) rather
-    than users.role, because in the 3-role model all legal staff are simply
-    role=supervisor / role=executive scoped to module='legal'.
+    Thin wrapper over recipients_for_module_supervisors — kept for call-site
+    readability; the membership-table rationale lives on the generic form.
     """
-    rows = await session.execute(
-        text(
-            """
-            SELECT u.id
-              FROM user_module_memberships m
-              JOIN users u ON u.id = m.user_id
-             WHERE m.tenant_id  = :tenant_id
-               AND m.module     = 'legal'
-               AND m.role_in_module = 'supervisor'
-               AND u.is_active  = true
-            """
-        ),
-        {"tenant_id": str(tenant_id)},
+    return await recipients_for_module_supervisors(
+        session, tenant_id=tenant_id, module="legal",
     )
-    return [row[0] for row in rows]
 
 
 async def recipients_for_design_supervisors(
@@ -82,25 +70,12 @@ async def recipients_for_design_supervisors(
 ) -> list[UUID]:
     """Supervisors whose module membership is 'design' in this tenant.
 
-    Same membership-based resolution as recipients_for_legal_supervisors — in the
-    3-role model design staff are role=supervisor / role=executive scoped to
-    module='design'.
+    Thin wrapper over recipients_for_module_supervisors — kept for call-site
+    readability; the membership-table rationale lives on the generic form.
     """
-    rows = await session.execute(
-        text(
-            """
-            SELECT u.id
-              FROM user_module_memberships m
-              JOIN users u ON u.id = m.user_id
-             WHERE m.tenant_id  = :tenant_id
-               AND m.module     = 'design'
-               AND m.role_in_module = 'supervisor'
-               AND u.is_active  = true
-            """
-        ),
-        {"tenant_id": str(tenant_id)},
+    return await recipients_for_module_supervisors(
+        session, tenant_id=tenant_id, module="design",
     )
-    return [row[0] for row in rows]
 
 
 async def recipients_for_module_supervisors(
@@ -253,8 +228,9 @@ async def drain_pending_emails(*, resend_api_key: str, batch_size: int = 20) -> 
     if not rows:
         return 0
 
-    # ── 2. Dispatch each row, update status per-row ───────────────────────────
-    processed = 0
+    # ── 2. Dispatch each row via Resend, collecting the outcome (no DB writes
+    #       inside the HTTP loop — see step 3). ──────────────────────────────
+    outcomes: list[dict] = []  # {"id": str, "status": str, "reason": str | None}
     async with httpx.AsyncClient(timeout=15.0) as client:
         for row in rows:
             try:
@@ -277,23 +253,29 @@ async def drain_pending_emails(*, resend_api_key: str, batch_size: int = 20) -> 
                 new_status = "failed"
                 reason = str(exc)[:200]
 
-            # Optimistic update: skip if another drain already processed this row.
-            async with SessionLocal() as upd, upd.begin():
-                await upd.execute(
-                    text("""
-                            UPDATE notification_outbox
-                               SET status        = :status,
-                                   failed_reason = :reason,
-                                   attempts      = attempts + 1,
-                                   sent_at       = CASE WHEN :status = 'sent'
-                                                        THEN now() ELSE sent_at END
-                             WHERE id = :id AND status = 'pending'
-                        """),
-                    {"status": new_status, "reason": reason, "id": str(row["id"])},
-                )
-
             if new_status == "failed":
                 log.warning("email_drain: failed to send row=%s reason=%s", row["id"], reason)
-            processed += 1
+            outcomes.append({"id": str(row["id"]), "status": new_status, "reason": reason})
 
-    return processed
+    # ── 3. Apply all status updates in ONE session/transaction ────────────────
+    # Under NullPool (pgBouncer transaction pooler) every SessionLocal() use is a
+    # fresh TCP connection, so the old per-row update opened one connection per
+    # email. Batching the writes into a single session turns N connections into
+    # one (#375). Each row keeps its `WHERE status = 'pending'` optimistic guard,
+    # so a concurrent drain that already processed a row is still a no-op here.
+    async with SessionLocal() as upd, upd.begin():
+        for o in outcomes:
+            await upd.execute(
+                text("""
+                    UPDATE notification_outbox
+                       SET status        = :status,
+                           failed_reason = :reason,
+                           attempts      = attempts + 1,
+                           sent_at       = CASE WHEN :status = 'sent'
+                                                THEN now() ELSE sent_at END
+                     WHERE id = :id AND status = 'pending'
+                """),
+                o,
+            )
+
+    return len(outcomes)
