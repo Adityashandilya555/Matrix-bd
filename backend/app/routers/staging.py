@@ -29,9 +29,19 @@ async def list_exec_staging(
 ) -> SiteListResponse:
     # One list_sites call with a comma-separated status filter (~7 queries)
     # instead of one full pipeline per status (~21 queries). (#372)
+    #
+    # list_sites' default limit=200 applies ONE cap across the combined
+    # status set, whereas the old per-status loop applied 200 to EACH of the
+    # 3 statuses separately (up to 600 rows total) — collapsing to one call
+    # without raising the limit would let newer rows in a busy status starve
+    # older rows in a smaller one out of the page (caught in review of #390).
+    # This endpoint is already scoped to a single executive's own sites
+    # (apply_role_scope filters by submitted_by/assigned_to), so a higher
+    # limit here is a small, exec-scoped query — not a tenant-wide one.
     return await list_sites(
         db, tenant_id=tenant_id, user=current_user,
         status="approved,loi_uploaded,pushed_to_payments",
+        limit=600,
     )
 
 
