@@ -139,7 +139,10 @@ async def test_approve_exec_noop_when_already_active(make_session, fake_result):
 # ── #124 — deterministic module claim at login ─────────────────────────────
 
 def test_login_membership_query_is_ordered():
-    import app.routers.auth as auth_mod
+    # The membership SQL moved from the auth router into auth_repo
+    # (get_primary_membership) in the #378 router→service extraction; the
+    # #124 ORDER-BY guard now inspects the repo source where the SQL lives.
+    import app.services.auth_repo as auth_mod
 
     src = inspect.getsource(auth_mod)
     anchor = "SELECT module, role_in_module, supervisor_id"
