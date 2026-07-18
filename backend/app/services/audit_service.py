@@ -31,6 +31,7 @@ async def write_audit_event(
     entity_id: str | UUID | None = None,
     entity_type: str | None = None,
     actor_role: str | None = None,
+    flush: bool = False,
 ) -> models.AuditLog:
     """Persist an audit row *and* (when a status transition is present) a
     stage_events row.  The caller's transaction is reused.
@@ -38,6 +39,12 @@ async def write_audit_event(
     `actor_name` is denormalised so the activity tab can render without a join.
     `actor_role` is stored in stage_events for SLA/analytics attribution; it is
     silently ignored by the audit_logs row (which identifies actors via actor_id).
+
+    By default the rows are only `session.add`-ed and left to persist on the
+    surrounding transaction()'s commit — so a field-diff loop that emits many
+    audit rows costs one batched flush instead of N sequential pooler roundtrips
+    (#374). Pass ``flush=True`` only if you actually need the returned row's `id`
+    populated before commit (no current caller does).
     """
     row = models.AuditLog(
         tenant_id=tenant_id,
@@ -55,7 +62,6 @@ async def write_audit_event(
         entity_type=entity_type,
     )
     session.add(row)
-    await session.flush()  # ensure id is populated
 
     # Co-write stage_events for status transitions — the immutable SLA/analytics ledger.
     if site_id is not None and (from_status is not None or to_status is not None):
@@ -69,6 +75,10 @@ async def write_audit_event(
             actor_role=actor_role,
         )
         session.add(stage)
+
+    # Persist immediately only when the caller needs row.id pre-commit; otherwise
+    # the transaction()'s commit flushes all pending audit rows in one roundtrip.
+    if flush:
         await session.flush()
 
     return row
