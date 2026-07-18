@@ -25,6 +25,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -392,6 +393,20 @@ class SiteDelegation(Base):
 
     __table_args__ = (
         CheckConstraint("module IN ('bd','legal','design','project','nso','project_excellence','financial_closure')", name="chk_site_delegations_module"),  # 'payment' retired (202606132); 'project_excellence' (202606134) + 'financial_closure' (202606147)
+        # Mirrors of the partial indexes created by migration 202605271 — the
+        # DB is the source of truth; these keep the model an accurate index
+        # inventory for anyone auditing coverage from here (#381).
+        Index(
+            "site_delegations_unique_active",
+            "site_id", "module", "delegate_user_id",
+            unique=True,
+            postgresql_where=text("revoked_at IS NULL"),
+        ),
+        Index(
+            "site_delegations_by_module",
+            "tenant_id", "module", "delegate_user_id",
+            postgresql_where=text("revoked_at IS NULL"),
+        ),
     )
 
 
