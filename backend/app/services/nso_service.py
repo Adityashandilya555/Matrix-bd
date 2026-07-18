@@ -30,7 +30,7 @@ from app.domain.schemas.nso import (
     NsoStateResponse,
     NsoTriggerState,
 )
-from app.services._common import count_rows, fetch_site_or_404, fetch_user_name
+from app.services._common import count_rows, fetch_site_for_update_or_404, fetch_user_name
 from app.services.audit_service import write_audit_event
 from app.services.launch_service import svc_create_launch_approval
 from app.services.licensing_status import (
@@ -557,7 +557,7 @@ async def svc_get_nso(
 ) -> NsoStateResponse:
     """Return a site's NSO state, optionally creating the review row when work begins."""
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         project = await _fetch_project(session, site_id=site.id)
         licensing = await _fetch_licensing(session, site_id=site.id)
         row = await _fetch_nso_or_create(session, site=site) if create else await _fetch_nso_or_none(session, site_id=site.id)
@@ -593,7 +593,7 @@ async def svc_save_stage_one(
 ) -> NsoStateResponse:
     """Save NSO Stage 1 property details and communication status, gated on Finance/CA approval."""
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         if not _trigger_one_unlocked(site):
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="NSO Stage 1 is locked until Finance / CA is approved.")
         project = await _fetch_project(session, site_id=site.id)
@@ -641,7 +641,7 @@ async def svc_save_stage_two(
     ``row`` before ``_sync_rollups`` and surface them in the state response.
     """
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         project = await _fetch_project(session, site_id=site.id)
         licensing = await _fetch_licensing(session, site_id=site.id)
         row = await _fetch_nso_or_create(session, site=site)
@@ -687,7 +687,7 @@ async def svc_save_stage_three(
 ) -> NsoStateResponse:
     """Save NSO Stage 3 launch-readiness checklist, gated on Legal Licensing and Project completion."""
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         project = await _fetch_project(session, site_id=site.id)
         licensing = await _fetch_licensing(session, site_id=site.id)
         row = await _fetch_nso_or_create(session, site=site)
@@ -719,7 +719,7 @@ async def svc_final_approval(
 ) -> NsoStateResponse:
     """Mark NSO complete after Stage 3 and kick off the post-NSO launch approval chain."""
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         project = await _fetch_project(session, site_id=site.id)
         licensing = await _fetch_licensing(session, site_id=site.id)
         row = await _fetch_nso_or_create(session, site=site)

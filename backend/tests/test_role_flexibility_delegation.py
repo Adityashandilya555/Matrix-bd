@@ -402,7 +402,7 @@ async def test_supervisor_can_self_allocate_design(monkeypatch):
     async def _build(session, s):
         return {"ok": True}
 
-    monkeypatch.setattr(design_service, "fetch_site_or_404", _fetch_site)
+    monkeypatch.setattr(design_service, "fetch_site_for_update_or_404", _fetch_site)
     monkeypatch.setattr(design_service, "_fetch_review_or_none", _no_review)
     monkeypatch.setattr(design_service, "_build_design_response", _build)
     monkeypatch.setattr(design_service, "write_audit_event", _noop_audit)
