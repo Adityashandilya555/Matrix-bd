@@ -186,45 +186,27 @@ async def get_site(
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
     _assert_can_read_site(user, site)
 
-    name_stmt = select(models.User.name).where(models.User.id == site.submitted_by)
-    name = (await session.execute(name_stmt)).scalar_one_or_none()
-    assigned_to_name = None
-    if site.assigned_to:
-        assigned_name_stmt = select(models.User.name).where(models.User.id == site.assigned_to)
-        assigned_to_name = (await session.execute(assigned_name_stmt)).scalar_one_or_none()
-    detail_stmt = select(models.SiteDetail).where(models.SiteDetail.site_id == site.id)
-    details = (await session.execute(detail_stmt)).scalar_one_or_none()
-    project_stmt = select(models.ProjectReview).where(models.ProjectReview.site_id == site.id)
-    project = (await session.execute(project_stmt)).scalar_one_or_none()
-    # Latest approval → expected_loi_days + approver name for the LOI SLA view.
-    approval_stmt = (
-        select(models.Approval)
-        .where(models.Approval.site_id == site.id)
-        .order_by(desc(models.Approval.created_at))
-        .limit(1)
-    )
-    approval = (await session.execute(approval_stmt)).scalar_one_or_none()
-    approved_by_name = None
-    if approval and approval.approver_id:
-        approver_stmt = select(models.User.name).where(models.User.id == approval.approver_id)
-        approved_by_name = (await session.execute(approver_stmt)).scalar_one_or_none()
-    nso_stmt = select(models.NsoReview).where(models.NsoReview.site_id == site.id)
-    nso = (await session.execute(nso_stmt)).scalar_one_or_none()
-    launch_stmt = select(models.LaunchApproval).where(models.LaunchApproval.site_id == site.id)
-    launch = (await session.execute(launch_stmt)).scalar_one_or_none()
+    # Batch the 1:1 child rows and all 2-3 user names through the same helpers
+    # list_sites uses, instead of ~8 sequential single-row roundtrips (#376):
+    # _gather_site_sources loads detail/project/approval/nso/launch, and
+    # _resolve_site_names resolves submitter + assignee + approver in one query.
+    (detail_by_site, project_by_site, approval_by_site,
+     nso_by_site, launch_by_site) = await _gather_site_sources(session, [site.id])
+    names = await _resolve_site_names(session, [site], approval_by_site)
+    approval = approval_by_site.get(site.id)
     supervisor_edits = await compute_unseen_supervisor_edits(
         session, tenant_id=tenant_id, site_ids=[site.id],
     )
     return site_to_response(
         site,
-        created_by_name=name or "",
-        assigned_to_name=assigned_to_name,
-        details=details,
-        project=project,
+        created_by_name=names.get(site.submitted_by) or "",
+        assigned_to_name=names.get(site.assigned_to) if site.assigned_to else None,
+        details=detail_by_site.get(site.id),
+        project=project_by_site.get(site.id),
         approval=approval,
-        approved_by_name=approved_by_name,
-        nso=nso,
-        launch=launch,
+        approved_by_name=(names.get(approval.approver_id) if approval and approval.approver_id else None),
+        nso=nso_by_site.get(site.id),
+        launch=launch_by_site.get(site.id),
         supervisor_edited_fields=supervisor_edits.get(site.id),
     )
 
