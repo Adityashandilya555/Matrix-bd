@@ -669,7 +669,7 @@ async def svc_reassign_site(
 ) -> OkResponse:
     """Reassign a site to another active executive in the same workspace."""
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         assignee = (await session.execute(
             select(models.User).where(
                 models.User.id == new_owner_id,

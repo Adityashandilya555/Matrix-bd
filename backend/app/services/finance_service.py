@@ -58,7 +58,7 @@ async def svc_save_finance_draft(
     'pending' (once submitted for approval the fields are locked).
     """
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         assert_executive_owns_site(actor, site)
 
         if site.status not in _LOI_AND_BEYOND:
