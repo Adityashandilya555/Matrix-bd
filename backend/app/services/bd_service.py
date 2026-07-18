@@ -32,7 +32,6 @@ from app.services._common import (
     actor_can_supervise,
     compute_unseen_supervisor_edits,
     fetch_site_for_update_or_404,
-    fetch_site_or_404,
     fetch_user_name,
     make_site_code,
     site_to_response,
