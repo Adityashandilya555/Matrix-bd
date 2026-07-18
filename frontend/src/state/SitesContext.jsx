@@ -192,22 +192,33 @@ export function SitesProvider({ children }) {
     // Never poll while signed out — a tokenless refresh 401s and re-pops the
     // session modal. (popup-on-login fix)
     const run = () => { if (_isAuthed()) refresh(true).catch(err => { if (err?.code !== 'TIMEOUT') setError(err.message); }); };
+    // Passive triggers (interval / focus / visibilitychange) skip hidden tabs
+    // — each poll costs the backend ~7 queries, so forgotten background tabs
+    // must not generate load — and collapse the tab-return burst (focus +
+    // visibilitychange + a due interval tick can all fire within the same
+    // second) into one request. Data-changed events keep calling run()
+    // directly: they follow a user action in a visible tab. (#386)
+    let lastPassiveRun = 0;
+    const passiveRun = () => {
+      if (document.visibilityState === 'hidden') return;
+      const now = Date.now();
+      if (now - lastPassiveRun < 2000) return;
+      lastPassiveRun = now;
+      run();
+    };
     const unsubscribe = subscribeSiteDataChanged((detail) => {
       if (detail?.source !== 'SitesContext') run();
     });
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') run();
-    };
-    window.addEventListener('focus', run);
-    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', passiveRun);
+    document.addEventListener('visibilitychange', passiveRun);
     // Background poll: surfaces cross-session changes — e.g. a supervisor
     // delegating a site to this executive — in the sidebar/queues without a
     // manual refresh or tab re-focus.
-    const pollId = window.setInterval(run, 30000);
+    const pollId = window.setInterval(passiveRun, 30000);
     return () => {
       unsubscribe();
-      window.removeEventListener('focus', run);
-      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', passiveRun);
+      document.removeEventListener('visibilitychange', passiveRun);
       window.clearInterval(pollId);
     };
   }, [refresh]);
