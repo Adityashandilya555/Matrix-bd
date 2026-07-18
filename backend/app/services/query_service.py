@@ -18,6 +18,7 @@ from app.domain.schemas.site import SiteListResponse, SiteResponse
 from app.services._common import (
     apply_role_scope,
     compute_unseen_supervisor_edits,
+    count_rows,
     fetch_site_or_404,
     site_to_response,
 )
@@ -147,6 +148,9 @@ async def list_sites(
     if city:
         stmt = stmt.where(models.Site.city == city)
     stmt = apply_role_scope(stmt, model=models.Site, user=user)
+    # True pre-pagination count — KPI totals must not silently cap at the
+    # page limit once a tenant crosses `limit` matching sites. (#377)
+    total = await count_rows(session, stmt)
     stmt = stmt.order_by(desc(models.Site.updated_at)).limit(limit)
     rows = (await session.execute(stmt)).scalars().all()
 
@@ -163,7 +167,7 @@ async def list_sites(
         approval_by_site=approval_by_site, nso_by_site=nso_by_site, launch_by_site=launch_by_site,
         supervisor_edits=supervisor_edits,
     )
-    return SiteListResponse(items=items, total=len(items))
+    return SiteListResponse(items=items, total=total)
 
 
 def _assert_can_read_site(user: dict, site) -> None:
