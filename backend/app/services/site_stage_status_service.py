@@ -341,32 +341,37 @@ async def build_stage_status_response(
     design_status = getattr(site, "design_status", "pending") or "pending"
     finance_status = getattr(site, "finance_status", "pending") or "pending"
 
-    project = (await db.execute(
-        select(models.ProjectReview).where(models.ProjectReview.site_id == site.id)
-    )).scalar_one_or_none()
-    nso = (await db.execute(
-        select(models.NsoReview).where(models.NsoReview.site_id == site.id)
-    )).scalar_one_or_none()
-    launch = (await db.execute(
-        select(models.LaunchApproval).where(models.LaunchApproval.site_id == site.id)
-    )).scalar_one_or_none()
+    # Fold the six 1:1 child tables into a single LEFT JOIN instead of six
+    # sequential single-row roundtrips (#376). Each is one-per-site (project /
+    # nso / launch / design_review / legal_dd) or one-per-(site, phase)
+    # (site_budget at the 'gfc' phase = Project Excellence — the private
+    # project_excellence_reviews table is retired). The phase filter lives in the
+    # JOIN condition so it stays a LEFT join.
+    row = (await db.execute(
+        select(
+            models.ProjectReview, models.NsoReview, models.LaunchApproval,
+            models.DesignReview, models.LegalDdChecklist, models.SiteBudget,
+        )
+        .select_from(models.Site)
+        .outerjoin(models.ProjectReview, models.ProjectReview.site_id == models.Site.id)
+        .outerjoin(models.NsoReview, models.NsoReview.site_id == models.Site.id)
+        .outerjoin(models.LaunchApproval, models.LaunchApproval.site_id == models.Site.id)
+        .outerjoin(models.DesignReview, models.DesignReview.site_id == models.Site.id)
+        .outerjoin(models.LegalDdChecklist, models.LegalDdChecklist.site_id == models.Site.id)
+        .outerjoin(
+            models.SiteBudget,
+            (models.SiteBudget.site_id == models.Site.id) & (models.SiteBudget.phase == "gfc"),
+        )
+        .where(models.Site.id == site.id)
+    )).first()
+    if row is None:
+        project = nso = launch = design_review = dd = excellence = None
+    else:
+        project, nso, launch, design_review, dd, excellence = row
+
     deliverables = (await db.execute(
         select(models.DesignDeliverable).where(models.DesignDeliverable.site_id == site.id)
     )).scalars().all()
-    design_review = (await db.execute(
-        select(models.DesignReview).where(models.DesignReview.site_id == site.id)
-    )).scalar_one_or_none()
-    dd = (await db.execute(
-        select(models.LegalDdChecklist).where(models.LegalDdChecklist.site_id == site.id)
-    )).scalar_one_or_none()
-    # Project Excellence lives in the shared budget table at the post-GFC 'gfc'
-    # phase (the private project_excellence_reviews table is retired).
-    excellence = (await db.execute(
-        select(models.SiteBudget).where(
-            models.SiteBudget.site_id == site.id,
-            models.SiteBudget.phase == "gfc",
-        )
-    )).scalar_one_or_none()
 
     ctx = dict(
         site=site, project=project, nso=nso, launch=launch,
