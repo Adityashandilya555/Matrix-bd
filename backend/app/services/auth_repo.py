@@ -31,7 +31,9 @@ async def get_tenant_by_workspace_code(
     ``columns`` must be a hard-coded literal column list (see module docstring).
     """
     return (await db.execute(
-        text(f"SELECT {columns} FROM tenants WHERE upper(workspace_code) = upper(:code)"),
+        # `columns` is a hard-coded developer literal, never request/user data
+        # (enforced by the module SECURITY contract); value params are bound.
+        text(f"SELECT {columns} FROM tenants WHERE upper(workspace_code) = upper(:code)"),  # skipcq: BAN-B608
         {"code": code},
     )).mappings().first()
 
@@ -44,7 +46,9 @@ async def get_user_by_tenant_email(
     ``columns`` must be a hard-coded literal column list (see module docstring).
     """
     return (await db.execute(
-        text(f"SELECT {columns} FROM users WHERE tenant_id = :tid AND lower(email) = lower(:email)"),
+        # `columns` is a hard-coded developer literal, never request/user data
+        # (enforced by the module SECURITY contract); value params are bound.
+        text(f"SELECT {columns} FROM users WHERE tenant_id = :tid AND lower(email) = lower(:email)"),  # skipcq: BAN-B608
         {"tid": tenant_id, "email": email},
     )).mappings().first()
 
