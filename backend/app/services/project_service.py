@@ -12,6 +12,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
 from sqlalchemy import desc, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -40,6 +41,7 @@ from app.services._common import (
     fetch_site_or_404,
     fetch_user_name,
     fetch_user_names,
+    is_unique_violation,
 )
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_is_delegated
@@ -104,8 +106,20 @@ async def _fetch_review_or_create(
         project_status="pending",
         current_stage="execution",
     )
-    session.add(review)
-    await session.flush()
+    # Idempotent lazy-create: lock-free callers (svc_get_project, or a GET
+    # racing an allocate) can both insert this site_id-keyed row. Flush inside a
+    # SAVEPOINT so a unique violation rolls back only the insert; then refetch
+    # the winner instead of surfacing a 500.
+    try:
+        async with session.begin_nested():
+            session.add(review)
+            await session.flush()
+    except IntegrityError as exc:
+        if not is_unique_violation(exc):
+            raise
+        review = await _fetch_review_or_none(session, site_id=site.id)
+        if review is None:
+            raise
     return review
 
 
@@ -568,7 +582,7 @@ async def svc_revoke_project_delegation(
                 models.SiteDelegation.module == "project",
                 models.SiteDelegation.delegate_user_id == delegate_user_id,
                 models.SiteDelegation.revoked_at.is_(None),
-            )
+            ).with_for_update()
         )).scalar_one_or_none()
         if row is None:
             return OkResponse(message="No active project allocation to revoke.")

@@ -449,7 +449,7 @@ async def svc_revoke_fc_delegation(
                 models.SiteDelegation.module == _MODULE,
                 models.SiteDelegation.delegate_user_id == delegate_user_id,
                 models.SiteDelegation.revoked_at.is_(None),
-            )
+            ).with_for_update()
         )).scalar_one_or_none()
         if row is None:
             return OkResponse(message="No active financial closure allocation to revoke.")
