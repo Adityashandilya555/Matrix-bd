@@ -1,6 +1,7 @@
 import React from 'react';
 import { T, Icon, Card, Drawer, Skeleton, EmptyState, ErrorState, Avatar, TABULAR } from '../ui/kit.jsx';
 import { MODULE_META, moduleForAction, labelForEntry, dotColor } from './historyMeta.js';
+import { humanizeAuditDetail } from '../../../services/api/audit.js';
 import { getAdminSiteDocuments } from '../../../services/api/businessAdminApi.js';
 import { reviveSite } from '../../../services/api/adapters/httpAdapter.js';
 import { usePageContext } from '../../../App.jsx';
@@ -318,6 +319,7 @@ function HistoryDrawer({ site, fetchHistory, onClose }) {
                   {g.items.map((e) => {
                     const m = moduleForAction(e.action);
                     const mColor = MODULE_META[m].color;
+                    const detailNote = humanizeAuditDetail(e.detail);
                     return (
                       <div key={e.id} style={{ position: 'relative', display: 'flex', gap: 14, padding: '9px 0' }}>
                         <span style={{ width: 12, height: 12, borderRadius: 999, marginLeft: 5, marginTop: 3, flexShrink: 0,
@@ -334,10 +336,10 @@ function HistoryDrawer({ site, fetchHistory, onClose }) {
                             {e.actor && <><Avatar name={e.actor} size={17} /><span>{e.actor}</span><span aria-hidden="true">·</span></>}
                             <span style={{ ...TABULAR }}>{fmtTime(e.createdAt)}</span>
                           </div>
-                          {e.detail && !e.detail.startsWith('kind=') && (
+                          {detailNote && (
                             <div style={{ marginTop: 6, padding: '7px 10px', borderLeft: `2px solid ${cm(mColor, 45)}`,
                               borderRadius: '4px 10px 10px 4px', background: T.surfaceInset, fontSize: 12,
-                              lineHeight: 1.45, color: T.textMuted, wordBreak: 'break-word' }}>{e.detail}</div>
+                              lineHeight: 1.45, color: T.textMuted, wordBreak: 'break-word' }}>{detailNote}</div>
                           )}
                         </div>
                       </div>
