@@ -587,7 +587,7 @@ async def svc_revoke_design_delegation(
                 models.SiteDelegation.module == "design",
                 models.SiteDelegation.delegate_user_id == delegate_user_id,
                 models.SiteDelegation.revoked_at.is_(None),
-            )
+            ).with_for_update()
         )).scalar_one_or_none()
         if row is None:
             return OkResponse(message="No active design allocation to revoke.")

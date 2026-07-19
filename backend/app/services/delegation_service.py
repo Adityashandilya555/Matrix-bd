@@ -144,7 +144,7 @@ async def svc_revoke_delegation(
             select(models.ShortlistDelegation).where(
                 models.ShortlistDelegation.id == delegation_id,
                 models.ShortlistDelegation.tenant_id == tenant_id,
-            )
+            ).with_for_update()
         )).scalar_one_or_none()
         if row is None:
             raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Delegation not found.")
@@ -400,7 +400,7 @@ async def svc_revoke_legal_delegation(
                 models.SiteDelegation.module == "legal",
                 models.SiteDelegation.delegate_user_id == delegate_user_id,
                 models.SiteDelegation.revoked_at.is_(None),
-            )
+            ).with_for_update()
         )).scalar_one_or_none()
         if row is None:
             return OkResponse(message="No active legal delegation to revoke.")
