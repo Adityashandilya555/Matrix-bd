@@ -447,7 +447,7 @@ async def test_reassign_site_supervisor_can_take_self(monkeypatch):
     async def _fetch_site(session, *, site_id, tenant_id):
         return site
 
-    monkeypatch.setattr(bd_service, "fetch_site_or_404", _fetch_site)
+    monkeypatch.setattr(bd_service, "fetch_site_for_update_or_404", _fetch_site)
     monkeypatch.setattr(bd_service, "write_audit_event", _noop_audit)
     monkeypatch.setattr(bd_service, "notify_enqueue", _noop_notify)
 
@@ -466,7 +466,7 @@ async def test_reassign_site_to_other_supervisor_still_rejected(monkeypatch):
     async def _fetch_site(session, *, site_id, tenant_id):
         return site
 
-    monkeypatch.setattr(bd_service, "fetch_site_or_404", _fetch_site)
+    monkeypatch.setattr(bd_service, "fetch_site_for_update_or_404", _fetch_site)
     other = _user(role="supervisor")
     with pytest.raises(HTTPException) as exc:
         await bd_service.svc_reassign_site(
