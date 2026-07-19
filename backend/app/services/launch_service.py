@@ -49,7 +49,7 @@ from app.domain.schemas.launch import (
     LaunchReviewRequest,
     SiteDetailsSnapshot,
 )
-from app.services._common import count_rows, fetch_site_or_404, fetch_user_names
+from app.services._common import count_rows, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.licensing_status import stage_two_canonical_status
 
@@ -500,7 +500,7 @@ async def svc_save_rent_fields(
 ) -> LaunchApprovalResponse:
     """Save staged rent-term edits, enforcing which role may edit at the current status."""
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         row = await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id)
 
         allowed = _EDIT_ALLOWED.get(row.status, set())
@@ -542,7 +542,7 @@ async def svc_admin_send_for_review(
 ) -> LaunchApprovalResponse:
     """Admin 1st touch → send to the creating executive."""
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         row = await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id)
         if row.status != "pending_admin_review":
             raise HTTPException(
@@ -585,7 +585,7 @@ async def svc_exec_review(
         raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A comment is required when rejecting.")
 
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         row = await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id)
         if row.status != "under_exec_review":
             raise HTTPException(
@@ -636,7 +636,7 @@ async def svc_supervisor_review(
         raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A comment is required when rejecting.")
 
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         row = await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id)
         if row.status != "under_supervisor_review":
             raise HTTPException(
@@ -695,7 +695,7 @@ async def svc_admin_final_confirm(
 ) -> LaunchApprovalResponse:
     """Admin final touch → COMMIT staging into the DB, unlock Launch."""
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         row = await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id)
         if row.status != "pending_admin_final":
             raise HTTPException(
@@ -748,7 +748,7 @@ async def svc_launch(
 ) -> LaunchApprovalResponse:
     """Terminal go-live → site.is_launched = True."""
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         row = await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id)
         if row.status != "ready_to_launch":
             raise HTTPException(
