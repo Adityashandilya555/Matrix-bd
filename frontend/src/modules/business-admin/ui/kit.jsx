@@ -1,5 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
+import '../../shared/primitives/button-fx.css';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Approval Center UI kit
@@ -193,6 +194,9 @@ export function Button({ variant = 'subtle', size = 'sm', loading = false, icon,
   let cls = 'zm-btn';
   if (variant === 'solid' || variant === 'accent' || variant === 'success') cls = 'zm-btn-primary';
   if (variant === 'danger') cls = 'zm-btn-danger';
+  // zm-btn-fx adds the hover-lift / active-press / focus-ring the inline styles
+  // below can't express (pseudo-classes) — same tactile feel across all panels.
+  cls += ' zm-btn-fx';
 
   return (
     <button
