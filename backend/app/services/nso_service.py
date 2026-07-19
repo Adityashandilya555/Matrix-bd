@@ -14,6 +14,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
 from sqlalchemy import desc, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -30,7 +31,7 @@ from app.domain.schemas.nso import (
     NsoStateResponse,
     NsoTriggerState,
 )
-from app.services._common import count_rows, fetch_site_for_update_or_404, fetch_user_name
+from app.services._common import count_rows, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_name
 from app.services.audit_service import write_audit_event
 from app.services.launch_service import svc_create_launch_approval
 from app.services.licensing_status import (
@@ -153,8 +154,17 @@ async def _fetch_nso_or_create(
     if row is not None:
         return row
     row = models.NsoReview(tenant_id=site.tenant_id, site_id=site.id)
-    session.add(row)
-    await session.flush()
+    # Idempotent lazy-create — svc_get_nso is now lock-free, so two concurrent
+    # GETs (or a GET racing a stage-save) can both insert this site_id-keyed
+    # row. Flush in a SAVEPOINT and refetch the winner on unique violation.
+    try:
+        async with session.begin_nested():
+            session.add(row)
+            await session.flush()
+    except IntegrityError:
+        row = await _fetch_nso_or_none(session, site_id=site.id)
+        if row is None:
+            raise
     return row
 
 
@@ -556,8 +566,11 @@ async def svc_get_nso(
     session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID, create: bool = True,
 ) -> NsoStateResponse:
     """Return a site's NSO state, optionally creating the review row when work begins."""
+    # Read/view path: no row lock. It lazy-creates the NSO row, but that create
+    # is idempotent (see _fetch_nso_or_create), so a plain fetch is safe and
+    # avoids FOR-UPDATE contention between concurrent viewers and stage-savers.
     async with transaction(session):
-        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
         project = await _fetch_project(session, site_id=site.id)
         licensing = await _fetch_licensing(session, site_id=site.id)
         row = await _fetch_nso_or_create(session, site=site) if create else await _fetch_nso_or_none(session, site_id=site.id)

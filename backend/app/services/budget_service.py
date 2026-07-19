@@ -16,6 +16,7 @@ from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -70,8 +71,16 @@ async def fetch_or_create_budget(
         status="draft",
         allocated_to=allocated_to,
     )
-    session.add(budget)
-    await session.flush()
+    # Idempotent lazy-create — lock-free budget GETs can race on the
+    # (site_id, phase) unique key. Flush in a SAVEPOINT and refetch on conflict.
+    try:
+        async with session.begin_nested():
+            session.add(budget)
+            await session.flush()
+    except IntegrityError:
+        budget = await fetch_budget(session, site_id=site.id, phase=phase, tenant_id=site.tenant_id)
+        if budget is None:
+            raise
     return budget
 
 

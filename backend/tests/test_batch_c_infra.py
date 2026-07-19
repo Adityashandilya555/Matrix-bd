@@ -383,3 +383,33 @@ async def test_submit_inspection_date_sets_submitted(make_session, monkeypatch):
     assert out == "OK"
     assert review.inspection_date == date(2026, 6, 2)
     assert review.quality_audit_status == "submitted"
+
+
+async def test_fetch_review_or_create_idempotent_on_conflict(monkeypatch):
+    """#408 follow-up: a lock-free create that loses the race gets an
+    IntegrityError on flush and must refetch the winner, not 500."""
+    from sqlalchemy.exc import IntegrityError
+
+    from app.db import models
+    from tests.conftest import RecordingSession
+
+    site = SimpleNamespace(id=uuid4(), tenant_id=uuid4())
+    winner = models.ProjectReview(tenant_id=site.tenant_id, site_id=site.id)
+
+    calls = {"n": 0}
+
+    async def _or_none(session, *, site_id):
+        calls["n"] += 1
+        return None if calls["n"] == 1 else winner  # miss first, winner on refetch
+
+    async def _boom():
+        raise IntegrityError("INSERT", {}, Exception("duplicate key"))
+
+    monkeypatch.setattr(project_service, "_fetch_review_or_none", _or_none)
+    session = RecordingSession()
+    monkeypatch.setattr(session, "flush", _boom)
+
+    out = await project_service._fetch_review_or_create(session, site=site)
+    assert out is winner            # refetched the winner instead of raising
+    assert calls["n"] == 2          # missed once, then refetched the winner
+    assert session.rollback_count == 1  # the savepoint rolled back the lost insert
