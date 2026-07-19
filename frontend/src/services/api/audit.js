@@ -128,6 +128,7 @@ export function labelForEntry(e) {
     case 'legal_approved':            return 'legal approved site';
     case 'legal_licensing_partial':   return 'saved licensing checklist';
     case 'legal_licensing_submitted_for_review': return 'submitted licensing for review';
+    case 'legal_licensing_auto_inherited': return 'auto-assigned licensing to the DD delegate';
     case 'design_allocated':          return 'allocated design work';
     case 'design_delegation_revoked': return 'revoked design delegation';
     case 'design_boq_approved':       return 'approved BOQ';
@@ -170,6 +171,20 @@ export function labelForEntry(e) {
     default:
       return e.action.replace(/_/g, ' ');
   }
+}
+
+// Audit `detail` strings are sometimes machine payloads written for
+// traceability (JSON blobs like {"delegate_user_id": "<uuid>"} or kind=...
+// markers), not prose. Returns null for those so timelines only render
+// human-readable notes.
+export function humanizeAuditDetail(detail) {
+  const text = String(detail ?? '').trim();
+  if (!text) return null;
+  if (text.startsWith('{') || text.startsWith('[')) {
+    try { JSON.parse(text); return null; } catch { /* not JSON — render as-is */ }
+  }
+  if (text.startsWith('kind=')) return null;
+  return text;
 }
 
 export async function getSiteActivity(siteId, options = {}) {

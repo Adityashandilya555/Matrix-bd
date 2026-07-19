@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import SubFilterPill from '../shared/primitives/SubFilterPill.jsx';
-import { getSiteActivity, labelForEntry } from '../../services/api/audit.js';
+import { getSiteActivity, labelForEntry, humanizeAuditDetail } from '../../services/api/audit.js';
 import { getLegalReview, listLegalHistory } from '../../services/api/legalApi.js';
 import { getDesignReview, listDesignHistory } from '../../services/api/designApi.js';
 import { getProjectHistoryDetail, listProjectHistory } from '../../services/api/projectApi.js';
@@ -494,23 +494,26 @@ export default function ModuleHistoryPage({ moduleKey, defaultFilter = 'all' }) 
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gap: 8 }}>
-                      {detailState.audit.slice(0, 18).map((entry) => (
-                        <div key={entry.id} style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'minmax(160px, 0.35fr) minmax(0, 1fr)',
-                          gap: 12,
-                          padding: '10px 0',
-                          borderTop: '1px solid var(--zm-line)',
-                        }}>
-                          <span style={{ fontFamily: 'var(--zm-font-mono)', color: 'var(--zm-fg-3)', fontSize: 11 }}>
-                            {entry.createdAt ? new Date(entry.createdAt).toLocaleString() : 'No timestamp'}
-                          </span>
-                          <span>
-                            <strong>{entry.actor || 'System'}</strong> {labelForEntry(entry)}
-                            {entry.detail ? <span style={{ color: 'var(--zm-fg-3)' }}> · {entry.detail}</span> : null}
-                          </span>
-                        </div>
-                      ))}
+                      {detailState.audit.slice(0, 18).map((entry) => {
+                        const detailNote = humanizeAuditDetail(entry.detail);
+                        return (
+                          <div key={entry.id} style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'minmax(160px, 0.35fr) minmax(0, 1fr)',
+                            gap: 12,
+                            padding: '10px 0',
+                            borderTop: '1px solid var(--zm-line)',
+                          }}>
+                            <span style={{ fontFamily: 'var(--zm-font-mono)', color: 'var(--zm-fg-3)', fontSize: 11 }}>
+                              {entry.createdAt ? new Date(entry.createdAt).toLocaleString() : 'No timestamp'}
+                            </span>
+                            <span>
+                              <strong>{entry.actor || 'System'}</strong> {labelForEntry(entry)}
+                              {detailNote ? <span style={{ color: 'var(--zm-fg-3)' }}> · {detailNote}</span> : null}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

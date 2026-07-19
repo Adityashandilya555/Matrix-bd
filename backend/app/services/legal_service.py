@@ -158,7 +158,7 @@ async def _build_review_response(
     submitted_by_name = await fetch_user_name(session, site.submitted_by)
     return LegalReviewResponse(
         site_id=str(site.id),
-        site_code=site.code or "",
+        site_code=site.ca_code or site.code or "",
         site_name=site.name,
         city=site.city,
         submitted_by_name=submitted_by_name,
@@ -356,7 +356,7 @@ async def svc_legal_queue(
         submitted_by_name = names.get(site.submitted_by, "")
         items.append(LegalQueueItem(
             site_id=str(site.id),
-            site_code=site.code or "",
+            site_code=site.ca_code or site.code or "",
             site_name=site.name,
             city=site.city,
             legal_dd_status=site.legal_dd_status or "pending",
@@ -505,7 +505,7 @@ async def svc_legal_history(
         submitted_by_name = names.get(site.submitted_by)
         items.append(LegalHistoryItem(
             site_id=str(site.id),
-            site_code=site.code or "",
+            site_code=site.ca_code or site.code or "",
             site_name=site.name,
             city=site.city,
             submitted_by_name=submitted_by_name,

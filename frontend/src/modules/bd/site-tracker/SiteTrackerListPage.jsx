@@ -345,7 +345,7 @@ function PipelineRow({ site, onOpenStage, onOpenDetail }) {
             padding: '2px 7px', borderRadius: 5,
             border: '1px solid var(--zm-line)', background: 'var(--zm-surface-2)',
           }}>
-            {site.code || site.id}
+            {site.caCode || site.code || site.id}
           </span>
           <span style={{
             fontFamily: 'var(--zm-font-body)', fontSize: 16, fontWeight: 800,
