@@ -465,7 +465,7 @@ export default function SiteTrackerListPage() {
     return state.items.filter((s) => {
       if (filter !== 'all' && s.status !== filter) return false;
       if (!q) return true;
-      const hay = [s.name, s.code, s.city, STAGE_LABELS[s.status]].filter(Boolean).join(' ').toLowerCase();
+      const hay = [s.name, s.code, s.caCode, s.city, STAGE_LABELS[s.status]].filter(Boolean).join(' ').toLowerCase();
       return hay.includes(q);
     });
   }, [state.items, filter, query]);

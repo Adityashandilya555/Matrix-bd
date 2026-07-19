@@ -343,7 +343,7 @@ export default function ModuleHistoryPage({ moduleKey, defaultFilter = 'all' }) 
   const filtered = listItems.filter((item) => {
     const needle = query.trim().toLowerCase();
     if (!needle) return true;
-    return [item.siteCode, item.siteName, item.city, item.submittedByName]
+    return [item.siteCode, item.caCode, item.siteName, item.city, item.submittedByName]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(needle));
   });
