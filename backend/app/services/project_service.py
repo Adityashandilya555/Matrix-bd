@@ -41,6 +41,7 @@ from app.services._common import (
     fetch_site_or_404,
     fetch_user_name,
     fetch_user_names,
+    is_unique_violation,
 )
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_is_delegated
@@ -113,7 +114,9 @@ async def _fetch_review_or_create(
         async with session.begin_nested():
             session.add(review)
             await session.flush()
-    except IntegrityError:
+    except IntegrityError as exc:
+        if not is_unique_violation(exc):
+            raise
         review = await _fetch_review_or_none(session, site_id=site.id)
         if review is None:
             raise

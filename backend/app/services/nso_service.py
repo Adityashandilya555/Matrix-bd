@@ -31,7 +31,7 @@ from app.domain.schemas.nso import (
     NsoStateResponse,
     NsoTriggerState,
 )
-from app.services._common import count_rows, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_name
+from app.services._common import count_rows, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_name, is_unique_violation
 from app.services.audit_service import write_audit_event
 from app.services.launch_service import svc_create_launch_approval
 from app.services.licensing_status import (
@@ -161,7 +161,9 @@ async def _fetch_nso_or_create(
         async with session.begin_nested():
             session.add(row)
             await session.flush()
-    except IntegrityError:
+    except IntegrityError as exc:
+        if not is_unique_violation(exc):
+            raise
         row = await _fetch_nso_or_none(session, site_id=site.id)
         if row is None:
             raise

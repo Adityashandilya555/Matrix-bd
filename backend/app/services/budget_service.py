@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
+from app.services._common import is_unique_violation
 
 GFC = "gfc"
 CLOSURE = "closure"
@@ -77,7 +78,9 @@ async def fetch_or_create_budget(
         async with session.begin_nested():
             session.add(budget)
             await session.flush()
-    except IntegrityError:
+    except IntegrityError as exc:
+        if not is_unique_violation(exc):
+            raise
         budget = await fetch_budget(session, site_id=site.id, phase=phase, tenant_id=site.tenant_id)
         if budget is None:
             raise
