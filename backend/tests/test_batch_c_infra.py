@@ -369,7 +369,7 @@ async def test_submit_inspection_date_sets_submitted(make_session, monkeypatch):
     async def _build(*a, **k):
         return "OK"
 
-    monkeypatch.setattr(project_service, "fetch_site_or_404", _fetch_site)
+    monkeypatch.setattr(project_service, "fetch_site_for_update_or_404", _fetch_site)
     monkeypatch.setattr(project_service, "write_audit_event", _noop)
     monkeypatch.setattr(project_service, "_assert_can_work_project", _noop)
     monkeypatch.setattr(project_service, "_fetch_review_or_create", _fetch_review)
@@ -383,3 +383,68 @@ async def test_submit_inspection_date_sets_submitted(make_session, monkeypatch):
     assert out == "OK"
     assert review.inspection_date == date(2026, 6, 2)
     assert review.quality_audit_status == "submitted"
+
+
+class _PgError(Exception):
+    """Minimal stand-in for the asyncpg exception behind IntegrityError.orig."""
+
+    def __init__(self, sqlstate: str):
+        super().__init__(f"pg error {sqlstate}")
+        self.sqlstate = sqlstate
+
+
+async def test_fetch_review_or_create_idempotent_on_unique_conflict(monkeypatch):
+    """#408 follow-up: a lock-free create that loses the race gets a UNIQUE
+    violation (SQLSTATE 23505) on flush and must refetch the winner, not 500."""
+    from sqlalchemy.exc import IntegrityError
+
+    from app.db import models
+    from tests.conftest import RecordingSession
+
+    site = SimpleNamespace(id=uuid4(), tenant_id=uuid4())
+    winner = models.ProjectReview(tenant_id=site.tenant_id, site_id=site.id)
+
+    calls = {"n": 0}
+
+    async def _or_none(session, *, site_id):
+        calls["n"] += 1
+        return None if calls["n"] == 1 else winner  # miss first, winner on refetch
+
+    async def _boom():
+        raise IntegrityError("INSERT", {}, _PgError("23505"))
+
+    monkeypatch.setattr(project_service, "_fetch_review_or_none", _or_none)
+    session = RecordingSession()
+    monkeypatch.setattr(session, "flush", _boom)
+
+    out = await project_service._fetch_review_or_create(session, site=site)
+    assert out is winner            # refetched the winner instead of raising
+    assert calls["n"] == 2          # missed once, then refetched the winner
+    assert session.rollback_count == 1  # the savepoint rolled back the lost insert
+
+
+async def test_fetch_review_or_create_reraises_non_unique_integrity_error(monkeypatch):
+    """A non-unique IntegrityError (NOT NULL / FK / CHECK) must propagate, not be
+    masked by the refetch path — this is the narrowed-catch guarantee."""
+    from sqlalchemy.exc import IntegrityError
+
+    from tests.conftest import RecordingSession
+
+    site = SimpleNamespace(id=uuid4(), tenant_id=uuid4())
+
+    calls = {"n": 0}
+
+    async def _or_none(session, *, site_id):
+        calls["n"] += 1
+        return None  # never a winner — this failure is not a race
+
+    async def _boom():
+        raise IntegrityError("INSERT", {}, _PgError("23502"))  # NOT NULL violation
+
+    monkeypatch.setattr(project_service, "_fetch_review_or_none", _or_none)
+    session = RecordingSession()
+    monkeypatch.setattr(session, "flush", _boom)
+
+    with pytest.raises(IntegrityError):
+        await project_service._fetch_review_or_create(session, site=site)
+    assert calls["n"] == 1  # raised before the refetch — no masking

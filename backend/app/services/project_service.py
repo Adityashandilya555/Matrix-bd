@@ -12,6 +12,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
 from sqlalchemy import desc, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -36,9 +37,11 @@ from app.services import budget_service
 from app.services._common import (
     actor_is_business_admin,
     count_rows,
+    fetch_site_for_update_or_404,
     fetch_site_or_404,
     fetch_user_name,
     fetch_user_names,
+    is_unique_violation,
 )
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_is_delegated
@@ -103,8 +106,20 @@ async def _fetch_review_or_create(
         project_status="pending",
         current_stage="execution",
     )
-    session.add(review)
-    await session.flush()
+    # Idempotent lazy-create: lock-free callers (svc_get_project, or a GET
+    # racing an allocate) can both insert this site_id-keyed row. Flush inside a
+    # SAVEPOINT so a unique violation rolls back only the insert; then refetch
+    # the winner instead of surfacing a 500.
+    try:
+        async with session.begin_nested():
+            session.add(review)
+            await session.flush()
+    except IntegrityError as exc:
+        if not is_unique_violation(exc):
+            raise
+        review = await _fetch_review_or_none(session, site_id=site.id)
+        if review is None:
+            raise
     return review
 
 
@@ -500,7 +515,7 @@ async def svc_allocate_project(
     is_self = str(delegate_user_id) == str(actor["sub"])
 
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_project_unlocked(site)
         delegate = (await session.execute(
             select(models.User).where(
@@ -567,7 +582,7 @@ async def svc_revoke_project_delegation(
                 models.SiteDelegation.module == "project",
                 models.SiteDelegation.delegate_user_id == delegate_user_id,
                 models.SiteDelegation.revoked_at.is_(None),
-            )
+            ).with_for_update()
         )).scalar_one_or_none()
         if row is None:
             return OkResponse(message="No active project allocation to revoke.")
@@ -595,7 +610,7 @@ async def svc_submit_milestone(
 ) -> ProjectStateResponse:
     """Set an expected or final completion milestone, enforcing the gating order of dates."""
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         await _assert_can_work_project(session, tenant_id=tenant_id, actor=actor, site_id=site.id)
         review = await _fetch_review_or_create(session, site=site)
         if review.project_status not in {"allocated", "in_progress"}:
@@ -646,7 +661,7 @@ async def svc_review_milestone(
     if field != "expected_completion_date":
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="This milestone does not need supervisor review.")
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_create(session, site=site)
         status_field = "expected_completion_status"
         comments_field = "expected_completion_comments"
@@ -685,7 +700,7 @@ async def svc_propose_initialization(
     if not _can_supervise(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor or business admin can set the initialization date.")
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_create(session, site=site)
         # A freshly-created review carries None (the 'pending' server_default
         # only materializes on a DB read), so treat None as pending.
@@ -715,7 +730,7 @@ async def svc_respond_initialization(
 ) -> ProjectStateResponse:
     """Executive accepts or rejects the admin-proposed initialization date."""
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         await _assert_can_work_project(session, tenant_id=tenant_id, actor=actor, site_id=site.id)
         review = await _fetch_review_or_create(session, site=site)
         if review.initialization_status != "proposed":
@@ -749,7 +764,7 @@ async def svc_finalize_initialization(
     if not _can_supervise(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor or business admin can finalize the initialization date.")
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_create(session, site=site)
         if review.initialization_status != "rejected":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Initialization date is not awaiting a supervisor revision.")
@@ -779,7 +794,7 @@ async def svc_set_mid_visit(
     if not _can_supervise(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor or business admin can set the mid-project visit date.")
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_create(session, site=site)
         if review.expected_completion_status != "approved":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Expected completion must be approved first.")
@@ -807,7 +822,7 @@ async def svc_submit_inspection_date(
     """Executive records the quality-audit inspection DATE (no document upload),
     then submits it for the supervisor → business_admin two-tier sign-off."""
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         await _assert_can_work_project(session, tenant_id=tenant_id, actor=actor, site_id=site.id)
         review = await _fetch_review_or_create(session, site=site)
         if review.mid_project_visit_date is None:
@@ -838,7 +853,7 @@ async def svc_supervisor_approve_quality_audit(
     if not _can_supervise(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor or business admin can approve the quality audit.")
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_create(session, site=site)
         if review.quality_audit_status != "submitted":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Quality audit is not awaiting supervisor approval.")
@@ -875,7 +890,7 @@ async def svc_admin_confirm_quality_audit(
     if not _is_business_admin(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a business admin can confirm the quality audit.")
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_create(session, site=site)
         if review.quality_audit_status != "supervisor_approved":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Quality audit is not awaiting admin confirmation.")
@@ -969,7 +984,7 @@ async def svc_push_to_nso(
     if not _can_supervise(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor or business admin can push to NSO.")
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_create(session, site=site)
         if review.project_status != "done":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Project is not complete yet.")
@@ -1068,7 +1083,7 @@ async def svc_pe_complete_quality_audit(
     if not _can_supervise(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project excellence supervisor or business admin can complete the quality audit.")
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_create(session, site=site)
         if review.quality_audit_status != "supervisor_approved":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Quality audit is not awaiting completion.")

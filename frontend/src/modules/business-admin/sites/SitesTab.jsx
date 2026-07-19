@@ -1,11 +1,14 @@
 import React from 'react';
 import { T, Icon, Card, Drawer, Skeleton, EmptyState, ErrorState, Avatar, TABULAR } from '../ui/kit.jsx';
 import { MODULE_META, moduleForAction, labelForEntry, dotColor } from './historyMeta.js';
+import { humanizeAuditDetail } from '../../../services/api/audit.js';
 import { getAdminSiteDocuments } from '../../../services/api/businessAdminApi.js';
 import { reviveSite } from '../../../services/api/adapters/httpAdapter.js';
 import { usePageContext } from '../../../App.jsx';
-// Design → Project → NSO → Launch), coloured by each module's status. Click a site for its
-// full cross-module history (the /sites/{id}/activity audit feed).
+// Every site rendered as a BD-style pipeline card (LOI → Legal → CA → Design →
+// Excellence → Project → NSO → Launch), each node coloured + labelled by that
+// module's status. Click a site for its full cross-module history (the
+// /sites/{id}/activity audit feed) and uploaded documents.
 
 function ReviveDialog({ site, onCancel, onConfirm, busy }) {
   const [note, setNote] = React.useState('');
@@ -35,21 +38,28 @@ function ReviveDialog({ site, onCancel, onConfirm, busy }) {
   );
 }
 
+// Pipeline nodes mirror the BD supervisor process-flow cards (icon + stage +
+// status label) so the admin reads the same visual language end-to-end:
+// LOI → Legal → CA → Design → Excellence → Project → NSO → Launch.
 const NODES = [
-  { key: 'loi', label: 'LOI' },
-  { key: 'legal', label: 'Legal' },
-  { key: 'payment', label: 'Pay' },
-  { key: 'design', label: 'Design' },
-  { key: 'project', label: 'Project' },
-  { key: 'nso', label: 'NSO' },
-  { key: 'launch', label: 'Launch' },
+  { key: 'loi',        short: 'LOI',        label: 'BD LOI Signed',        icon: 'doc' },
+  { key: 'legal',      short: 'Legal',      label: 'Legal & Compliance',   icon: 'shield' },
+  { key: 'payment',    short: 'CA Code',    label: 'CA / Commercial Code', icon: 'rupee' },
+  { key: 'design',     short: 'Design',     label: 'Design / Technical',   icon: 'grid' },
+  { key: 'excellence', short: 'Excellence', label: 'Project Excellence',   icon: 'trend' },
+  { key: 'project',    short: 'Project',    label: 'Project Execution',    icon: 'box' },
+  { key: 'nso',        short: 'NSO',        label: 'NSO',                  icon: 'home' },
+  { key: 'launch',     short: 'Launch',     label: 'Site Launched',        icon: 'flag' },
 ];
 
-const TONE = {
-  done:     { dot: T.success, ring: 'transparent', line: T.success },
-  active:   { dot: T.warn, ring: 'rgba(224,162,60,0.22)', line: 'rgba(255,255,255,0.12)' },
-  rejected: { dot: T.danger, ring: 'transparent', line: 'rgba(255,255,255,0.12)' },
-  pending:  { dot: 'rgba(255,255,255,0.20)', ring: 'transparent', line: 'rgba(255,255,255,0.10)' },
+// Theme-safe alpha over the zm-* custom properties (works in both portal themes).
+const cm = (color, pct) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
+
+const NODE_TONES = {
+  done:     { color: T.success,   bg: T.successSoft, borderPct: 55 },
+  active:   { color: T.warn,      bg: T.warnSoft,    borderPct: 60 },
+  rejected: { color: T.danger,    bg: T.dangerSoft,  borderPct: 60 },
+  pending:  { color: T.textFaint, bg: 'transparent', borderPct: 0 },
 };
 
 const LOI_DONE = new Set(['loi_uploaded', 'legal_review', 'legal_approved', 'pushed_to_payments']);
@@ -105,6 +115,11 @@ function toneFor(site, key) {
       return 'pending';
     case 'design':  return pick(site.designStatus, ['approved'], ['allocated', 'in_progress', 'gfc_pending'], ['rejected']);
     case 'payment': return pick(site.financeStatus, ['approved'], ['awaiting_supervisor', 'awaiting_admin'], []);
+    case 'excellence':
+      // Budgeting (post-GFC). Same approximation as the BD supervisor tracker:
+      // opens once design is approved, cleared once execution is done.
+      if (['done', 'completed'].includes(site.projectStatus)) return 'done';
+      return site.designStatus === 'approved' ? 'active' : 'pending';
     case 'project': return pick(site.projectStatus, ['done', 'completed'], ['allocated', 'budgeting', 'in_progress'], []);
     case 'nso':     return pick(site.nsoStatus, ['complete'], ['pending', 'in_progress'], []);
     case 'launch':
@@ -114,26 +129,62 @@ function toneFor(site, key) {
   }
 }
 
+function PipelineNode({ site, node }) {
+  const tone = toneFor(site, node.key);
+  const c = NODE_TONES[tone];
+  const NodeIcon = Icon[node.icon] || Icon.doc;
+  const statusLabel =
+    tone === 'done' ? (node.key === 'loi' ? 'Done' : 'Complete')
+      : tone === 'active' ? (node.key === 'legal' ? 'Open' : 'Pending')
+        : tone === 'rejected' ? 'Rejected'
+          : 'Queued';
+  return (
+    <div
+      className={`ac-node${tone === 'active' ? ' ac-node-active' : ''}`}
+      title={`${node.label}: ${statusLabel}`}
+      style={{
+        minWidth: 142, height: 74, padding: '10px 12px', borderRadius: 12, boxSizing: 'border-box',
+        border: `1px solid ${tone === 'pending' ? T.line : cm(c.color, c.borderPct)}`,
+        background: c.bg,
+        opacity: tone === 'pending' ? 0.72 : 1,
+        display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'space-between',
+      }}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, maxWidth: '100%' }}>
+        <span style={{ color: tone === 'pending' ? T.textFaint : c.color, display: 'inline-flex', flexShrink: 0 }}>
+          <NodeIcon size={14} />
+        </span>
+        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase',
+          color: tone === 'pending' ? T.textFaint : T.text,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {node.short}
+        </span>
+      </span>
+      <span style={{ maxWidth: '100%', fontSize: 11.5, fontWeight: 650, lineHeight: 1.2,
+        color: tone === 'pending' ? T.textFaint : T.textMuted,
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {node.label}
+      </span>
+      <span style={{ fontFamily: T.mono, fontSize: 9.5, letterSpacing: '0.07em', textTransform: 'uppercase',
+        color: tone === 'pending' ? T.textFaint : c.color }}>
+        {statusLabel}
+      </span>
+    </div>
+  );
+}
+
 function Pipeline({ site }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0 }}>
+    <div style={{ display: 'flex', alignItems: 'center', width: 'max-content', minWidth: '100%' }}>
       {NODES.map((n, i) => {
-        const tone = toneFor(site, n.key);
-        const c = TONE[tone];
+        const prevDone = i > 0 && toneFor(site, NODES[i - 1].key) === 'done';
         return (
           <React.Fragment key={n.key}>
             {i > 0 && (
-              <div style={{ width: 22, height: 11, display: 'flex', alignItems: 'center' }}>
-                <div style={{ flex: 1, height: 2, borderRadius: 2, background: TONE[toneFor(site, NODES[i - 1].key)].line }} />
-              </div>
+              <span aria-hidden="true" style={{ flex: '0 0 18px', height: 2, borderRadius: 999,
+                background: prevDone ? T.success : T.line, opacity: prevDone ? 0.6 : 1 }} />
             )}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, width: 52 }}>
-              <span className="ac-node" style={{ width: 11, height: 11, borderRadius: 999, background: c.dot,
-                boxShadow: c.ring !== 'transparent' ? `0 0 0 4px ${c.ring}` : 'none',
-                border: tone === 'pending' ? `1px solid ${T.lineStrong}` : 'none' }} />
-              <span style={{ fontSize: 9.5, letterSpacing: '0.02em', color: tone === 'pending' ? T.textFaint : T.textMuted,
-                whiteSpace: 'nowrap' }}>{n.label}</span>
-            </div>
+            <PipelineNode site={site} node={n} />
           </React.Fragment>
         );
       })}
@@ -141,9 +192,21 @@ function Pipeline({ site }) {
   );
 }
 
+// One-line narrative for the row header: where the site currently sits.
+function stageNarrative(site) {
+  const rejected = NODES.find((n) => toneFor(site, n.key) === 'rejected');
+  if (rejected) return `Rejected at ${rejected.label}`;
+  const active = NODES.find((n) => toneFor(site, n.key) === 'active');
+  if (active) return `At ${active.label}`;
+  if (NODES.every((n) => toneFor(site, n.key) === 'done')) return 'Launched';
+  return null;
+}
+
 // ── History drawer ────────────────────────────────────────────────────────────
 
 const fmt = (d) => { try { return new Date(d).toLocaleString(undefined, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
+const fmtDay = (d) => { try { return new Date(d).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return ''; } };
+const fmtTime = (d) => { try { return new Date(d).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
 
 // All documents uploaded across the site lifecycle (LOI, photos, quality-audit,
 // design deliverables) — available even after the site is closed, so the admin
@@ -235,6 +298,13 @@ function HistoryDrawer({ site, fetchHistory, onClose }) {
 
       {site && <DocumentsSection siteId={site.siteId} />}
 
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+        <Icon.clock size={14} />
+        <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.textMuted }}>
+          Timeline{state.status === 'ready' ? ` · ${state.items.length}` : ''}
+        </span>
+      </div>
+
       <div role="tablist" style={{ display: 'flex', gap: 4, padding: 4, marginBottom: 18, flexWrap: 'wrap',
         background: T.chip, border: `1px solid ${T.line}`, borderRadius: T.radiusPill }}>
         {FILTERS.map(({ key, label }) => {
@@ -260,35 +330,63 @@ function HistoryDrawer({ site, fetchHistory, onClose }) {
         <EmptyState icon={Icon.clock} title="No history yet" hint="Activity across all modules will appear here as the site progresses." />
       )}
 
-      {state.status === 'ready' && visible.length > 0 && (
-        <div style={{ position: 'relative', paddingLeft: 6 }}>
-          <div style={{ position: 'absolute', left: 11, top: 6, bottom: 6, width: 2, background: T.line }} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {visible.map((e) => {
-              const m = moduleForAction(e.action);
-              return (
-                <div key={e.id} style={{ position: 'relative', display: 'flex', gap: 14, padding: '9px 0 9px 0' }}>
-                  <span style={{ width: 12, height: 12, borderRadius: 999, background: dotColor(e.action), marginLeft: 5, marginTop: 3,
-                    flexShrink: 0, boxShadow: `0 0 0 4px ${T.drawerBg}`, zIndex: 1 }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
-                        color: MODULE_META[m].color }}>{MODULE_META[m].label}</span>
-                      <span style={{ fontSize: 13, color: T.text }}>{labelForEntry(e)}</span>
-                    </div>
-                    <div style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, color: T.textFaint }}>
-                      {e.actor && <><Avatar name={e.actor} size={18} /><span>{e.actor}</span><span>·</span></>}
-                      <span style={{ ...TABULAR }}>{fmt(e.createdAt)}</span>
-                    </div>
-                    {e.detail && !e.detail.startsWith('kind=') && (
-                      <div style={{ marginTop: 3, fontSize: 12, color: T.textMuted }}>{e.detail}</div>)}
+      {state.status === 'ready' && visible.length > 0 && (() => {
+        // Group by calendar day so long histories stay scannable; each entry
+        // keeps a ring marker + module pill on a shared rail.
+        const groups = [];
+        for (const e of visible) {
+          const day = fmtDay(e.createdAt);
+          const last = groups[groups.length - 1];
+          if (!last || last.day !== day) groups.push({ day, items: [e] });
+          else last.items.push(e);
+        }
+        return (
+          <div style={{ position: 'relative', paddingLeft: 6 }}>
+            <div style={{ position: 'absolute', left: 11, top: 12, bottom: 12, width: 2, borderRadius: 2, background: T.line }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {groups.map((g) => (
+                <div key={g.day}>
+                  <div style={{ position: 'relative', zIndex: 1, display: 'inline-flex', alignItems: 'center',
+                    margin: '6px 0 4px', padding: '3px 10px', borderRadius: 999, border: `1px solid ${T.line}`,
+                    background: T.chip, boxShadow: `0 0 0 4px ${T.drawerBg}`, fontSize: 9.5, fontWeight: 750,
+                    letterSpacing: '0.08em', textTransform: 'uppercase', color: T.textMuted, ...TABULAR }}>
+                    {g.day}
                   </div>
+                  {g.items.map((e) => {
+                    const m = moduleForAction(e.action);
+                    const mColor = MODULE_META[m].color;
+                    const detailNote = humanizeAuditDetail(e.detail);
+                    return (
+                      <div key={e.id} style={{ position: 'relative', display: 'flex', gap: 14, padding: '9px 0' }}>
+                        <span style={{ width: 12, height: 12, borderRadius: 999, marginLeft: 5, marginTop: 3, flexShrink: 0,
+                          background: T.drawerBg, border: `2.5px solid ${dotColor(e.action)}`, boxSizing: 'border-box',
+                          boxShadow: `0 0 0 4px ${T.drawerBg}`, zIndex: 1 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase',
+                              color: mColor, background: cm(mColor, 13), border: `1px solid ${cm(mColor, 32)}`,
+                              padding: '2px 8px', borderRadius: 999 }}>{MODULE_META[m].label}</span>
+                            <span style={{ fontSize: 13, color: T.text }}>{labelForEntry(e)}</span>
+                          </div>
+                          <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, color: T.textFaint }}>
+                            {e.actor && <><Avatar name={e.actor} size={17} /><span>{e.actor}</span><span aria-hidden="true">·</span></>}
+                            <span style={{ ...TABULAR }}>{fmtTime(e.createdAt)}</span>
+                          </div>
+                          {detailNote && (
+                            <div style={{ marginTop: 6, padding: '7px 10px', borderLeft: `2px solid ${cm(mColor, 45)}`,
+                              borderRadius: '4px 10px 10px 4px', background: T.surfaceInset, fontSize: 12,
+                              lineHeight: 1.45, color: T.textMuted, wordBreak: 'break-word' }}>{detailNote}</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </Drawer>
   );
 }
@@ -384,28 +482,45 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
       )}
 
       {data.status === 'ready' && visible.length > 0 && (
-        <div className="ac-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {visible.map((s) => (
-            <Card key={s.siteId} interactive raised className="ac-pipeline-row" onClick={() => setOpenSite(s)}
-              style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
-              <div style={{ minWidth: 0, flex: '1 1 220px' }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, flexWrap: 'wrap' }}>
-                  <span style={{ fontFamily: T.mono, fontSize: 12, color: T.textMuted }}>{s.siteCode}</span>
-                  <strong style={{ fontSize: 14, color: T.text, letterSpacing: '-0.01em' }}>{s.siteName}</strong>
-                  <span style={{ fontSize: 12, color: T.textFaint }}>{s.city}</span>
+        <div className="ac-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {visible.map((s) => {
+            const narrative = stageNarrative(s);
+            return (
+              <Card key={s.siteId} interactive raised className="ac-pipeline-row" role="button" tabIndex={0}
+                onClick={() => setOpenSite(s)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenSite(s); } }}
+                style={{ padding: 0, overflow: 'hidden', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px 2px', flexWrap: 'wrap' }}>
+                  <span style={{ fontFamily: T.mono, fontSize: 10.5, letterSpacing: '0.06em', color: T.textMuted,
+                    padding: '2px 7px', borderRadius: 5, border: `1px solid ${T.line}`, background: T.chip }}>
+                    {s.siteCode || '—'}
+                  </span>
+                  <strong style={{ fontSize: 15, fontWeight: 750, color: T.text, letterSpacing: '-0.01em' }}>{s.siteName}</strong>
+                  <span style={{ fontSize: 12, color: T.textFaint }}>
+                    {s.city}{narrative ? ` · ${narrative}` : ''}
+                  </span>
+                  <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    {filter === 'rejected' && (
+                      <button onClick={(e) => { e.stopPropagation(); setReviving(s); }} className="zm-btn-primary"
+                        style={{ height: 28, padding: '0 10px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)',
+                          color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                          display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <Icon.refresh size={12}/> Revive
+                      </button>
+                    )}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 11px',
+                      borderRadius: 999, border: `1px solid ${T.line}`, background: T.chip,
+                      fontSize: 11.5, fontWeight: 650, color: T.textMuted }}>
+                      <Icon.clock size={13} /> History <Icon.caret size={13} />
+                    </span>
+                  </span>
                 </div>
-              </div>
-              <Pipeline site={s} />
-              
-              {filter === 'rejected' && (
-                 <button onClick={(e) => { e.stopPropagation(); setReviving(s); }} className="zm-btn-primary" style={{ height: 28, padding: '0 10px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', justifySelf: 'end', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon.refresh size={12}/> Revive</button>
-              )}
-
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: T.textFaint }}>
-                <Icon.clock size={14} /> History <Icon.caret size={14} />
-              </span>
-            </Card>
-          ))}
+                <div style={{ minWidth: 0, overflowX: 'auto', padding: '10px 16px 14px' }}>
+                  <Pipeline site={s} />
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
 

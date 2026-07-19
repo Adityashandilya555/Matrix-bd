@@ -27,7 +27,7 @@ from app.domain.schemas.legal_change_request import (
     ReviewChangeRequestRequest,
 )
 from app.domain.state_machine import SiteStatus, assert_transition
-from app.services._common import assert_executive_owns_site, fetch_site_or_404, fetch_user_name
+from app.services._common import assert_executive_owns_site, fetch_site_for_update_or_404, fetch_user_name
 from app.services.audit_service import write_audit_event
 from app.services.notification_service import (
     enqueue as notify_enqueue,
@@ -158,7 +158,7 @@ async def svc_create_change_request(
         )
 
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=body.site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=body.site_id, tenant_id=tenant_id)
         # #104 — executives may only open change requests (and read back the
         # current legal field value) on their own/assigned sites.
         assert_executive_owns_site(actor, site)
@@ -372,7 +372,7 @@ async def svc_approve_change_request(
                 detail=f"Change request is already {cr.status}",
             )
 
-        site = await fetch_site_or_404(session, site_id=cr.site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=cr.site_id, tenant_id=tenant_id)
 
         # Apply the change to the underlying table — overwrite immediately.
         await _apply_change(
@@ -463,7 +463,7 @@ async def svc_reject_change_request(
                 detail=f"Change request is already {cr.status}",
             )
 
-        site = await fetch_site_or_404(session, site_id=cr.site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=cr.site_id, tenant_id=tenant_id)
 
         now = datetime.now(timezone.utc)
         cr.status        = "rejected"

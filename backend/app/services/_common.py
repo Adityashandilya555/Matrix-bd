@@ -21,6 +21,23 @@ from app.domain.state_machine import SiteStatus
 from app.rbac.roles import Role
 
 
+def is_unique_violation(exc: Exception) -> bool:
+    """True if a SQLAlchemy ``IntegrityError`` is a Postgres unique violation
+    (SQLSTATE 23505). Probes the asyncpg exception behind the DBAPI adapter
+    (``orig`` / ``pgcode`` / ``__cause__``), mirroring the #392 tenancy check.
+
+    Used by the idempotent lazy-create helpers: only a unique race is safe to
+    swallow-and-refetch; FK / NOT NULL / CHECK violations must propagate.
+    """
+    orig = getattr(exc, "orig", None)
+    sqlstate = (
+        getattr(orig, "sqlstate", None)
+        or getattr(orig, "pgcode", None)
+        or getattr(getattr(orig, "__cause__", None), "sqlstate", None)
+    )
+    return sqlstate == "23505" or (sqlstate is None and "unique" in str(exc).lower())
+
+
 # ── Site code generator ────────────────────────────────────────────────────
 
 _CODE_ALPHABET = string.ascii_uppercase + string.digits

@@ -31,7 +31,7 @@ from app.domain.schemas.project_excellence import (
     SavePEBudgetRequest,
 )
 from app.services import budget_service, project_service
-from app.services._common import count_rows, fetch_site_or_404, fetch_user_name
+from app.services._common import count_rows, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_name
 from app.services.audit_service import write_audit_event
 from app.services._common import actor_is_business_admin
 from app.services.delegation_service import svc_is_delegated
@@ -327,7 +327,7 @@ async def svc_allocate_pe(
     is_self = str(delegate_user_id) == str(actor["sub"])
 
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_pe_unlocked(site)
         delegate = (await session.execute(
             select(models.User).where(
@@ -392,7 +392,7 @@ async def svc_revoke_pe_delegation(
                 models.SiteDelegation.module == "project_excellence",
                 models.SiteDelegation.delegate_user_id == delegate_user_id,
                 models.SiteDelegation.revoked_at.is_(None),
-            )
+            ).with_for_update()
         )).scalar_one_or_none()
         if row is None:
             return OkResponse(message="No active project excellence allocation to revoke.")
@@ -419,7 +419,7 @@ async def svc_save_pe_budget(
 ) -> PEStateResponse:
     """Save or submit a PE budget, routing submits to supervisor or admin review."""
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_pe_unlocked(site)
         await _assert_can_work_pe(session, tenant_id=tenant_id, actor=actor, site_id=site.id)
         budget = await budget_service.fetch_or_create_budget(session, site=site, phase=_PHASE)
@@ -467,7 +467,7 @@ async def svc_review_pe_budget(
     if not _can_supervise(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project excellence supervisor or business admin can review budgets.")
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         budget = await budget_service.fetch_or_create_budget(session, site=site, phase=_PHASE)
         if budget.status != "pending_supervisor":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Budget is not awaiting supervisor.")
@@ -529,7 +529,7 @@ async def svc_admin_review_pe_budget(
     if not _is_business_admin(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a business admin can review project excellence budgets.")
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         budget = await budget_service.fetch_or_create_budget(session, site=site, phase=_PHASE)
         if budget.status != "pending_admin":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Budget is not awaiting admin.")

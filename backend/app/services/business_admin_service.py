@@ -515,18 +515,25 @@ def _admin_site_item(site: dict, *, project: dict, nso: dict, launch: dict, budg
 async def list_admin_sites(
     session: AsyncSession,
     tenant_id: str | UUID,
-    limit: int = 80,
+    limit: int = 200,
+    offset: int = 0,
 ) -> dict:
     """Return the admin site timeline with merged project/NSO/launch/budget status."""
     try:
         safe_limit = int(limit)
     except (TypeError, ValueError):
-        safe_limit = 80
-    safe_limit = max(1, min(safe_limit, 200))
+        safe_limit = 200
+    safe_limit = max(1, min(safe_limit, 500))
+    try:
+        safe_offset = int(offset)
+    except (TypeError, ValueError):
+        safe_offset = 0
+    safe_offset = max(0, safe_offset)
     rows = (await session.execute(
         select(models.Site)
         .where(models.Site.tenant_id == tenant_id)
         .order_by(desc(models.Site.updated_at))
+        .offset(safe_offset)
         .limit(safe_limit)
     )).scalars().all()
 

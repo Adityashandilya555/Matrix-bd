@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import models
 from app.db.session import transaction
 from app.domain.schemas.common import OkResponse
-from app.services._common import actor_can_supervise, fetch_site_or_404
+from app.services._common import actor_can_supervise, fetch_site_for_update_or_404
 from app.services.audit_service import write_audit_event
 
 logger = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ async def svc_grant_delegation(
     is_self = str(delegate_user_id) == str(actor["sub"])
 
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
 
         # Confirm the delegate exists in this tenant and is active.
         delegate = (await session.execute(
@@ -144,7 +144,7 @@ async def svc_revoke_delegation(
             select(models.ShortlistDelegation).where(
                 models.ShortlistDelegation.id == delegation_id,
                 models.ShortlistDelegation.tenant_id == tenant_id,
-            )
+            ).with_for_update()
         )).scalar_one_or_none()
         if row is None:
             raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Delegation not found.")
@@ -291,7 +291,7 @@ async def svc_delegate_legal(
     module = "legal"
 
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
 
         delegate = (await session.execute(
             select(models.User).where(
@@ -400,7 +400,7 @@ async def svc_revoke_legal_delegation(
                 models.SiteDelegation.module == "legal",
                 models.SiteDelegation.delegate_user_id == delegate_user_id,
                 models.SiteDelegation.revoked_at.is_(None),
-            )
+            ).with_for_update()
         )).scalar_one_or_none()
         if row is None:
             return OkResponse(message="No active legal delegation to revoke.")

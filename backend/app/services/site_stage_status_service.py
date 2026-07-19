@@ -405,7 +405,7 @@ async def build_stage_status_response(
 
     return SiteStageStatusResponse(
         site_id=str(site.id),
-        site_code=site.code or "",
+        site_code=site.ca_code or site.code or "",
         site_name=site.name,
         city=site.city,
         headline=_headline(site, **{k: ctx[k] for k in ("project", "nso", "launch", "design_status")}),

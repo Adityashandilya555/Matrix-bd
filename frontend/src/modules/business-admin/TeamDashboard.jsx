@@ -187,7 +187,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   const designSites = approvalSites.filter((s) => (s.design.deliverables.length + (s.design.gfcPending ? 1 : 0)) > 0).length;
   const paymentSites = approvalSites.filter((s) => s.payment).length;
   const supCount = supervisors.items.length;
-  const sitesCount = sites.items.length;
+  const sitesCount = sites.total || sites.items.length;
   // Count completed sites with the SAME rule the Sites → Completed tab uses, so
   // the tile and the tab never disagree (they used different definitions before).
   const completedSites = classifyCounts(sites.items || []).completed;
