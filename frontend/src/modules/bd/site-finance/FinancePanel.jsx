@@ -1,5 +1,6 @@
 // skipcq: JS-0833
 import React from 'react';
+import '../../shared/primitives/button-fx.css';
 import Icon from '../../shared/primitives/Icon.jsx';
 import {
   saveFinanceDraft,
@@ -354,6 +355,7 @@ export default function FinancePanel({ data, role, onClose, onUpdate, mode = 'mo
               <>
                 <button
                   type="button"
+                  className="zm-btn-fx"
                   onClick={handleApprove}
                   disabled={approving || rejecting}
                   style={btnStyle(true, approving || rejecting)}
@@ -364,6 +366,7 @@ export default function FinancePanel({ data, role, onClose, onUpdate, mode = 'mo
                 </button>
                 <button
                   type="button"
+                  className="zm-btn-fx"
                   onClick={handleReject}
                   disabled={approving || rejecting}
                   style={{
