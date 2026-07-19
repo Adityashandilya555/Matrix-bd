@@ -1,3 +1,6 @@
+// skipcq: JS-0833 — DeepSource parses this newly-added file as sourceType:script
+// and false-flags the ESM import (vitest/eslint/build all accept it); the repo
+// uses this same band-aid on other ESM files.
 import { describe, it, expect } from 'vitest';
 import {
   classifyCounts, isSiteCompleted, isSiteLaunching, isSiteActive, isSiteRejected,
