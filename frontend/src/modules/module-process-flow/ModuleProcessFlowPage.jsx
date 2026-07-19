@@ -92,6 +92,7 @@ const STAGE_ICONS = {
   legal: 'legalShield',
   ca: 'paymentCard',
   design: 'box',
+  excellence: 'trend',
   project: 'route',
   nso: 'home',
   launch: 'flag',
@@ -132,7 +133,12 @@ function buildStages(data) {
   const designComplete = data?.designStatus === 'approved';
   const designActive = !designComplete && isDesignReady(data);
   const projectComplete = data?.projectStatus === 'done';
-  const projectActive = !projectComplete && designComplete;
+  // Project Excellence = the budgeting phase between GFC and execution. A done
+  // execution implies the budget cleared even if the row predates the budget
+  // workflow (no project_budget_status).
+  const excellenceComplete = data?.projectBudgetStatus === 'approved' || projectComplete;
+  const excellenceActive = !excellenceComplete && designComplete;
+  const projectActive = !projectComplete && (excellenceComplete || data?.projectStatus === 'in_progress');
   const nsoComplete = data?.nsoStatus === 'complete';
   const nsoActive = !nsoComplete && projectComplete;
   const launchedComplete = Boolean(data?.isLaunched) || data?.launchStatus === 'launched';
@@ -162,6 +168,12 @@ function buildStages(data) {
       label: 'Design / Technical',
       state: designComplete ? 'complete' : designActive ? 'active' : 'queued',
       note: pretty(data?.designStatus),
+    },
+    {
+      id: 'excellence',
+      label: 'Project Excellence',
+      state: excellenceComplete ? 'complete' : excellenceActive ? 'active' : 'queued',
+      note: pretty(data?.projectBudgetStatus),
     },
     {
       id: 'project',
@@ -204,6 +216,9 @@ function StageDiagram({ stages }) {
     >
       {stages.map((stage, index) => {
         const colors = stageStyle(stage.state);
+        // Connector inherits the upstream stage's completion: a green thread
+        // traces how far the site has travelled through the pipeline.
+        const upstreamDone = index > 0 && stages[index - 1].state === 'complete';
         return (
           <div key={stage.id} style={{ position: 'relative', minWidth: 128 }}>
             {index > 0 && (
@@ -214,8 +229,10 @@ function StageDiagram({ stages }) {
                   left: -14,
                   right: 'calc(100% - 1px)',
                   top: '50%',
-                  height: 1,
-                  background: 'var(--zm-line)',
+                  height: upstreamDone ? 2 : 1,
+                  borderRadius: 999,
+                  background: upstreamDone ? 'var(--zm-success)' : 'var(--zm-line)',
+                  opacity: upstreamDone ? 0.55 : 1,
                   transform: 'translateY(-50%)',
                   zIndex: 0,
                 }}
@@ -261,6 +278,21 @@ function StageDiagram({ stages }) {
               }}>
                 {stage.state === 'active' && stage.id === 'legal' ? 'OPEN' : colors.label}
               </span>
+              {stage.state !== 'queued'
+                && stage.note
+                && stage.note.toLowerCase() !== colors.label.toLowerCase() && (
+                <span style={{
+                  color: 'var(--zm-fg-3)',
+                  fontFamily: 'var(--zm-font-body)',
+                  fontSize: 10.5,
+                  lineHeight: 1.3,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {stage.note}
+                </span>
+              )}
             </div>
           </div>
         );
