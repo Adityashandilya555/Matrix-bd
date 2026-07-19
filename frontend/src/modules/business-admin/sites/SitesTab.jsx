@@ -57,6 +57,42 @@ const REJECTED = new Set(['legal_rejected', 'rejected', 'archived']);
 const pick = (v, done, active, reject) =>
   (reject.includes(v) ? 'rejected' : done.includes(v) ? 'done' : active.includes(v) ? 'active' : 'pending');
 
+// ── Site lifecycle classification (single source of truth) ──────────────────
+// Exported so the TeamDashboard "Completed sites" KPI tile counts sites with the
+// EXACT same rule the "Completed" tab filters by — otherwise the tile and the
+// tab report different numbers for the same set.
+export function isSiteRejected(s) {
+  if (REJECTED.has(s.status)) return true;
+  if (s.status === 'legal_rejected' || s.legalDdStatus === 'negative') return true;
+  if (s.designStatus === 'rejected') return true;
+  return false;
+}
+
+export function isSiteCompleted(s) {
+  return s.isLaunched || s.launchStatus === 'launched' || s.status === 'launched';
+}
+
+export function isSiteLaunching(s) {
+  return s.nsoStatus === 'complete' && !isSiteCompleted(s) && !isSiteRejected(s);
+}
+
+export function isSiteActive(s) {
+  return !isSiteRejected(s) && !isSiteCompleted(s) && !isSiteLaunching(s);
+}
+
+// Bucket a list of sites into the four tab counts. Rejected wins over completed
+// wins over launching (first match in this order), mirroring the tab filters.
+export function classifyCounts(sites) {
+  const c = { active: 0, launching: 0, completed: 0, rejected: 0 };
+  for (const s of sites) {
+    if (isSiteRejected(s)) c.rejected++;
+    else if (isSiteCompleted(s)) c.completed++;
+    else if (isSiteLaunching(s)) c.launching++;
+    else c.active++;
+  }
+  return c;
+}
+
 function toneFor(site, key) {
   switch (key) {
     case 'loi':
@@ -257,46 +293,23 @@ function HistoryDrawer({ site, fetchHistory, onClose }) {
   );
 }
 
-export default function SitesTab({ data, fetchHistory, onRetry }) {
-  const [filter, setFilter] = React.useState('active'); // 'active' | 'launching' | 'completed' | 'rejected'
+export default function SitesTab({ data, fetchHistory, onRetry, filter: filterProp, onFilterChange }) {
+  // Filter is controllable by the parent (so the "Completed sites" KPI tile can
+  // deep-link to the Completed tab) but falls back to internal state when used
+  // standalone. 'active' | 'launching' | 'completed' | 'rejected'.
+  const [filterState, setFilterState] = React.useState('active');
+  const filter = filterProp ?? filterState;
+  const setFilter = onFilterChange ?? setFilterState;
   const [query, setQuery] = React.useState('');
   const [openSite, setOpenSite] = React.useState(null);
-  
+
   const [reviving, setReviving] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
   const { showToast } = usePageContext() || {};
 
   const sites = data.items || [];
 
-  const isSiteRejected = React.useCallback((s) => {
-    if (REJECTED.has(s.status)) return true;
-    if (s.status === 'legal_rejected' || s.legalDdStatus === 'negative') return true;
-    if (s.designStatus === 'rejected') return true;
-    return false;
-  }, []);
-
-  const isSiteCompleted = React.useCallback((s) => {
-    return s.isLaunched || s.launchStatus === 'launched' || s.status === 'launched';
-  }, []);
-
-  const isSiteLaunching = React.useCallback((s) => {
-    return s.nsoStatus === 'complete' && !isSiteCompleted(s) && !isSiteRejected(s);
-  }, [isSiteCompleted, isSiteRejected]);
-
-  const isSiteActive = React.useCallback((s) => {
-    return !isSiteRejected(s) && !isSiteCompleted(s) && !isSiteLaunching(s);
-  }, [isSiteRejected, isSiteCompleted, isSiteLaunching]);
-
-  const counts = React.useMemo(() => {
-    let active = 0; let launching = 0; let completed = 0; let rejected = 0;
-    for (const s of sites) {
-      if (isSiteRejected(s)) rejected++;
-      else if (isSiteCompleted(s)) completed++;
-      else if (isSiteLaunching(s)) launching++;
-      else active++;
-    }
-    return { active, launching, completed, rejected };
-  }, [sites, isSiteRejected, isSiteCompleted, isSiteLaunching]);
+  const counts = React.useMemo(() => classifyCounts(sites), [sites]);
 
   const visible = React.useMemo(() => {
     let filtered = sites.filter((s) => {
@@ -310,7 +323,7 @@ export default function SitesTab({ data, fetchHistory, onRetry }) {
       filtered = filtered.filter((s) => `${s.siteCode} ${s.siteName} ${s.city}`.toLowerCase().includes(q));
     }
     return filtered;
-  }, [sites, filter, query, isSiteRejected, isSiteCompleted, isSiteLaunching, isSiteActive]);
+  }, [sites, filter, query]);
 
   const onReviveConfirm = async (site, note) => {
     setBusy(true);
