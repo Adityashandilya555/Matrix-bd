@@ -32,7 +32,7 @@ from app.domain.schemas.financial_closure import (
     SaveFCBudgetRequest,
 )
 from app.services import budget_service
-from app.services._common import actor_is_business_admin, count_rows, fetch_site_or_404, fetch_user_name, fetch_user_names
+from app.services._common import actor_is_business_admin, count_rows, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_is_delegated
 
@@ -259,7 +259,7 @@ async def svc_send_for_financial_closure(
     if not _is_business_admin(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a business admin can send a site for financial closure.")
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_launched(site)
         if (site.financial_closure_status or "pending") != "pending":
             raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail="Financial Closure is already open for this site.")
@@ -397,7 +397,7 @@ async def svc_allocate_fc(
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor or business admin can allocate financial closure.")
     is_self = str(delegate_user_id) == str(actor["sub"])
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_closure_open(site)
         delegate = (await session.execute(
             select(models.User).where(
@@ -469,7 +469,7 @@ async def svc_save_fc_budget(
 ) -> FCStateResponse:
     """Save or submit a closure budget; submit routes to supervisor or admin by role."""
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         _assert_closure_open(site)
         await _assert_can_work_fc(session, tenant_id=tenant_id, actor=actor, site_id=site.id)
         closure = await budget_service.fetch_or_create_budget(session, site=site, phase=_PHASE)
@@ -503,7 +503,7 @@ async def svc_review_fc_budget(
     if not _can_supervise(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project supervisor or business admin can review financial closure.")
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         closure = await budget_service.fetch_or_create_budget(session, site=site, phase=_PHASE)
         if closure.status != "pending_supervisor":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Closure budget is not awaiting supervisor.")
@@ -579,7 +579,7 @@ async def svc_admin_finalize_fc(
     if not _is_business_admin(actor):
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a business admin can finalize financial closure.")
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         closure = await budget_service.fetch_or_create_budget(session, site=site, phase=_PHASE)
         if closure.status != "pending_admin":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Closure budget is not awaiting admin.")

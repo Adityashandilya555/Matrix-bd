@@ -1157,7 +1157,7 @@ async def svc_admin_review_deliverable(
         )
 
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_404(session, site_id=site.id)
         deliverable = await _fetch_deliverable_or_none(session, site_id=site.id, kind=kind)
         if (deliverable is None or deliverable.status != "approved"
@@ -1256,7 +1256,7 @@ async def svc_gfc_decision(
         )
 
     async with transaction(session):
-        site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         review = await _fetch_review_or_404(session, site_id=site.id)
 
         if (site.design_status != "gfc_pending") or (review.current_stage != "gfc"):

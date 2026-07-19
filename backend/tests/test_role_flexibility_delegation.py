@@ -149,7 +149,7 @@ def _patch_project(monkeypatch, site, review):
     async def _build(session, s, r):
         return {"ok": True}
 
-    monkeypatch.setattr(project_service, "fetch_site_or_404", _fetch_site)
+    monkeypatch.setattr(project_service, "fetch_site_for_update_or_404", _fetch_site)
     monkeypatch.setattr(project_service, "_fetch_review_or_create", _fetch_review)
     monkeypatch.setattr(project_service, "_build_response", _build)
     monkeypatch.setattr(project_service, "write_audit_event", _noop_audit)
@@ -242,7 +242,7 @@ async def test_supervisor_can_self_allocate_pe(monkeypatch):
     async def _build(session, s, b):
         return {"ok": True}
 
-    monkeypatch.setattr(project_excellence_service, "fetch_site_or_404", _fetch_site)
+    monkeypatch.setattr(project_excellence_service, "fetch_site_for_update_or_404", _fetch_site)
     monkeypatch.setattr(
         project_excellence_service.budget_service, "fetch_or_create_budget", _fetch_or_create)
     monkeypatch.setattr(project_excellence_service, "_build_response", _build)
@@ -278,7 +278,7 @@ async def test_business_admin_can_review_pe_budget_gate(monkeypatch):
     async def _fetch_or_create(session, *, site, phase):
         return budget
 
-    monkeypatch.setattr(project_excellence_service, "fetch_site_or_404", _fetch_site)
+    monkeypatch.setattr(project_excellence_service, "fetch_site_for_update_or_404", _fetch_site)
     monkeypatch.setattr(
         project_excellence_service.budget_service, "fetch_or_create_budget", _fetch_or_create)
     with pytest.raises(HTTPException) as exc:
@@ -306,7 +306,7 @@ async def test_supervisor_can_self_allocate_fc(monkeypatch):
     async def _build(session, s, b):
         return {"ok": True}
 
-    monkeypatch.setattr(financial_closure_service, "fetch_site_or_404", _fetch_site)
+    monkeypatch.setattr(financial_closure_service, "fetch_site_for_update_or_404", _fetch_site)
     monkeypatch.setattr(
         financial_closure_service.budget_service, "fetch_or_create_budget", _fetch_or_create)
     monkeypatch.setattr(financial_closure_service, "_build_fc_state", _build)
@@ -332,7 +332,7 @@ async def test_supervisor_can_self_delegate_shortlist(monkeypatch):
     async def _fetch_site(session, *, site_id, tenant_id):
         return site
 
-    monkeypatch.setattr(delegation_service, "fetch_site_or_404", _fetch_site)
+    monkeypatch.setattr(delegation_service, "fetch_site_for_update_or_404", _fetch_site)
     monkeypatch.setattr(delegation_service, "write_audit_event", _noop_audit)
 
     me = uuid.uuid4()
@@ -353,7 +353,7 @@ async def test_shortlist_delegation_to_other_supervisor_still_rejected(monkeypat
     async def _fetch_site(session, *, site_id, tenant_id):
         return site
 
-    monkeypatch.setattr(delegation_service, "fetch_site_or_404", _fetch_site)
+    monkeypatch.setattr(delegation_service, "fetch_site_for_update_or_404", _fetch_site)
     other = _user(role="supervisor")
     with pytest.raises(HTTPException) as exc:
         await delegation_service.svc_grant_delegation(
@@ -371,7 +371,7 @@ async def test_supervisor_can_self_delegate_legal(monkeypatch):
         return site
 
     from app.services import notification_service
-    monkeypatch.setattr(delegation_service, "fetch_site_or_404", _fetch_site)
+    monkeypatch.setattr(delegation_service, "fetch_site_for_update_or_404", _fetch_site)
     monkeypatch.setattr(delegation_service, "write_audit_event", _noop_audit)
     monkeypatch.setattr(notification_service, "enqueue", _noop_notify)
 

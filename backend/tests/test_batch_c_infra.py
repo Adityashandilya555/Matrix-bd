@@ -369,7 +369,7 @@ async def test_submit_inspection_date_sets_submitted(make_session, monkeypatch):
     async def _build(*a, **k):
         return "OK"
 
-    monkeypatch.setattr(project_service, "fetch_site_or_404", _fetch_site)
+    monkeypatch.setattr(project_service, "fetch_site_for_update_or_404", _fetch_site)
     monkeypatch.setattr(project_service, "write_audit_event", _noop)
     monkeypatch.setattr(project_service, "_assert_can_work_project", _noop)
     monkeypatch.setattr(project_service, "_fetch_review_or_create", _fetch_review)
