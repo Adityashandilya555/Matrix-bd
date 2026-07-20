@@ -768,7 +768,7 @@ function ExecutionSection({ review, siteId, isSupervisor, dark, busy, mutate }) 
           ) : qaStatus === 'supervisor_approved' ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <span style={muted}>Inspection date: {fmtDate(review.inspectionDate)}</span>
-              <span style={{ color: 'var(--zm-copper)', fontSize: 12.5 }}>Approved by supervisor — awaiting business-admin confirmation.</span>
+              <span style={{ color: 'var(--zm-copper)', fontSize: 12.5 }}>Pushed to project excellence supervisor for quality audit.</span>
             </div>
           ) : qaStatus === 'submitted' ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
