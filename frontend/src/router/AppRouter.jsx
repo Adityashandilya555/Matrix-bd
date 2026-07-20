@@ -63,7 +63,9 @@ const FinancialClosureReviewPage = lazy(() => import('../modules/financial_closu
 
 // In HTTP (non-mock) mode the landing page is the unauthenticated entry. The
 // existing app chrome only renders after a Supabase session is established.
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true;
+// Force mock mode off in production builds — a stray VITE_USE_MOCK must never
+// leak the mock session / auth bypass into a deploy. (Mock removal planned.)
+const USE_MOCK = (import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true) && !import.meta.env.PROD;
 const LANDING_PATH = '/welcome';
 
 function homeForRoleModule(role, module) {
