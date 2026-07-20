@@ -455,7 +455,7 @@ export default function DesignReviewPage() {
               <Badge label={`Allocated · ${allocation.delegateName || allocation.delegateEmail}`} color="var(--zm-accent)"/>
               <button type="button" disabled={busy} onClick={onRevoke} className="zm-btn-fx" style={{ ...btn('var(--zm-danger)'), opacity: busy ? 0.6 : 1 }}>Revoke</button>
             </div>
-          ) : r.designStatus === 'pending' ? (
+          ) : r.designStatus === 'pending' || r.designStatus === 'allocated' ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <select value={chosenExec} onChange={(e) => setChosenExec(e.target.value)} style={{ ...input, width: 240 }}>

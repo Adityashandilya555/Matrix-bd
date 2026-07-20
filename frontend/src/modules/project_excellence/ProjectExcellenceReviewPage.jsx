@@ -335,7 +335,7 @@ export default function ProjectExcellenceReviewPage() {
                 fontSize: 12, fontWeight: 800, cursor: 'pointer', opacity: saving ? 0.6 : 1,
               }}>Revoke</button>
             </div>
-          ) : state?.excellenceStatus === 'pending' ? (
+          ) : state?.excellenceStatus === 'pending' || state?.excellenceStatus === 'allocated' ? (
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
               <select
                 value={allocExec}
