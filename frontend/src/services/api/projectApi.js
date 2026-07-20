@@ -145,6 +145,12 @@ export async function allocateProject(siteId, executiveId, notes) {
   return stateFromServer(data);
 }
 
+export async function revokeProjectAllocation(siteId, userId) {
+  const data = await client.delete(`/project/${siteId}/allocate/${userId}`).then((r) => r.data);
+  notifySiteDataChanged({ source: 'project', action: 'revoke_allocation', siteId });
+  return data;
+}
+
 export async function saveProjectBudget(
   siteId,
   { items, action = 'save', totalIndoorAreaSqft, totalAreaSqft, covers },
