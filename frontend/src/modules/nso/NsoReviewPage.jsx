@@ -797,7 +797,7 @@ export default function NsoReviewPage() {
           </div>
           <div style={{ display: 'grid', gap: 12, marginTop: 14 }}>
             <div><strong>Finance</strong><br/><span style={{ color: 'var(--zm-fg-3)' }}>{pretty(review.financeStatus)} · {review.caCode || 'CA pending'}</span></div>
-            <div><strong>Project</strong><br/><span style={{ color: 'var(--zm-fg-3)' }}>{pretty(review.projectStatus)} · {pretty(review.projectCurrentStage)}</span></div>
+            <div><strong>Project</strong><br/><span style={{ color: 'var(--zm-fg-3)' }}>{pretty(review.projectStatus)}{review.projectCurrentStage && review.projectCurrentStage !== review.projectStatus ? ` · ${pretty(review.projectCurrentStage)}` : ''}</span></div>
             <div><strong>NSO</strong><br/><span style={{ color: 'var(--zm-fg-3)' }}>{pretty(review.nsoStatus)} · {pretty(review.currentStage)}</span></div>
           </div>
           <button
