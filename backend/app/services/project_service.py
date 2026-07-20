@@ -244,7 +244,11 @@ async def _build_response(
         design_status=site.design_status or "pending",
         project_status=review.project_status,
         current_stage=review.current_stage,
-        allocated_to=str(review.allocated_to) if review.allocated_to else None,
+        # Report the live delegate, not the stored review.allocated_to column:
+        # revoke only sets revoked_at and leaves that column stale, which would
+        # otherwise report a revoked executive as still allocated. Mirrors the
+        # allocated_to_name line below and financial_closure_service (#419).
+        allocated_to=str(delegate[0]) if delegate else None,
         allocated_to_name=(delegate[1] if delegate else None),
         initialization_date=review.initialization_date,
         initialization_status=review.initialization_status,

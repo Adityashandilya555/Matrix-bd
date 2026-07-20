@@ -91,6 +91,12 @@ export async function allocatePE(siteId, executiveId, notes) {
   return stateFromServer(data);
 }
 
+export async function revokePEAllocation(siteId, userId) {
+  const data = await client.delete(`/project-excellence/${siteId}/allocate/${userId}`).then((r) => r.data);
+  notifySiteDataChanged({ source: 'project_excellence', action: 'revoke_allocation', siteId });
+  return data;
+}
+
 export async function savePEBudget(siteId, { items, action = 'save', totalIndoorAreaSqft, totalAreaSqft, covers }) {
   const data = await client.post(`/project-excellence/${siteId}/budget`, {
     action,

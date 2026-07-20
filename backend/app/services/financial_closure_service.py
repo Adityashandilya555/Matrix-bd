@@ -219,7 +219,7 @@ async def _build_fc_state(
         is_launched=bool(site.is_launched),
         financial_closure_status=site.financial_closure_status or "pending",
         closure_status=(closure.status if closure else "draft"),
-        allocated_to=str(closure.allocated_to) if closure and closure.allocated_to else None,
+        allocated_to=str(delegate[0]) if delegate else None,
         allocated_to_name=(delegate[1] if delegate else None),
         gfc_budget_total=_opt_float(gfc, "budget_total"),
         closure_budget_total=_opt_float(closure, "budget_total"),
