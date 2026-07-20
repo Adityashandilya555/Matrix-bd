@@ -62,12 +62,18 @@ function StatusPill({ value }) {
 // LegalQueuePage listing; rows deep-link into the queue tab).
 function QueueTable({ rows, onOpen, limit, style }) {
   const displayRows = limit ? rows.slice(0, limit) : rows;
+  // One grid template shared by the header + every row so the five cells
+  // (Code · Site · City · Days in stage · DD status) always line up. The
+  // template previously had only four tracks, so the fifth cell (DD status)
+  // wrapped onto a second row when the viewport narrowed — matching the
+  // sibling module overviews (Design/Project/NSO), the count is now explicit.
+  const COLS = '120px minmax(200px, 1fr) 130px 130px 150px';
   return (
     <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', ...style }}>
       <div style={{
         flexShrink: 0,
         display: 'grid',
-        gridTemplateColumns: '120px minmax(220px, 1fr) 140px 160px',
+        gridTemplateColumns: COLS,
         gap: 12,
         padding: '12px 16px',
         background: 'var(--zm-surface-2)',
@@ -96,7 +102,7 @@ function QueueTable({ rows, onOpen, limit, style }) {
             onKeyDown={keyActivate(() => onOpen(row))}
             style={{
               display: 'grid',
-              gridTemplateColumns: '120px minmax(220px, 1fr) 140px 160px',
+              gridTemplateColumns: COLS,
               gap: 12,
               padding: '14px 16px',
               borderBottom: '1px solid var(--zm-line-faint)',

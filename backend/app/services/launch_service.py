@@ -449,6 +449,7 @@ async def svc_get_launch_queue(
         LaunchQueueItem(
             site_id=str(site.id),
             site_code=site.code,
+            ca_code=site.ca_code,
             site_name=site.name,
             city=site.city,
             status=approval.status,
