@@ -6,7 +6,9 @@ import { useSession } from './SessionContext.jsx';
 import { getAuthToken } from '../services/api/authToken.js';
 import { notifySiteDataChanged, subscribeSiteDataChanged } from '../services/api/siteEvents.js';
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true;
+// Force mock mode off in production builds — a stray VITE_USE_MOCK must never
+// leak the mock session / auth bypass into a deploy. (Mock removal planned.)
+const USE_MOCK = (import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true) && !import.meta.env.PROD;
 
 // In HTTP mode the store must stay idle until the user is signed in. The
 // provider wraps the WHOLE app (including the public landing), so firing
