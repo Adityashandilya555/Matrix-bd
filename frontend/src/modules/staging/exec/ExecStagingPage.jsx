@@ -70,7 +70,7 @@ function applyStagingFilters(sites, f) {
   });
 }
 
-function ExecRow({ site, onUpload, onOpen }) {
+function ExecRow({ site, onUpload, onOpen, uploading = false }) {
   const remaining = site.expectedLoiDays - site.daysSinceApproval;
   const overdue = remaining < 0;
   const uploaded = site.loiUploaded;
@@ -78,12 +78,12 @@ function ExecRow({ site, onUpload, onOpen }) {
   const handleFile = (e) => {
     const f = e.target.files?.[0];
     e.target.value = '';
-    if (f) onUpload(site, f);
+    if (f && !uploading) onUpload(site, f);
   };
   return (
     <div className="zm-row" data-site-id={site.id} style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1fr 1fr 1.4fr 170px', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: overdue && !uploaded ? 'rgba(217,119,6,0.06)' : 'transparent', position: 'relative' }}>
       {overdue && !uploaded && (<span style={{ position: 'absolute', left: 0, top: 12, bottom: 12, width: 2, background: 'var(--zm-warning)', borderRadius: 2 }}/>)}
-      <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{site.code}</span>
+      <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{site.caCode || site.code}</span>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 600, color: 'var(--zm-fg)' }}>{site.name}</span><span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 10.5, color: 'var(--zm-fg-3)' }}>by {site.createdBy}</span></div>
       <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{site.city}</span>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, color: 'var(--zm-fg)' }}>{site.approvedDate}</span><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, color: 'var(--zm-fg-3)' }}>by {site.approvedBy}</span></div>
@@ -91,7 +91,12 @@ function ExecRow({ site, onUpload, onOpen }) {
       <div>{uploaded ? <StatusPill stage="uploaded"/> : overdue ? <StatusPill stage="overdue"/> : <StatusPill stage="staging"/>}</div>
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
         <button onClick={() => onOpen(site)} title="View" className="zm-icon-btn" style={{ width: 32, height: 32, padding: 0, border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><EyeIcon/></button>
-        {uploaded ? (<button disabled style={{ height: 32, padding: '0 12px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'not-allowed', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="check" size={12}/> Uploaded</button>) : (<><input ref={fileRef} type="file" accept=".pdf,.doc,.docx" style={{ display: 'none' }} onChange={handleFile}/><button onClick={() => fileRef.current?.click()} className="zm-btn-primary" style={{ height: 32, padding: '0 12px', border: 'none', borderRadius: 7, background: overdue ? 'var(--zm-warning)' : 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, boxShadow: 'var(--zm-shadow-1)' }}><Icon name="upload" size={12}/> Upload LOI</button></>)}
+        {uploaded ? (<button disabled style={{ height: 32, padding: '0 12px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'not-allowed', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="check" size={12}/> Uploaded</button>) : uploading ? (
+          <button disabled aria-busy="true" style={{ height: 32, padding: '0 12px', border: 'none', borderRadius: 7, background: overdue ? 'var(--zm-warning)' : 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 700, cursor: 'progress', opacity: 0.75, display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+            <span aria-hidden="true" style={{ width: 12, height: 12, border: '2px solid rgba(255,255,255,0.35)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'zm-spin 0.7s linear infinite' }}/>
+            Uploading…
+          </button>
+        ) : (<><input ref={fileRef} type="file" accept=".pdf,.doc,.docx" style={{ display: 'none' }} onChange={handleFile}/><button onClick={() => fileRef.current?.click()} className="zm-btn-primary" style={{ height: 32, padding: '0 12px', border: 'none', borderRadius: 7, background: overdue ? 'var(--zm-warning)' : 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, boxShadow: 'var(--zm-shadow-1)' }}><Icon name="upload" size={12}/> Upload LOI</button></>)}
       </div>
     </div>
   );
