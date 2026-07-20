@@ -528,9 +528,9 @@ function HeroCopy({ heroOpacity, onSignIn }) {
          <h1 className="hero-title-serif">
           Built for <em>retail expansion.</em>
         </h1>
-        <div style={{ maxWidth: 480, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center' }}>
-          <form className="hero-email liquid-glass" onSubmit={(e) => { e.preventDefault(); onSignIn(); }} style={{ width: 'auto', display: 'inline-flex', paddingLeft: 24 }}>
-            <button type="button" onClick={onSignIn} style={{ background: 'none', border: 'none', padding: 0, color: '#fff', fontSize: 15, fontWeight: 500, letterSpacing: '0.05em', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+        <div style={{ maxWidth: 480, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'stretch' }}>
+          <form className="hero-email liquid-glass" onSubmit={(e) => { e.preventDefault(); onSignIn(); }} style={{ width: '100%', display: 'flex', paddingLeft: 24 }}>
+            <button type="button" onClick={onSignIn} style={{ background: 'none', border: 'none', padding: 0, color: '#fff', fontSize: 15, fontWeight: 500, letterSpacing: '0.05em', cursor: 'pointer', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
               SIGN IN
             </button>
             <button type="submit" aria-label="Sign in">
