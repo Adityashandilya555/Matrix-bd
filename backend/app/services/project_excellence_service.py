@@ -70,7 +70,11 @@ def _excellence_status(budget: Optional[models.SiteBudget], *, has_delegate: boo
         return "budgeting"
     if budget is not None and budget.budget_total is not None:
         return "budgeting"
-    if has_delegate or (budget is not None and budget.allocated_to is not None):
+    # Allocation is driven by the live delegation only. budget.allocated_to is
+    # left stale by revoke, so deriving "allocated" from it would keep showing an
+    # allocated chip after revoke and block the re-allocation UI. Budget-in-
+    # progress is already handled by the budget_total check above (#419).
+    if has_delegate:
         return "allocated"
     return "pending"
 
@@ -178,7 +182,11 @@ async def _build_response(
         project_status=site.project_status or "pending",
         excellence_status=_excellence_status(budget, has_delegate=delegate is not None),
         current_stage="done" if budget.status == "approved" else "budget",
-        allocated_to=str(budget.allocated_to) if budget.allocated_to else None,
+        # Report the live delegate, not the stored budget.allocated_to column:
+        # revoke only sets revoked_at and leaves that column stale, which would
+        # otherwise report a revoked executive as still allocated. Mirrors the
+        # allocated_to_name line below and financial_closure_service (#419).
+        allocated_to=str(delegate[0]) if delegate else None,
         allocated_to_name=(delegate[1] if delegate else None),
         budget_status=budget.status,
         budget_total=float(budget.budget_total) if budget.budget_total is not None else None,
