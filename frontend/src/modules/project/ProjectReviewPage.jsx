@@ -214,6 +214,10 @@ export default function ProjectReviewPage() {
     skipWhen: () => budgetDirty || busy,
   });
 
+  // Supervisor: load the team + the active allocation. Keyed on projectStatus so
+  // the allocation re-syncs whenever the status flips (allocate/revoke), mirroring
+  // DesignReviewPage — the source of truth for the allocated/revoke UI.
+  const projectStatus = state.review?.projectStatus;
   React.useEffect(() => {
     if (!isSupervisor) return;
     let cancelled = false;
@@ -224,7 +228,7 @@ export default function ProjectReviewPage() {
       .then((d) => { if (!cancelled) setAllocation(d.items?.[0] || null); })
       .catch(() => { if (!cancelled) setAllocation(null); });
     return () => { cancelled = true; };
-  }, [isSupervisor, siteId]);
+  }, [isSupervisor, siteId, projectStatus]);
 
   const mutate = async (fn) => {
     setBusy(true);
@@ -253,6 +257,27 @@ export default function ProjectReviewPage() {
       showToast?.('Allocation revoked.', 'success');
     } catch (err) {
       setActionError(err?.detail || err?.message || 'Revoke failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onAllocate = async () => {
+    const targetUserId = delegateId === '__self__' ? myUserId : delegateId;
+    if (!targetUserId) { setActionError('Could not resolve the executive — refresh and try again.'); return; }
+    setActionError(null);
+    setBusy(true);
+    try {
+      const next = await allocateProject(siteId, targetUserId);
+      rehydrateReview(next);
+      setDelegateId('');
+      // Refetch the live delegation so the "Allocated · X / Revoke" badge appears
+      // immediately, instead of the dropdown lingering (mirrors DesignReviewPage).
+      const d = await listProjectDelegations(siteId).catch(() => ({ items: [] }));
+      setAllocation(d.items?.[0] || null);
+      showToast?.('Allocation saved.', 'success');
+    } catch (err) {
+      setActionError(err?.detail || err?.message || 'Allocation failed');
     } finally {
       setBusy(false);
     }
@@ -363,7 +388,7 @@ export default function ProjectReviewPage() {
                           <option key={member.id} value={member.id}>{member.name || member.email}</option>
                         ))}
                       </select>
-                      <ActionButton disabled={!delegateId || busy || (delegateId === '__self__' && !myUserId)} onClick={() => mutate(() => allocateProject(siteId, delegateId === '__self__' ? myUserId : delegateId))}>
+                      <ActionButton disabled={!delegateId || busy || (delegateId === '__self__' && !myUserId)} onClick={onAllocate}>
                         Allocate
                       </ActionButton>
                     </div>

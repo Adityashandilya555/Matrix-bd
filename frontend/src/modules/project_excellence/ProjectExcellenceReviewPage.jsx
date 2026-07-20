@@ -198,6 +198,12 @@ export default function ProjectExcellenceReviewPage() {
     try {
       const data = await allocatePE(siteId, targetUserId);
       setState(data);
+      setAllocExec('');
+      // Refetch the live delegation so the "Allocated · X / Revoke" badge appears
+      // immediately, instead of the allocate dropdown lingering (mirrors
+      // DesignReviewPage.onAllocate — the reference pattern).
+      const d = await listPEDelegations(siteId).catch(() => ({ items: [] }));
+      setAllocation(d.items?.[0] || null);
     } catch (err) {
       setError(err?.detail || err?.message || 'Allocation failed');
     } finally {
