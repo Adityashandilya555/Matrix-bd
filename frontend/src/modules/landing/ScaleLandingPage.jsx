@@ -463,7 +463,7 @@ function OntologyReveal({ progress }) {
 /* ------------------------------------------------------------------
    Hero copy (video + serif headline + email + manifesto + socials)
 ------------------------------------------------------------------ */
-function HeroCopy({ heroOpacity, onHeroSubmit, heroEmail, setHeroEmail }) {
+function HeroCopy({ heroOpacity, onSignIn }) {
   const videoRef = useRef(null);
 
   useEffect(() => {
@@ -528,18 +528,12 @@ function HeroCopy({ heroOpacity, onHeroSubmit, heroEmail, setHeroEmail }) {
          <h1 className="hero-title-serif">
           Built for <em>retail expansion.</em>
         </h1>
-        <div style={{ maxWidth: 480, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <form className="hero-email liquid-glass" onSubmit={onHeroSubmit}>
-            <input
-              type="email"
-              name="email"
-              autoComplete="email"
-              placeholder="Enter email to request workspace"
-              aria-label="Email to request workspace"
-              value={heroEmail}
-              onChange={(e) => setHeroEmail(e.target.value)}
-            />
-            <button type="submit" aria-label="Request membership">
+        <div style={{ maxWidth: 480, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center' }}>
+          <form className="hero-email liquid-glass" onSubmit={(e) => { e.preventDefault(); onSignIn(); }} style={{ width: 'auto', display: 'inline-flex', paddingLeft: 24 }}>
+            <span style={{ color: '#fff', fontSize: 15, fontWeight: 500, letterSpacing: '0.05em', cursor: 'pointer', whiteSpace: 'nowrap' }} onClick={onSignIn}>
+              SIGN IN
+            </span>
+            <button type="submit" aria-label="Sign in">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
@@ -896,7 +890,7 @@ export default function ScaleLandingPage() {
   const [scrolledVh, setScrolledVh] = useState(0);
   const [authMode, setAuthMode] = useState(null);
   const [membershipEmail, setMembershipEmail] = useState('');
-  const [heroEmail, setHeroEmail] = useState('');
+
   const [prefillEmail, setPrefillEmail] = useState('');
   const [showCodeDialog, setShowCodeDialog] = useState(false);
 
@@ -997,10 +991,7 @@ export default function ScaleLandingPage() {
     setAuthMode('register');
   };
 
-  const handleHeroSubmit = (event) => {
-    event.preventDefault();
-    openMembershipFlow(heroEmail.trim());
-  };
+
 
   const requestMembership = () => {
     openMembershipFlow(membershipEmail.trim());
@@ -1046,9 +1037,7 @@ export default function ScaleLandingPage() {
 
           <HeroCopy
             heroOpacity={heroOpacity}
-            onHeroSubmit={handleHeroSubmit}
-            heroEmail={heroEmail}
-            setHeroEmail={setHeroEmail}
+            onSignIn={() => setShowCodeDialog(true)}
           />
         </div>
       </div>
