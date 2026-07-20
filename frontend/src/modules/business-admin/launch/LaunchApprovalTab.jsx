@@ -259,7 +259,7 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
     <Drawer
       open={!!siteId}
       onClose={onClose}
-      title={loading ? 'Loading…' : `${d?.site_code || ''} · ${d?.site_name || ''}`}
+      title={loading ? 'Loading…' : `${dep.ca_code || d?.site_code || ''} · ${d?.site_name || ''}`}
       subtitle={loading ? '' : d?.city}
       headerRight={d && (
         <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: statusInfo.color, background: `${statusInfo.color}22`, padding: '3px 10px', borderRadius: 20 }}>
@@ -433,7 +433,7 @@ function QueueRow({ item, onClick }) {
       onMouseEnter={(e) => { e.currentTarget.style.background = T.hoverBg || 'rgba(255,255,255,0.04)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
     >
-      <span style={{ fontFamily: 'monospace', fontSize: 11.5, color: T.textMuted }}>{item.site_code || '—'}</span>
+      <span style={{ fontFamily: 'monospace', fontSize: 11.5, color: T.textMuted }}>{item.ca_code || item.site_code || '—'}</span>
       <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{item.site_name}</span>
       <span style={{ fontSize: 13, color: T.textMuted }}>{item.city}</span>
       <span>

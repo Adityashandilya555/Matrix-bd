@@ -206,6 +206,9 @@ class LaunchQueueItem(BaseModel):
     """Lightweight row shown in the launch queues."""
     site_id: str
     site_code: Optional[str] = None
+    # Commercial-agreement code minted by Finance; supersedes the placeholder
+    # site_code in the UI once set (the queue row prefers ca_code || site_code).
+    ca_code: Optional[str] = None
     site_name: str
     city: str
     status: str

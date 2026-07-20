@@ -532,8 +532,10 @@ function HeroCopy({ heroOpacity, onHeroSubmit, heroEmail, setHeroEmail }) {
           <form className="hero-email liquid-glass" onSubmit={onHeroSubmit}>
             <input
               type="email"
-              placeholder="Enter your work email"
-              aria-label="Email"
+              name="email"
+              autoComplete="email"
+              placeholder="Enter email to request workspace"
+              aria-label="Email to request workspace"
               value={heroEmail}
               onChange={(e) => setHeroEmail(e.target.value)}
             />
