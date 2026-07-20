@@ -1,5 +1,6 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import '../shared/primitives/button-fx.css';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 import { useSession } from '../../state/SessionContext.jsx';
@@ -237,7 +238,7 @@ function DeliverableCard({ kind, deliverable, isActive, isExecutive, isSuperviso
           <button
             type="button"
             disabled={busy || (!isBoq && !file)}
-            style={{ ...btn('var(--zm-accent)'), alignSelf: 'flex-start', opacity: (busy || (!isBoq && !file)) ? 0.6 : 1 }}
+            className="zm-btn-fx" style={{ ...btn('var(--zm-accent)'), alignSelf: 'flex-start', opacity: (busy || (!isBoq && !file)) ? 0.6 : 1 }}
             onClick={() => (isBoq ? onSubmit(kind, { estimatedAmount: amount }) : onUpload(kind, file))}
           >
             {status === 'rejected'
@@ -258,11 +259,11 @@ function DeliverableCard({ kind, deliverable, isActive, isExecutive, isSuperviso
             style={{ ...input, height: 64, padding: 10, resize: 'vertical' }}
           />
           <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" disabled={busy} style={{ ...btn('var(--zm-success)'), opacity: busy ? 0.6 : 1 }}
+            <button type="button" disabled={busy} className="zm-btn-fx" style={{ ...btn('var(--zm-success)'), opacity: busy ? 0.6 : 1 }}
               onClick={() => onReview(kind, { decision: 'approve', comments })}>
               Approve
             </button>
-            <button type="button" disabled={busy} style={{ ...btn('var(--zm-danger)'), opacity: busy ? 0.6 : 1 }}
+            <button type="button" disabled={busy} className="zm-btn-fx" style={{ ...btn('var(--zm-danger)'), opacity: busy ? 0.6 : 1 }}
               onClick={() => onReview(kind, { decision: 'reject', comments })}>
               Send back
             </button>
@@ -411,7 +412,7 @@ export default function DesignReviewPage() {
   if (status === 'error') {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <button type="button" onClick={() => navigate(ROUTES.DESIGN)} style={{ ...btn('var(--zm-fg-3)'), alignSelf: 'flex-start' }}>
+        <button type="button" onClick={() => navigate(ROUTES.DESIGN)} className="zm-btn-fx" style={{ ...btn('var(--zm-fg-3)'), alignSelf: 'flex-start' }}>
           <Icon name="arrow-right" size={12}/> Back to queue
         </button>
         <div className="zm-glass" style={{ padding: 18, color: 'var(--zm-danger)' }}>{error}</div>
@@ -427,7 +428,7 @@ export default function DesignReviewPage() {
       {actionError && (
         <div className="zm-glass" role="alert" style={{ padding: 12, color: 'var(--zm-danger)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <span>{actionError}</span>
-          <button type="button" onClick={() => setActionError(null)} style={{ ...btn('var(--zm-surface-2)'), color: 'var(--zm-fg-2)' }}>Dismiss</button>
+          <button type="button" onClick={() => setActionError(null)} className="zm-btn-fx" style={{ ...btn('var(--zm-surface-2)'), color: 'var(--zm-fg-2)' }}>Dismiss</button>
         </div>
       )}
       <PageHeader
@@ -438,7 +439,7 @@ export default function DesignReviewPage() {
         right={<HeaderTag icon="box" label={(r.designStatus || '').toUpperCase()}/>}
       />
 
-      <button type="button" onClick={() => navigate(ROUTES.DESIGN)} style={{ ...btn('var(--zm-surface-2)'), color: 'var(--zm-fg-2)', alignSelf: 'flex-start' }}>
+      <button type="button" onClick={() => navigate(ROUTES.DESIGN)} className="zm-btn-fx" style={{ ...btn('var(--zm-surface-2)'), color: 'var(--zm-fg-2)', alignSelf: 'flex-start' }}>
         ← Back to queue
       </button>
 
@@ -452,7 +453,7 @@ export default function DesignReviewPage() {
           {allocation ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <Badge label={`Allocated · ${allocation.delegateName || allocation.delegateEmail}`} color="var(--zm-accent)"/>
-              <button type="button" disabled={busy} onClick={onRevoke} style={{ ...btn('var(--zm-danger)'), opacity: busy ? 0.6 : 1 }}>Revoke</button>
+              <button type="button" disabled={busy} onClick={onRevoke} className="zm-btn-fx" style={{ ...btn('var(--zm-danger)'), opacity: busy ? 0.6 : 1 }}>Revoke</button>
             </div>
           ) : r.designStatus === 'pending' ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -462,7 +463,7 @@ export default function DesignReviewPage() {
                   <option value="__self__">Delegate to self (me)</option>
                   {team.map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
                 </select>
-                <button type="button" disabled={busy || !chosenExec} onClick={onAllocate} style={{ ...btn('var(--zm-accent)'), opacity: (busy || !chosenExec) ? 0.6 : 1 }}>
+                <button type="button" disabled={busy || !chosenExec} onClick={onAllocate} className="zm-btn-fx" style={{ ...btn('var(--zm-accent)'), opacity: (busy || !chosenExec) ? 0.6 : 1 }}>
                   Allocate
                 </button>
                 {team.length === 0 && (

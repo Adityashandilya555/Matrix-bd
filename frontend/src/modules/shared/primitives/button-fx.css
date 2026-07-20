@@ -1,0 +1,53 @@
+/* Reusable action-button polish (#design-tweak).
+ *
+ * Inline styles can't express :hover / :active / :focus-visible, so the review
+ * and approval action buttons looked flat. This opt-in, COLOUR-AGNOSTIC class
+ * pairs with each button's own inline background/size and adds the missing
+ * interaction states: a subtle hover lift + shadow, an active press, a
+ * keyboard focus ring, and smooth transitions. Add `zm-btn-fx` to any action
+ * button to give it the same tactile feel across panels. */
+
+.zm-btn-fx {
+  position: relative;
+  transition:
+    transform 130ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    box-shadow 130ms ease,
+    filter 130ms ease;
+  will-change: transform;
+}
+
+.zm-btn-fx:hover:not(:disabled):not([aria-disabled='true']) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -4px rgba(15, 23, 42, 0.28);
+  filter: saturate(1.05) brightness(1.03);
+}
+
+.zm-btn-fx:active:not(:disabled):not([aria-disabled='true']) {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px -2px rgba(15, 23, 42, 0.28);
+  filter: brightness(0.97);
+  transition-duration: 60ms;
+}
+
+/* Keyboard focus only — mouse clicks don't get the ring. */
+.zm-btn-fx:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.35);
+}
+
+.zm-btn-fx:disabled,
+.zm-btn-fx[aria-disabled='true'] {
+  transform: none;
+  box-shadow: none;
+  filter: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zm-btn-fx {
+    transition: box-shadow 130ms ease, filter 130ms ease;
+  }
+  .zm-btn-fx:hover:not(:disabled),
+  .zm-btn-fx:active:not(:disabled) {
+    transform: none;
+  }
+}

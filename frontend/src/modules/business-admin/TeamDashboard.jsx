@@ -22,7 +22,7 @@ import { T, Icon, IconButton, StatTile, TABULAR, getInitialTheme, persistTheme }
 import Sidebar from './ui/Sidebar.jsx';
 import ApprovalCenter from './approval/ApprovalCenter.jsx';
 import DepartmentsTab from './departments/DepartmentsTab.jsx';
-import SitesTab from './sites/SitesTab.jsx';
+import SitesTab, { classifyCounts } from './sites/SitesTab.jsx';
 import LaunchApprovalTab from './launch/LaunchApprovalTab.jsx';
 import WorkspaceSwitcherPanel from './WorkspaceSwitcherPanel.jsx';
 
@@ -97,6 +97,10 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   })();
 
   const [tab, setTab] = React.useState('approvals');
+  // Which Sites sub-tab to show; lets the KPI tiles deep-link (e.g. the
+  // "Completed sites" tile jumps straight to the Completed filter).
+  const [sitesFilter, setSitesFilter] = React.useState('active');
+  const openSites = (filter) => { setSitesFilter(filter); setTab('sites'); };
   const [refreshingAll, setRefreshingAll] = React.useState(false);
   const [theme, setTheme] = React.useState(getInitialTheme);
   const toggleTheme = () => setTheme((t) => { const next = t === 'dark' ? 'light' : 'dark'; persistTheme(next); return next; });
@@ -184,7 +188,9 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   const paymentSites = approvalSites.filter((s) => s.payment).length;
   const supCount = supervisors.items.length;
   const sitesCount = sites.total || sites.items.length;
-  const completedSites = (sites.items || []).filter((s) => s.projectStatus === 'done' || s.projectStatus === 'completed').length;
+  // Count completed sites with the SAME rule the Sites → Completed tab uses, so
+  // the tile and the tab never disagree (they used different definitions before).
+  const completedSites = classifyCounts(sites.items || []).completed;
 
   // ── handlers ──
   const handlers = {
@@ -285,12 +291,12 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
         {/* ── Overview tiles ── */}
         <div className="ac-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(212px, 1fr))', gap: 14, marginBottom: 24 }}>
           <StatTile icon={Icon.pin} label="Total sites" count={sitesCount} tone="peach"
-            loading={sites.status === 'loading'} caption="in the system" onClick={() => setTab('sites')} />
+            loading={sites.status === 'loading'} caption="in the system" onClick={() => openSites('active')} />
           <StatTile icon={Icon.check} label="Awaiting approval" count={approvalSites.length} tone="slate"
             loading={approvalStatus === 'loading'} caption={approvalSites.length ? `${designSites} design · ${paymentSites} payment` : 'all clear'}
             onClick={() => setTab('approvals')} />
           <StatTile icon={Icon.flag} label="Completed sites" count={completedSites} tone="mint"
-            loading={sites.status === 'loading'} caption={completedSites ? 'project done' : 'none yet'} onClick={() => setTab('sites')} />
+            loading={sites.status === 'loading'} caption={completedSites ? 'project done' : 'none yet'} onClick={() => openSites('completed')} />
           <StatTile icon={Icon.users} label="Pending requests" count={supCount} tone="blue"
             loading={supervisors.status === 'loading'} caption="workspace access" onClick={() => setTab('departments')} />
         </div>
@@ -307,7 +313,8 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
               <DepartmentsTab org={org} pendingSupervisors={supervisors} executiveRequests={executiveRequests} handlers={handlers} />
             )}
             {tab === 'sites' && (
-              <SitesTab data={sites} fetchHistory={fetchers.fetchSiteHistory} onRetry={loadSites} />
+              <SitesTab data={sites} fetchHistory={fetchers.fetchSiteHistory} onRetry={loadSites}
+                filter={sitesFilter} onFilterChange={setSitesFilter} />
             )}
             {tab === 'workspace' && <WorkspaceSwitcherPanel />}
           </div>
