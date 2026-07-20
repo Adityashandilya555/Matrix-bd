@@ -591,13 +591,7 @@ function Nav({ onRequestMembership, membershipEmail, setMembershipEmail, onSignI
         {/* ── Brand ── */}
         <div className="nav-brand">
           <span className="mark">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M4 7 L 20 7 L 12 12 L 20 17 L 4 17 L 12 12 Z"
-                stroke="var(--scale-accent)" strokeWidth="1.4" strokeLinejoin="round"
-                style={{ filter: 'drop-shadow(0 0 6px var(--scale-glow))' }}
-              />
-            </svg>
+            <img src="/brand-logo.jpeg" alt="Brand Logo" width="22" height="22" style={{ borderRadius: 4, objectFit: 'contain' }} />
           </span>
           <span className="nav-brand-text">{PRODUCT_NAME}</span>
           <span className="nav-brand-dot" />
