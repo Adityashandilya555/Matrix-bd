@@ -2,7 +2,7 @@
 
 Covers the two pieces of new logic: the generic site-file uploader writing an
 ``excellence`` row under the ``excellence/`` prefix, and the endpoint's
-image-only guard (PNG/JPEG, ≤5 MB) rejecting other types before any storage
+allow-list guard (PNG/JPEG/PDF, ≤5 MB) rejecting other types before any storage
 write.
 """
 from __future__ import annotations
@@ -61,7 +61,7 @@ async def test_upload_site_file_writes_excellence_row_under_prefix(session, fake
     assert out["file_name"] == "floor.png"
 
 
-async def test_upload_endpoint_rejects_non_image_before_storage(session, monkeypatch):
+async def test_upload_endpoint_rejects_disallowed_type_before_storage(session, monkeypatch):
     from app.routers import project_excellence as pe
 
     called = {"upload": False}
@@ -72,11 +72,12 @@ async def test_upload_endpoint_rejects_non_image_before_storage(session, monkeyp
     # If the guard fails, this would run — assert it never does.
     monkeypatch.setattr("app.services.photo_service.svc_upload_site_file", _boom)
 
-    pdf = types.SimpleNamespace(content_type="application/pdf", filename="x.pdf")
+    # PNG/JPEG/PDF are allowed; a GIF (or anything else) must be rejected up front.
+    gif = types.SimpleNamespace(content_type="image/gif", filename="x.gif")
     with pytest.raises(HTTPException) as exc:
         await pe.upload_excellence_document(
             site_id=SITE_ID, db=session, current_user=_supervisor(),
-            tenant_id=TENANT, file=pdf,
+            tenant_id=TENANT, file=gif,
         )
     assert exc.value.status_code == 415
     assert called["upload"] is False

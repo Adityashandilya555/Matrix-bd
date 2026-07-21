@@ -62,8 +62,8 @@ DocMember = Annotated[
     dict, Depends(require_role(Role.SUPERVISOR, Role.EXECUTIVE, Role.BUSINESS_ADMIN))
 ]
 
-# Attachments are images only, capped well below the global 25 MB limit.
-_EXCELLENCE_IMAGE_MIME = {"image/png", "image/jpeg"}
+# Attachments are images or PDFs, capped well below the global 25 MB limit.
+_EXCELLENCE_ALLOWED_MIME = {"image/png", "image/jpeg", "application/pdf"}
 _EXCELLENCE_MAX_BYTES = 5 * 1024 * 1024
 
 
@@ -372,7 +372,7 @@ async def list_excellence_documents(
     )
 
 
-@router.post("/{site_id}/documents", summary="Upload a project-excellence attachment (PNG/JPEG, ≤5 MB)")
+@router.post("/{site_id}/documents", summary="Upload a project-excellence attachment (PNG/JPEG/PDF, ≤5 MB)")
 async def upload_excellence_document(
     site_id: str,
     db: DbDep,
@@ -380,14 +380,14 @@ async def upload_excellence_document(
     tenant_id: TenantId,
     file: UploadFile = File(...),
 ) -> dict:
-    """Attach a PNG/JPEG image (≤5 MB) to the site's excellence document set.
-    Available from the PE review page and the Financial Closure page; more files
-    can be added at any time."""
+    """Attach a PNG/JPEG image or PDF (≤5 MB) to the site's excellence document
+    set. Available from the PE review page and the Financial Closure page; more
+    files can be added at any time."""
     content_type = (file.content_type or "").lower()
-    if content_type not in _EXCELLENCE_IMAGE_MIME:
+    if content_type not in _EXCELLENCE_ALLOWED_MIME:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Only PNG or JPEG images are allowed.",
+            detail="Only PNG, JPEG or PDF files are allowed.",
         )
     body_bytes = await read_upload_capped(file, max_bytes=_EXCELLENCE_MAX_BYTES)
     from app.services.photo_service import svc_upload_site_file
