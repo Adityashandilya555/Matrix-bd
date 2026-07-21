@@ -1,4 +1,4 @@
-import { createApiClient } from './axiosClient.js';
+import { createApiClient, UPLOAD_TIMEOUT_MS } from './axiosClient.js';
 import { notifySiteDataChanged } from './siteEvents.js';
 import { toNumberOrNull } from './_utils.js';
 
@@ -148,6 +148,12 @@ function qaItemFromServer(row) {
     projectCompletedAt: row.project_completed_at,
     allocatedToName: row.allocated_to_name,
     submittedByName: row.submitted_by_name,
+    qaBeforeUploadedAt: row.qa_before_uploaded_at,
+    qaBeforePushedAt: row.qa_before_pushed_at,
+    qaAfterUploadedAt: row.qa_after_uploaded_at,
+    qaAfterPushedAt: row.qa_after_pushed_at,
+    qaReportUnread: row.qa_report_unread,
+    qaReportDelegateName: row.qa_report_delegate_name,
   };
 }
 
@@ -161,5 +167,45 @@ export async function completePEQualityAudit(siteId) {
   // 'project' so the Project module's NSO Handover tab refreshes too.
   notifySiteDataChanged({ source: 'project_excellence', action: 'quality_audit_completed', siteId });
   notifySiteDataChanged({ source: 'project', action: 'quality_audit_completed', siteId });
+  return data;
+}
+
+// ── Quality-audit reports (before/after PDFs) ────────────────────────────────
+export async function uploadQAReport(siteId, kind, file) {
+  const form = new FormData();
+  form.append('file', file);
+  const data = await client
+    .post(`/project-excellence/${siteId}/quality-audit/report/${kind}/upload`, form, { timeout: UPLOAD_TIMEOUT_MS })
+    .then((r) => r.data);
+  notifySiteDataChanged({ source: 'project_excellence', action: 'qa_report_upload', siteId });
+  return data;
+}
+
+export async function pushQAReport(siteId, kind) {
+  const data = await client.post(`/project-excellence/${siteId}/quality-audit/report/${kind}/push`).then((r) => r.data);
+  // 'project' so the NSO Handover tab (View button / push gating) refreshes too.
+  notifySiteDataChanged({ source: 'project_excellence', action: 'qa_report_push', siteId });
+  notifySiteDataChanged({ source: 'project', action: 'qa_report_push', siteId });
+  return data;
+}
+
+export async function listQADelegations(siteId) {
+  const data = await client.get(`/project-excellence/${siteId}/quality-audit/delegations`).then((r) => r.data);
+  return { items: (data.items || []).map(delegationFromServer), total: data.total ?? 0 };
+}
+
+export async function allocateQA(siteId, executiveId, notes) {
+  const data = await client
+    .post(`/project-excellence/${siteId}/quality-audit/allocate`, { executive_id: executiveId, notes })
+    .then((r) => r.data);
+  notifySiteDataChanged({ source: 'project_excellence', action: 'qa_allocate', siteId });
+  return data;
+}
+
+export async function revokeQAAllocation(siteId, userId) {
+  const data = await client
+    .delete(`/project-excellence/${siteId}/quality-audit/allocate/${userId}`)
+    .then((r) => r.data);
+  notifySiteDataChanged({ source: 'project_excellence', action: 'qa_revoke_allocation', siteId });
   return data;
 }

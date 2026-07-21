@@ -43,6 +43,34 @@ class ProjectQueueItem(BaseModel):
     project_completed_at: Optional[datetime] = None
     allocated_to_name: Optional[str] = None
     submitted_by_name: Optional[str] = None
+    # Quality-audit report state — populated only for the PE Quality-Audit and
+    # Project NSO-Handover queues (None elsewhere). Drives the before/after
+    # upload+push UI, the time-between-uploads figure (after − before), and the
+    # unread (yellow) View button. `qa_report_delegate_name` is the executive the
+    # QA-report task is delegated to, if any.
+    qa_before_uploaded_at: Optional[datetime] = None
+    qa_before_pushed_at: Optional[datetime] = None
+    qa_after_uploaded_at: Optional[datetime] = None
+    qa_after_pushed_at: Optional[datetime] = None
+    qa_report_unread: bool = False
+    qa_report_delegate_name: Optional[str] = None
+
+
+class QAReportOut(BaseModel):
+    """One quality-audit report (before | after) for the Project View dialog."""
+    kind: str
+    file_name: Optional[str] = None
+    uploaded_at: Optional[datetime] = None
+    pushed_at: Optional[datetime] = None
+    download_url: Optional[str] = None       # short-lived signed URL; None if not uploaded
+
+
+class QAReportsResponse(BaseModel):
+    site_id: str
+    before: Optional[QAReportOut] = None
+    after: Optional[QAReportOut] = None
+    time_between_seconds: Optional[float] = None
+    unread: bool = False
 
 
 class ProjectQueueResponse(BaseModel):
