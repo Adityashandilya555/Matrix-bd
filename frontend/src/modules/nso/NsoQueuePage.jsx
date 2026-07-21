@@ -203,7 +203,7 @@ export default function NsoQueuePage() {
             <span>City</span>
             <span>Project</span>
             <span>NSO stage</span>
-            <span style={{ textAlign: 'right' }}>Action</span>
+            <span style={{ textAlign: 'right', paddingRight: 16 }}>Action</span>
           </div>
 
           <div style={{ overflowY: 'auto' }}>
@@ -243,7 +243,7 @@ export default function NsoQueuePage() {
                 type="button"
                 onClick={(e) => { e.stopPropagation(); open(row); }}
                 style={{
-                  justifySelf: 'end',
+                  justifySelf: 'end', marginRight: 16,
                   height: 32,
                   padding: '0 14px',
                   border: 'none',

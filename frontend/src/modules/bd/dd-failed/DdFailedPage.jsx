@@ -76,7 +76,7 @@ export default function DdFailedPage() {
             letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)',
           }}>
             <span>Code</span><span>Site</span><span>City</span><span>Drafted by</span>
-            <span>Reason</span><span style={{ textAlign: 'right' }}>Action</span>
+            <span>Reason</span><span style={{ textAlign: 'right', paddingRight: 16 }}>Action</span>
           </div>
           <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
             {state.items.map((row) => (
@@ -115,7 +115,7 @@ export default function DdFailedPage() {
                 type="button"
                 onClick={(e) => { e.stopPropagation(); navigate(bdSiteStatusRoute(row.siteId)); }}
                 style={{
-                  justifySelf: 'end',
+                  justifySelf: 'end', marginRight: 16,
                   height: 32, padding: '0 14px', border: 'none', borderRadius: 7,
                   background: 'var(--zm-accent)', color: '#fff',
                   fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 800,

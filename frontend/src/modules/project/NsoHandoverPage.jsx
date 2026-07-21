@@ -196,7 +196,7 @@ export default function NsoHandoverPage() {
             letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)',
           }}>
             <span>Code</span><span>Site</span><span>City</span><span>Status</span>
-            <span style={{ textAlign: 'right' }}>Action</span>
+            <span style={{ textAlign: 'right', paddingRight: 16 }}>Action</span>
           </div>
           {visible.map((row) => {
             const pushing = pushingId === row.siteId;
@@ -211,7 +211,7 @@ export default function NsoHandoverPage() {
                 <span style={{ color: 'var(--zm-fg-2)' }}>{row.city}</span>
                 {statusCell(row)}
                 {isSupervisor ? (
-                  <div style={{ justifySelf: 'end', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                  <div style={{ justifySelf: 'end', marginRight: 16, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                     <button type="button" disabled={pushing || !!pushingId || !bothPushed} onClick={() => handlePush(row)} style={{
                       height: 32, padding: '0 14px', border: 'none', borderRadius: 7,
                       background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)',
@@ -225,7 +225,7 @@ export default function NsoHandoverPage() {
                     {!bothPushed && <span style={{ fontSize: 10, color: 'var(--zm-fg-3)' }}>Waiting for the after report</span>}
                   </div>
                 ) : (
-                  <span style={{ justifySelf: 'end', display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 700 }}>
+                  <span style={{ justifySelf: 'end', marginRight: 16, display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 700 }}>
                     <Icon name="clock" size={13}/> Awaiting supervisor push
                   </span>
                 )}

@@ -183,7 +183,7 @@ export default function DesignQueuePage() {
             <span>City</span>
             <span>Design status</span>
             <span>Stage</span>
-            <span style={{ textAlign: 'right' }}>Action</span>
+            <span style={{ textAlign: 'right', paddingRight: 16 }}>Action</span>
           </div>
 
           <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
@@ -233,7 +233,7 @@ export default function DesignQueuePage() {
                 type="button"
                 onClick={(e) => { e.stopPropagation(); open(row); }}
                 style={{
-                  justifySelf: 'end', height: 32, padding: '0 14px',
+                  justifySelf: 'end', marginRight: 16, height: 32, padding: '0 14px',
                   border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff',
                   fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 800,
                   cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,

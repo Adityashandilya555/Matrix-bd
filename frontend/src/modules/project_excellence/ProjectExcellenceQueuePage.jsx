@@ -149,7 +149,7 @@ export default function ProjectExcellenceQueuePage({ mode = 'pipeline' }) {
             <span>City</span>
             <span>Excellence status</span>
             <span>Budget</span>
-            <span style={{ textAlign: 'right' }}>Action</span>
+            <span style={{ textAlign: 'right', paddingRight: 16 }}>Action</span>
           </div>
 
           <div style={{ overflowY: 'auto' }}>
@@ -191,7 +191,7 @@ export default function ProjectExcellenceQueuePage({ mode = 'pipeline' }) {
                 type="button"
                 onClick={(e) => { e.stopPropagation(); open(row); }}
                 style={{
-                  justifySelf: 'end', height: 32, padding: '0 14px', border: 'none',
+                  justifySelf: 'end', marginRight: 16, height: 32, padding: '0 14px', border: 'none',
                   borderRadius: 7, background: 'var(--zm-accent)', color: '#fff',
                   fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 800,
                   cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,

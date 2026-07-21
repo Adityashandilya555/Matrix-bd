@@ -215,7 +215,7 @@ export default function LegalQueuePage() {
             <span>Site</span>
             <span>City</span>
             <span>DD status</span>
-            <span style={{ textAlign: 'right' }}>Action</span>
+            <span style={{ textAlign: 'right', paddingRight: 16 }}>Action</span>
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -270,7 +270,7 @@ export default function LegalQueuePage() {
                 className="zm-btn-primary"
                 onClick={(e) => { e.stopPropagation(); open(row); }}
                 style={{
-                  justifySelf: 'end',
+                  justifySelf: 'end', marginRight: 16,
                   height: 32, padding: '0 14px',
                   border: 'none', borderRadius: 7,
                   background: 'var(--zm-accent)', color: '#fff',
