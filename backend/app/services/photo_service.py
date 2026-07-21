@@ -14,7 +14,7 @@ from app.services.audit_service import write_audit_event
 from app.services.storage_service import safe_object_name, signed_url, upload_bytes
 
 
-async def svc_upload_photo(
+async def svc_upload_site_file(
     session: AsyncSession,
     *,
     tenant_id: str | UUID,
@@ -23,15 +23,22 @@ async def svc_upload_photo(
     filename: str,
     content_type: Optional[str],
     file_bytes: bytes,
+    file_type: str = "photo",
+    path_prefix: str = "photos",
+    audit_action: str = "upload_photo",
 ) -> dict:
-    """Upload a site photo to Supabase Storage and persist a site_files row.
+    """Upload a file to Supabase Storage and persist a ``site_files`` row.
+
+    Generic over ``file_type`` / ``path_prefix`` / ``audit_action`` so the same
+    ownership check, connection-release (#89) and audit flow are reused by both
+    site photos (``photo``) and project-excellence attachments (``excellence``).
 
     Returns a dict with ``id``, ``url`` (signed), ``file_name``,
     ``file_size_kb``, and ``mime_type`` so the frontend can immediately
     replace its local blob URL with the persisted signed URL.
 
-    Any authenticated executive or supervisor may upload photos — there is no
-    site-status restriction (photos can be attached from DRAFT onwards).
+    Any authenticated executive (owning the site) or supervisor/business_admin
+    may upload — there is no site-status restriction.
     """
     # Validate tenant + executive ownership (#104) BEFORE the storage write so
     # a non-owner can't even litter the bucket. Capture what we need, then end
@@ -47,7 +54,7 @@ async def svc_upload_photo(
     # the storage key (Supabase rejects non-ASCII keys like macOS screenshot
     # names with a U+202F → 400); the original `filename` is kept for display.
     safe_name = f"{file_id.hex[:8]}_{safe_object_name(filename)}"
-    storage_path = f"photos/{tenant_id}/{site_pk}/{safe_name}"
+    storage_path = f"{path_prefix}/{tenant_id}/{site_pk}/{safe_name}"
 
     # Upload outside the transaction — if storage fails the transaction never opens.
     await upload_bytes(
@@ -62,7 +69,7 @@ async def svc_upload_photo(
             tenant_id=tenant_id,
             site_id=site_pk,
             uploaded_by=actor["sub"],
-            file_type="photo",
+            file_type=file_type,
             file_name=filename,
             storage_path=storage_path,
             file_size_kb=max(1, len(file_bytes) // 1024),
@@ -74,7 +81,7 @@ async def svc_upload_photo(
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site_pk,
             actor_id=actor["sub"], actor_name=actor["name"],
-            action="upload_photo",
+            action=audit_action,
             detail=filename,
         )
 
@@ -86,3 +93,21 @@ async def svc_upload_photo(
         "file_size_kb": max(1, len(file_bytes) // 1024),
         "mime_type": content_type,
     }
+
+
+async def svc_upload_photo(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    actor: dict,
+    site_id: str | UUID,
+    filename: str,
+    content_type: Optional[str],
+    file_bytes: bytes,
+) -> dict:
+    """Upload a site photo (``file_type='photo'``). Thin wrapper kept for the
+    existing ``POST /sites/{id}/photos`` call site."""
+    return await svc_upload_site_file(
+        session, tenant_id=tenant_id, actor=actor, site_id=site_id,
+        filename=filename, content_type=content_type, file_bytes=file_bytes,
+    )

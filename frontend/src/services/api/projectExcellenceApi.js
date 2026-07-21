@@ -181,6 +181,23 @@ export async function uploadQAReport(siteId, kind, file) {
   return data;
 }
 
+// ── Excellence document attachments (images; shared with Financial Closure) ──
+export async function listExcellenceDocuments(siteId) {
+  const data = await client.get(`/project-excellence/${siteId}/documents`).then((r) => r.data);
+  return { siteId, documents: data.documents || [] };
+}
+
+export async function uploadExcellenceDocument(siteId, file) {
+  const form = new FormData();
+  form.append('file', file);
+  const data = await client
+    .post(`/project-excellence/${siteId}/documents`, form, { timeout: UPLOAD_TIMEOUT_MS })
+    .then((r) => r.data);
+  notifySiteDataChanged({ source: 'project_excellence', action: 'excellence_doc_upload', siteId });
+  notifySiteDataChanged({ source: 'financial_closure', action: 'excellence_doc_upload', siteId });
+  return data;
+}
+
 export async function pushQAReport(siteId, kind) {
   const data = await client.post(`/project-excellence/${siteId}/quality-audit/report/${kind}/push`).then((r) => r.data);
   // 'project' so the NSO Handover tab (View button / push gating) refreshes too.
