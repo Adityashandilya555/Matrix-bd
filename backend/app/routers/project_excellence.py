@@ -170,10 +170,10 @@ async def push_qa_report(
 async def qa_delegations(
     site_id: str,
     db: DbDep,
-    current_user: PEMember,
+    _auth: PEMember,
     _module: InPEModule,
     tenant_id: TenantId,
-) -> ProjectDelegationsResponse:
+) -> dict:
     """Active quality-audit-report delegations for a site (supervisor view)."""
     return await svc_list_qa_delegations_for_site(db, tenant_id=tenant_id, site_id=site_id)
 

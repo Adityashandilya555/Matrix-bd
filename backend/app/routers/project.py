@@ -96,7 +96,7 @@ async def nso_handover_queue(
 async def qa_reports_for_site(
     site_id: str,
     db: DbDep,
-    current_user: ProjectMember,
+    _auth: ProjectMember,
     _module: InProjectModule,
     tenant_id: TenantId,
 ) -> QAReportsResponse:
@@ -109,7 +109,7 @@ async def qa_reports_for_site(
 async def mark_qa_reports_viewed(
     site_id: str,
     db: DbDep,
-    current_user: ProjectMember,
+    _auth: ProjectMember,
     _module: InProjectModule,
     tenant_id: TenantId,
 ) -> OkResponse:

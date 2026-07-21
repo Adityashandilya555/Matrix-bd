@@ -148,6 +148,25 @@ async def seed_initialization_from_pe(
     return review
 
 
+def _qa_queue_fields(prefetched: Optional[dict], review: Optional[models.ProjectReview]) -> dict:
+    """QA-report fields for a ProjectQueueItem. Only the PE Quality-Audit and NSO
+    Handover queues prefetch 'qa_reports'/'qa_delegate'; elsewhere these are
+    None/False. Extracted from _queue_item to keep its complexity low."""
+    qa = (prefetched or {}).get("qa_reports") or {}
+    before = qa.get("before")
+    after = qa.get("after")
+    delegate = (prefetched or {}).get("qa_delegate")
+    viewed = review.qa_reports_viewed_by_project_at if review else None
+    return {
+        "qa_before_uploaded_at": before.uploaded_at if before else None,
+        "qa_before_pushed_at": before.pushed_at if before else None,
+        "qa_after_uploaded_at": after.uploaded_at if after else None,
+        "qa_after_pushed_at": after.pushed_at if after else None,
+        "qa_report_unread": _qa_reports_unread(before, after, viewed),
+        "qa_report_delegate_name": delegate[1] if delegate else None,
+    }
+
+
 async def _queue_item(
     session: AsyncSession, site: models.Site, review: Optional[models.ProjectReview],
     *, prefetched: Optional[dict] = None,
@@ -160,12 +179,7 @@ async def _queue_item(
     else:
         delegate = prefetched.get("delegate")
         submitted_by_name = prefetched.get("submitted_by_name")
-    # QA-report state (only the PE Quality-Audit + NSO Handover queues prefetch it).
-    qa = (prefetched or {}).get("qa_reports") or {}
-    qa_before = qa.get("before")
-    qa_after = qa.get("after")
-    qa_delegate = (prefetched or {}).get("qa_delegate")
-    viewed_at = review.qa_reports_viewed_by_project_at if review else None
+    qa = _qa_queue_fields(prefetched, review)
     return ProjectQueueItem(
         site_id=str(site.id),
         site_code=site.ca_code or site.code or "",
@@ -179,12 +193,12 @@ async def _queue_item(
         project_completed_at=(review.project_completed_at if review else None),
         allocated_to_name=(delegate[1] if delegate else None),
         submitted_by_name=submitted_by_name,
-        qa_before_uploaded_at=(qa_before.uploaded_at if qa_before else None),
-        qa_before_pushed_at=(qa_before.pushed_at if qa_before else None),
-        qa_after_uploaded_at=(qa_after.uploaded_at if qa_after else None),
-        qa_after_pushed_at=(qa_after.pushed_at if qa_after else None),
-        qa_report_unread=_qa_reports_unread(qa_before, qa_after, viewed_at),
-        qa_report_delegate_name=(qa_delegate[1] if qa_delegate else None),
+        qa_before_uploaded_at=qa["qa_before_uploaded_at"],
+        qa_before_pushed_at=qa["qa_before_pushed_at"],
+        qa_after_uploaded_at=qa["qa_after_uploaded_at"],
+        qa_after_pushed_at=qa["qa_after_pushed_at"],
+        qa_report_unread=qa["qa_report_unread"],
+        qa_report_delegate_name=qa["qa_report_delegate_name"],
     )
 
 
