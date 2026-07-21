@@ -54,6 +54,7 @@ const NODES = [
 
 // Theme-safe alpha over the zm-* custom properties (works in both portal themes).
 const cm = (color, pct) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
+const cmSolid = (color, pct) => `color-mix(in srgb, ${color} ${pct}%, var(--zm-bg, #fff))`;
 
 const NODE_TONES = {
   done:     { color: T.success,   bg: T.successSoft, borderPct: 55 },
@@ -496,11 +497,11 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
                   padding: 0, 
                   overflow: 'hidden', 
                   cursor: 'pointer',
-                  ...(isSiteRejected(s) ? { background: cm(T.danger, 10), border: `1px solid ${cm(T.danger, 30)}` } : {})
+                  ...(isSiteRejected(s) ? { background: cmSolid(T.danger, 10), border: `1px solid ${cm(T.danger, 30)}` } : {})
                 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px 2px', flexWrap: 'wrap' }}>
-                  <span style={{ fontFamily: T.mono, fontSize: 10.5, letterSpacing: '0.06em', color: isSiteRejected(s) ? T.danger : T.textMuted,
-                    padding: '2px 7px', borderRadius: 5, border: `1px solid ${isSiteRejected(s) ? cm(T.danger, 25) : T.line}`, background: isSiteRejected(s) ? cm(T.danger, 8) : T.chip }}>
+                  <span style={{ fontFamily: T.mono, fontSize: 10.5, letterSpacing: '0.06em', color: T.textMuted,
+                    padding: '2px 7px', borderRadius: 5, border: `1px solid ${isSiteRejected(s) ? cm(T.danger, 25) : T.line}`, background: isSiteRejected(s) ? cmSolid(T.danger, 8) : T.chip }}>
                     {s.siteCode || '—'}
                   </span>
                   <strong style={{ fontSize: 15, fontWeight: 750, color: T.text, letterSpacing: '-0.01em' }}>{s.siteName}</strong>
@@ -517,8 +518,8 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
                       </button>
                     )}
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 11px',
-                      borderRadius: 999, border: `1px solid ${isSiteRejected(s) ? cm(T.danger, 25) : T.line}`, background: isSiteRejected(s) ? cm(T.danger, 8) : T.chip,
-                      fontSize: 11.5, fontWeight: 650, color: isSiteRejected(s) ? T.danger : T.textMuted }}>
+                      borderRadius: 999, border: `1px solid ${isSiteRejected(s) ? cm(T.danger, 25) : T.line}`, background: isSiteRejected(s) ? cmSolid(T.danger, 8) : T.chip,
+                      fontSize: 11.5, fontWeight: 650, color: T.textMuted }}>
                       <Icon.clock size={13} /> History <Icon.caret size={13} />
                     </span>
                   </span>
