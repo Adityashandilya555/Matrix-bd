@@ -7,6 +7,7 @@ import {
   signupAsSupervisor,
   signupAsExecutive,
 } from '../../services/api/supabaseAuth.js';
+import { addWorkspaceCode } from '../../utils/workspaceStorage.js';
 import './ScaleLanding.css';
 
 /* -----------------------------------------------------------------
@@ -699,6 +700,7 @@ function AuthModal({ mode, onMode, onClose, prefillEmail, lockRegister = false }
     setBusy(true);
     try {
       const data = await signInWithWorkspaceCode(email, code);
+      addWorkspaceCode(code);
       onClose();
       navigate(routeFromToken(data?.access_token));
     } catch (error) {
