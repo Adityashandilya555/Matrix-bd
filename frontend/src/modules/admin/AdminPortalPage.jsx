@@ -312,7 +312,7 @@ function ResetQueue({ keyValue, onAuthError }) {
       {items && items.length > 0 && (
         <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, overflow: 'hidden' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1.2fr 1fr 1fr 130px', gap: 10, padding: '12px 18px', background: 'rgba(255,255,255,0.04)', fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>
-            <span>Email</span><span>Company</span><span>Workspace</span><span>Requested</span><span style={{ textAlign: 'right' }}>Action</span>
+            <span>Email</span><span>Company</span><span>Workspace</span><span>Requested</span><span style={{ textAlign: 'right', paddingRight: 16 }}>Action</span>
           </div>
           {items.map((r, i) => (
             <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '1.6fr 1.2fr 1fr 1fr 130px', gap: 10, padding: '14px 18px', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.06)', alignItems: 'center', fontSize: 13 }}>
@@ -447,7 +447,7 @@ function PortalScreen({ keyValue, onLogout }) {
       {items && items.length > 0 && (
         <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, overflow: 'hidden' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1.6fr 0.9fr 0.6fr 110px 1fr 180px', gap: 10, padding: '12px 18px', background: 'rgba(255,255,255,0.04)', fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>
-            <span>Company</span><span>Admin email</span><span>Team size</span><span>Seats</span><span>Status</span><span>Created</span><span style={{ textAlign: 'right' }}>Action</span>
+            <span>Company</span><span>Admin email</span><span>Team size</span><span>Seats</span><span>Status</span><span>Created</span><span style={{ textAlign: 'right', paddingRight: 16 }}>Action</span>
           </div>
           {items.map((r, i) => (
             <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1.6fr 0.9fr 0.6fr 110px 1fr 180px', gap: 10, padding: '14px 18px', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.06)', alignItems: 'center', fontSize: 13 }}>

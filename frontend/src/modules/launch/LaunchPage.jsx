@@ -250,7 +250,7 @@ export default function LaunchPage() {
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.5fr 0.9fr 1.4fr auto', gap: 12, padding: '9px 16px', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
-              <span>Code</span><span>Site</span><span>City</span><span>Verdicts</span><span>Action</span>
+              <span>Code</span><span>Site</span><span>City</span><span>Verdicts</span><span style={{ textAlign: 'right', paddingRight: 16 }}>Action</span>
             </div>
           </div>
           <div style={{ flex: 1, overflowY: 'auto' }}>

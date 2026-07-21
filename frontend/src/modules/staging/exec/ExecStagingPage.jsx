@@ -159,7 +159,7 @@ export default function ExecStagingPage({ onOpenSite: onOpenSiteProp, showToast:
         <div style={{ flex: 1, overflowY: 'auto' }}>
           <div style={{ minWidth: 1080 }}>
             <div style={{ position: 'sticky', top: 0, zIndex: 10, display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1fr 1fr 1.4fr 170px', gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
-              <span>Code</span><span>Site</span><span>City</span><span>Approved</span><span>LOI timeline</span><span>Status</span><span style={{ textAlign: 'right' }}>Action</span>
+              <span>Code</span><span>Site</span><span>City</span><span>Approved</span><span>LOI timeline</span><span>Status</span><span style={{ textAlign: 'right', paddingRight: 16 }}>Action</span>
             </div>
             {filtered.map(s => <ExecRow key={s.id} site={s} onUpload={onUpload} onOpen={onOpenSite || (() => {})} uploading={uploadingIds.has(s.id)}/>)}
           </div>

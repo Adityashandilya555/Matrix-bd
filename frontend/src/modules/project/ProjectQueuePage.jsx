@@ -167,7 +167,7 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
             <span>City</span>
             <span>Project status</span>
             <span>Budget</span>
-            <span style={{ textAlign: 'right' }}>Action</span>
+            <span style={{ textAlign: 'right', paddingRight: 16 }}>Action</span>
           </div>
 
           <div style={{ overflowY: 'auto' }}>
@@ -210,7 +210,7 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
                 type="button"
                 onClick={(e) => { e.stopPropagation(); open(row); }}
                 style={{
-                  justifySelf: 'end',
+                  justifySelf: 'end', marginRight: 16,
                   height: 32,
                   padding: '0 14px',
                   border: 'none',

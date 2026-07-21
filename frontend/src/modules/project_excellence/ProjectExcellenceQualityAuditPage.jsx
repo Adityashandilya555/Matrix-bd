@@ -301,7 +301,7 @@ export default function ProjectExcellenceQualityAuditPage() {
             letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)',
           }}>
             <span>Code</span><span>Site</span><span>City</span><span>Audit date</span><span>Reports</span>
-            <span style={{ textAlign: 'right' }}>Action</span>
+            <span style={{ textAlign: 'right', paddingRight: 16 }}>Action</span>
           </div>
           {visible.map((row) => {
             const canManage = isSupervisor || Boolean(row.qaReportDelegateName);
@@ -316,7 +316,7 @@ export default function ProjectExcellenceQualityAuditPage() {
                 <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{fmtDate(row.inspectionDate)}</span>
                 {reportsCell(row)}
                 <button type="button" onClick={() => { setDialogSiteId(row.siteId); setActionError(null); }} style={{
-                  justifySelf: 'end', height: 32, padding: '0 14px', borderRadius: 7,
+                  justifySelf: 'end', marginRight: 16, height: 32, padding: '0 14px', borderRadius: 7,
                   background: canManage ? 'var(--zm-accent)' : 'var(--zm-surface-2)',
                   color: canManage ? '#fff' : 'var(--zm-fg-2)', border: canManage ? 'none' : '1px solid var(--zm-line)',
                   fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 800, cursor: 'pointer',
