@@ -499,7 +499,7 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
                   ...(isSiteRejected(s) ? { background: cm(T.danger, 10), border: `1px solid ${cm(T.danger, 30)}` } : {})
                 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px 2px', flexWrap: 'wrap' }}>
-                  <span style={{ fontFamily: T.mono, fontSize: 10.5, letterSpacing: '0.06em', color: isSiteRejected(s) ? T.danger : T.textMuted,
+                  <span style={{ fontFamily: T.mono, fontSize: 10.5, letterSpacing: '0.06em', color: T.textMuted,
                     padding: '2px 7px', borderRadius: 5, border: `1px solid ${isSiteRejected(s) ? cm(T.danger, 25) : T.line}`, background: isSiteRejected(s) ? cm(T.danger, 8) : T.chip }}>
                     {s.siteCode || '—'}
                   </span>
@@ -518,7 +518,7 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
                     )}
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 11px',
                       borderRadius: 999, border: `1px solid ${isSiteRejected(s) ? cm(T.danger, 25) : T.line}`, background: isSiteRejected(s) ? cm(T.danger, 8) : T.chip,
-                      fontSize: 11.5, fontWeight: 650, color: isSiteRejected(s) ? T.danger : T.textMuted }}>
+                      fontSize: 11.5, fontWeight: 650, color: T.textMuted }}>
                       <Icon.clock size={13} /> History <Icon.caret size={13} />
                     </span>
                   </span>
