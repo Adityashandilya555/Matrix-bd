@@ -392,7 +392,7 @@ class SiteDelegation(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     __table_args__ = (
-        CheckConstraint("module IN ('bd','legal','design','project','nso','project_excellence','financial_closure')", name="chk_site_delegations_module"),  # 'payment' retired (202606132); 'project_excellence' (202606134) + 'financial_closure' (202606147)
+        CheckConstraint("module IN ('bd','legal','design','project','nso','project_excellence','financial_closure','quality_audit')", name="chk_site_delegations_module"),  # 'payment' retired (202606132); 'project_excellence' (202606134) + 'financial_closure' (202606147) + 'quality_audit' (20260805)
         # Mirrors of the partial indexes created by migration 202605271 — the
         # DB is the source of truth; these keep the model an accurate index
         # inventory for anyone auditing coverage from here (#381).
