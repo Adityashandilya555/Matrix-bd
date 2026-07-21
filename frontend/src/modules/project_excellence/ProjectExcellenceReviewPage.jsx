@@ -108,9 +108,13 @@ export default function ProjectExcellenceReviewPage() {
   const [actionError, setActionError] = React.useState(null);
   const [reviewComments, setReviewComments] = React.useState('');
 
-  const refresh = React.useCallback(() => {
+  const refresh = React.useCallback((silent = false) => {
     let cancelled = false;
-    setLoading(true);
+    // silent: a background refresh (window-focus after a file dialog closes,
+    // or a site-data event) must NOT flip to the full-page loading spinner —
+    // that unmounts the whole page, including an in-progress attachment upload.
+    // Mirrors DesignReviewPage's silent-load. useSiteDataRefresh passes silent.
+    if (!silent) setLoading(true);
     setError(null);
     setTeamError(null);
     Promise.all([
