@@ -496,7 +496,7 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
                   padding: 0, 
                   overflow: 'hidden', 
                   cursor: 'pointer',
-                  ...(isSiteRejected(s) ? { background: T.dangerSoft, border: `1px solid ${cm(T.danger, 60)}` } : {})
+                  ...(isSiteRejected(s) ? { background: cm(T.danger, 10), border: `1px solid ${cm(T.danger, 30)}` } : {})
                 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px 2px', flexWrap: 'wrap' }}>
                   <span style={{ fontFamily: T.mono, fontSize: 10.5, letterSpacing: '0.06em', color: isSiteRejected(s) ? T.danger : T.textMuted,
