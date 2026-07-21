@@ -201,6 +201,16 @@ export async function reviewDeliverable(siteId, kind, { decision, comments }) {
   return reviewFromServer(data);
 }
 
+// ── Supervisor: send an approved 3D for GFC sign-off ────────────────────────
+
+// Stage 2 of the two-stage GFC flow. The site only reaches the business admin's
+// GFC queue once a supervisor calls this.
+export async function requestGfcApproval(siteId) {
+  const data = await client.post(`/design/${siteId}/gfc-request`).then((r) => r.data);
+  notifySiteDataChanged({ source: 'design', action: 'request_gfc', siteId });
+  return reviewFromServer(data);
+}
+
 // ── Business-admin GFC gate ─────────────────────────────────────────────────
 
 export async function getDesignGfcQueue() {
