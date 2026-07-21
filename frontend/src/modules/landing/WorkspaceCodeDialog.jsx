@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import LottiePanel from './LottiePanel.jsx';
 import { PRODUCT_NAME } from '../../router/routes.js';
 import { getWorkspaceBranding } from '../../services/api/supabaseAuth.js';
+import { getStoredWorkspaceCodes, getLastWorkspaceCode, addWorkspaceCode } from '../../utils/workspaceStorage.js';
 import communityAnim from '../../assets/lottie/workspace-community.json';
 import './branded-auth.css';
 
@@ -13,12 +14,47 @@ export default function WorkspaceCodeDialog({ open, onClose }) {
   const [code, setCode] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [showSuggestions, setShowSuggestions] = React.useState(false);
+  const wrapperRef = React.useRef(null);
 
+  // Pre-fill with the last-used code when the dialog opens.
   React.useEffect(() => {
-    if (!open) { setCode(''); setError(''); setBusy(false); }
+    if (open) {
+      const last = getLastWorkspaceCode();
+      setCode(last || '');
+      setError('');
+      setBusy(false);
+      setShowSuggestions(false);
+    } else {
+      setCode(''); setError(''); setBusy(false); setShowSuggestions(false);
+    }
   }, [open]);
 
+  // Close suggestions when clicking outside the input wrapper.
+  React.useEffect(() => {
+    if (!showSuggestions) return;
+    const handler = (e) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showSuggestions]);
+
   if (!open) return null;
+
+  const storedCodes = getStoredWorkspaceCodes();
+  // Filter suggestions based on current input.
+  const suggestions = storedCodes.filter(
+    (c) => c !== code.trim().toUpperCase() && c.includes(code.trim().toUpperCase())
+  );
+
+  const pickSuggestion = (c) => {
+    setCode(c);
+    setShowSuggestions(false);
+    if (error) setError('');
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -36,6 +72,7 @@ export default function WorkspaceCodeDialog({ open, onClose }) {
       // login page (a wrong code lands on the soft "pending" message), not by
       // this lookup. A thrown error now means a genuine network failure.
       await getWorkspaceBranding(c);
+      addWorkspaceCode(c);
       onClose?.();
       navigate(`/login/${encodeURIComponent(c)}`);
     } catch {
@@ -74,17 +111,31 @@ export default function WorkspaceCodeDialog({ open, onClose }) {
           <p className="wsc-sub">We&#39;ll take you to your company&#39;s sign-in page.</p>
 
           <label className="wsc-label" htmlFor="wsc-code">Workspace code</label>
-          <input
-            id="wsc-code"
-            className="wsc-input"
-            value={code}
-            onChange={(e) => { setCode(e.target.value); if (error) setError(''); }}
-            placeholder="e.g. BTOKAI-7X9F"
-            autoComplete="off"
-            autoCapitalize="characters"
-            spellCheck={false}
-            autoFocus
-          />
+          <div className="wsc-input-wrapper" ref={wrapperRef}>
+            <input
+              id="wsc-code"
+              className="wsc-input"
+              value={code}
+              onChange={(e) => { setCode(e.target.value); if (error) setError(''); setShowSuggestions(true); }}
+              onFocus={() => { if (storedCodes.length > 0) setShowSuggestions(true); }}
+              placeholder="e.g. BTOKAI-7X9F"
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              autoFocus
+            />
+            {showSuggestions && storedCodes.length > 0 && (
+              <ul className="wsc-suggestions" role="listbox">
+                {(suggestions.length > 0 ? suggestions : storedCodes).map((c) => (
+                  <li key={c} role="option" tabIndex={-1}
+                    className={`wsc-suggestion-item${c === code.trim().toUpperCase() ? ' wsc-suggestion-active' : ''}`}
+                    onMouseDown={(e) => { e.preventDefault(); pickSuggestion(c); }}>
+                    {c}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           {error && <div className="wsc-error" role="alert">{error}</div>}
 
           <button type="submit" className="wsc-submit" disabled={busy}>

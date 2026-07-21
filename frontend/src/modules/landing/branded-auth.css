@@ -92,6 +92,27 @@
 }
 .wsc-input::placeholder { color: var(--ba-fg-3); letter-spacing: 0; }
 .wsc-input:focus { border-color: var(--ba-accent); box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18); }
+
+/* ── Suggestion dropdown ───────────────────────────────────────────────────── */
+.wsc-input-wrapper { position: relative; }
+.wsc-suggestions {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+  margin: 0; padding: 4px 0; list-style: none;
+  background: var(--ba-panel); border: 1px solid var(--ba-line-2);
+  border-radius: 10px; box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.5);
+  z-index: 10; max-height: 160px; overflow-y: auto;
+  animation: wsc-fade 120ms ease;
+}
+.wsc-suggestion-item {
+  padding: 9px 14px; font-size: 14px; font-weight: 600;
+  letter-spacing: 0.04em; color: var(--ba-fg-2);
+  cursor: pointer; transition: background 100ms, color 100ms;
+}
+.wsc-suggestion-item:hover,
+.wsc-suggestion-item.wsc-suggestion-active {
+  background: rgba(52, 211, 153, 0.12); color: var(--ba-accent);
+}
+
 .wsc-error { margin-top: 10px; font-size: 12.5px; color: var(--ba-danger); }
 .wsc-submit {
   margin-top: 22px; height: 48px; border: none; border-radius: 11px;
