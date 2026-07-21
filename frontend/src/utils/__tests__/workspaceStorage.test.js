@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 // Workspace-code persistence. Pure logic over localStorage: most-recent-first,
 // deduped, capped at 3, and never allowed to throw — a corrupt or unavailable
 // store must degrade to "no history", not break the login dialog.
