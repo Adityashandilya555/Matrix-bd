@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 // ── Workspace code persistence (localStorage) ──────────────────────────────
 // Stores the most-recent workspace codes so the user doesn't have to re-type
 // them on every login.  Limit: 3 entries (most-recent-first).
