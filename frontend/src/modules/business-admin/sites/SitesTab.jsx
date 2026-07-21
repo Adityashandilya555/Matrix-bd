@@ -130,7 +130,10 @@ function toneFor(site, key) {
 }
 
 function PipelineNode({ site, node }) {
-  const tone = toneFor(site, node.key);
+  let tone = toneFor(site, node.key);
+  if (isSiteRejected(site)) {
+    tone = 'rejected';
+  }
   const c = NODE_TONES[tone];
   const NodeIcon = Icon[node.icon] || Icon.doc;
   const statusLabel =
@@ -489,7 +492,12 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
               <Card key={s.siteId} interactive raised className="ac-pipeline-row" role="button" tabIndex={0}
                 onClick={() => setOpenSite(s)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenSite(s); } }}
-                style={{ padding: 0, overflow: 'hidden', cursor: 'pointer' }}>
+                style={{ 
+                  padding: 0, 
+                  overflow: 'hidden', 
+                  cursor: 'pointer',
+                  ...(isSiteRejected(s) ? { background: T.dangerSoft, border: `1px solid ${cm(T.danger, 60)}` } : {})
+                }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px 2px', flexWrap: 'wrap' }}>
                   <span style={{ fontFamily: T.mono, fontSize: 10.5, letterSpacing: '0.06em', color: T.textMuted,
                     padding: '2px 7px', borderRadius: 5, border: `1px solid ${T.line}`, background: T.chip }}>
@@ -501,8 +509,8 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
                   </span>
                   <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                     {filter === 'rejected' && (
-                      <button onClick={(e) => { e.stopPropagation(); setReviving(s); }} className="zm-btn-primary"
-                        style={{ height: 28, padding: '0 10px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)',
+                      <button onClick={(e) => { e.stopPropagation(); setReviving(s); }} className="zm-btn-danger"
+                        style={{ height: 28, padding: '0 10px', border: 'none', borderRadius: 7, background: T.danger,
                           color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
                           display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                         <Icon.refresh size={12}/> Revive
