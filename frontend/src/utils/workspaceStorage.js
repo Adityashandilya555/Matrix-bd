@@ -7,6 +7,8 @@ const STORAGE_KEY = 'zm_workspace_codes';
 const MAX = 3;
 
 /** Return previously-used workspace codes (most-recent first). */
+// skipcq: JS-0833  — reported on this line (the file's first `export`); the
+// top-of-file marker sits 9 lines up and does not reach it.
 export function getStoredWorkspaceCodes() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
