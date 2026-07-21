@@ -52,6 +52,21 @@ describe('suggestions list', () => {
     expect(input()).toHaveAttribute('aria-expanded', 'false');
   });
 
+  it('never points aria-controls at a listbox that is not rendered', async () => {
+    const user = userEvent.setup();
+    seed(['AAAA', 'BBBB']);
+    openDialog();
+
+    // Shut: the <ul> does not exist, so the attribute must be absent rather
+    // than referencing a missing id.
+    expect(input()).not.toHaveAttribute('aria-controls');
+
+    await user.click(input());
+    const controls = input().getAttribute('aria-controls');
+    expect(controls).toBe('wsc-code-suggestions');
+    expect(document.getElementById(controls)).not.toBeNull();
+  });
+
   it('pre-fills the most recent code and opens the list when clicked', async () => {
     const user = userEvent.setup();
     seed(['AAAA', 'BBBB']);

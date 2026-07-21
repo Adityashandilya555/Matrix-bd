@@ -190,7 +190,10 @@ export default function WorkspaceCodeDialog({ open, onClose }) {
               autoFocus
               role="combobox"
               aria-expanded={listOpen}
-              aria-controls="wsc-code-suggestions"
+              // Only reference the listbox while it exists — the <ul> is not
+              // rendered when the list is shut, and aria-controls pointing at a
+              // missing id is an ARIA violation assistive tech may trip on.
+              aria-controls={listOpen ? 'wsc-code-suggestions' : undefined}
               aria-autocomplete="list"
               aria-activedescendant={
                 listOpen && activeIndex >= 0 ? `wsc-suggestion-${activeIndex}` : undefined
