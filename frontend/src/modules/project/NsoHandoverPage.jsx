@@ -131,7 +131,17 @@ export default function NsoHandoverPage() {
             {afterState === 'pushed' ? 'After report ✓' : afterState === 'uploaded' ? 'After report • uploaded' : 'After report — not uploaded yet'}
           </span>
         </div>
-        {between && <span style={{ fontSize: 10.5, color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)' }}>Δ {between} between before/after uploads</span>}
+        {between && (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+            padding: '5px 12px', borderRadius: 999,
+            background: 'color-mix(in srgb, var(--zm-accent) 14%, var(--zm-surface))',
+            border: '1px solid var(--zm-accent)', color: 'var(--zm-accent)',
+            fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 800,
+          }}>
+            <Icon name="clock" size={14}/> {between} between reports
+          </span>
+        )}
         <button type="button" onClick={() => openView(row.siteId)} style={{
           alignSelf: 'flex-start', height: 28, padding: '0 12px', borderRadius: 7,
           border: `1px solid ${row.qaReportUnread ? 'var(--zm-warning, #d98a00)' : 'var(--zm-line)'}`,
@@ -268,9 +278,15 @@ export default function NsoHandoverPage() {
                   </div>
                 ))}
                 {reports.data.timeBetweenSeconds != null && (
-                  <div style={{ fontSize: 11.5, color: 'var(--zm-fg-3)' }}>
-                    Time between before/after uploads: {humanizeDuration(0, reports.data.timeBetweenSeconds * 1000) || '—'}
-                  </div>
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+                    padding: '5px 12px', borderRadius: 999,
+                    background: 'color-mix(in srgb, var(--zm-accent) 14%, var(--zm-surface))',
+                    border: '1px solid var(--zm-accent)', color: 'var(--zm-accent)',
+                    fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 800,
+                  }}>
+                    <Icon name="clock" size={14}/> {humanizeDuration(0, reports.data.timeBetweenSeconds * 1000) || '—'} between reports
+                  </span>
                 )}
               </div>
             )}

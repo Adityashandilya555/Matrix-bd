@@ -235,7 +235,17 @@ export default function ProjectExcellenceQualityAuditPage() {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{pill('Before', beforeState)}{pill('After', afterState)}</div>
-        {between && <span style={{ fontSize: 10.5, color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-mono)' }}>Δ {between} between uploads</span>}
+        {between && (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+            padding: '5px 12px', borderRadius: 999,
+            background: 'color-mix(in srgb, var(--zm-accent) 14%, var(--zm-surface))',
+            border: '1px solid var(--zm-accent)', color: 'var(--zm-accent)',
+            fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 800,
+          }}>
+            <Icon name="clock" size={14}/> {between} between reports
+          </span>
+        )}
         {row.qaReportDelegateName && <span style={{ fontSize: 10.5, color: 'var(--zm-fg-3)' }}>Delegated · {row.qaReportDelegateName}</span>}
       </div>
     );
