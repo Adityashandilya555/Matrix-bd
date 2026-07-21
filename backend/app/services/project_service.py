@@ -193,6 +193,7 @@ async def _queue_item(
         project_completed_at=(review.project_completed_at if review else None),
         allocated_to_name=(delegate[1] if delegate else None),
         submitted_by_name=submitted_by_name,
+        budget_status=(prefetched or {}).get("budget_status"),
         qa_before_uploaded_at=qa["qa_before_uploaded_at"],
         qa_before_pushed_at=qa["qa_before_pushed_at"],
         qa_after_uploaded_at=qa["qa_after_uploaded_at"],
@@ -333,6 +334,22 @@ async def _assert_can_work_project(
         )
 
 
+async def _batch_gfc_budget_status(session: AsyncSession, sites: list[models.Site]) -> dict:
+    """{site_id: GFC budget status} for the Project queue's budget column — None
+    when the site has no GFC budget row yet (shown as 'Pending' until a
+    business-admin approval flips it to 'Available'). One query for the page."""
+    site_ids = [s.id for s in sites]
+    if not site_ids:
+        return {}
+    rows = (await session.execute(
+        select(models.SiteBudget.site_id, models.SiteBudget.status).where(
+            models.SiteBudget.site_id.in_(site_ids),
+            models.SiteBudget.phase == "gfc",
+        )
+    )).all()
+    return {sid: status for sid, status in rows}
+
+
 async def svc_project_queue(
     session: AsyncSession,
     *,
@@ -369,7 +386,9 @@ async def svc_project_queue(
         total = await count_rows(session, stmt)
         rows = (await session.execute(stmt.limit(limit).offset(offset))).all()
 
-        delegates, names = await _batch_project_prefetch(session, [site for site, _r in rows])
+        site_list = [site for site, _r in rows]
+        delegates, names = await _batch_project_prefetch(session, site_list)
+        budget_status_by_site = await _batch_gfc_budget_status(session, site_list)
 
         items: list[ProjectQueueItem] = []
         for site, review in rows:
@@ -378,6 +397,7 @@ async def svc_project_queue(
                 prefetched={
                     "delegate": delegates.get(site.id),
                     "submitted_by_name": names.get(site.submitted_by, ""),
+                    "budget_status": budget_status_by_site.get(site.id),
                 },
             ))
         return ProjectQueueResponse(items=items, total=total)
@@ -1397,6 +1417,13 @@ async def svc_allocate_qa(
     is_self = str(delegate_user_id) == str(actor["sub"])
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        # Once any report has been uploaded the task is in progress — delegating
+        # would hand a half-done upload to someone else, so the task is locked.
+        if await _fetch_qa_reports(session, site_id=site.id):
+            raise HTTPException(
+                status_code=http_status.HTTP_409_CONFLICT,
+                detail="A quality-audit report has already been uploaded for this site — the task can no longer be delegated.",
+            )
         delegate = (await session.execute(
             select(models.User).where(
                 models.User.id == delegate_user_id,

@@ -252,7 +252,7 @@ async def actor_has_delegation_for_site(
 # (see _VALID_MODULES below). Every reader returns empty/False instead of raising when the
 # table is absent — keeps executive flows usable before the migration has landed everywhere.
 
-_VALID_MODULES = {"bd", "legal", "payment", "design", "project", "nso", "project_excellence", "financial_closure"}
+_VALID_MODULES = {"bd", "legal", "payment", "design", "project", "nso", "project_excellence", "financial_closure", "quality_audit"}
 
 
 def _assert_module(module: str) -> str:
