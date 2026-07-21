@@ -55,6 +55,16 @@ PEMember = Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.EXECUTIVE)
 PESupervisor = Annotated[dict, Depends(require_role(Role.SUPERVISOR))]
 InPEModule = Annotated[dict, Depends(require_module("project_excellence"))]
 BusinessAdmin = Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))]
+# Excellence-document attachments are read/written from BOTH the PE review page
+# and the Financial Closure page (business_admin), so this guard is role-based
+# and NOT gated on PE module membership.
+DocMember = Annotated[
+    dict, Depends(require_role(Role.SUPERVISOR, Role.EXECUTIVE, Role.BUSINESS_ADMIN))
+]
+
+# Attachments are images only, capped well below the global 25 MB limit.
+_EXCELLENCE_IMAGE_MIME = {"image/png", "image/jpeg"}
+_EXCELLENCE_MAX_BYTES = 5 * 1024 * 1024
 
 
 def _is_executive(user: dict) -> bool:
@@ -341,3 +351,50 @@ async def get_pe(
         if not ok:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
     return await svc_get_pe(db, tenant_id=tenant_id, site_id=site_id)
+
+
+# ── Excellence document attachments (shared PE ↔ Financial Closure) ──────────
+
+@router.get("/{site_id}/documents", summary="List a site's project-excellence attachments")
+async def list_excellence_documents(
+    site_id: str,
+    db: DbDep,
+    current_user: DocMember,
+    tenant_id: TenantId,
+) -> dict:
+    """Image attachments (file_type='excellence') for a site, newest first, with
+    freshly signed download URLs. Shown in both the PE review page and the
+    Financial Closure page."""
+    from app.services.site_documents_service import get_site_documents
+    return await get_site_documents(
+        db, site_id=site_id, tenant_id=tenant_id, current_user=current_user,
+        file_type="excellence",
+    )
+
+
+@router.post("/{site_id}/documents", summary="Upload a project-excellence attachment (PNG/JPEG, ≤5 MB)")
+async def upload_excellence_document(
+    site_id: str,
+    db: DbDep,
+    current_user: DocMember,
+    tenant_id: TenantId,
+    file: UploadFile = File(...),
+) -> dict:
+    """Attach a PNG/JPEG image (≤5 MB) to the site's excellence document set.
+    Available from the PE review page and the Financial Closure page; more files
+    can be added at any time."""
+    content_type = (file.content_type or "").lower()
+    if content_type not in _EXCELLENCE_IMAGE_MIME:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Only PNG or JPEG images are allowed.",
+        )
+    body_bytes = await read_upload_capped(file, max_bytes=_EXCELLENCE_MAX_BYTES)
+    from app.services.photo_service import svc_upload_site_file
+    return await svc_upload_site_file(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
+        filename=file.filename or "attachment.jpg",
+        content_type=file.content_type, file_bytes=body_bytes,
+        file_type="excellence", path_prefix="excellence",
+        audit_action="upload_excellence_doc",
+    )

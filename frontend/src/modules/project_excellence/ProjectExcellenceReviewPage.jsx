@@ -1,6 +1,7 @@
 // skipcq: JS-0833
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import ExcellenceDocuments from '../shared/documents/ExcellenceDocuments.jsx';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import { useSession } from '../../state/SessionContext.jsx';
 import { usePageContext } from '../../App.jsx';
@@ -452,6 +453,9 @@ export default function ProjectExcellenceReviewPage() {
             />
           </div>
         ))}
+
+        {/* Attachments — image documents shared with Financial Closure */}
+        <ExcellenceDocuments siteId={siteId} canUpload={canEditBudget} />
 
         {/* Comments (read-only feedback) */}
         {state?.budgetSupervisorComments && (

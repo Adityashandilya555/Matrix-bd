@@ -200,7 +200,7 @@ CREATE TABLE public.site_files (
   CONSTRAINT site_files_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id),
   CONSTRAINT site_files_uploaded_by_fkey FOREIGN KEY (uploaded_by) REFERENCES public.users(id),
   CONSTRAINT chk_site_files_file_type CHECK (
-      file_type IN ('loi','photo','quality_audit')
+      file_type IN ('loi','photo','quality_audit','excellence')
   ) NOT VALID
 );
 CREATE INDEX idx_site_files_site_id_type ON public.site_files(site_id, file_type);
