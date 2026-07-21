@@ -347,7 +347,7 @@ async def _batch_gfc_budget_status(session: AsyncSession, sites: list[models.Sit
             models.SiteBudget.phase == "gfc",
         )
     )).all()
-    return {sid: status for sid, status in rows}
+    return dict(rows)
 
 
 async def svc_project_queue(
