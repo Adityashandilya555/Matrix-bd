@@ -3,11 +3,16 @@ from __future__ import annotations
 
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 
 from app.core.deps import DbDep, TenantId
+from app.core.uploads import read_upload_capped
 from app.domain.schemas.common import OkResponse
-from app.domain.schemas.project import ProjectQueueResponse, ProjectStateResponse
+from app.domain.schemas.project import (
+    ProjectDelegationsResponse,
+    ProjectQueueResponse,
+    ProjectStateResponse,
+)
 from app.domain.schemas.project_excellence import (
     AdminBudgetReviewRequest,
     AllocatePERequest,
@@ -22,9 +27,15 @@ from app.rbac.guards import require_module, require_role
 from app.rbac.roles import Role
 from app.services.delegation_service import svc_assigned_sites, svc_is_delegated
 from app.services.project_service import (
+    svc_allocate_qa,
+    svc_list_qa_delegations_for_site,
     svc_pe_complete_quality_audit,
     svc_pe_quality_audit_queue,
+    svc_push_qa_report,
+    svc_record_qa_report,
+    svc_revoke_qa_delegation,
 )
+from app.services.storage_service import safe_object_name, upload_bytes as storage_upload
 from app.services.project_excellence_service import (
     svc_admin_review_pe_budget,
     svc_allocate_pe,
@@ -78,12 +89,18 @@ async def pe_quality_audit_queue(
 ) -> ProjectQueueResponse:
     """Sites awaiting the PE supervisor's quality-audit completion (+ recently done)."""
     # Scope executives to their allocated sites (supervisors see all) — same
-    # pattern as pe_queue, so the QA tab can't leak unallocated sites.
+    # pattern as pe_queue, so the QA tab can't leak unallocated sites. Union in
+    # sites whose QA-report task is delegated to them (module='quality_audit'),
+    # which is a separate scope from the PE site allocation.
     restrict_to: Optional[list[str]] = None
     if _is_executive(current_user):
-        restrict_to = await svc_assigned_sites(
+        pe_sites = await svc_assigned_sites(
             db, tenant_id=tenant_id, user_id=current_user["sub"], module="project_excellence",
         )
+        qa_sites = await svc_assigned_sites(
+            db, tenant_id=tenant_id, user_id=current_user["sub"], module="quality_audit",
+        )
+        restrict_to = list({*pe_sites, *qa_sites})
     return await svc_pe_quality_audit_queue(db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to)
 
 
@@ -98,6 +115,97 @@ async def pe_complete_quality_audit(
     """PE supervisor marks the quality audit Completed → project completes (records the date)."""
     return await svc_pe_complete_quality_audit(
         db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
+    )
+
+
+@router.post("/{site_id}/quality-audit/report/{kind}/upload", response_model=ProjectStateResponse)
+async def upload_qa_report(
+    site_id: str,
+    kind: str,
+    db: DbDep,
+    current_user: PEMember,
+    _module: InPEModule,
+    tenant_id: TenantId,
+    file: UploadFile = File(...),
+) -> ProjectStateResponse:
+    """Upload a quality-audit report PDF (kind='before'|'after') to storage.
+    PDF-only, ≤25 MB. Supervisor or the QA-delegated executive."""
+    from uuid import uuid4
+
+    if kind not in ("before", "after"):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="kind must be 'before' or 'after'.")
+    body_bytes = await read_upload_capped(file)
+    if (file.content_type or "") != "application/pdf":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only PDF files are accepted for quality-audit reports.",
+        )
+    await db.rollback()  # free the connection for the slow storage call
+    safe_name = safe_object_name(file.filename or "report.pdf", fallback="report.pdf")
+    path = f"quality-audit/{tenant_id}/{site_id}/{kind}/{uuid4().hex[:8]}_{safe_name}"
+    await storage_upload(path=path, body=body_bytes, content_type="application/pdf")
+    return await svc_record_qa_report(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
+        kind=kind, file_key=path, file_name=safe_name,
+    )
+
+
+@router.post("/{site_id}/quality-audit/report/{kind}/push", response_model=ProjectStateResponse)
+async def push_qa_report(
+    site_id: str,
+    kind: str,
+    db: DbDep,
+    current_user: PEMember,
+    _module: InPEModule,
+    tenant_id: TenantId,
+) -> ProjectStateResponse:
+    """Push a quality-audit report — 'before' completes the project; 'after'
+    follows a pushed 'before' and re-flags the reports unread for Project."""
+    return await svc_push_qa_report(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id, kind=kind,
+    )
+
+
+@router.get("/{site_id}/quality-audit/delegations", response_model=ProjectDelegationsResponse)
+async def qa_delegations(
+    site_id: str,
+    db: DbDep,
+    _auth: PEMember,
+    _module: InPEModule,
+    tenant_id: TenantId,
+) -> dict:
+    """Active quality-audit-report delegations for a site (supervisor view)."""
+    return await svc_list_qa_delegations_for_site(db, tenant_id=tenant_id, site_id=site_id)
+
+
+@router.post("/{site_id}/quality-audit/allocate", response_model=OkResponse)
+async def allocate_qa(
+    site_id: str,
+    body: AllocatePERequest,
+    db: DbDep,
+    current_user: PESupervisor,
+    _module: InPEModule,
+    tenant_id: TenantId,
+) -> OkResponse:
+    """Delegate the quality-audit-report task for a site to an executive (or self)."""
+    return await svc_allocate_qa(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
+        delegate_user_id=body.executive_id, notes=body.notes,
+    )
+
+
+@router.delete("/{site_id}/quality-audit/allocate/{user_id}", response_model=OkResponse)
+async def revoke_qa_allocation(
+    site_id: str,
+    user_id: str,
+    db: DbDep,
+    current_user: PESupervisor,
+    _module: InPEModule,
+    tenant_id: TenantId,
+) -> OkResponse:
+    """Revoke a site's quality-audit-report delegation."""
+    return await svc_revoke_qa_delegation(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id, delegate_user_id=user_id,
     )
 
 

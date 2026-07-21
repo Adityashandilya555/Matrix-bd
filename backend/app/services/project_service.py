@@ -31,6 +31,8 @@ from app.domain.schemas.project import (
     ProjectQueueItem,
     ProjectQueueResponse,
     ProjectStateResponse,
+    QAReportOut,
+    QAReportsResponse,
     ReviewRequest,
 )
 from app.services import budget_service
@@ -146,6 +148,25 @@ async def seed_initialization_from_pe(
     return review
 
 
+def _qa_queue_fields(prefetched: Optional[dict], review: Optional[models.ProjectReview]) -> dict:
+    """QA-report fields for a ProjectQueueItem. Only the PE Quality-Audit and NSO
+    Handover queues prefetch 'qa_reports'/'qa_delegate'; elsewhere these are
+    None/False. Extracted from _queue_item to keep its complexity low."""
+    qa = (prefetched or {}).get("qa_reports") or {}
+    before = qa.get("before")
+    after = qa.get("after")
+    delegate = (prefetched or {}).get("qa_delegate")
+    viewed = review.qa_reports_viewed_by_project_at if review else None
+    return {
+        "qa_before_uploaded_at": before.uploaded_at if before else None,
+        "qa_before_pushed_at": before.pushed_at if before else None,
+        "qa_after_uploaded_at": after.uploaded_at if after else None,
+        "qa_after_pushed_at": after.pushed_at if after else None,
+        "qa_report_unread": _qa_reports_unread(before, after, viewed),
+        "qa_report_delegate_name": delegate[1] if delegate else None,
+    }
+
+
 async def _queue_item(
     session: AsyncSession, site: models.Site, review: Optional[models.ProjectReview],
     *, prefetched: Optional[dict] = None,
@@ -158,6 +179,7 @@ async def _queue_item(
     else:
         delegate = prefetched.get("delegate")
         submitted_by_name = prefetched.get("submitted_by_name")
+    qa = _qa_queue_fields(prefetched, review)
     return ProjectQueueItem(
         site_id=str(site.id),
         site_code=site.ca_code or site.code or "",
@@ -171,6 +193,12 @@ async def _queue_item(
         project_completed_at=(review.project_completed_at if review else None),
         allocated_to_name=(delegate[1] if delegate else None),
         submitted_by_name=submitted_by_name,
+        qa_before_uploaded_at=qa["qa_before_uploaded_at"],
+        qa_before_pushed_at=qa["qa_before_pushed_at"],
+        qa_after_uploaded_at=qa["qa_after_uploaded_at"],
+        qa_after_pushed_at=qa["qa_after_pushed_at"],
+        qa_report_unread=qa["qa_report_unread"],
+        qa_report_delegate_name=qa["qa_report_delegate_name"],
     )
 
 
@@ -968,11 +996,15 @@ async def svc_nso_handover_queue(
         )
         .order_by(models.ProjectReview.project_completed_at.desc())
     )).all()
-    delegates, names = await _batch_project_prefetch(session, [site for site, _r in rows])
+    site_list = [site for site, _r in rows]
+    delegates, names = await _batch_project_prefetch(session, site_list)
+    qa_reports_by_site, qa_delegates = await _batch_qa_prefetch(session, site_list)
     items = [
         await _queue_item(session, site, review, prefetched={
             "delegate": delegates.get(site.id),
             "submitted_by_name": names.get(site.submitted_by, ""),
+            "qa_reports": qa_reports_by_site.get(site.id, {}),
+            "qa_delegate": qa_delegates.get(site.id),
         })
         for (site, review) in rows
     ]
@@ -994,6 +1026,15 @@ async def svc_push_to_nso(
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Project is not complete yet.")
         if review.nso_status == "pushed":
             raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail="Site is already pushed to NSO.")
+        # Both quality-audit reports must be uploaded AND pushed by Project
+        # Excellence before the site can hand over to NSO.
+        reports = await _fetch_qa_reports(session, site_id=site.id)
+        before, after = reports.get("before"), reports.get("after")
+        if not (before and before.pushed_at and after and after.pushed_at):
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Both quality-audit reports (before and after) must be uploaded and pushed before handover to NSO.",
+            )
         await nso_service.svc_open_nso_at_stage_three(session, site=site, project=review)
         review.nso_status = "pushed"
         review.pushed_to_nso_at = datetime.now(timezone.utc)
@@ -1062,11 +1103,15 @@ async def svc_pe_quality_audit_queue(
     rows = (await session.execute(
         stmt.order_by(models.ProjectReview.quality_audit_supervisor_approved_at.asc())
     )).all()
-    delegates, names = await _batch_project_prefetch(session, [site for site, _r in rows])
+    site_list = [site for site, _r in rows]
+    delegates, names = await _batch_project_prefetch(session, site_list)
+    qa_reports_by_site, qa_delegates = await _batch_qa_prefetch(session, site_list)
     items = [
         await _queue_item(session, site, review, prefetched={
             "delegate": delegates.get(site.id),
             "submitted_by_name": names.get(site.submitted_by, ""),
+            "qa_reports": qa_reports_by_site.get(site.id, {}),
+            "qa_delegate": qa_delegates.get(site.id),
         })
         for (site, review) in rows
     ]
@@ -1110,3 +1155,335 @@ async def svc_pe_complete_quality_audit(
             detail="Project Excellence supervisor marked the quality audit completed",
         )
         return await _build_response(session, site, review)
+
+
+# ── Quality-audit reports (before/after PDFs) ─────────────────────────────────
+# Project Excellence uploads a PDF per kind and pushes each independently:
+# pushing 'before' (primary) completes the project — surfacing it in NSO Handover;
+# pushing 'after' (secondary) re-flags the reports unread for Project. Push-to-NSO
+# is gated on both being pushed (see svc_push_to_nso). The QA-report task can be
+# delegated to an executive independently of the PE site allocation
+# (SiteDelegation module='quality_audit').
+
+_QA_KINDS = ("before", "after")
+_QA_MODULE = "quality_audit"
+
+
+def _assert_qa_kind(kind: str) -> None:
+    if kind not in _QA_KINDS:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown quality-audit report kind '{kind}'. Expected 'before' or 'after'.",
+        )
+
+
+def _qa_reports_unread(before, after, viewed_at) -> bool:
+    """Unread (yellow View) when any pushed report is newer than Project's last
+    view — so pushing the 'after' report re-flags an already-viewed site."""
+    pushes = [r.pushed_at for r in (before, after) if r is not None and r.pushed_at is not None]
+    if not pushes:
+        return False
+    if viewed_at is None:
+        return True
+    return max(pushes) > viewed_at
+
+
+async def _fetch_qa_reports(session: AsyncSession, *, site_id) -> dict:
+    """{'before': row, 'after': row} (missing kinds absent) for one site."""
+    rows = (await session.execute(
+        select(models.QualityAuditReport).where(models.QualityAuditReport.site_id == site_id)
+    )).scalars().all()
+    return {r.kind: r for r in rows}
+
+
+async def _batch_qa_prefetch(session: AsyncSession, sites: list[models.Site]) -> tuple[dict, dict]:
+    """Batch the QA reports + active QA-report delegate for many sites into two
+    queries total (mirrors _batch_project_prefetch's N+1 avoidance)."""
+    reports_by_site: dict = {}
+    delegates: dict = {}
+    site_ids = [s.id for s in sites]
+    if not site_ids:
+        return reports_by_site, delegates
+    report_rows = (await session.execute(
+        select(models.QualityAuditReport).where(models.QualityAuditReport.site_id.in_(site_ids))
+    )).scalars().all()
+    for r in report_rows:
+        reports_by_site.setdefault(r.site_id, {})[r.kind] = r
+    delegate_rows = (await session.execute(
+        select(
+            models.SiteDelegation.site_id,
+            models.SiteDelegation.delegate_user_id,
+            models.User.name,
+            models.User.email,
+        )
+        .join(models.User, models.User.id == models.SiteDelegation.delegate_user_id)
+        .where(
+            models.SiteDelegation.site_id.in_(site_ids),
+            models.SiteDelegation.module == _QA_MODULE,
+            models.SiteDelegation.revoked_at.is_(None),
+        )
+        .order_by(models.SiteDelegation.granted_at.desc())
+    )).all()
+    for sid, uid, uname, uemail in delegate_rows:
+        delegates.setdefault(sid, (uid, uname, uemail))
+    return reports_by_site, delegates
+
+
+async def _can_work_qa(session: AsyncSession, *, tenant_id, actor: dict, site_id) -> bool:
+    """Supervisors/business admins always; executives only if the QA-report task
+    for this site is delegated to them."""
+    if _can_supervise(actor):
+        return True
+    return await svc_is_delegated(
+        session, tenant_id=tenant_id, site_id=site_id, user_id=actor["sub"], module=_QA_MODULE,
+    )
+
+
+async def svc_record_qa_report(
+    session: AsyncSession, *, tenant_id, actor: dict, site_id, kind: str, file_key: str,
+    file_name: Optional[str],
+) -> ProjectStateResponse:
+    """Upsert an uploaded quality-audit report PDF (before|after). The storage
+    write happens in the router (design-upload pattern); this records the row."""
+    _assert_qa_kind(kind)
+    async with transaction(session):
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        if not await _can_work_qa(session, tenant_id=tenant_id, actor=actor, site_id=site.id):
+            raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project-excellence supervisor or the delegated executive can upload quality-audit reports.")
+        review = await _fetch_review_or_create(session, site=site)
+        if review.quality_audit_status not in ("supervisor_approved", "approved"):
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Quality audit is not ready for report upload.")
+        existing = (await session.execute(
+            select(models.QualityAuditReport).where(
+                models.QualityAuditReport.site_id == site.id,
+                models.QualityAuditReport.kind == kind,
+            ).with_for_update()
+        )).scalar_one_or_none()
+        now = datetime.now(timezone.utc)
+        if existing is None:
+            session.add(models.QualityAuditReport(
+                tenant_id=tenant_id, site_id=site.id, kind=kind,
+                file_key=file_key, file_name=file_name, uploaded_at=now, uploaded_by=actor["sub"],
+            ))
+        else:
+            existing.file_key = file_key
+            existing.file_name = file_name
+            existing.uploaded_at = now
+            existing.uploaded_by = actor["sub"]
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=site.id, actor_id=actor["sub"],
+            actor_name=actor.get("name"), action=f"qa_report_{kind}_uploaded",
+            detail=f"Quality-audit '{kind}' report uploaded",
+        )
+        return await _build_response(session, site, review)
+
+
+async def svc_push_qa_report(
+    session: AsyncSession, *, tenant_id, actor: dict, site_id, kind: str,
+) -> ProjectStateResponse:
+    """Push a quality-audit report. Pushing 'before' completes the project
+    (surfaces the site in NSO Handover); 'after' must follow a pushed 'before'
+    and re-flags the reports unread for Project."""
+    _assert_qa_kind(kind)
+    async with transaction(session):
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        if not await _can_work_qa(session, tenant_id=tenant_id, actor=actor, site_id=site.id):
+            raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a project-excellence supervisor or the delegated executive can push quality-audit reports.")
+        review = await _fetch_review_or_create(session, site=site)
+        report = (await session.execute(
+            select(models.QualityAuditReport).where(
+                models.QualityAuditReport.site_id == site.id,
+                models.QualityAuditReport.kind == kind,
+            ).with_for_update()
+        )).scalar_one_or_none()
+        if report is None or not report.file_key:
+            raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Upload the '{kind}' quality-audit report before pushing it.")
+        now = datetime.now(timezone.utc)
+        if kind == "after":
+            before = (await session.execute(
+                select(models.QualityAuditReport).where(
+                    models.QualityAuditReport.site_id == site.id,
+                    models.QualityAuditReport.kind == "before",
+                )
+            )).scalar_one_or_none()
+            if before is None or before.pushed_at is None:
+                raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Push the 'before' quality-audit report first.")
+        report.pushed_at = now
+        if kind == "before":
+            # Pushing the primary report is the final QA sign-off — completes the
+            # project (mirrors svc_pe_complete_quality_audit) so the site surfaces
+            # in the Project NSO Handover tab. Idempotent on re-push.
+            if review.quality_audit_status == "supervisor_approved":
+                review.quality_audit_status = "approved"
+                review.quality_audit_admin_confirmed_at = now
+                review.quality_audit_admin_confirmed_by = actor["sub"]
+            review.project_status = "done"
+            review.current_stage = "done"
+            review.project_completed_at = review.project_completed_at or now
+            site.project_status = "done"
+            site.project_completed_at = site.project_completed_at or now
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=site.id, actor_id=actor["sub"],
+            actor_name=actor.get("name"), action=f"qa_report_{kind}_pushed",
+            detail=f"Quality-audit '{kind}' report pushed",
+        )
+        return await _build_response(session, site, review)
+
+
+async def svc_qa_reports_for_site(
+    session: AsyncSession, *, tenant_id, site_id,
+) -> QAReportsResponse:
+    """The before/after reports for a site with short-lived signed download URLs
+    — for the Project NSO-Handover View dialog. Does NOT mark them viewed."""
+    from app.services.storage_service import signed_url  # local: avoids storage import at load
+
+    site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+    review = await _fetch_review_or_create(session, site=site)
+    reports = await _fetch_qa_reports(session, site_id=site.id)
+    before, after = reports.get("before"), reports.get("after")
+    unread = _qa_reports_unread(before, after, review.qa_reports_viewed_by_project_at)
+    time_between = (
+        (after.uploaded_at - before.uploaded_at).total_seconds()
+        if before and after and before.uploaded_at and after.uploaded_at else None
+    )
+    site_id_str = str(site.id)
+
+    def _snap(row):
+        if row is None:
+            return None
+        return {"file_key": row.file_key, "file_name": row.file_name,
+                "uploaded_at": row.uploaded_at, "pushed_at": row.pushed_at}
+
+    before_s, after_s = _snap(before), _snap(after)
+    await session.rollback()  # free the DB connection before the slow storage calls
+
+    async def _out(kind: str, snap) -> Optional[QAReportOut]:
+        if snap is None:
+            return None
+        url = await signed_url(snap["file_key"]) if snap["file_key"] else None
+        return QAReportOut(
+            kind=kind, file_name=snap["file_name"], uploaded_at=snap["uploaded_at"],
+            pushed_at=snap["pushed_at"], download_url=url,
+        )
+
+    return QAReportsResponse(
+        site_id=site_id_str,
+        before=await _out("before", before_s),
+        after=await _out("after", after_s),
+        time_between_seconds=time_between,
+        unread=unread,
+    )
+
+
+async def svc_mark_qa_reports_viewed(
+    session: AsyncSession, *, tenant_id, site_id,
+) -> OkResponse:
+    """Project opened the reports — clear the unread flag (until the next push)."""
+    async with transaction(session):
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        review = await _fetch_review_or_create(session, site=site)
+        review.qa_reports_viewed_by_project_at = datetime.now(timezone.utc)
+    return OkResponse(message="Quality-audit reports marked as viewed.")
+
+
+async def svc_allocate_qa(
+    session: AsyncSession, *, tenant_id, actor: dict, site_id, delegate_user_id,
+    notes: Optional[str] = None,
+) -> OkResponse:
+    """Delegate a site's quality-audit-report task to an active executive (or to
+    the caller themselves). Separate scope from the PE site allocation."""
+    if not _can_supervise(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a supervisor or business admin can delegate the quality-audit task.")
+    is_self = str(delegate_user_id) == str(actor["sub"])
+    async with transaction(session):
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        delegate = (await session.execute(
+            select(models.User).where(
+                models.User.id == delegate_user_id,
+                models.User.tenant_id == tenant_id,
+                models.User.is_active.is_(True),
+            )
+        )).scalar_one_or_none()
+        if delegate is None or (not is_self and (delegate.role or "").lower() != "executive"):
+            raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Active executive not found.")
+        existing = (await session.execute(
+            select(models.SiteDelegation).where(
+                models.SiteDelegation.site_id == site.id,
+                models.SiteDelegation.module == _QA_MODULE,
+                models.SiteDelegation.delegate_user_id == delegate_user_id,
+                models.SiteDelegation.revoked_at.is_(None),
+            )
+        )).scalar_one_or_none()
+        if existing is not None:
+            raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail="Quality-audit delegation already exists.")
+        session.add(models.SiteDelegation(
+            tenant_id=tenant_id, site_id=site.id, module=_QA_MODULE,
+            delegate_user_id=delegate_user_id, granted_by=actor["sub"],
+            notes=(notes or "").strip() or None,
+        ))
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=site.id, actor_id=actor["sub"],
+            actor_name=actor.get("name"), action="qa_delegated", detail=f"delegate={delegate.email}",
+        )
+    return OkResponse(message="Quality-audit task delegated.")
+
+
+async def svc_revoke_qa_delegation(
+    session: AsyncSession, *, tenant_id, actor: dict, site_id, delegate_user_id,
+) -> OkResponse:
+    """Revoke a site's active quality-audit delegation."""
+    if not _can_supervise(actor):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Only a supervisor or business admin can revoke the quality-audit delegation.")
+    async with transaction(session):
+        row = (await session.execute(
+            select(models.SiteDelegation).where(
+                models.SiteDelegation.tenant_id == tenant_id,
+                models.SiteDelegation.site_id == site_id,
+                models.SiteDelegation.module == _QA_MODULE,
+                models.SiteDelegation.delegate_user_id == delegate_user_id,
+                models.SiteDelegation.revoked_at.is_(None),
+            ).with_for_update()
+        )).scalar_one_or_none()
+        if row is None:
+            return OkResponse(message="No active quality-audit delegation to revoke.")
+        row.revoked_at = datetime.now(timezone.utc)
+        row.revoked_by = actor["sub"]
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=row.site_id, actor_id=actor["sub"],
+            actor_name=actor.get("name"), action="qa_delegation_revoked",
+        )
+    return OkResponse(message="Quality-audit delegation revoked.")
+
+
+async def svc_list_qa_delegations_for_site(
+    session: AsyncSession, *, tenant_id, site_id,
+) -> dict:
+    """Active (non-revoked) quality-audit delegations for a site (delegate identity)."""
+    rows = (await session.execute(
+        select(models.SiteDelegation, models.User.email, models.User.name)
+        .join(models.User, models.User.id == models.SiteDelegation.delegate_user_id)
+        .where(
+            models.SiteDelegation.site_id == site_id,
+            models.SiteDelegation.tenant_id == tenant_id,
+            models.SiteDelegation.module == _QA_MODULE,
+            models.SiteDelegation.revoked_at.is_(None),
+        )
+        .order_by(models.SiteDelegation.granted_at.desc())
+    )).all()
+    return {
+        "items": [
+            {
+                "id": str(d.id),
+                "site_id": str(d.site_id),
+                "module": d.module,
+                "delegate_user_id": str(d.delegate_user_id),
+                "delegate_email": email,
+                "delegate_name": name,
+                "granted_by": str(d.granted_by),
+                "granted_at": d.granted_at,
+                "notes": d.notes,
+            }
+            for (d, email, name) in rows
+        ],
+        "total": len(rows),
+    }
