@@ -62,7 +62,18 @@ export default function ExcellenceDocuments({ siteId, canUpload = true, title = 
     uploadingRef.current = true;
     setUploading(true);
     try {
-      await uploadExcellenceDocument(siteId, file);
+      const created = await uploadExcellenceDocument(siteId, file);
+      // Optimistically prepend so the attachment shows immediately even if a
+      // background page refresh races the list refetch; load() reconciles.
+      if (created?.id) {
+        setDocs((prev) => [
+          {
+            id: created.id, file_name: created.file_name,
+            file_size_kb: created.file_size_kb, mime_type: created.mime_type, url: created.url,
+          },
+          ...prev.filter((d) => d.id !== created.id),
+        ]);
+      }
       showToast?.(`Uploaded · ${file.name}`, 'success');
       await load();
     } catch (err) {
