@@ -23,7 +23,6 @@ enabled = true
   #   plugins       react | vue | ember | meteor | angular | angularjs
   environment = ["browser", "nodejs", "vitest"]
   module_system = "es-modules"
-  plugins = ["react"]
 
 [[analyzers]]
 name = "python"
