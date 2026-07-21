@@ -623,26 +623,34 @@ async def _advance_stage_after_approval(
     review.approved_by = actor["sub"]
 
     if next_stage == "gfc":
-        # 3D approved → open the GFC gate for the business admin.
-        site.design_status = "gfc_pending"
+        # 3D approved → the site is READY for GFC, but it does not reach the
+        # business admin until a supervisor explicitly sends it
+        # (svc_request_gfc_approval). design_status stays 'in_progress' so the
+        # admin GFC queue — which filters on 'gfc_pending' — skips it for now.
+        # The (stage='gfc', design_status='in_progress') pair is the "awaiting
+        # supervisor to send" state.
+        site.design_status = "in_progress"
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor.get("name"),
             action="design_3d_approved",
-            detail="3D approved — site moved to GFC gate (awaiting admin GFC sign-off)",
+            detail="3D approved — awaiting supervisor to send for GFC sign-off",
         )
-        admins = await recipients_for_business_admins(session, tenant_id=tenant_id)
-        if admins:
+        # Notify the SUPERVISORS, not the admins: the supervisor now owns the
+        # next action. Without this the new gate has no trigger and sites would
+        # silently pile up in the pre-send state.
+        supervisors = await recipients_for_design_supervisors(session, tenant_id=tenant_id)
+        if supervisors:
             await notify_enqueue(
-                session, tenant_id=tenant_id, event="design_gfc_pending",
-                recipient_ids=admins, site_id=site.id,
+                session, tenant_id=tenant_id, event="design_gfc_ready",
+                recipient_ids=supervisors, site_id=site.id,
                 channels=("in_app", "email"),
                 payload={"site_id": str(site.id), "site_name": site.name},
-                subject=f"GFC approval needed: {site.name}",
+                subject=f"Ready for GFC: {site.name}",
                 body=(
                     f"The 3D design for '{site.name}' ({site.code}) is approved. "
-                    f"Open the Design tab to give Good-For-Construction sign-off "
-                    f"before the BOQ is uploaded."
+                    f"Open the Design tab and send it for the business admin's "
+                    f"Good-For-Construction sign-off."
                 ),
             )
     elif next_stage == "done":
@@ -1190,6 +1198,85 @@ async def svc_admin_review_deliverable(
             await _admin_reject_deliverable(
                 session, tenant_id=tenant_id, actor=actor, site=site,
                 deliverable=deliverable, kind=kind, supervisors=supervisors,
+            )
+
+    return await _build_design_response(session, site)
+
+
+# ── Supervisor: send an approved 3D for GFC sign-off ──────────────────────────
+
+async def svc_request_gfc_approval(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    actor: dict,
+    site_id: str | UUID,
+) -> DesignReviewResponse:
+    """Supervisor sends an approved 3D design to the business admin for GFC.
+
+    This is stage 2 of the two-stage GFC flow. An executive's 3D upload is
+    reviewed by their supervisor first (svc_review_deliverable); a supervisor
+    handling the site directly self-approves on upload. Either way the business
+    admin approves the 3D deliverable, and only then may the SUPERVISOR send the
+    site on for Good-For-Construction sign-off.
+
+    Setting design_status='gfc_pending' is what puts the site in the admin's GFC
+    queue — the same signal svc_gfc_decision already gates on.
+
+    Deliberately no business_admin role check here: require_role(SUPERVISOR)
+    admits business_admin, which is the escape hatch if the owning supervisor
+    is unavailable.
+    """
+    async with transaction(session):
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        review = await _fetch_review_or_404(session, site_id=site.id)
+
+        if review.current_stage != "gfc":
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Site is not ready for GFC (stage='{review.current_stage}'). "
+                    f"The 3D design must be approved by the business admin first."
+                ),
+            )
+        if site.design_status == "gfc_pending":
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="This site has already been sent for GFC approval.",
+            )
+        if site.design_status == "approved":
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="GFC is already approved for this site.",
+            )
+
+        site.design_status = "gfc_pending"
+        # Clear any prior decision so a re-request after a GFC rejection doesn't
+        # render a stale 'Sent back' verdict over a live request. gfc_comments is
+        # kept on purpose — the admin's earlier feedback stays useful context.
+        review.gfc_status = "pending"
+        review.gfc_decided_by = None
+        review.gfc_decided_at = None
+
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=site.id,
+            actor_id=actor["sub"], actor_name=actor.get("name"),
+            action="design_gfc_requested",
+            detail="Supervisor sent the site for business-admin GFC sign-off",
+        )
+        admins = await recipients_for_business_admins(session, tenant_id=tenant_id)
+        if admins:
+            await notify_enqueue(
+                session, tenant_id=tenant_id, event="design_gfc_pending",
+                recipient_ids=admins, site_id=site.id,
+                channels=("in_app", "email"),
+                payload={"site_id": str(site.id), "site_name": site.name},
+                subject=f"GFC approval needed: {site.name}",
+                body=(
+                    f"The 3D design for '{site.name}' ({site.code}) is approved and the "
+                    f"supervisor has sent it for Good-For-Construction sign-off. "
+                    f"Open the Design tab to review."
+                ),
             )
 
     return await _build_design_response(session, site)

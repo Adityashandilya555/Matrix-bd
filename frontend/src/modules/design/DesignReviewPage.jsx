@@ -9,6 +9,7 @@ import { listMyTeam } from '../../services/api/adapters/httpAdapter.js';
 import {
   getDesignReview, allocateDesign, revokeDesignAllocation,
   listDesignDelegationsForSite, submitDeliverable, uploadDeliverable, reviewDeliverable,
+  requestGfcApproval,
 } from '../../services/api/designApi.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 import { usePageContext } from '../../App.jsx';
@@ -86,11 +87,21 @@ function DeliverableCard({ kind, deliverable, isActive, isExecutive, isSuperviso
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, []);
 
+  // Reset the staged file only when the SERVER state actually changed.
+  // `downloadUrl` is deliberately NOT a dependency: it's a Supabase signed URL
+  // re-minted on every response, so it differs on every refetch even when
+  // nothing changed. Closing the native file dialog fires window 'focus' →
+  // a silent refresh → a new URL → this effect → the file the user just picked
+  // was wiped. That only bit the rejected path, where a prior file still exists
+  // to be signed (a pending item has no file, so the URL stayed null). `fileName`
+  // and `status` already cover every real reset: a successful re-upload flips
+  // status rejected→submitted (exec) or rejected→approved (supervisor self-upload)
+  // and writes a new fileName.
   React.useEffect(() => {
     clearSelectedFile();
     setAmount(deliverable?.estimatedAmount ?? '');
     setComments('');
-  }, [clearSelectedFile, deliverable?.estimatedAmount, deliverable?.fileName, deliverable?.downloadUrl, status]);
+  }, [clearSelectedFile, deliverable?.estimatedAmount, deliverable?.fileName, status]);
 
   const hasSubmittedArtifact = isBoq
     ? deliverable?.estimatedAmount != null
@@ -245,7 +256,11 @@ function DeliverableCard({ kind, deliverable, isActive, isExecutive, isSuperviso
               ? (isBoq ? 'Re-submit' : 'Re-upload')
               : isBoq
                 ? (canSelfUpload ? 'Submit & approve' : 'Submit for review')
-                : (canSelfUpload ? 'Upload & approve' : 'Upload & submit')}
+                : canSelfUpload
+                  ? 'Upload & approve'
+                  // 3D is the GFC gate's input: an executive is explicitly
+                  // handing it to their supervisor, who then sends it for GFC.
+                  : (kind === '3d' ? 'Send to supervisor for approval' : 'Upload & submit')}
             <Icon name="arrow-right" size={12}/>
           </button>
         </div>
@@ -383,10 +398,24 @@ export default function DesignReviewPage() {
       const r = await uploadDeliverable(siteId, kind, file);
       setReview(r);
       // After a successful upload the DeliverableCard hides its file input
-      // (status flips to 'submitted'), so we don't need to reset local file
-      // state explicitly — the card unmounts/remounts with fresh state.
+      // (status flips to 'submitted'), so we don't reset local file state here.
+      // The card is keyed by `kind`, so it re-renders in place rather than
+      // remounting — the reset comes from the card's own effect firing on the
+      // changed `status`/`fileName`.
     }
     catch (err) { setActionError(err?.detail || err?.message || 'Upload failed'); }
+    finally { setBusy(false); }
+  };
+
+  const onRequestGfc = async () => {
+    setActionError(null);
+    setBusy(true);
+    try {
+      const r = await requestGfcApproval(siteId);
+      setReview(r);
+      showToast('Sent for GFC approval.');
+    }
+    catch (err) { setActionError(err?.detail || err?.message || 'Could not send for GFC approval'); }
     finally { setBusy(false); }
   };
 
@@ -422,6 +451,16 @@ export default function DesignReviewPage() {
 
   const r = review;
   const deliverableFor = (kind) => r.deliverables.find((d) => d.kind === kind);
+
+  // Two-stage GFC. Reaching stage 'gfc' means the 3D is fully approved
+  // (supervisor + business admin), but the site does NOT reach the admin's GFC
+  // queue until a supervisor sends it — that send is what sets 'gfc_pending'.
+  // So (stage='gfc', designStatus not yet gfc_pending/approved) is the
+  // "ready to send" state. Everyone sees the state; only a supervisor can act.
+  const readyToSendGfc = r.currentStage === 'gfc'
+    && r.designStatus !== 'gfc_pending'
+    && r.designStatus !== 'approved';
+  const canRequestGfc = isSupervisor && readyToSendGfc;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -510,20 +549,41 @@ export default function DesignReviewPage() {
           {r.currentStage === 'gfc' && <Badge label="Active" color="var(--zm-accent)"/>}
           <span style={{ marginLeft: 'auto' }}>
             <Badge
-              label={r.gfcStatus === 'approved' ? 'Approved' : r.gfcStatus === 'rejected' ? 'Sent back' : (r.designStatus === 'gfc_pending' ? 'Awaiting admin' : 'Pending')}
-              color={r.gfcStatus === 'approved' ? 'var(--zm-success)' : r.gfcStatus === 'rejected' ? 'var(--zm-danger)' : 'var(--zm-copper)'}
+              label={r.gfcStatus === 'approved' ? 'Approved'
+                : readyToSendGfc ? 'Ready to send'
+                : r.gfcStatus === 'rejected' ? 'Sent back'
+                : (r.designStatus === 'gfc_pending' ? 'Awaiting admin' : 'Pending')}
+              color={r.gfcStatus === 'approved' ? 'var(--zm-success)'
+                : readyToSendGfc ? 'var(--zm-accent)'
+                : r.gfcStatus === 'rejected' ? 'var(--zm-danger)' : 'var(--zm-copper)'}
             />
           </span>
         </div>
         <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-3)' }}>
-          {r.designStatus === 'gfc_pending'
-            ? '3D design approved — the business admin gives Good-For-Construction sign-off from the Business Admin portal.'
-            : r.gfcStatus === 'approved'
-              ? 'GFC approved — design complete. The Project Excellence budget is now open for this site.'
-              : r.gfcStatus === 'rejected'
-                ? '3D design was sent back for revision after GFC rejection.'
-                : 'Becomes active once 3D design is approved.'}
+          {readyToSendGfc
+            ? (isSupervisor
+              ? "3D design is approved. Send this site for the business admin's Good-For-Construction sign-off."
+              : '3D design is approved — waiting for the design supervisor to send it for GFC sign-off.')
+            : r.designStatus === 'gfc_pending'
+              ? '3D design approved — the business admin gives Good-For-Construction sign-off from the Business Admin portal.'
+              : r.gfcStatus === 'approved'
+                ? 'GFC approved — design complete. The Project Excellence budget is now open for this site.'
+                : r.gfcStatus === 'rejected'
+                  ? '3D design was sent back for revision after GFC rejection.'
+                  : 'Becomes active once 3D design is approved.'}
         </p>
+        {canRequestGfc && (
+          <button
+            type="button"
+            disabled={busy}
+            className="zm-btn-fx"
+            style={{ ...btn('var(--zm-accent)'), marginTop: 10, opacity: busy ? 0.6 : 1 }}
+            onClick={onRequestGfc}
+          >
+            Send for GFC approval
+            <Icon name="arrow-right" size={12}/>
+          </button>
+        )}
         {r.gfcComments && (
           <div style={{ marginTop: 8, fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-2)', background: 'var(--zm-surface-2)', borderRadius: 7, padding: '8px 10px' }}>
             <strong>Admin:</strong> {r.gfcComments}
