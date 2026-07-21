@@ -75,7 +75,7 @@ function KpiTile({ label, count, active, tone, onClick }) {
 }
 
 // One before/after report slot inside the dialog.
-function ReportSlot({ kind, label, uploadedAt, pushedAt, canManage, canPush, busy, onUpload, onPush }) {
+function ReportSlot({ kind, label, uploadedAt, pushedAt, canManage, canPush, busy, uploading, onUpload, onPush }) {
   const fileRef = React.useRef(null);
   const pushed = Boolean(pushedAt);
   const uploaded = Boolean(uploadedAt);
@@ -105,8 +105,10 @@ function ReportSlot({ kind, label, uploadedAt, pushedAt, canManage, canPush, bus
             height: 32, padding: '0 12px', borderRadius: 7, border: '1px solid var(--zm-line)',
             background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)',
             fontSize: 12, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: 7,
           }}>
-            {uploaded ? 'Replace PDF' : 'Choose PDF'}
+            {uploading && <span aria-hidden="true" style={{ width: 12, height: 12, border: '2px solid var(--zm-line-strong)', borderTopColor: 'var(--zm-accent)', borderRadius: '50%', display: 'inline-block', animation: 'zm-spin 0.7s linear infinite' }}/>}
+            {uploading ? 'Uploading…' : uploaded ? 'Replace PDF' : 'Choose PDF'}
           </button>
           <button type="button" disabled={busy || !uploaded || pushed || !canPush} onClick={() => onPush(kind)} style={{
             height: 32, padding: '0 14px', borderRadius: 7, border: 'none',
@@ -139,6 +141,7 @@ export default function ProjectExcellenceQualityAuditPage() {
   const [allocation, setAllocation] = React.useState(null); // QA delegation of the open dialog's site
   const [chosenExec, setChosenExec] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+  const [uploadingKind, setUploadingKind] = React.useState(null); // 'before' | 'after' while a PDF uploads
   const [actionError, setActionError] = React.useState(null);
 
   const load = React.useCallback(() => {
@@ -198,7 +201,11 @@ export default function ProjectExcellenceQualityAuditPage() {
     }
   };
 
-  const onUpload = (kind, file) => runAction(() => uploadQAReport(dialogSiteId, kind, file), `${kind === 'before' ? 'Before' : 'After'} report uploaded.`);
+  const onUpload = (kind, file) => {
+    setUploadingKind(kind);
+    runAction(() => uploadQAReport(dialogSiteId, kind, file), `${kind === 'before' ? 'Before' : 'After'} report uploaded.`)
+      .finally(() => setUploadingKind(null));
+  };
   const onPush = (kind) => runAction(() => pushQAReport(dialogSiteId, kind), `${kind === 'before' ? 'Before' : 'After'} report pushed.`);
   const onAllocate = () => {
     const target = chosenExec === '__self__' ? myUserId : chosenExec;
@@ -368,6 +375,7 @@ export default function ProjectExcellenceQualityAuditPage() {
                 kind="before" label="Before quality audit (primary)"
                 uploadedAt={dialogRow.qaBeforeUploadedAt} pushedAt={dialogRow.qaBeforePushedAt}
                 canManage={isSupervisor || Boolean(dialogRow.qaReportDelegateName)} canPush busy={busy}
+                uploading={uploadingKind === 'before'}
                 onUpload={onUpload} onPush={onPush}
               />
               <ReportSlot
@@ -375,6 +383,7 @@ export default function ProjectExcellenceQualityAuditPage() {
                 uploadedAt={dialogRow.qaAfterUploadedAt} pushedAt={dialogRow.qaAfterPushedAt}
                 canManage={isSupervisor || Boolean(dialogRow.qaReportDelegateName)}
                 canPush={Boolean(dialogRow.qaBeforePushedAt)} busy={busy}
+                uploading={uploadingKind === 'after'}
                 onUpload={onUpload} onPush={onPush}
               />
             </div>

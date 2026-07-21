@@ -91,6 +91,7 @@ async def test_supervisor_can_self_delegate_qa(monkeypatch):
     _patch_site(monkeypatch, site)
     me = uuid.uuid4()
     session = RecordingSession([
+        FakeResult(scalars_list=[]),                              # no reports uploaded yet
         FakeResult(scalar=_user(role="supervisor", user_id=me)),  # delegate lookup (self)
         FakeResult(scalar=None),                                   # no active delegation → allowed
     ])
@@ -113,7 +114,7 @@ async def test_qa_delegation_rejected_when_already_active(monkeypatch):
         id=uuid.uuid4(), tenant_id=TENANT, site_id=site.id, module="quality_audit",
         delegate_user_id=ex.id, granted_by=uuid.uuid4(),
     )
-    session = RecordingSession([FakeResult(scalar=ex), FakeResult(scalar=existing)])
+    session = RecordingSession([FakeResult(scalars_list=[]), FakeResult(scalar=ex), FakeResult(scalar=existing)])
     with pytest.raises(HTTPException) as exc:
         await project_service.svc_allocate_qa(
             session, tenant_id=TENANT, actor=_supervisor(), site_id=site.id, delegate_user_id=ex.id,
@@ -127,12 +128,29 @@ async def test_qa_redelegate_allowed_after_revoke(monkeypatch):
     site = _site()
     _patch_site(monkeypatch, site)
     ex = _user(role="executive")
-    session = RecordingSession([FakeResult(scalar=ex), FakeResult(scalar=None)])
+    session = RecordingSession([FakeResult(scalars_list=[]), FakeResult(scalar=ex), FakeResult(scalar=None)])
     await project_service.svc_allocate_qa(
         session, tenant_id=TENANT, actor=_supervisor(), site_id=site.id, delegate_user_id=ex.id,
     )
     added = [o for o in session.added if isinstance(o, models.SiteDelegation)]
     assert len(added) == 1 and added[0].module == "quality_audit"
+
+
+async def test_qa_delegation_blocked_after_report_uploaded(monkeypatch):
+    # Edge case: once a report is uploaded the task is in progress — delegating
+    # 409s (the UI stays but surfaces this error rather than breaking).
+    site = _site()
+    _patch_site(monkeypatch, site)
+    report = models.QualityAuditReport(
+        id=uuid.uuid4(), tenant_id=TENANT, site_id=site.id, kind="before", file_key="k.pdf",
+    )
+    session = RecordingSession([FakeResult(scalars_list=[report])])  # a report already exists
+    with pytest.raises(HTTPException) as exc:
+        await project_service.svc_allocate_qa(
+            session, tenant_id=TENANT, actor=_supervisor(), site_id=site.id, delegate_user_id=uuid.uuid4(),
+        )
+    assert exc.value.status_code == 409
+    assert "already been uploaded" in exc.value.detail
 
 
 async def test_qa_revoke_is_idempotent():

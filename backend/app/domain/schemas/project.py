@@ -43,6 +43,10 @@ class ProjectQueueItem(BaseModel):
     project_completed_at: Optional[datetime] = None
     allocated_to_name: Optional[str] = None
     submitted_by_name: Optional[str] = None
+    # Shared GFC budget status ('draft'|'pending_supervisor'|'pending_admin'|
+    # 'approved'|'rejected'), or None if no budget row yet. The Project queue
+    # shows it as Pending until business-admin approval flips it to Available.
+    budget_status: Optional[str] = None
     # Quality-audit report state — populated only for the PE Quality-Audit and
     # Project NSO-Handover queues (None elsewhere). Drives the before/after
     # upload+push UI, the time-between-uploads figure (after − before), and the
