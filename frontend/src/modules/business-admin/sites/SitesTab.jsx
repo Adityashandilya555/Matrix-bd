@@ -185,7 +185,7 @@ function Pipeline({ site }) {
           <React.Fragment key={n.key}>
             {i > 0 && (
               <span aria-hidden="true" style={{ flex: '0 0 18px', height: 2, borderRadius: 999,
-                background: prevDone ? T.success : T.line, opacity: prevDone ? 0.6 : 1 }} />
+                background: prevDone ? T.success : (isSiteRejected(site) ? cm(T.danger, 25) : T.line), opacity: prevDone ? 0.6 : 1 }} />
             )}
             <PipelineNode site={site} node={n} />
           </React.Fragment>
@@ -499,8 +499,8 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
                   ...(isSiteRejected(s) ? { background: T.dangerSoft, border: `1px solid ${cm(T.danger, 60)}` } : {})
                 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px 2px', flexWrap: 'wrap' }}>
-                  <span style={{ fontFamily: T.mono, fontSize: 10.5, letterSpacing: '0.06em', color: T.textMuted,
-                    padding: '2px 7px', borderRadius: 5, border: `1px solid ${T.line}`, background: T.chip }}>
+                  <span style={{ fontFamily: T.mono, fontSize: 10.5, letterSpacing: '0.06em', color: isSiteRejected(s) ? T.danger : T.textMuted,
+                    padding: '2px 7px', borderRadius: 5, border: `1px solid ${isSiteRejected(s) ? cm(T.danger, 25) : T.line}`, background: isSiteRejected(s) ? cm(T.danger, 8) : T.chip }}>
                     {s.siteCode || '—'}
                   </span>
                   <strong style={{ fontSize: 15, fontWeight: 750, color: T.text, letterSpacing: '-0.01em' }}>{s.siteName}</strong>
@@ -517,8 +517,8 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
                       </button>
                     )}
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 11px',
-                      borderRadius: 999, border: `1px solid ${T.line}`, background: T.chip,
-                      fontSize: 11.5, fontWeight: 650, color: T.textMuted }}>
+                      borderRadius: 999, border: `1px solid ${isSiteRejected(s) ? cm(T.danger, 25) : T.line}`, background: isSiteRejected(s) ? cm(T.danger, 8) : T.chip,
+                      fontSize: 11.5, fontWeight: 650, color: isSiteRejected(s) ? T.danger : T.textMuted }}>
                       <Icon.clock size={13} /> History <Icon.caret size={13} />
                     </span>
                   </span>
