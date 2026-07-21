@@ -12,8 +12,8 @@ import { listExcellenceDocuments, uploadExcellenceDocument } from '../../../serv
 // the request settles, and more files can always be added.
 
 const MAX_BYTES = 5 * 1024 * 1024;
-const ALLOWED_TYPES = ['image/png', 'image/jpeg'];
-const ACCEPT = '.png,.jpg,.jpeg,image/png,image/jpeg';
+const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'application/pdf'];
+const ACCEPT = '.png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf';
 
 function fmtSize(kb) {
   if (!kb || kb <= 0) return '';
@@ -51,7 +51,7 @@ export default function ExcellenceDocuments({ siteId, canUpload = true, title = 
     e.target.value = '';
     if (!file) return;
     if (!ALLOWED_TYPES.includes(file.type)) {
-      showToast?.('Only PNG or JPEG images are allowed.', 'danger');
+      showToast?.('Only PNG, JPEG or PDF files are allowed.', 'danger');
       return;
     }
     if (file.size > MAX_BYTES) {
@@ -145,9 +145,9 @@ export default function ExcellenceDocuments({ siteId, canUpload = true, title = 
               boxShadow: 'var(--zm-shadow-1)',
             }}
           >
-            {uploading ? 'Uploading…' : <><Icon name="upload" size={12} /> {docs.length ? 'Upload more' : 'Upload image'}</>}
+            {uploading ? 'Uploading…' : <><Icon name="upload" size={12} /> {docs.length ? 'Upload more' : 'Upload file'}</>}
           </button>
-          <div style={{ fontSize: 10.5, color: 'var(--zm-fg-3)', marginTop: 6 }}>PNG or JPEG, up to 5 MB.</div>
+          <div style={{ fontSize: 10.5, color: 'var(--zm-fg-3)', marginTop: 6 }}>PNG, JPEG or PDF, up to 5 MB.</div>
         </>
       )}
     </div>
