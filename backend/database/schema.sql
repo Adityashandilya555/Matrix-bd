@@ -186,7 +186,7 @@ CREATE TABLE public.site_files (
   tenant_id        uuid NOT NULL,
   site_id          uuid NOT NULL,
   uploaded_by      uuid NOT NULL,
-  file_type        text NOT NULL,                -- file_type enum retired (202606141): loi | photo | quality_audit
+  file_type        text NOT NULL,                -- enum retired (202606141); see chk_site_files_file_type below
   file_name        text NOT NULL,
   storage_path     text NOT NULL,
   file_size_kb     integer,

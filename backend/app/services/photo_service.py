@@ -99,6 +99,11 @@ async def svc_upload_site_file(
                 # tabs could both clear the fast-fail above before either row
                 # is committed. The xact lock releases at commit/rollback and is
                 # pgBouncer-transaction-pooler safe.
+                #
+                # hashtext() is int4, so two unrelated (site, phase) keys can
+                # collide and briefly serialize against each other. That costs a
+                # little throughput on a rare coincidence and never correctness
+                # — a collision only ever over-serializes, never under-.
                 await session.execute(
                     text("SELECT pg_advisory_xact_lock(hashtext(:k))"),
                     {"k": f"{site_pk}:{file_type}"},
@@ -128,9 +133,13 @@ async def svc_upload_site_file(
                 action=audit_action,
                 detail=filename,
             )
-    except HTTPException:
-        # The object was already written; a lost race (or any failed insert)
-        # would otherwise leave it dangling. Best-effort purge, then re-raise.
+    except Exception:
+        # The object is already in the bucket by this point, so ANY failure
+        # below the upload leaves it dangling — a lost max_count race (409), but
+        # equally a constraint violation or a dropped connection during the
+        # insert. Catching only HTTPException would have orphaned the object on
+        # exactly the failures we cannot retry. delete_object never raises, so
+        # this cannot mask the original error. Purge, then re-raise unchanged.
         await delete_object(path=storage_path)
         raise
 

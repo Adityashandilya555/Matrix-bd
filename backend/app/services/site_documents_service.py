@@ -140,7 +140,16 @@ async def svc_delete_site_document(
     async with transaction(db):
         # Statement-form delete (budget_service precedent) — plays well with
         # both AsyncSession and the tests' RecordingSession.
-        await db.execute(delete(models.SiteFile).where(models.SiteFile.id == row.id))
+        result = await db.execute(delete(models.SiteFile).where(models.SiteFile.id == row.id))
+        # The SELECT above runs outside this transaction, so two concurrent
+        # deletes can both reach here. Without this guard both would write an
+        # audit event while only one actually removed a row — one deletion, two
+        # "deleted" entries in the compliance ledger. The loser 404s, which is
+        # also the honest answer: by the time it committed, the file was gone.
+        if getattr(result, "rowcount", 1) == 0:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND, detail="Attachment not found",
+            )
         await write_audit_event(
             db, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor.get("name"),

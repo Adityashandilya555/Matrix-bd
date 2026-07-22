@@ -261,6 +261,46 @@ async def test_delete_unknown_document_is_404(session, fake_result):
     assert exc.value.status_code == 404
 
 
+async def test_delete_that_loses_the_race_404s_without_auditing(session, fake_result, monkeypatch):
+    """Two concurrent deletes both clear the SELECT (it runs outside the write
+    transaction). Only one removes a row — the loser must NOT also write an
+    audit event, or one deletion leaves two 'deleted' entries in the ledger.
+    The 404 is the honest answer: by the time it committed, the file was gone.
+    """
+    import app.services.site_documents_service as sd
+
+    audits = []
+
+    async def _audit(_s, **kw):
+        audits.append(kw)
+
+    async def _delete_object(*, path):   # noqa: ARG001 - signature parity
+        return True
+
+    monkeypatch.setattr(sd, "write_audit_event", _audit)
+    monkeypatch.setattr(sd.storage_service, "delete_object", _delete_object)
+
+    site = _site()
+    file_id = uuid.uuid4()
+    row = types.SimpleNamespace(
+        id=file_id, storage_path=f"excellence/{TENANT}/x.png",
+        file_name="x.png", file_type="excellence",
+    )
+    session.queue(
+        fake_result(scalar=site),
+        fake_result(scalar=row),
+        fake_result(rowcount=0),   # the other request already deleted it
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await sd.svc_delete_site_document(
+            session, tenant_id=TENANT, actor=_supervisor(),
+            site_id=str(site.id), file_id=str(file_id),
+        )
+    assert exc.value.status_code == 404
+    assert audits == []   # the compliance ledger records exactly one deletion
+
+
 def test_delete_scoped_to_excellence_and_closure_only():
     """The delete service must never be able to reach LOIs, photos, or QA
     reports — its allowed_types default is exactly the two budget kinds."""
