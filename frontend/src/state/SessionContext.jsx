@@ -12,6 +12,7 @@ import {
 } from '../services/api/authToken.js';
 import { signOut as supabaseSignOut } from '../services/api/supabaseAuth.js';
 import { getStoredOverride, activateOverride, deactivateOverride } from '../services/api/adminOverride.js';
+import { useInactivityLogout } from '../hooks/useInactivityLogout.js';
 
 // SessionContext — holds the current user session and role.
 // In MOCK mode the session comes from DEFAULT_SESSION (legacy: Riya Sharma as supervisor).
@@ -52,6 +53,10 @@ export function SessionProvider({ children }) {
   // Mock mode is ready immediately — the session is the static default.
   const [authReady, setAuthReady] = useState(USE_MOCK);
   const [sessionExpired, setSessionExpired] = useState(null);
+
+  // Auto sign-out after 8h of no user interaction (HTTP mode only). Keyed on
+  // real input events, so background queue polling doesn't keep a session alive.
+  useInactivityLogout({ enabled: !USE_MOCK });
   // True once a /auth/whoami has SUCCEEDED this page-load. It lets us tell a
   // token that was dead on arrival (a stale token left over from a deploy that
   // invalidated it — there was never a live session to "pause", so drop it
@@ -273,6 +278,7 @@ export function isPublicSessionRoute(pathname) {
 function SessionExpiredModal({ sessionExpired, onSignInAgain }) {
   const { pathname } = useLocation();
   if (!sessionExpired || USE_MOCK || isPublicSessionRoute(pathname)) return null;
+  const inactivity = sessionExpired.reason === 'inactivity';
   return (
     <div
       role="alertdialog"
@@ -300,13 +306,15 @@ function SessionExpiredModal({ sessionExpired, onSignInAgain }) {
         }}
       >
         <p style={{ margin: '0 0 8px', color: 'var(--zm-accent)', fontSize: 12, fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase' }}>
-          Session paused
+          {inactivity ? 'Signed out' : 'Session paused'}
         </p>
         <h2 id="session-expired-title" style={{ margin: 0, fontSize: 28, lineHeight: 1.05 }}>
           Sign in again to continue
         </h2>
         <p style={{ margin: '14px 0 22px', color: 'var(--zm-fg-3)', lineHeight: 1.45 }}>
-          Your workspace session expired. This page is still open so your in-progress form stays visible.
+          {inactivity
+            ? 'You were signed out after 8 hours of inactivity. This page is still open so your in-progress form stays visible.'
+            : 'Your workspace session expired. This page is still open so your in-progress form stays visible.'}
         </p>
         <button
           type="button"
