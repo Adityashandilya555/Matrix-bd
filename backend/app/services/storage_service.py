@@ -115,6 +115,24 @@ async def upload_bytes(*, path: str, body: bytes, content_type: str) -> None:
         )
 
 
+async def delete_object(*, path: str) -> bool:
+    """Best-effort delete of a storage object. Returns False on any failure —
+    never raises. The site_files row is the source of truth; an orphaned
+    object is acceptable (and logged), a 500 on delete is not."""
+    if not settings.supabase_project_url or not settings.supabase_service_role_key:
+        return False
+    url = f"{_storage_base()}/object/{settings.supabase_storage_bucket}/{path}"
+    try:
+        r = await get_storage_client().delete(url, headers=_auth_headers(), timeout=15.0)
+    except httpx.HTTPError as exc:
+        logger.warning("storage delete transport error for %s: %s", path, exc)
+        return False
+    if r.status_code >= 300:
+        logger.warning("storage delete failed for %s: %s %s", path, r.status_code, r.text)
+        return False
+    return True
+
+
 async def signed_url(path: str, *, expires_in: int = 300) -> str | None:
     """Return a short-lived signed URL for downloading the object."""
     if not settings.supabase_project_url or not settings.supabase_service_role_key:

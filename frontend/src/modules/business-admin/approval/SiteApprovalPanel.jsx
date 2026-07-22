@@ -437,9 +437,11 @@ function plusDaysISO(n) {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
-function BudgetBlock({ site, fetchDetail, onDecide }) {
+function BudgetBlock({ site, fetchDetail, fetchDocuments, onDecide }) {
   const [detail, setDetail] = React.useState(null);
   const [detailError, setDetailError] = React.useState(null);
+  // Budget attachment(s) uploaded in PE — read-only, non-fatal if unavailable.
+  const [docs, setDocs] = React.useState([]);
   const [comments, setComments] = React.useState('');
   // The admin sets the project initialization date as part of approving the
   // budget; defaults to 2 days out, overridable via the calendar.
@@ -486,6 +488,14 @@ function BudgetBlock({ site, fetchDetail, onDecide }) {
     return () => { live = false; };
   }, [fallback, fetchDetail, site.siteId]);
   React.useEffect(() => loadDetail(), [loadDetail]);
+  React.useEffect(() => {
+    let live = true;
+    if (!fetchDocuments) return undefined;
+    fetchDocuments(site.siteId)
+      .then((d) => { if (live) setDocs(Array.isArray(d) ? d : []); })
+      .catch(() => { /* non-fatal — the row just doesn't render */ });
+    return () => { live = false; };
+  }, [fetchDocuments, site.siteId]);
   const decide = async (decision) => {
     setActionErr(null);
     if (decision === 'reject' && !comments.trim()) { setActionErr('Comments are required to send back.'); return; }
@@ -578,6 +588,41 @@ function BudgetBlock({ site, fetchDetail, onDecide }) {
         {metricRow('CAPEX / sqft', formatRatio(total, detail.totalAreaSqft))}
         {metricRow('CAPEX / cover', formatRatio(total, detail.covers))}
       </div>
+
+      {/* Budget attachment uploaded in PE — click-through to the signed URL. */}
+      {docs.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ color: T.textFaint, fontSize: 11, marginBottom: 6 }}>Attachments</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {docs.map((d) => (
+              <a
+                key={d.id}
+                href={d.url || undefined}
+                target="_blank"
+                rel="noreferrer"
+                title={d.fileName}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  padding: '8px 12px', borderRadius: T.radiusSm,
+                  border: `1px solid ${T.lineStrong}`, background: T.chip,
+                  color: T.text, fontSize: 12.5, textDecoration: 'none',
+                  maxWidth: 280,
+                }}
+              >
+                <Icon.doc size={14} style={{ flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {d.fileName}
+                </span>
+                {d.fileSizeKb ? (
+                  <span style={{ color: T.textFaint, fontSize: 11, flexShrink: 0 }}>
+                    {d.fileSizeKb < 1024 ? `${d.fileSizeKb} KB` : `${(d.fileSizeKb / 1024).toFixed(1)} MB`}
+                  </span>
+                ) : null}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Admin sets the project initialization date as part of approval. */}
       <label style={{ display: 'block', marginBottom: 10 }}>
@@ -692,7 +737,7 @@ export default function SiteApprovalPanel({ site, handlers }) {
       )}
       {project && (
         <BlockShell icon={Icon.wrench} tone="project" title="Project budget approval" amount={project.budgetTotal}>
-          <BudgetBlock site={site} fetchDetail={handlers.fetchBudgetDetail} onDecide={handlers.onBudgetDecide} />
+          <BudgetBlock site={site} fetchDetail={handlers.fetchBudgetDetail} fetchDocuments={handlers.fetchBudgetDocuments} onDecide={handlers.onBudgetDecide} />
         </BlockShell>
       )}
       {site.qualityAudit && (

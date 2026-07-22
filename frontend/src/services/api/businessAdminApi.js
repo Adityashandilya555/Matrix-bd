@@ -110,6 +110,22 @@ export async function fetchBudgetDetail(siteId) {
   };
 }
 
+// The PE budget's attachment (kind='excellence', max 1) — shown read-only in
+// the approval drawer so the admin can open exactly what was submitted.
+// business_admin passes the role-gated documents endpoint (DocMember).
+export async function fetchBudgetDocuments(siteId) {
+  const d = await client
+    .get(`/project-excellence/${siteId}/documents`, { params: { kind: 'excellence' } })
+    .then((r) => r.data);
+  return (d.documents || []).map((r) => ({
+    id: r.id,
+    fileName: r.file_name,
+    fileSizeKb: r.file_size_kb,
+    mimeType: r.mime_type,
+    url: r.url,
+  }));
+}
+
 // ── Quality-audit confirmation (business-admin, second tier) ─────────────────
 
 export async function getQualityAuditQueue() {

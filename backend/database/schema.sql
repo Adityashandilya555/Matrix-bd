@@ -186,7 +186,7 @@ CREATE TABLE public.site_files (
   tenant_id        uuid NOT NULL,
   site_id          uuid NOT NULL,
   uploaded_by      uuid NOT NULL,
-  file_type        text NOT NULL,                -- file_type enum retired (202606141): loi | photo | quality_audit
+  file_type        text NOT NULL,                -- enum retired (202606141); see chk_site_files_file_type below
   file_name        text NOT NULL,
   storage_path     text NOT NULL,
   file_size_kb     integer,
@@ -201,7 +201,7 @@ CREATE TABLE public.site_files (
   CONSTRAINT site_files_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id),
   CONSTRAINT site_files_uploaded_by_fkey FOREIGN KEY (uploaded_by) REFERENCES public.users(id),
   CONSTRAINT chk_site_files_file_type CHECK (
-      file_type IN ('loi','photo','quality_audit','excellence')
+      file_type IN ('loi','photo','quality_audit','excellence','closure')
   ) NOT VALID
 );
 CREATE INDEX idx_site_files_site_id_type ON public.site_files(site_id, file_type);

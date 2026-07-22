@@ -475,6 +475,17 @@ async def svc_save_fc_budget(
         closure = await budget_service.fetch_or_create_budget(session, site=site, phase=_PHASE)
         if closure.status not in {"draft", "rejected"}:
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Closure budget is already {closure.status}.")
+        # Same wipe guards as svc_save_pe_budget (schema min_length=1 backstop).
+        if not body.items:
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No budget line items provided — refusing to overwrite the saved closure budget.",
+            )
+        if body.action == "submit" and all(i.amount is None for i in body.items):
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Enter at least one closure amount before submitting.",
+            )
         labels = {item.idx: item.label for item in body.items if item.label}
         amounts = {item.idx: item.amount for item in body.items}
         total = await budget_service.replace_budget_items(session, budget=closure, amounts=amounts, labels=labels)

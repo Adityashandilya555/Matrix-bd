@@ -86,7 +86,10 @@ class AllocatePERequest(BaseModel):
 
 
 class SavePEBudgetRequest(BaseModel):
-    items: list[PEBudgetItemIn] = Field(default_factory=list)
+    # min_length=1: an empty items array is a client-bug signature (the UI
+    # always sends all 11 rows). Accepting it wiped every saved line item via
+    # replace_budget_items' delete-then-reinsert — reject at the boundary.
+    items: list[PEBudgetItemIn] = Field(min_length=1)
     action: BudgetAction = "save"
     total_indoor_area_sqft: Optional[float] = Field(default=None, ge=0)
     total_area_sqft: Optional[float] = Field(default=None, ge=0)

@@ -110,6 +110,19 @@ export default function FinancialClosureReviewPage() {
   const [saving, setSaving] = React.useState(false);
 
   const [lines, setLines] = React.useState(() => linesFromState(null));
+  // Unsaved-edit guard (mirrors ProjectExcellenceReviewPage/ProjectReviewPage):
+  // background refreshes (window focus after the attachment file dialog closes,
+  // or a site-data event) must never re-seed the closure grid over typed values.
+  const [budgetDirty, setBudgetDirty] = React.useState(false);
+  const dirtyRef = React.useRef(false);
+  const markDirty = () => { dirtyRef.current = true; setBudgetDirty(true); };
+
+  // Re-seed the closure grid from a server payload and mark it clean.
+  const rehydrateLines = React.useCallback((data) => {
+    setLines(linesFromState(data));
+    dirtyRef.current = false;
+    setBudgetDirty(false);
+  }, []);
   const [execList, setExecList] = React.useState([]);
   const [teamError, setTeamError] = React.useState(null);
   const [allocExec, setAllocExec] = React.useState('');
@@ -138,7 +151,8 @@ export default function FinancialClosureReviewPage() {
     ]).then(([data, teamRes]) => {
       if (cancelled) return;
       setState(data);
-      setLines(linesFromState(data));
+      // Only re-seed the grid when it's clean — never clobber unsaved edits.
+      if (!dirtyRef.current) rehydrateLines(data);
       if (isSupervisor) {
         if (teamRes.ok) {
           const team = teamRes.team;
@@ -154,12 +168,16 @@ export default function FinancialClosureReviewPage() {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [siteId, isSupervisor]);
+  }, [siteId, isSupervisor, rehydrateLines]);
 
   React.useEffect(() => refresh(), [refresh]);
-  useSiteDataRefresh(refresh, { sources: ['financial_closure', 'businessAdmin'] });
+  useSiteDataRefresh(refresh, {
+    sources: ['financial_closure', 'businessAdmin'],
+    skipWhen: () => budgetDirty || saving,
+  });
 
   const handleClosureChange = (idx, value) => {
+    markDirty();
     setLines((prev) => prev.map((item) => item.idx === idx ? { ...item, closureAmount: value } : item));
   };
 
@@ -177,7 +195,7 @@ export default function FinancialClosureReviewPage() {
         })),
       });
       setState(data);
-      setLines(linesFromState(data));
+      rehydrateLines(data);
       if (action === 'submit') {
         setReviewComments('');
         showToast?.('Closure budget submitted for review.', 'success');
@@ -201,7 +219,7 @@ export default function FinancialClosureReviewPage() {
     try {
       const data = await allocateFC(siteId, targetUserId, allocNotes || undefined);
       setState(data);
-      setLines(linesFromState(data));
+      rehydrateLines(data);
       setAllocExec('');
       setAllocNotes('');
     } catch (err) {
@@ -231,7 +249,7 @@ export default function FinancialClosureReviewPage() {
     try {
       const data = await reviewFCBudget(siteId, { decision, comments: reviewComments });
       setState(data);
-      setLines(linesFromState(data));
+      rehydrateLines(data);
       setReviewComments('');
       showToast?.(decision === 'approve' ? 'Closure budget approved — sent to admin.' : 'Closure budget sent back.', decision === 'approve' ? 'success' : 'danger');
       navigate(ROUTES.PROJECT_FINANCIAL_CLOSURE);
@@ -248,7 +266,7 @@ export default function FinancialClosureReviewPage() {
     try {
       const data = await finalizeFinancialClosure(siteId, { decision, comments: reviewComments });
       setState(data);
-      setLines(linesFromState(data));
+      rehydrateLines(data);
       setReviewComments('');
       showToast?.(decision === 'approve' ? 'Financial closure complete.' : 'Closure sent back.', decision === 'approve' ? 'success' : 'danger');
       navigate(ROUTES.PROJECT_FINANCIAL_CLOSURE);
@@ -501,6 +519,7 @@ export default function FinancialClosureReviewPage() {
                   placeholder="0"
                   value={item.closureAmount}
                   onChange={(e) => handleClosureChange(item.idx, e.target.value)}
+                  onWheel={(e) => e.currentTarget.blur()}
                   style={{
                     height: 36, padding: '0 10px', borderRadius: 7, border: '1px solid var(--zm-line)',
                     background: 'var(--zm-surface)', color: 'var(--zm-fg)',
@@ -722,10 +741,24 @@ export default function FinancialClosureReviewPage() {
         )}
       </SectionCard>
 
-      {/* Attachments uploaded in Project Excellence — visible here, with the
-          option to add more (upload stays on until the closure is finalised). */}
+      {/* Attachments — the PE phase's doc shows read-only; Financial Closure
+          uploads its OWN single file (staged + corner ×, ≤5 MB), editable only
+          while the closure budget is with the worker (draft/rejected). */}
       <SectionCard title="Attachments">
-        <ExcellenceDocuments siteId={siteId} canUpload={!isClosed} showHeader={false} />
+        <ExcellenceDocuments
+          siteId={siteId}
+          kind="excellence"
+          canEdit={false}
+          title="Uploaded by Project Excellence"
+          emptyText="No attachment from Project Excellence."
+        />
+        <ExcellenceDocuments
+          siteId={siteId}
+          kind="closure"
+          canEdit={canEditBudget}
+          title="Financial Closure attachment"
+          emptyText="No closure attachment yet."
+        />
       </SectionCard>
     </div>
   );

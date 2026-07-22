@@ -1,7 +1,7 @@
 """Project Excellence router — budget tracking module that opens after project completion."""
 from __future__ import annotations
 
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 
@@ -65,6 +65,23 @@ DocMember = Annotated[
 # Attachments are images or PDFs, capped well below the global 25 MB limit.
 _EXCELLENCE_ALLOWED_MIME = {"image/png", "image/jpeg", "application/pdf"}
 _EXCELLENCE_MAX_BYTES = 5 * 1024 * 1024
+# One budget attachment per phase: 'excellence' is uploaded by Project
+# Excellence, 'closure' by Financial Closure (which also sees the PE doc
+# read-only). Authorization is per-phase and per-direction (least privilege):
+#   WRITE (upload/delete) — only the phase that owns the kind.
+#   READ  — the PE 'excellence' doc is also read-only in Financial Closure and
+#           the Project budget card; the FC 'closure' doc is private to FC.
+# A read-only Project delegate must never be able to delete, and cross-phase
+# delegates must not reach the other phase's file (see PR #440 review).
+_DOC_WRITE_MODULES: dict[str, tuple[str, ...]] = {
+    "excellence": ("project_excellence",),
+    "closure": ("financial_closure",),
+}
+_DOC_READ_MODULES: dict[str, tuple[str, ...]] = {
+    "excellence": ("project_excellence", "financial_closure", "project"),
+    "closure": ("financial_closure",),
+}
+_DocKind = Literal["excellence", "closure"]
 
 
 def _is_executive(user: dict) -> bool:
@@ -224,8 +241,10 @@ async def pe_budget_admin_queue(
     db: DbDep,
     _auth: BusinessAdmin,
     tenant_id: TenantId,
+    limit: int = Query(500, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
 ) -> PEBudgetAdminQueueResponse:
-    return await svc_pe_budget_admin_queue(db, tenant_id=tenant_id)
+    return await svc_pe_budget_admin_queue(db, tenant_id=tenant_id, limit=limit, offset=offset)
 
 
 @router.get("/budget-admin-detail/{site_id}", response_model=PEStateResponse)
@@ -355,34 +374,37 @@ async def get_pe(
 
 # ── Excellence document attachments (shared PE ↔ Financial Closure) ──────────
 
-@router.get("/{site_id}/documents", summary="List a site's project-excellence attachments")
+@router.get("/{site_id}/documents", summary="List a site's budget attachments (excellence or closure)")
 async def list_excellence_documents(
     site_id: str,
     db: DbDep,
     current_user: DocMember,
     tenant_id: TenantId,
+    kind: _DocKind = Query("excellence"),
 ) -> dict:
-    """Image attachments (file_type='excellence') for a site, newest first, with
-    freshly signed download URLs. Shown in both the PE review page and the
-    Financial Closure page."""
+    """Budget attachments of one ``kind`` for a site, newest first, with freshly
+    signed download URLs. 'excellence' shows on the PE review page, the admin
+    budget-approval card, the Project budget card, and (read-only) the Financial
+    Closure page; 'closure' is the FC phase's own attachment."""
     from app.services.site_documents_service import get_site_documents
     return await get_site_documents(
         db, site_id=site_id, tenant_id=tenant_id, current_user=current_user,
-        file_type="excellence",
+        file_type=kind, delegation_modules=_DOC_READ_MODULES[kind],
     )
 
 
-@router.post("/{site_id}/documents", summary="Upload a project-excellence attachment (PNG/JPEG/PDF, ≤5 MB)")
+@router.post("/{site_id}/documents", summary="Upload a budget attachment (PNG/JPEG/PDF, ≤5 MB, max 1 per phase)")
 async def upload_excellence_document(
     site_id: str,
     db: DbDep,
     current_user: DocMember,
     tenant_id: TenantId,
     file: UploadFile = File(...),
+    kind: _DocKind = Query("excellence"),
 ) -> dict:
-    """Attach a PNG/JPEG image or PDF (≤5 MB) to the site's excellence document
-    set. Available from the PE review page and the Financial Closure page; more
-    files can be added at any time."""
+    """Attach a PNG/JPEG image or PDF (≤5 MB) to the site's ``kind`` document
+    slot. Each phase holds at most ONE attachment (409 beyond it) — remove the
+    existing one first to replace it."""
     content_type = (file.content_type or "").lower()
     if content_type not in _EXCELLENCE_ALLOWED_MIME:
         raise HTTPException(
@@ -395,6 +417,29 @@ async def upload_excellence_document(
         db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
         filename=file.filename or "attachment.jpg",
         content_type=file.content_type, file_bytes=body_bytes,
-        file_type="excellence", path_prefix="excellence",
-        audit_action="upload_excellence_doc",
+        file_type=kind, path_prefix=kind,
+        audit_action=f"upload_{kind}_doc",
+        max_count=1, delegation_modules=_DOC_WRITE_MODULES[kind],
     )
+
+
+@router.delete("/{site_id}/documents/{file_id}", response_model=OkResponse,
+               summary="Remove a budget attachment (excellence or closure)")
+async def delete_excellence_document(
+    site_id: str,
+    file_id: str,
+    db: DbDep,
+    current_user: DocMember,
+    tenant_id: TenantId,
+) -> OkResponse:
+    """Delete one budget attachment so it can be replaced (each phase holds at
+    most one). Scoped to excellence/closure rows only — LOIs, photos, and QA
+    reports are untouchable from here."""
+    from app.services.site_documents_service import svc_delete_site_document
+    # Authorize by the file's OWN phase (write modules), not the read set — a
+    # read-only Project delegate or a cross-phase delegate must not delete.
+    await svc_delete_site_document(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id, file_id=file_id,
+        write_modules=_DOC_WRITE_MODULES,
+    )
+    return OkResponse(ok=True)

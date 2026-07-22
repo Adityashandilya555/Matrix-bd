@@ -163,6 +163,7 @@ export const mockFetchers = {
     ].map((label, i) => ({ idx: i + 1, label, amount: per }));
     return { items, budgetTotal: per * 11, totalIndoorAreaSqft: 316, totalAreaSqft: 804, covers: 30 };
   },
+  fetchBudgetDocuments: async () => { await wait(200); return []; },
 
   listSupervisors: async () => { await wait(500); return structuredClone(store.supervisors); },
   approveSupervisor: async (id) => { await wait(450); store.supervisors = store.supervisors.filter((u) => u.id !== id); return { ok: true }; },
