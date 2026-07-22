@@ -208,6 +208,31 @@ export async function getAllSites() {
   return { items: allItems, total };
 }
 
+// ── Undo: business-admin 2D/3D deliverable decisions ────────────────────────
+//
+// Only decisions the CALLING admin made and has not already undone come back
+// here, because only they may undo one. An empty list means no Undo buttons.
+
+export async function getReversibleActions(siteId) {
+  const d = await client.get(`/design/${siteId}/reversible-actions`).then((r) => r.data);
+  return {
+    items: (d.items || []).map((r) => ({
+      id: r.id,
+      auditLogId: r.audit_log_id ?? null,
+      action: r.action,
+      entityType: r.entity_type,
+      createdAt: r.created_at,
+    })),
+    total: d.total ?? 0,
+  };
+}
+
+export async function undoAdminReview(siteId, reversibleId) {
+  return client
+    .post(`/design/${siteId}/reversible-actions/${reversibleId}/undo`)
+    .then((r) => r.data);
+}
+
 export async function getSiteHistory(siteId) {
   // /audit/site/{id} already allows business_admin and returns the cross-module feed.
   const d = await client.get(`/audit/site/${siteId}`).then((r) => r.data);

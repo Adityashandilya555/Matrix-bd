@@ -1084,16 +1084,74 @@ async def svc_design_admin_queue(
     return DesignAdminQueueResponse(items=[by_site[s] for s in order], total=len(order))
 
 
+# ── Undo support: snapshot the values an admin decision overwrites ────────────
+#
+# The audit log cannot drive an inverse — design's 13 audit calls record no
+# before-state at all — so the prior values are captured here, at action time.
+# Same shape that makes archive/revive work (sites.archived_from_status).
+
+UNDO_ACTION_ADMIN_REVIEW = "design_admin_review"
+UNDO_ENTITY_DELIVERABLE = "design_deliverable"
+# Bump when the captured field set changes. svc_undo_admin_review REFUSES an
+# unrecognised version rather than restoring a subset — a partial restore is
+# worse than no restore.
+UNDO_SNAPSHOT_VERSION = 1
+
+
+def _parse_iso_or_none(value: Optional[str]) -> Optional[datetime]:
+    """Restore a timestamp the snapshot stored as an ISO string (JSONB has no
+    native timestamp). Returns None for null/unparseable rather than raising —
+    an unreadable timestamp must not block an otherwise-valid undo."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _capture_admin_review_state(
+    *, deliverable: models.DesignDeliverable, review: models.DesignReview, site: models.Site,
+) -> dict:
+    """Every field an admin approve/reject touches.
+
+    Captures actual values rather than deriving them (e.g. from _NEXT_STAGE), so
+    the snapshot stays correct if the advance logic changes underneath it — the
+    two-stage GFC change already moved what the 'gfc' branch writes once.
+    """
+    return {
+        "deliverable": {
+            "status": deliverable.status,
+            "admin_status": deliverable.admin_status,
+            "admin_reviewed_by": str(deliverable.admin_reviewed_by) if deliverable.admin_reviewed_by else None,
+            "admin_reviewed_at": deliverable.admin_reviewed_at.isoformat() if deliverable.admin_reviewed_at else None,
+            "admin_comments": deliverable.admin_comments,
+        },
+        "review": {
+            "current_stage": review.current_stage,
+            "approved_by": str(review.approved_by) if review.approved_by else None,
+        },
+        "site": {
+            "design_status": site.design_status,
+        },
+    }
+
+
 async def _admin_approve_deliverable(
     session: AsyncSession, *, tenant_id, actor, site, review, deliverable, kind, supervisors,
-) -> None:
-    """Admin approve path of svc_admin_review_deliverable (behaviour-preserving extract, #240)."""
+) -> models.AuditLog:
+    """Admin approve path of svc_admin_review_deliverable (behaviour-preserving extract, #240).
+
+    Returns the audit row so the caller can link it to the undo snapshot.
+    """
     deliverable.admin_status = "approved"
-    await write_audit_event(
+    audit = await write_audit_event(
         session, tenant_id=tenant_id, site_id=site.id,
         actor_id=actor["sub"], actor_name=actor.get("name"),
         action="design_admin_approved",
         detail=f"kind={kind} approved by business_admin",
+        # flush so the row id exists for reversible_actions.audit_log_id.
+        flush=True,
     )
     if review.current_stage == kind:
         await _advance_stage_after_approval(
@@ -1109,21 +1167,27 @@ async def _admin_approve_deliverable(
             subject=f"{deliverable_label} approved by admin: {site.name}",
             body=f"The admin approved the {deliverable_label} for '{site.name}'. {design_copy}",
         )
+    return audit
 
 
 async def _admin_reject_deliverable(
     session: AsyncSession, *, tenant_id, actor, site, deliverable, kind, supervisors,
-) -> None:
-    """Admin send-back path of svc_admin_review_deliverable (behaviour-preserving extract, #240)."""
+) -> models.AuditLog:
+    """Admin send-back path of svc_admin_review_deliverable (behaviour-preserving extract, #240).
+
+    Returns the audit row so the caller can link it to the undo snapshot.
+    """
     deliverable.status = "rejected"
     deliverable.admin_status = "pending"
     if (site.design_status or "pending") != "approved":
         site.design_status = "in_progress"
-    await write_audit_event(
+    audit = await write_audit_event(
         session, tenant_id=tenant_id, site_id=site.id,
         actor_id=actor["sub"], actor_name=actor.get("name"),
         action="design_admin_rejected",
         detail=f"kind={kind}: {deliverable.admin_comments or ''}",
+        # flush so the row id exists for reversible_actions.audit_log_id.
+        flush=True,
     )
     if supervisors:
         await notify_enqueue(
@@ -1137,6 +1201,7 @@ async def _admin_reject_deliverable(
                 f"Comments: {deliverable.admin_comments or '(none)'}"
             ),
         )
+    return audit
 
 
 async def svc_admin_review_deliverable(
@@ -1183,6 +1248,12 @@ async def svc_admin_review_deliverable(
                 ),
             )
 
+        # Capture the before-values BEFORE any mutation — this is the only
+        # record of them. Nothing downstream (audit included) preserves them.
+        before = _capture_admin_review_state(
+            deliverable=deliverable, review=review, site=site,
+        )
+
         now = datetime.now(timezone.utc)
         deliverable.admin_reviewed_by = actor["sub"]
         deliverable.admin_reviewed_at = now
@@ -1190,17 +1261,266 @@ async def svc_admin_review_deliverable(
         supervisors = await recipients_for_design_supervisors(session, tenant_id=tenant_id)
 
         if body.decision == "approve":
-            await _admin_approve_deliverable(
+            audit = await _admin_approve_deliverable(
                 session, tenant_id=tenant_id, actor=actor, site=site,
                 review=review, deliverable=deliverable, kind=kind, supervisors=supervisors,
             )
         else:
-            await _admin_reject_deliverable(
+            audit = await _admin_reject_deliverable(
                 session, tenant_id=tenant_id, actor=actor, site=site,
                 deliverable=deliverable, kind=kind, supervisors=supervisors,
             )
 
+        # Record the AFTER state too. The undo refuses unless the live values
+        # still match it — an exact "nothing downstream touched these fields"
+        # check, scoped to the fields we would overwrite. That is what this
+        # codebase has instead of optimistic locking (there is no version
+        # column, and Site.updated_at is a never-compared mtime).
+        after = _capture_admin_review_state(
+            deliverable=deliverable, review=review, site=site,
+        )
+
+        # Same transaction as the mutation: an action is either undoable with a
+        # correct snapshot, or it did not happen.
+        session.add(models.ReversibleAction(
+            tenant_id=tenant_id,
+            site_id=site.id,
+            audit_log_id=audit.id if audit is not None else None,
+            action=UNDO_ACTION_ADMIN_REVIEW,
+            entity_type=UNDO_ENTITY_DELIVERABLE,
+            entity_id=deliverable.id,
+            actor_id=actor["sub"],
+            snapshot={
+                "snapshot_version": UNDO_SNAPSHOT_VERSION,
+                "kind": kind,
+                "decision": body.decision,
+                "before": before,
+                "after": after,
+            },
+        ))
+
     return await _build_design_response(session, site)
+
+
+# ── Undo: business-admin deliverable decision ─────────────────────────────────
+
+async def _fetch_open_reversible_for_update(
+    session: AsyncSession, *, reversible_id, site_id, tenant_id,
+) -> models.ReversibleAction:
+    """Row-lock the snapshot. Tenant- AND site-scoped so a forged id from another
+    workspace is a 404, not a leak (concurrency-audit skill invariant #3)."""
+    row = (await session.execute(
+        select(models.ReversibleAction)
+        .where(
+            models.ReversibleAction.id == reversible_id,
+            models.ReversibleAction.site_id == site_id,
+            models.ReversibleAction.tenant_id == tenant_id,
+        )
+        .with_for_update()
+    )).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="That action is not undoable.",
+        )
+    return row
+
+
+def _assert_nothing_moved(*, expected: dict, live: dict) -> None:
+    """Refuse the undo unless every field we would overwrite still holds the
+    value the original action left it at.
+
+    This is what stands in for optimistic locking: there is no version column on
+    sites, and Site.updated_at is a client-side mtime that raw text() UPDATEs
+    bypass, so it cannot be used as a concurrency token. Comparing the exact
+    field set we touch is narrower than a global token but sound for this
+    action, and it catches every downstream case in one check — the 3D being
+    re-submitted, the supervisor having sent for GFC, a later admin decision.
+    """
+    for section in ("deliverable", "review", "site"):
+        for field, want in expected[section].items():
+            got = live[section][field]
+            if got != want:
+                raise HTTPException(
+                    status_code=http_status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"This site has moved on since that decision "
+                        f"({section}.{field} is now '{got}', expected '{want}'). "
+                        f"Undo is no longer safe."
+                    ),
+                )
+
+
+async def svc_undo_admin_review(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    actor: dict,
+    site_id: str | UUID,
+    reversible_id: str | UUID,
+) -> DesignReviewResponse:
+    """Undo a business-admin 2D/3D deliverable approve/reject.
+
+    Restores the values snapshotted at action time (reversible_actions). The
+    audit log is NOT the source of truth here and cannot be — the design module
+    records no before-state on any of its audit rows.
+
+    Deliberately narrow. GFC decisions are NOT undoable through this path: they
+    create the Project Excellence budget and its 11 items via
+    budget_service.fetch_or_create_budget, and there is no budget teardown
+    anywhere in the codebase. The budget check below is the hard stop that keeps
+    an admin approval from being unwound after that has happened — without it
+    the PE admin queue (which filters on budget status alone, never on
+    design_status) would still serve a budget whose design approval no longer
+    exists.
+
+    The original audit row is never deleted; the ledger shows action-then-undo.
+    """
+    if not actor_is_business_admin(actor):
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Only a business admin can undo a deliverable decision.",
+        )
+
+    async with transaction(session):
+        # Lock the SITE first, matching every other design mutation. Consistent
+        # ordering is what stops this deadlocking against a concurrent GFC
+        # decision, which takes the same lock.
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        row = await _fetch_open_reversible_for_update(
+            session, reversible_id=reversible_id, site_id=site.id, tenant_id=tenant_id,
+        )
+
+        if str(row.actor_id) != str(actor["sub"]):
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail="Only the admin who made this decision can undo it.",
+            )
+        if row.consumed_at is not None:
+            raise HTTPException(
+                status_code=http_status.HTTP_409_CONFLICT,
+                detail="That decision has already been undone.",
+            )
+        if row.action != UNDO_ACTION_ADMIN_REVIEW:
+            raise HTTPException(
+                status_code=http_status.HTTP_409_CONFLICT,
+                detail=f"'{row.action}' is not an undoable action.",
+            )
+
+        snapshot = row.snapshot or {}
+        if snapshot.get("snapshot_version") != UNDO_SNAPSHOT_VERSION:
+            # Refuse rather than restore a subset — a partial restore leaves the
+            # site in a state neither the action nor the undo intended.
+            raise HTTPException(
+                status_code=http_status.HTTP_409_CONFLICT,
+                detail=(
+                    "This decision was recorded by an older version of the app "
+                    "and can no longer be undone automatically."
+                ),
+            )
+
+        # THE HARD STOP. A GFC decision has created the PE budget + 11 items,
+        # and nothing in this codebase can delete them.
+        gfc_budget = await budget_service.fetch_budget(
+            session, site_id=site.id, phase=budget_service.GFC, tenant_id=tenant_id,
+        )
+        if gfc_budget is not None:
+            raise HTTPException(
+                status_code=http_status.HTTP_409_CONFLICT,
+                detail=(
+                    "GFC has already been decided for this site and the Project "
+                    "Excellence budget is open. Undoing the design approval now "
+                    "would leave that budget orphaned."
+                ),
+            )
+
+        review = await _fetch_review_or_404(session, site_id=site.id)
+        deliverable = (await session.execute(
+            select(models.DesignDeliverable).where(
+                models.DesignDeliverable.id == row.entity_id,
+                models.DesignDeliverable.site_id == site.id,
+            )
+        )).scalar_one_or_none()
+        if deliverable is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail="The deliverable for that decision no longer exists.",
+            )
+
+        _assert_nothing_moved(
+            expected=snapshot["after"],
+            live=_capture_admin_review_state(
+                deliverable=deliverable, review=review, site=site,
+            ),
+        )
+
+        before = snapshot["before"]
+        prior_stage = review.current_stage
+        deliverable.status = before["deliverable"]["status"]
+        deliverable.admin_status = before["deliverable"]["admin_status"]
+        deliverable.admin_reviewed_by = before["deliverable"]["admin_reviewed_by"]
+        deliverable.admin_reviewed_at = _parse_iso_or_none(before["deliverable"]["admin_reviewed_at"])
+        deliverable.admin_comments = before["deliverable"]["admin_comments"]
+        review.current_stage = before["review"]["current_stage"]
+        review.approved_by = before["review"]["approved_by"]
+        site.design_status = before["site"]["design_status"]
+
+        row.consumed_at = datetime.now(timezone.utc)
+        row.consumed_by = actor["sub"]
+
+        kind = snapshot.get("kind") or "deliverable"
+        decision = snapshot.get("decision") or "decision"
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=site.id,
+            actor_id=actor["sub"], actor_name=actor.get("name"),
+            action="design_admin_review_undone",
+            from_status=prior_stage, to_status=review.current_stage,
+            detail=f"admin {decision} of {kind} undone by the admin who made it",
+        )
+
+        # The original decision already notified the supervisors — and the
+        # reject path sent EMAIL, which is at Resend and cannot be recalled
+        # (notification_service.drain_pending_emails). A correction notice is
+        # the only way they learn the earlier message no longer holds.
+        supervisors = await recipients_for_design_supervisors(session, tenant_id=tenant_id)
+        if supervisors:
+            await notify_enqueue(
+                session, tenant_id=tenant_id, event="design_admin_review_undone",
+                recipient_ids=supervisors, site_id=site.id, channels=("in_app",),
+                payload={"site_id": str(site.id), "site_name": site.name, "kind": kind},
+                subject=f"Admin decision reversed: {site.name}",
+                body=(
+                    f"The business admin reversed their {decision} of the "
+                    f"{kind.upper()} for '{site.name}'. Please disregard the "
+                    f"earlier notification — the deliverable is awaiting admin "
+                    f"review again."
+                ),
+            )
+
+    return await _build_design_response(session, site)
+
+
+async def svc_list_reversible_actions(
+    session: AsyncSession, *, tenant_id: str | UUID, actor: dict, site_id: str | UUID,
+) -> list[models.ReversibleAction]:
+    """Open (unconsumed) undoable actions on a site, for THIS actor only.
+
+    Scoped to the caller because only the admin who made a decision may undo it
+    — returning another admin's rows would render a button that always 403s.
+    """
+    site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+    if not actor_is_business_admin(actor):
+        return []
+    return list((await session.execute(
+        select(models.ReversibleAction)
+        .where(
+            models.ReversibleAction.site_id == site.id,
+            models.ReversibleAction.tenant_id == tenant_id,
+            models.ReversibleAction.actor_id == actor["sub"],
+            models.ReversibleAction.consumed_at.is_(None),
+        )
+        .order_by(models.ReversibleAction.created_at.desc())
+    )).scalars().all())
 
 
 # ── Supervisor: send an approved 3D for GFC sign-off ──────────────────────────

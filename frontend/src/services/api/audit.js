@@ -42,6 +42,7 @@ const ACTION_TO_TAG = {
   design_deliverable_rejected: 'edit',
   design_admin_approved: 'approve',
   design_admin_rejected: 'edit',
+  design_admin_review_undone: 'edit',
   design_gfc_approved: 'approve',
   design_gfc_rejected: 'edit',
   project_allocated: 'submit',
@@ -139,6 +140,7 @@ export function labelForEntry(e) {
     case 'design_deliverable_rejected': return e.detail ? `rejected design deliverable (${e.detail})` : 'rejected design deliverable';
     case 'design_admin_approved':     return 'admin approved design deliverable';
     case 'design_admin_rejected':     return e.detail ? `admin rejected design deliverable (${e.detail})` : 'admin rejected design deliverable';
+    case 'design_admin_review_undone': return 'admin undid their design decision';
     case 'design_gfc_approved':       return 'approved GFC';
     case 'design_gfc_rejected':       return e.detail ? `rejected GFC (${e.detail})` : 'rejected GFC';
     case 'project_allocated':         return 'allocated project work';

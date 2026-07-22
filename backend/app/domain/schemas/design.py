@@ -206,3 +206,22 @@ class DesignHistoryItem(BaseModel):
 class DesignHistoryResponse(BaseModel):
     items: list[DesignHistoryItem]
     total: int
+
+
+class ReversibleActionItem(BaseModel):
+    """One still-undoable action, keyed to the audit entry the UI renders.
+
+    `audit_log_id` is what the client matches against its audit feed to decide
+    which entry gets an Undo button — deliberately kept out of the shared
+    AuditEvent schema, which several read paths consume.
+    """
+    id: str
+    audit_log_id: Optional[str] = None
+    action: str
+    entity_type: str
+    created_at: datetime
+
+
+class ReversibleActionListResponse(BaseModel):
+    items: list[ReversibleActionItem]
+    total: int

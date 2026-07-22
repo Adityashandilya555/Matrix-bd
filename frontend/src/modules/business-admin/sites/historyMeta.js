@@ -57,6 +57,7 @@ const LABELS = {
   design_deliverable_awaiting_admin: 'deliverable awaiting admin approval',
   design_admin_approved: 'admin approved a 2D/3D deliverable',
   design_admin_rejected: 'admin sent back a 2D/3D deliverable',
+  design_admin_review_undone: 'admin undid their 2D/3D decision',
   design_boq_approved: 'approved the BOQ',
   design_gfc_approved: 'granted Good-For-Construction',
   design_gfc_rejected: 'sent back the GFC package',
