@@ -16,8 +16,14 @@ class LOIUploadResponse(BaseModel):
     days_to_loi: Optional[int] = None
 
 
+class SendBackLOIRequest(BaseModel):
+    comments: str
+
+
 class LOIViewResponse(BaseModel):
     site_id: str
-    file_url: Optional[str] = None  # TODO(storage): real signed URL
+    # Short-lived (300s) Supabase signed URL. Null ONLY when no LOI has been
+    # uploaded yet — a stored file whose URL cannot be signed raises 503.
+    file_url: Optional[str] = None
     uploaded_at: Optional[date] = None
     uploaded_by: Optional[str] = None
