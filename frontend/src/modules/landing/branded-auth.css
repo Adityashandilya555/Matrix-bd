@@ -1,7 +1,8 @@
 /* ── Branded auth: workspace-code dialog + customized login page ───────────────
-   Self-contained styles. The decorative Lottie panels degrade to a static
-   gradient (.wsc-anim-fallback / .bl-aside-fallback) so the form is never
-   visually broken if the animation fails to load. */
+   Self-contained styles. The workspace-code dialog's decorative Lottie panel
+   degrades to a static gradient (.wsc-anim-fallback) so the form is never
+   visually broken if the animation fails to load. The login page's aside is a
+   pure-CSS decorative panel (aurora blobs + dot grid + brand tokens). */
 
 :root {
   --ba-bg:        #0e1014;
@@ -150,31 +151,71 @@
 .bl-card--narrow { text-align: center; }
 .bl-card--narrow .bl-btn { width: 100%; }
 
-/* Split layout: decorative Lottie aside (left) + form (right). */
+/* Split layout: decorative brand aside (left) + form (right). */
 .bl-card--split { width: min(860px, 100%); padding: 0; display: flex; overflow: hidden; }
 .bl-aside {
-  position: relative; flex: 0 0 42%; min-width: 0;
-  display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden;
-  /* Static fallback look — always visible behind/instead of the animation. */
+  position: relative; flex: 0 0 44%; min-width: 0; min-height: 470px;
+  display: flex; flex-direction: column; overflow: hidden;
   background:
-    radial-gradient(120% 90% at 20% 10%, rgba(52, 211, 153, 0.20), transparent 60%),
-    radial-gradient(120% 120% at 90% 100%, rgba(56, 89, 233, 0.28), transparent 55%),
+    radial-gradient(120% 80% at 15% 0%, rgba(52, 211, 153, 0.16), transparent 55%),
+    radial-gradient(120% 120% at 92% 100%, rgba(56, 89, 233, 0.26), transparent 55%),
     linear-gradient(160deg, #161a2b 0%, #0d0f17 100%);
 }
-.bl-aside-anim, .bl-aside-fallback { position: absolute; inset: 0; }
-.bl-aside-anim svg { display: block; }
-.bl-aside-copy {
-  position: relative; z-index: 2; padding: 26px 26px 28px;
-  background: linear-gradient(to top, rgba(8, 10, 16, 0.82) 16%, transparent);
+
+/* Ambient decoration — slow-drifting aurora blobs + a masked dot grid. */
+.bl-aurora { position: absolute; border-radius: 50%; filter: blur(38px); opacity: 0.5; z-index: 1; animation: bl-drift 14s ease-in-out infinite; }
+.bl-aurora--1 { width: 200px; height: 200px; top: -30px; left: -40px; background: rgba(52, 211, 153, 0.55); }
+.bl-aurora--2 { width: 230px; height: 230px; top: 120px; right: -70px; background: rgba(56, 89, 233, 0.50); animation-delay: -4s; }
+.bl-aurora--3 { width: 160px; height: 160px; bottom: 120px; left: 20px; background: rgba(16, 185, 129, 0.40); animation-delay: -8s; }
+.bl-dotgrid {
+  position: absolute; inset: 0; z-index: 2; opacity: 0.45;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.10) 1px, transparent 1px);
+  background-size: 16px 16px;
+  -webkit-mask-image: radial-gradient(80% 70% at 50% 40%, #000, transparent 75%);
+  mask-image: radial-gradient(80% 70% at 50% 40%, #000, transparent 75%);
 }
-.bl-aside-brand { font-size: 11px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ba-accent); }
-.bl-aside-copy h2 { margin: 8px 0 6px; font-size: 21px; font-weight: 700; letter-spacing: -0.01em; color: #fff; }
-.bl-aside-copy p { margin: 0; font-size: 13px; line-height: 1.5; color: rgba(255, 255, 255, 0.72); max-width: 30ch; }
-.bl-main { flex: 1; min-width: 0; padding: 34px 32px 30px; box-sizing: border-box; }
+@keyframes bl-drift { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(14px, -18px) scale(1.08); } }
+@media (prefers-reduced-motion: reduce) { .bl-aurora { animation: none; } }
+
+.bl-aside-top { position: relative; z-index: 3; padding: 30px 26px 0; }
+.bl-aside-brand { font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ba-accent); }
+.bl-aside-top h2 { margin: 12px 0 10px; font-size: 25px; line-height: 1.12; font-weight: 760; letter-spacing: -0.02em; color: #fff; }
+.bl-aside-top p { margin: 0; font-size: 13px; line-height: 1.55; color: rgba(255, 255, 255, 0.68); max-width: 30ch; }
+
+.bl-aside-bottom {
+  position: relative; z-index: 3; margin-top: auto; padding: 0 26px 26px;
+  background: linear-gradient(to top, rgba(8, 10, 16, 0.92) 48%, transparent);
+}
+.bl-aside-tagline { margin: 18px 0 0; font-size: 12.5px; color: rgba(255, 255, 255, 0.62); }
+.bl-aside-tagline b { color: #fff; font-weight: 650; }
+
+/* "Powering operations for" — brand tokens with captions. */
+.bl-trust-label { display: block; margin-bottom: 15px; font-size: 10px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255, 255, 255, 0.60); }
+.bl-trust-logos { display: flex; justify-content: flex-start; gap: 16px; }
+.bl-trust-item { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; }
+.bl-trust-name { font-size: 11px; font-weight: 600; color: rgba(255, 255, 255, 0.82); white-space: nowrap; }
+.bl-trust-token {
+  width: 58px; height: 58px; display: flex; align-items: center; justify-content: center;
+  padding: 6px; border-radius: 50%; background: #fff; overflow: hidden; box-sizing: border-box;
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.85), 0 0 0 4px rgba(52, 211, 153, 0.28),
+    0 10px 24px -8px rgba(0, 0, 0, 0.85), 0 0 26px -6px rgba(52, 211, 153, 0.40);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.bl-trust-token img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.bl-trust-item:hover .bl-trust-token {
+  transform: translateY(-4px);
+  box-shadow: 0 0 0 1.5px #fff, 0 0 0 5px rgba(52, 211, 153, 0.45),
+    0 14px 30px -8px rgba(0, 0, 0, 0.90), 0 0 36px -4px rgba(52, 211, 153, 0.65);
+}
+
+.bl-main { flex: 1; min-width: 0; padding: 34px 32px 30px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; }
 
 @media (max-width: 720px) {
   .bl-card--split { flex-direction: column; }
-  .bl-aside { flex: 0 0 180px; min-height: 180px; }
+  .bl-aside { flex: 0 0 auto; min-height: 0; }
+  .bl-aside-top { padding: 24px 22px 0; }
+  .bl-aside-top h2 { font-size: 22px; }
+  .bl-aside-bottom { padding: 14px 22px 22px; }
   .bl-main { padding: 28px 26px 30px; }
 }
 .bl-head { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
