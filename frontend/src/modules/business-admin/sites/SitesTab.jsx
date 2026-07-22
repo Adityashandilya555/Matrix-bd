@@ -1,6 +1,7 @@
 import React from 'react';
 import { T, Icon, Card, Drawer, Skeleton, EmptyState, ErrorState, Avatar, TABULAR } from '../ui/kit.jsx';
 import { MODULE_META, moduleForAction, labelForEntry, dotColor } from './historyMeta.js';
+import { humanizeAuditDetail } from '../../../services/api/audit.js';
 import { getAdminSiteDocuments } from '../../../services/api/businessAdminApi.js';
 import { reviveSite } from '../../../services/api/adapters/httpAdapter.js';
 import { usePageContext } from '../../../App.jsx';
@@ -53,6 +54,7 @@ const NODES = [
 
 // Theme-safe alpha over the zm-* custom properties (works in both portal themes).
 const cm = (color, pct) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
+const cmSolid = (color, pct) => `color-mix(in srgb, ${color} ${pct}%, var(--zm-bg, #fff))`;
 
 const NODE_TONES = {
   done:     { color: T.success,   bg: T.successSoft, borderPct: 55 },
@@ -65,6 +67,42 @@ const LOI_DONE = new Set(['loi_uploaded', 'legal_review', 'legal_approved', 'pus
 const REJECTED = new Set(['legal_rejected', 'rejected', 'archived']);
 const pick = (v, done, active, reject) =>
   (reject.includes(v) ? 'rejected' : done.includes(v) ? 'done' : active.includes(v) ? 'active' : 'pending');
+
+// ── Site lifecycle classification (single source of truth) ──────────────────
+// Exported so the TeamDashboard "Completed sites" KPI tile counts sites with the
+// EXACT same rule the "Completed" tab filters by — otherwise the tile and the
+// tab report different numbers for the same set.
+export function isSiteRejected(s) {
+  if (REJECTED.has(s.status)) return true;
+  if (s.status === 'legal_rejected' || s.legalDdStatus === 'negative') return true;
+  if (s.designStatus === 'rejected') return true;
+  return false;
+}
+
+export function isSiteCompleted(s) {
+  return s.isLaunched || s.launchStatus === 'launched' || s.status === 'launched';
+}
+
+export function isSiteLaunching(s) {
+  return s.nsoStatus === 'complete' && !isSiteCompleted(s) && !isSiteRejected(s);
+}
+
+export function isSiteActive(s) {
+  return !isSiteRejected(s) && !isSiteCompleted(s) && !isSiteLaunching(s);
+}
+
+// Bucket a list of sites into the four tab counts. Rejected wins over completed
+// wins over launching (first match in this order), mirroring the tab filters.
+export function classifyCounts(sites) {
+  const c = { active: 0, launching: 0, completed: 0, rejected: 0 };
+  for (const s of sites) {
+    if (isSiteRejected(s)) c.rejected++;
+    else if (isSiteCompleted(s)) c.completed++;
+    else if (isSiteLaunching(s)) c.launching++;
+    else c.active++;
+  }
+  return c;
+}
 
 function toneFor(site, key) {
   switch (key) {
@@ -93,7 +131,10 @@ function toneFor(site, key) {
 }
 
 function PipelineNode({ site, node }) {
-  const tone = toneFor(site, node.key);
+  let tone = toneFor(site, node.key);
+  if (isSiteRejected(site)) {
+    tone = 'rejected';
+  }
   const c = NODE_TONES[tone];
   const NodeIcon = Icon[node.icon] || Icon.doc;
   const statusLabel =
@@ -145,7 +186,7 @@ function Pipeline({ site }) {
           <React.Fragment key={n.key}>
             {i > 0 && (
               <span aria-hidden="true" style={{ flex: '0 0 18px', height: 2, borderRadius: 999,
-                background: prevDone ? T.success : T.line, opacity: prevDone ? 0.6 : 1 }} />
+                background: prevDone ? T.success : (isSiteRejected(site) ? cm(T.danger, 25) : T.line), opacity: prevDone ? 0.6 : 1 }} />
             )}
             <PipelineNode site={site} node={n} />
           </React.Fragment>
@@ -318,6 +359,7 @@ function HistoryDrawer({ site, fetchHistory, onClose }) {
                   {g.items.map((e) => {
                     const m = moduleForAction(e.action);
                     const mColor = MODULE_META[m].color;
+                    const detailNote = humanizeAuditDetail(e.detail);
                     return (
                       <div key={e.id} style={{ position: 'relative', display: 'flex', gap: 14, padding: '9px 0' }}>
                         <span style={{ width: 12, height: 12, borderRadius: 999, marginLeft: 5, marginTop: 3, flexShrink: 0,
@@ -334,10 +376,10 @@ function HistoryDrawer({ site, fetchHistory, onClose }) {
                             {e.actor && <><Avatar name={e.actor} size={17} /><span>{e.actor}</span><span aria-hidden="true">·</span></>}
                             <span style={{ ...TABULAR }}>{fmtTime(e.createdAt)}</span>
                           </div>
-                          {e.detail && !e.detail.startsWith('kind=') && (
+                          {detailNote && (
                             <div style={{ marginTop: 6, padding: '7px 10px', borderLeft: `2px solid ${cm(mColor, 45)}`,
                               borderRadius: '4px 10px 10px 4px', background: T.surfaceInset, fontSize: 12,
-                              lineHeight: 1.45, color: T.textMuted, wordBreak: 'break-word' }}>{e.detail}</div>
+                              lineHeight: 1.45, color: T.textMuted, wordBreak: 'break-word' }}>{detailNote}</div>
                           )}
                         </div>
                       </div>
@@ -353,46 +395,23 @@ function HistoryDrawer({ site, fetchHistory, onClose }) {
   );
 }
 
-export default function SitesTab({ data, fetchHistory, onRetry }) {
-  const [filter, setFilter] = React.useState('active'); // 'active' | 'launching' | 'completed' | 'rejected'
+export default function SitesTab({ data, fetchHistory, onRetry, filter: filterProp, onFilterChange }) {
+  // Filter is controllable by the parent (so the "Completed sites" KPI tile can
+  // deep-link to the Completed tab) but falls back to internal state when used
+  // standalone. 'active' | 'launching' | 'completed' | 'rejected'.
+  const [filterState, setFilterState] = React.useState('active');
+  const filter = filterProp ?? filterState;
+  const setFilter = onFilterChange ?? setFilterState;
   const [query, setQuery] = React.useState('');
   const [openSite, setOpenSite] = React.useState(null);
-  
+
   const [reviving, setReviving] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
   const { showToast } = usePageContext() || {};
 
   const sites = data.items || [];
 
-  const isSiteRejected = React.useCallback((s) => {
-    if (REJECTED.has(s.status)) return true;
-    if (s.status === 'legal_rejected' || s.legalDdStatus === 'negative') return true;
-    if (s.designStatus === 'rejected') return true;
-    return false;
-  }, []);
-
-  const isSiteCompleted = React.useCallback((s) => {
-    return s.isLaunched || s.launchStatus === 'launched' || s.status === 'launched';
-  }, []);
-
-  const isSiteLaunching = React.useCallback((s) => {
-    return s.nsoStatus === 'complete' && !isSiteCompleted(s) && !isSiteRejected(s);
-  }, [isSiteCompleted, isSiteRejected]);
-
-  const isSiteActive = React.useCallback((s) => {
-    return !isSiteRejected(s) && !isSiteCompleted(s) && !isSiteLaunching(s);
-  }, [isSiteRejected, isSiteCompleted, isSiteLaunching]);
-
-  const counts = React.useMemo(() => {
-    let active = 0; let launching = 0; let completed = 0; let rejected = 0;
-    for (const s of sites) {
-      if (isSiteRejected(s)) rejected++;
-      else if (isSiteCompleted(s)) completed++;
-      else if (isSiteLaunching(s)) launching++;
-      else active++;
-    }
-    return { active, launching, completed, rejected };
-  }, [sites, isSiteRejected, isSiteCompleted, isSiteLaunching]);
+  const counts = React.useMemo(() => classifyCounts(sites), [sites]);
 
   const visible = React.useMemo(() => {
     let filtered = sites.filter((s) => {
@@ -406,7 +425,7 @@ export default function SitesTab({ data, fetchHistory, onRetry }) {
       filtered = filtered.filter((s) => `${s.siteCode} ${s.siteName} ${s.city}`.toLowerCase().includes(q));
     }
     return filtered;
-  }, [sites, filter, query, isSiteRejected, isSiteCompleted, isSiteLaunching, isSiteActive]);
+  }, [sites, filter, query]);
 
   const onReviveConfirm = async (site, note) => {
     setBusy(true);
@@ -474,10 +493,15 @@ export default function SitesTab({ data, fetchHistory, onRetry }) {
               <Card key={s.siteId} interactive raised className="ac-pipeline-row" role="button" tabIndex={0}
                 onClick={() => setOpenSite(s)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenSite(s); } }}
-                style={{ padding: 0, overflow: 'hidden', cursor: 'pointer' }}>
+                style={{ 
+                  padding: 0, 
+                  overflow: 'hidden', 
+                  cursor: 'pointer',
+                  ...(isSiteRejected(s) ? { background: cmSolid(T.danger, 10), border: `1px solid ${cm(T.danger, 30)}` } : {})
+                }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px 2px', flexWrap: 'wrap' }}>
                   <span style={{ fontFamily: T.mono, fontSize: 10.5, letterSpacing: '0.06em', color: T.textMuted,
-                    padding: '2px 7px', borderRadius: 5, border: `1px solid ${T.line}`, background: T.chip }}>
+                    padding: '2px 7px', borderRadius: 5, border: `1px solid ${isSiteRejected(s) ? cm(T.danger, 25) : T.line}`, background: isSiteRejected(s) ? cmSolid(T.danger, 8) : T.chip }}>
                     {s.siteCode || '—'}
                   </span>
                   <strong style={{ fontSize: 15, fontWeight: 750, color: T.text, letterSpacing: '-0.01em' }}>{s.siteName}</strong>
@@ -486,15 +510,15 @@ export default function SitesTab({ data, fetchHistory, onRetry }) {
                   </span>
                   <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                     {filter === 'rejected' && (
-                      <button onClick={(e) => { e.stopPropagation(); setReviving(s); }} className="zm-btn-primary"
-                        style={{ height: 28, padding: '0 10px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)',
+                      <button onClick={(e) => { e.stopPropagation(); setReviving(s); }} className="zm-btn-danger"
+                        style={{ height: 28, padding: '0 10px', border: 'none', borderRadius: 7, background: T.danger,
                           color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
                           display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                         <Icon.refresh size={12}/> Revive
                       </button>
                     )}
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 11px',
-                      borderRadius: 999, border: `1px solid ${T.line}`, background: T.chip,
+                      borderRadius: 999, border: `1px solid ${isSiteRejected(s) ? cm(T.danger, 25) : T.line}`, background: isSiteRejected(s) ? cmSolid(T.danger, 8) : T.chip,
                       fontSize: 11.5, fontWeight: 650, color: T.textMuted }}>
                       <Icon.clock size={13} /> History <Icon.caret size={13} />
                     </span>

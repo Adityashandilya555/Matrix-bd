@@ -158,7 +158,7 @@ async def _build_review_response(
     submitted_by_name = await fetch_user_name(session, site.submitted_by)
     return LegalReviewResponse(
         site_id=str(site.id),
-        site_code=site.code or "",
+        site_code=site.ca_code or site.code or "",
         site_name=site.name,
         city=site.city,
         submitted_by_name=submitted_by_name,
@@ -356,7 +356,7 @@ async def svc_legal_queue(
         submitted_by_name = names.get(site.submitted_by, "")
         items.append(LegalQueueItem(
             site_id=str(site.id),
-            site_code=site.code or "",
+            site_code=site.ca_code or site.code or "",
             site_name=site.name,
             city=site.city,
             legal_dd_status=site.legal_dd_status or "pending",
@@ -417,6 +417,50 @@ async def svc_legal_rejected_sites(
     return LegalRejectedSitesResponse(items=items, total=len(items))
 
 
+def _legal_history_status_clause(status_filter: str):
+    """Extra WHERE clause for a legal-history status filter (None = all rows)."""
+    if status_filter == "active":
+        return or_(
+            models.Site.status == SiteStatus.LEGAL_REVIEW.value,
+            models.Site.legal_dd_status == "in_review",
+        )
+    if status_filter == "approved":
+        return or_(
+            models.Site.status.in_([
+                SiteStatus.LEGAL_APPROVED.value,
+                SiteStatus.PUSHED_TO_PAYMENTS.value,
+            ]),
+            models.Site.legal_dd_status == "positive",
+            models.Site.licensing_status == "complete",
+        )
+    if status_filter == "rejected":
+        return or_(
+            models.Site.status == SiteStatus.LEGAL_REJECTED.value,
+            models.Site.legal_dd_status == "negative",
+        )
+    return None
+
+
+def _legal_history_item(site, dd, submitted_by_name) -> LegalHistoryItem:
+    """One history row; the Finance-minted CA code supersedes the placeholder."""
+    return LegalHistoryItem(
+        site_id=str(site.id),
+        site_code=site.ca_code or site.code or "",
+        site_name=site.name,
+        city=site.city,
+        submitted_by_name=submitted_by_name,
+        site_status=site.status,
+        legal_dd_status=site.legal_dd_status or "pending",
+        agreement_status=site.agreement_status or "pending",
+        licensing_status=site.licensing_status or "pending",
+        rejection_reason=dd.rejection_reason if dd else site.rejection_reason,
+        legal_review_at=site.legal_review_at,
+        legal_approved_at=site.legal_approved_at,
+        legal_rejected_at=site.legal_rejected_at,
+        updated_at=site.updated_at,
+    )
+
+
 async def svc_legal_history(
     session: AsyncSession,
     *,
@@ -458,31 +502,9 @@ async def svc_legal_history(
         )
     )
 
-    if status_filter == "active":
-        stmt = stmt.where(
-            or_(
-                models.Site.status == SiteStatus.LEGAL_REVIEW.value,
-                models.Site.legal_dd_status == "in_review",
-            )
-        )
-    elif status_filter == "approved":
-        stmt = stmt.where(
-            or_(
-                models.Site.status.in_([
-                    SiteStatus.LEGAL_APPROVED.value,
-                    SiteStatus.PUSHED_TO_PAYMENTS.value,
-                ]),
-                models.Site.legal_dd_status == "positive",
-                models.Site.licensing_status == "complete",
-            )
-        )
-    elif status_filter == "rejected":
-        stmt = stmt.where(
-            or_(
-                models.Site.status == SiteStatus.LEGAL_REJECTED.value,
-                models.Site.legal_dd_status == "negative",
-            )
-        )
+    status_clause = _legal_history_status_clause(status_filter)
+    if status_clause is not None:
+        stmt = stmt.where(status_clause)
 
     if restrict_to_site_ids is not None:
         stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
@@ -499,26 +521,10 @@ async def svc_legal_history(
     # Batch DD checklists + submitter names (2 queries total) instead of 2 per site.
     dd_by_site = await _batch_dd_by_site(session, [s.id for s in sites])
     names = await fetch_user_names(session, [s.submitted_by for s in sites])
-    items: list[LegalHistoryItem] = []
-    for site in sites:
-        dd = dd_by_site.get(site.id)
-        submitted_by_name = names.get(site.submitted_by)
-        items.append(LegalHistoryItem(
-            site_id=str(site.id),
-            site_code=site.code or "",
-            site_name=site.name,
-            city=site.city,
-            submitted_by_name=submitted_by_name,
-            site_status=site.status,
-            legal_dd_status=site.legal_dd_status or "pending",
-            agreement_status=site.agreement_status or "pending",
-            licensing_status=site.licensing_status or "pending",
-            rejection_reason=dd.rejection_reason if dd else site.rejection_reason,
-            legal_review_at=site.legal_review_at,
-            legal_approved_at=site.legal_approved_at,
-            legal_rejected_at=site.legal_rejected_at,
-            updated_at=site.updated_at,
-        ))
+    items = [
+        _legal_history_item(site, dd_by_site.get(site.id), names.get(site.submitted_by))
+        for site in sites
+    ]
     return LegalHistoryResponse(items=items, total=total)
 
 

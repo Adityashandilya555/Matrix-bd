@@ -343,7 +343,7 @@ function ArchiveTable({ rows, onOpen }) {
           const hasReasons = (a.reasons || []).length > 0;
           return (
             <div key={a.id} role="button" tabIndex={0} onClick={() => onOpen?.(a)} onKeyDown={keyActivate(() => onOpen?.(a))} className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1.1fr 0.9fr 1.5fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', cursor: 'pointer', position: 'relative', alignItems: 'flex-start' }}>
-              <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)', paddingTop: 2 }}>{a.code}</span>
+              <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)', paddingTop: 2 }}>{a.caCode || a.code}</span>
               <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{a.name}</span>
               <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{a.city}</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Avatar name={a.createdBy} size={20}/><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{a.createdBy}</span></span>
@@ -458,9 +458,9 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
   // Rows for the "all files in motion" table (default view) — includes pushed
   // sites so nothing disappears from the default listing.
   const allMotion = React.useMemo(() => [
-    ...visibleDrafts.map(d => ({ id: d.id, code: d.code, name: d.name, city: d.city, stage: 'draft', days: d.days, owner: d.createdBy, when: d.visitDate, meta: 'Visit ' + d.visitDate })),
-    ...visibleShortlist.map(s => ({ id: s.code, code: s.code, name: s.name, city: s.city, stage: s.inReview ? 'inReview' : 'shortlist', days: 3, owner: s.createdBy, when: s.visitDate, meta: s.inReview ? 'In review' : 'Awaiting details' })),
-    ...visibleStaging.map(s => { const overdue = s.daysSinceApproval > s.expectedLoiDays && !s.loiUploaded; return { id: s.id, code: s.code, name: s.name, city: s.city, stage: s.pushed ? 'completed' : s.loiUploaded ? 'uploaded' : (overdue ? 'overdue' : 'staging'), days: s.daysSinceApproval, owner: s.createdBy, when: s.draftDate || s.approvedDate, meta: `LOI ${s.daysSinceApproval}/${s.expectedLoiDays}d` }; }),
+    ...visibleDrafts.map(d => ({ id: d.id, code: d.caCode || d.code, name: d.name, city: d.city, stage: 'draft', days: d.days, owner: d.createdBy, when: d.visitDate, meta: 'Visit ' + d.visitDate })),
+    ...visibleShortlist.map(s => ({ id: s.code, code: s.caCode || s.code, name: s.name, city: s.city, stage: s.inReview ? 'inReview' : 'shortlist', days: 3, owner: s.createdBy, when: s.visitDate, meta: s.inReview ? 'In review' : 'Awaiting details' })),
+    ...visibleStaging.map(s => { const overdue = s.daysSinceApproval > s.expectedLoiDays && !s.loiUploaded; return { id: s.id, code: s.caCode || s.code, name: s.name, city: s.city, stage: s.pushed ? 'completed' : s.loiUploaded ? 'uploaded' : (overdue ? 'overdue' : 'staging'), days: s.daysSinceApproval, owner: s.createdBy, when: s.draftDate || s.approvedDate, meta: `LOI ${s.daysSinceApproval}/${s.expectedLoiDays}d` }; }),
   ], [visibleDrafts, visibleShortlist, visibleStaging]);
 
   const filteredMotion = React.useMemo(() => {
@@ -489,7 +489,7 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
     return archive
       .filter(a => archStatus === 'all' ? true : archStatus === 'archived' ? a.status === SiteStatus.ARCHIVED : REJECTED_STATUSES.includes(a.status))
       .filter(a => matchesAdvanced(a.archivedAt, archAdvanced))
-      .filter(a => matchesSearch(archNeedle, a.code || '', a.name || '', a.city || '', a.createdBy || ''));
+      .filter(a => matchesSearch(archNeedle, a.caCode || '', a.code || '', a.name || '', a.city || '', a.createdBy || ''));
   }, [archive, archStatus, archAdvanced, archSearch]);
 
   // Row click → owning tab, focused on that exact site (?focus= handled by

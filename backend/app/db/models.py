@@ -392,7 +392,7 @@ class SiteDelegation(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     __table_args__ = (
-        CheckConstraint("module IN ('bd','legal','design','project','nso','project_excellence','financial_closure')", name="chk_site_delegations_module"),  # 'payment' retired (202606132); 'project_excellence' (202606134) + 'financial_closure' (202606147)
+        CheckConstraint("module IN ('bd','legal','design','project','nso','project_excellence','financial_closure','quality_audit')", name="chk_site_delegations_module"),  # 'payment' retired (202606132); 'project_excellence' (202606134) + 'financial_closure' (202606147) + 'quality_audit' (20260805)
         # Mirrors of the partial indexes created by migration 202605271 — the
         # DB is the source of truth; these keep the model an accurate index
         # inventory for anyone auditing coverage from here (#381).
@@ -743,6 +743,10 @@ class ProjectReview(Base):
     # consumes sites where nso_status='pushed'.
     nso_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     pushed_to_nso_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # Last time a Project user opened the quality-audit reports from NSO Handover.
+    # The View button is "unread" (yellow) whenever a report's pushed_at is newer
+    # than this — so pushing the 'after' report re-flags it as unread. (QA reports)
+    qa_reports_viewed_by_project_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -777,6 +781,40 @@ class ProjectReview(Base):
         Index("idx_project_reviews_tenant_status", "tenant_id", "project_status"),
     )
 
+
+class QualityAuditReport(Base):
+    """One row per (site, kind) — the quality-audit report PDFs uploaded by
+    Project Excellence and consumed by the Project module's NSO Handover tab.
+
+      kind: 'before' (primary) | 'after' (secondary)
+
+    Each report is uploaded (file_key/file_name/uploaded_at) and then pushed
+    (pushed_at) independently. Pushing 'before' completes the project; pushing
+    'after' re-flags the reports as unread for Project (see
+    project_reviews.qa_reports_viewed_by_project_at). Push-to-NSO is gated on
+    both kinds being present + pushed.
+    """
+    __tablename__ = "quality_audit_reports"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    file_key: Mapped[str] = mapped_column(Text, nullable=False)
+    file_name: Mapped[Optional[str]] = mapped_column(Text)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    uploaded_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    pushed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint("site_id", "kind", name="uq_qa_report_site_kind"),
+        CheckConstraint("kind IN ('before','after')", name="chk_qa_report_kind"),
+        Index("idx_qa_reports_site", "site_id"),
+    )
 
 
 # ── Shared site budget (gfc + closure phases) ─────────────────────────────────

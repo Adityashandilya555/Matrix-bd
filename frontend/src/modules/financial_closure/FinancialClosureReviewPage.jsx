@@ -2,6 +2,7 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
+import ExcellenceDocuments from '../shared/documents/ExcellenceDocuments.jsx';
 import { useSession } from '../../state/SessionContext.jsx';
 import { usePageContext } from '../../App.jsx';
 import { listMyTeam } from '../../services/api/adapters/httpAdapter.js';
@@ -115,9 +116,12 @@ export default function FinancialClosureReviewPage() {
   const [allocNotes, setAllocNotes] = React.useState('');
   const [reviewComments, setReviewComments] = React.useState('');
 
-  const refresh = React.useCallback(() => {
+  const refresh = React.useCallback((silent = false) => {
     let cancelled = false;
-    setLoading(true);
+    // silent: a background refresh (window-focus after a file dialog closes,
+    // or a site-data event) must NOT flip to the full-page loading spinner —
+    // that unmounts the whole page, including an in-progress attachment upload.
+    if (!silent) setLoading(true);
     setError(null);
     setTeamError(null);
     Promise.all([
@@ -716,6 +720,12 @@ export default function FinancialClosureReviewPage() {
             Financial closure complete. This site is closed.
           </div>
         )}
+      </SectionCard>
+
+      {/* Attachments uploaded in Project Excellence — visible here, with the
+          option to add more (upload stays on until the closure is finalised). */}
+      <SectionCard title="Attachments">
+        <ExcellenceDocuments siteId={siteId} canUpload={!isClosed} showHeader={false} />
       </SectionCard>
     </div>
   );

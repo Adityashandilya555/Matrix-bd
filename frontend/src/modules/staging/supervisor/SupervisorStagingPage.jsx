@@ -71,12 +71,12 @@ function TimelineTracker({ site }) {
   );
 }
 
-function SupervisorRow({ site, onPush, onViewLOI, onOpen, onViewStatus }) {
+function SupervisorRow({ site, onPush, onViewLOI, onOpen, onViewStatus, pushing }) {
   const pushed = site.pushed;
   const uploaded = site.loiUploaded;
   return (
     <div className="zm-row" data-site-id={site.id} style={{ display: 'grid', gridTemplateColumns: '70px minmax(130px, 0.9fr) 70px 124px minmax(170px, 1.3fr) 170px', alignItems: 'center', gap: 10, padding: '14px 12px', borderBottom: '1px solid var(--zm-line-faint)', background: pushed ? 'rgba(4,120,87,0.04)' : 'transparent', opacity: pushed ? 0.85 : 1 }}>
-      <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{site.code}</span>
+      <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{site.caCode || site.code}</span>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 600, color: 'var(--zm-fg)' }}>{site.name}</span><span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 10.5, color: 'var(--zm-fg-3)' }}>by {site.createdBy}</span></div>
       <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{site.city}</span>
       <div><StatusPill stage={pushed ? site.stage : uploaded ? 'uploaded' : 'staging'}/></div>
@@ -87,7 +87,7 @@ function SupervisorRow({ site, onPush, onViewLOI, onOpen, onViewStatus }) {
         {pushed
           ? (<button onClick={() => onViewStatus(site)} className="zm-btn-primary" style={{ flex: '1 1 auto', minWidth: 100, height: 32, padding: '0 12px', border: 'none', borderRadius: 7, background: 'var(--zm-fg)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}>View <Icon name="arrow" size={12}/></button>)
           : uploaded
-            ? (<button onClick={() => onPush(site)} className="zm-btn-primary" style={{ flex: '1 1 auto', minWidth: 100, height: 32, padding: '0 12px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1, boxShadow: 'var(--zm-shadow-1)' }}>Push <Icon name="arrow" size={12}/></button>)
+            ? (<button onClick={() => onPush(site)} disabled={pushing} aria-busy={pushing} className="zm-btn-primary" style={{ flex: '1 1 auto', minWidth: 100, height: 32, padding: '0 12px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: pushing ? 'wait' : 'pointer', opacity: pushing ? 0.65 : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1, boxShadow: 'var(--zm-shadow-1)' }}>{pushing ? 'Pushing…' : <>Push <Icon name="arrow" size={12}/></>}</button>)
             : (<button disabled className="zm-btn" style={{ flex: '1 1 auto', minWidth: 100, height: 32, padding: '0 12px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface-2)', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 700, cursor: 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1 }}>Awaiting LOI</button>)
         }
       </div>
@@ -129,12 +129,26 @@ export default function SupervisorStagingPage({ onOpenSite: onOpenSiteProp, show
     subState === 'awaiting_approval' ? (s.loiUploaded && !s.pushed) : true,
   );
 
+  // Rows that are mid-push, so each one's button shows a busy state and can't
+  // be clicked again (a double-click would fire pushSite twice → duplicate
+  // transition attempts). The ref guards the same-tick double-fire that a
+  // disabled attribute alone can't (state hasn't re-rendered between two fast
+  // clicks); the state Set drives the per-row busy rendering.
+  const [pushingIds, setPushingIds] = React.useState(() => new Set());
+  const pushingRef = React.useRef(new Set());
+
   const onPush = async (site) => {
+    if (pushingRef.current.has(site.id)) return;
+    pushingRef.current.add(site.id);
+    setPushingIds((prev) => new Set(prev).add(site.id));
     try {
       await pushSite(site);
       showToast?.(`Sent · ${site.name} moved to Legal review.`);
     } catch (err) {
       showToast?.(`Send failed: ${err?.detail || err?.message || 'Unknown error'}`, 'danger');
+    } finally {
+      pushingRef.current.delete(site.id);
+      setPushingIds((prev) => { const next = new Set(prev); next.delete(site.id); return next; });
     }
   };
   const onViewLOI = (site) => { showToast?.(`Opening LOI · ${site.name} (mock).`); };
@@ -161,7 +175,7 @@ export default function SupervisorStagingPage({ onOpenSite: onOpenSiteProp, show
               <span>Code</span><span>Site</span><span>City</span><span>Status</span><span>Draft → LOI timeline</span>
               <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}><span aria-hidden="true" style={{ width: 32, flex: '0 0 32px' }}/><span aria-hidden="true" style={{ width: 32, flex: '0 0 32px' }}/><span style={{ flex: '1 1 auto', minWidth: 100, textAlign: 'center' }}>Action</span></div>
             </div>
-            {filtered.map(s => <SupervisorRow key={s.id} site={s} onPush={onPush} onViewLOI={onViewLOI} onOpen={onOpenSite || (() => {})} onViewStatus={onViewStatus}/>)}
+            {filtered.map(s => <SupervisorRow key={s.id} site={s} onPush={onPush} onViewLOI={onViewLOI} onOpen={onOpenSite || (() => {})} onViewStatus={onViewStatus} pushing={pushingIds.has(s.id)}/>)}
           </div>
           {filtered.length === 0 && (<div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>No sites are in process yet.</div>)}
         </div>

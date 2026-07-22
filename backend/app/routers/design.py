@@ -55,6 +55,7 @@ from app.services.design_service import (
     svc_get_design_review,
     svc_gfc_decision,
     svc_list_design_delegations_for_site,
+    svc_request_gfc_approval,
     svc_review_deliverable,
     svc_revoke_design_delegation,
     svc_submit_deliverable,
@@ -308,6 +309,23 @@ async def review_deliverable(
 ) -> DesignReviewResponse:
     return await svc_review_deliverable(
         db, tenant_id=tenant_id, actor=current_user, site_id=site_id, kind=kind, body=body,
+    )
+
+
+@router.post(
+    "/{site_id}/gfc-request",
+    response_model=DesignReviewResponse,
+    summary="Supervisor: send an approved 3D design for business-admin GFC sign-off",
+)
+async def request_gfc_approval(
+    site_id: str,
+    db: DbDep,
+    current_user: DesignSupervisor,
+    _module: InDesignModule,
+    tenant_id: TenantId,
+) -> DesignReviewResponse:
+    return await svc_request_gfc_approval(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
     )
 
 

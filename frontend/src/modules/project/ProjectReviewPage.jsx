@@ -9,9 +9,11 @@ import {
   allocateProject,
   finalizeInitialization,
   getProject,
+  listProjectDelegations,
   proposeInitialization,
   respondInitialization,
   reviewProjectMilestone,
+  revokeProjectAllocation,
   setMidProjectVisit,
   submitProjectMilestone,
   submitQualityAuditInspectionDate,
@@ -169,6 +171,8 @@ export default function ProjectReviewPage() {
   const [state, setState] = React.useState({ status: 'loading', review: null, error: null });
   const [team, setTeam] = React.useState([]);
   const [delegateId, setDelegateId] = React.useState('');
+  const [allocation, setAllocation] = React.useState(null);
+  const [actionError, setActionError] = React.useState(null);
   const [budget, setBudget] = React.useState(DEFAULT_BUDGET);
   const [areaInputs, setAreaInputs] = React.useState({
     total_indoor_area_sqft: '',
@@ -210,14 +214,21 @@ export default function ProjectReviewPage() {
     skipWhen: () => budgetDirty || busy,
   });
 
+  // Supervisor: load the team + the active allocation. Keyed on projectStatus so
+  // the allocation re-syncs whenever the status flips (allocate/revoke), mirroring
+  // DesignReviewPage — the source of truth for the allocated/revoke UI.
+  const projectStatus = state.review?.projectStatus;
   React.useEffect(() => {
     if (!isSupervisor) return;
     let cancelled = false;
     listMyTeam('project')
       .then((rows) => { if (!cancelled) setTeam(rows || []); })
       .catch(() => { if (!cancelled) setTeam([]); });
+    listProjectDelegations(siteId)
+      .then((d) => { if (!cancelled) setAllocation(d.items?.[0] || null); })
+      .catch(() => { if (!cancelled) setAllocation(null); });
     return () => { cancelled = true; };
-  }, [isSupervisor]);
+  }, [isSupervisor, siteId, projectStatus]);
 
   const mutate = async (fn) => {
     setBusy(true);
@@ -230,6 +241,43 @@ export default function ProjectReviewPage() {
       showToast?.('Update saved.', 'success');
     } catch (err) {
       setState((prev) => ({ ...prev, error: err?.detail || err?.message || 'Action failed' }));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onRevoke = async () => {
+    if (!allocation) return;
+    setActionError(null);
+    setBusy(true);
+    try {
+      await revokeProjectAllocation(siteId, allocation.delegateUserId);
+      setAllocation(null);
+      await load();
+      showToast?.('Allocation revoked.', 'success');
+    } catch (err) {
+      setActionError(err?.detail || err?.message || 'Revoke failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onAllocate = async () => {
+    const targetUserId = delegateId === '__self__' ? myUserId : delegateId;
+    if (!targetUserId) { setActionError('Could not resolve the executive — refresh and try again.'); return; }
+    setActionError(null);
+    setBusy(true);
+    try {
+      const next = await allocateProject(siteId, targetUserId);
+      rehydrateReview(next);
+      setDelegateId('');
+      // Refetch the live delegation so the "Allocated · X / Revoke" badge appears
+      // immediately, instead of the dropdown lingering (mirrors DesignReviewPage).
+      const d = await listProjectDelegations(siteId).catch(() => ({ items: [] }));
+      setAllocation(d.items?.[0] || null);
+      showToast?.('Allocation saved.', 'success');
+    } catch (err) {
+      setActionError(err?.detail || err?.message || 'Allocation failed');
     } finally {
       setBusy(false);
     }
@@ -301,31 +349,50 @@ export default function ProjectReviewPage() {
                 </div>
               </div>
               {isSupervisor && (
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <select
-                    value={delegateId}
-                    onChange={(e) => setDelegateId(e.target.value)}
-                    style={{
-                      minWidth: 260,
-                      height: 38,
-                      border: '1px solid var(--zm-line)',
-                      borderRadius: 8,
-                      padding: '0 10px',
-                      background: 'var(--zm-surface)',
-                      color: 'var(--zm-fg)',
-                      fontFamily: 'var(--zm-font-body)',
-                      colorScheme: dark ? 'dark' : 'light',
-                    }}
-                  >
-                    <option value="">Choose project executive...</option>
-                    <option value="__self__">Delegate to self (me)</option>
-                    {team.map((member) => (
-                      <option key={member.id} value={member.id}>{member.name || member.email}</option>
-                    ))}
-                  </select>
-                  <ActionButton disabled={!delegateId || busy || (delegateId === '__self__' && !myUserId)} onClick={() => mutate(() => allocateProject(siteId, delegateId === '__self__' ? myUserId : delegateId))}>
-                    Allocate
-                  </ActionButton>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {actionError && <div style={{ fontSize: 12, color: 'var(--zm-danger)' }}>{actionError}</div>}
+                  {allocation ? (
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', height: 22, padding: '0 10px',
+                        borderRadius: 4, border: '1px solid var(--zm-accent)', color: 'var(--zm-accent)',
+                        fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 10,
+                        letterSpacing: '0.12em', textTransform: 'uppercase',
+                      }}>Allocated · {allocation.delegateName || allocation.delegateEmail}</span>
+                      <button type="button" disabled={busy} onClick={onRevoke} style={{
+                        height: 32, padding: '0 14px', border: 'none', borderRadius: 7,
+                        background: 'var(--zm-danger)', color: '#fff', fontFamily: 'var(--zm-font-body)',
+                        fontSize: 12, fontWeight: 800, cursor: 'pointer', opacity: busy ? 0.6 : 1,
+                      }}>Revoke</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <select
+                        value={delegateId}
+                        onChange={(e) => setDelegateId(e.target.value)}
+                        style={{
+                          minWidth: 260,
+                          height: 38,
+                          border: '1px solid var(--zm-line)',
+                          borderRadius: 8,
+                          padding: '0 10px',
+                          background: 'var(--zm-surface)',
+                          color: 'var(--zm-fg)',
+                          fontFamily: 'var(--zm-font-body)',
+                          colorScheme: dark ? 'dark' : 'light',
+                        }}
+                      >
+                        <option value="">Choose project executive...</option>
+                        <option value="__self__">Delegate to self (me)</option>
+                        {team.map((member) => (
+                          <option key={member.id} value={member.id}>{member.name || member.email}</option>
+                        ))}
+                      </select>
+                      <ActionButton disabled={!delegateId || busy || (delegateId === '__self__' && !myUserId)} onClick={onAllocate}>
+                        Allocate
+                      </ActionButton>
+                    </div>
+                  )}
                 </div>
               )}
             </FieldCard>
@@ -726,7 +793,7 @@ function ExecutionSection({ review, siteId, isSupervisor, dark, busy, mutate }) 
           ) : qaStatus === 'supervisor_approved' ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <span style={muted}>Inspection date: {fmtDate(review.inspectionDate)}</span>
-              <span style={{ color: 'var(--zm-copper)', fontSize: 12.5 }}>Approved by supervisor — awaiting business-admin confirmation.</span>
+              <span style={{ color: 'var(--zm-copper)', fontSize: 12.5 }}>Pushed to project excellence supervisor for quality audit.</span>
             </div>
           ) : qaStatus === 'submitted' ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

@@ -38,7 +38,9 @@ export function RequireRole({ roles, children }) {
 // When a business_admin is simulating a role+module via the admin override, we
 // use the effectiveModule (the simulated module) instead of the raw JWT module
 // so that switching to e.g. Legal doesn't bounce the admin back to /business-admin.
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true;
+// Force mock mode off in production builds — a stray VITE_USE_MOCK must never
+// leak the mock session / auth bypass into a deploy. (Mock removal planned.)
+const USE_MOCK = (import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true) && !import.meta.env.PROD;
 
 function homeForSession(effectiveRole, effectiveModule) {
   // When a business_admin is actively simulating, effectiveRole will be

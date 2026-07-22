@@ -11,7 +11,9 @@ import { createApiClient } from './axiosClient.js';
 import { adapter } from './adapters/index.js';
 import { notifySiteDataChanged } from './siteEvents.js';
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true;
+// Force mock mode off in production builds — a stray VITE_USE_MOCK must never
+// leak the mock session / auth bypass into a deploy. (Mock removal planned.)
+const USE_MOCK = (import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true) && !import.meta.env.PROD;
 
 const client = createApiClient();
 

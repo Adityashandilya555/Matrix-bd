@@ -106,7 +106,7 @@ export default function LaunchPage() {
   const filtered = rows.filter((site) => {
     if (needle) {
       const owner = site.createdBy?.name || site.createdBy || '';
-      const hay = `${site.code || ''} ${site.name || ''} ${site.city || ''} ${owner}`.toLowerCase();
+      const hay = `${site.caCode || ''} ${site.code || ''} ${site.name || ''} ${site.city || ''} ${owner}`.toLowerCase();
       if (!hay.includes(needle)) return false;
     }
     return inRange(site.updatedAt, range.from, range.to);
@@ -207,7 +207,7 @@ export default function LaunchPage() {
                 return (
                   <div key={site.id} data-site-id={site.id} className="zm-row" role="button" tabIndex={0} onClick={() => onOpenSite?.(site)} onKeyDown={keyActivate(() => onOpenSite?.(site))}
                     style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1.1fr 1.2fr 1.2fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', cursor: 'pointer', position: 'relative', alignItems: 'center' }}>
-                    <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{site.code}</span>
+                    <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{site.caCode || site.code}</span>
                     <div>
                       <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{site.name}</span>
                       {site.isLaunched && (
@@ -250,7 +250,7 @@ export default function LaunchPage() {
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.5fr 0.9fr 1.4fr auto', gap: 12, padding: '9px 16px', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
-              <span>Code</span><span>Site</span><span>City</span><span>Verdicts</span><span>Action</span>
+              <span>Code</span><span>Site</span><span>City</span><span>Verdicts</span><span style={{ textAlign: 'right', paddingRight: 16 }}>Action</span>
             </div>
           </div>
           <div style={{ flex: 1, overflowY: 'auto' }}>

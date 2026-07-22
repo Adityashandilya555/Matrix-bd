@@ -16,17 +16,19 @@ async def get_site_documents(
     tenant_id: str | UUID,
     current_user: dict,
     limit: int = 100,
+    file_type: str | None = None,
 ) -> dict[str, Any]:
-    """Retrieve all files/documents attached to a site, signing their storage URLs concurrently."""
+    """Retrieve files/documents attached to a site, signing their storage URLs concurrently.
+
+    Pass ``file_type`` (e.g. ``'excellence'``) to return only that category.
+    """
     site = await fetch_site_or_404(db, site_id=site_id, tenant_id=tenant_id)
     assert_executive_owns_site(current_user, site)
-    
-    stmt = (
-        select(models.SiteFile)
-        .where(models.SiteFile.site_id == site.id)
-        .order_by(desc(models.SiteFile.uploaded_at))
-        .limit(limit)
-    )
+
+    stmt = select(models.SiteFile).where(models.SiteFile.site_id == site.id)
+    if file_type is not None:
+        stmt = stmt.where(models.SiteFile.file_type == file_type)
+    stmt = stmt.order_by(desc(models.SiteFile.uploaded_at)).limit(limit)
     rows = (await db.execute(stmt)).scalars().all()
 
     _sem = asyncio.Semaphore(8)

@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Matrix — Dynamic Flow Transformation Plan</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+<style>
+  :root{
+    --ink:#1a1d23; --muted:#5b6472; --line:#e3e6ea; --bg:#ffffff; --panel:#f7f8fa;
+    --accent:#0f4c81; --accent2:#b7472a; --good:#1c7a4d; --warn:#a86412; --code:#eef1f4;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Georgia,'Times New Roman',serif;color:var(--ink);background:var(--bg);line-height:1.65;font-size:16px}
+  .wrap{max-width:980px;margin:0 auto;padding:48px 32px 96px}
+  header{border-bottom:3px double var(--ink);padding-bottom:24px;margin-bottom:40px}
+  h1{font-size:34px;margin:0 0 8px;line-height:1.2}
+  .subtitle{font-style:italic;color:var(--muted);font-size:18px;margin:0}
+  .meta{font-family:'Helvetica Neue',Arial,sans-serif;font-size:12px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-top:16px}
+  h2{font-size:24px;margin:56px 0 16px;padding-top:24px;border-top:1px solid var(--line)}
+  h2 .num{color:var(--accent);font-family:'Helvetica Neue',Arial,sans-serif;font-size:14px;letter-spacing:.1em;display:block;margin-bottom:4px}
+  h3{font-size:18px;margin:32px 0 12px}
+  p{margin:0 0 14px}
+  code{font-family:'SF Mono',Menlo,Consolas,monospace;font-size:13px;background:var(--code);padding:1px 5px;border-radius:3px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:20px 24px;margin:20px 0}
+  .panel.callout{border-left:4px solid var(--accent)}
+  .panel.risk{border-left:4px solid var(--accent2)}
+  .panel h4{margin:0 0 8px;font-family:'Helvetica Neue',Arial,sans-serif;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+  .panel.risk h4{color:var(--accent2)}
+  table{width:100%;border-collapse:collapse;margin:20px 0;font-size:14.5px}
+  th{font-family:'Helvetica Neue',Arial,sans-serif;font-size:12px;letter-spacing:.06em;text-transform:uppercase;text-align:left;color:var(--muted);border-bottom:2px solid var(--ink);padding:8px 12px 8px 0}
+  td{border-bottom:1px solid var(--line);padding:10px 12px 10px 0;vertical-align:top}
+  .mermaid{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px;margin:24px 0;display:flex;justify-content:center}
+  .figcap{font-family:'Helvetica Neue',Arial,sans-serif;font-size:12.5px;color:var(--muted);text-align:center;margin:-12px 0 28px;font-style:italic}
+  .src{font-family:'SF Mono',Menlo,Consolas,monospace;font-size:12px;color:var(--good)}
+  .tag{display:inline-block;font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;letter-spacing:.05em;padding:2px 8px;border-radius:10px;border:1px solid var(--line);color:var(--muted);margin-right:6px}
+  .tag.keep{border-color:var(--good);color:var(--good)}
+  .tag.change{border-color:var(--accent2);color:var(--accent2)}
+  .tag.new{border-color:var(--accent);color:var(--accent)}
+  ol.steps>li{margin-bottom:10px}
+  .toc{font-family:'Helvetica Neue',Arial,sans-serif;font-size:14px;columns:2;gap:32px}
+  .toc a{color:var(--accent);text-decoration:none}
+  .toc li{margin-bottom:6px}
+  footer{margin-top:64px;padding-top:24px;border-top:1px solid var(--line);font-size:13px;color:var(--muted);font-style:italic}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Matrix: From One Pipeline to a Designable Flow Platform</h1>
+  <p class="subtitle">Architecture &amp; transition plan — dynamic inter-module flows, fixed intra-module approval, extensible fields, and a data-ingestion framework</p>
+  <div class="meta">Internal engineering document · Grounded in backend/app · July 2026 · For discussion</div>
+</header>
+
+<nav class="panel">
+  <h4>Contents</h4>
+  <ol class="toc">
+    <li><a href="#s1">The design decision in one sentence</a></li>
+    <li><a href="#s2">Current state — what the code actually does</a></li>
+    <li><a href="#s3">The module contract (what never changes)</a></li>
+    <li><a href="#s4">The module graph (what becomes designable)</a></li>
+    <li><a href="#s5">Dynamic fields — extending modules like a web</a></li>
+    <li><a href="#s6">The ingestion framework</a></li>
+    <li><a href="#s7">Technology choices that make this easier</a></li>
+    <li><a href="#s8">Phased plan with timeline</a></li>
+    <li><a href="#s9">How production survives the transition</a></li>
+    <li><a href="#s10">Open questions to discuss</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="s1"><span class="num">Section 1</span>The design decision in one sentence</h2>
+
+<p><strong>Modules become black boxes with a fixed internal approval template; the connections <em>between</em> modules become a versioned, editable graph stored as data.</strong></p>
+
+<p>This matches exactly what you asked for: the supervisor ↔ executive dance inside a module (submit → supervisor review → admin confirm) stays as it is — it is already consistent across the codebase and it works. What becomes dynamic is the <em>orchestration</em>: which module unlocks after which, in what combination (sequential, parallel, any-of), under what conditions. Today that orchestration is hardcoded Python; tomorrow it is rows in a table that an admin can edit through a visual designer. Fields can be added to a module's forms the same way — as registered schema, not as migrations.</p>
+
+<div class="mermaid">
+flowchart LR
+  subgraph TODAY["TODAY — orchestration frozen in code"]
+    direction LR
+    A1[BD] --> B1[Legal] --> C1[Finance] --> D1[Design] --> E1[Project] --> F1[NSO] --> G1[Launch] --> H1[Closure]
+  end
+</div>
+<div class="mermaid">
+flowchart LR
+  subgraph TARGET["TARGET — same modules, graph is data (example custom flow)"]
+    direction LR
+    A2[BD] --> B2[Legal]
+    A2 --> C2[Finance]
+    B2 -- "all-of join" --> D2[Design]
+    C2 -- "all-of join" --> D2
+    D2 --> E2[Project]
+    D2 --> PE[Proj. Excellence]
+    E2 --> F2[NSO]
+    PE -.->|budget gate| F2
+    F2 --> G2[Launch]
+    G2 --> H2[Closure]
+    G2 --> SP[Store Performance*]
+  end
+  style SP stroke-dasharray: 5 5
+</div>
+<p class="figcap">Fig. 1 — Same eight modules. Top: the only flow that can exist today. Bottom: one of many flows an admin could design — parallel Legal/Finance, a budget gate, and a future module (*) attached without code.</p>
+
+<!-- ============================================================ -->
+<h2 id="s2"><span class="num">Section 2</span>Current state — what the code actually does</h2>
+
+<p>The inter-module order is currently encoded in <strong>four different mechanisms that must agree by hand</strong>. This is the single root cause of "changing the approval order means a deploy":</p>
+
+<table>
+  <tr><th style="width:30%">Mechanism</th><th>Where it lives</th><th style="width:34%">What it hardcodes</th></tr>
+  <tr>
+    <td>The BD status chain</td>
+    <td><span class="src">backend/app/domain/state_machine.py</span> — the <code>ALLOWED_TRANSITIONS</code> dict; hand-mirrored in <span class="src">frontend/src/lib/stateMachine.js</span></td>
+    <td>The linear BD lifecycle: draft → shortlist → details → approved → LOI → legal_review → …</td>
+  </tr>
+  <tr>
+    <td>Unlock helper functions</td>
+    <td><span class="src">backend/app/services/workflow_unlocks.py</span> — e.g. <code>design_unlock_ready()</code> requires <code>legal_dd_status='positive'</code> AND <code>finance_status='approved'</code></td>
+    <td>The Legal ∥ Finance parallel join before Design — the one non-linear part of today's flow, expressed as a Python <code>if</code></td>
+  </tr>
+  <tr>
+    <td>Per-service gate assertions</td>
+    <td><span class="src">design_service.py → _assert_design_unlocked</span> · <span class="src">project_service.py</span> gate on <code>design_status</code> · <span class="src">financial_closure_service.py → _assert_launched</span></td>
+    <td>Each downstream module re-checks its upstream conditions independently, with its own error strings</td>
+  </tr>
+  <tr>
+    <td>Mirror columns on <code>sites</code></td>
+    <td><span class="src">backend/app/db/models.py</span> — <code>legal_dd_status</code>, <code>finance_status</code>, <code>design_status</code>, <code>project_status</code>, <code>project_excellence_status</code>, <code>financial_closure_status</code>, <code>is_launched</code></td>
+    <td>The signalling channel between modules: upstream writes a mirror, downstream reads it</td>
+  </tr>
+</table>
+
+<div class="mermaid">
+flowchart TB
+  subgraph SOURCES["Four places the flow order lives today"]
+    SM["state_machine.py<br/>ALLOWED_TRANSITIONS dict"]
+    FE["frontend/src/lib/stateMachine.js<br/>hand-copied mirror"]
+    WU["workflow_unlocks.py<br/>Python gate conditions"]
+    GS["per-service asserts<br/>design / project / closure / launch"]
+  end
+  SM -.->|must agree| FE
+  SM -.->|must agree| WU
+  WU -.->|must agree| GS
+  SOURCES ==> DEPLOY["Any reorder = code change<br/>in 2–4 files + deploy + regression risk"]
+  style DEPLOY fill:#fdf0ec,stroke:#b7472a
+</div>
+<p class="figcap">Fig. 2 — The duplication problem. Nothing is wrong with any single mechanism; the problem is that the same fact is stated four times.</p>
+
+<div class="panel callout">
+  <h4>What is already right (and must be preserved)</h4>
+  <p style="margin-bottom:6px">The codebase has strong platform genes, and the plan builds on them rather than replacing them:</p>
+  <p style="margin:0">• Every status change passes one gate (<code>assert_transition</code>) and one lock helper (<code>fetch_site_for_update_or_404</code> in <span class="src">_common.py</span>, using <code>SELECT … FOR UPDATE</code>).<br>
+  • Every mutation writes <code>audit_logs</code> + <code>stage_events</code> and enqueues <code>notification_outbox</code> effects.<br>
+  • The mirror-column pattern is a good design — it is the <em>signalling bus</em> between modules. It stays; only the <em>rules that read it</em> move from code to data.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="s3"><span class="num">Section 3</span>The module contract — what never changes</h2>
+
+<p>Reading across the services, every module already follows the same internal template. This is not an accident — it is your product's approval doctrine, and the code proves it is stable:</p>
+
+<table>
+  <tr><th>Module evidence</th><th>Internal pattern found in code</th></tr>
+  <tr><td>Sites approval <span class="src">(models.py:171)</span></td><td><code>pending → awaiting_supervisor → awaiting_admin → approved</code></td></tr>
+  <tr><td>Design deliverables <span class="src">(models.py:638–676)</span></td><td>Executive uploads → supervisor reviews (<code>status</code> + <code>supervisor_comments</code>, reject → re-upload loop) → admin confirms (<code>admin_status</code>)</td></tr>
+  <tr><td>Quality audit <span class="src">(models.py:719–759)</span></td><td><code>submitted → supervisor_approved → approved</code> (executive → supervisor → business_admin)</td></tr>
+  <tr><td>Budgets <span class="src">(models.py:800)</span></td><td><code>draft → pending_supervisor → pending_admin → approved / rejected</code></td></tr>
+  <tr><td>Launch validation loop <span class="src">(launch_service.py:1–23)</span></td><td><code>pending_admin_review → under_exec_review → under_supervisor_review → pending_admin_final → ready_to_launch → launched</code></td></tr>
+</table>
+
+<div class="mermaid">
+flowchart LR
+  subgraph MOD["THE MODULE CONTRACT — fixed template inside every black box"]
+    direction LR
+    IN((entry<br/>gate)) --> EX["EXECUTIVE<br/>capture / upload / submit"]
+    EX --> SUP{"SUPERVISOR<br/>review"}
+    SUP -->|reject + comments| EX
+    SUP -->|approve| ADM{"BUSINESS ADMIN<br/>confirm (2nd level)"}
+    ADM -->|reject| SUP
+    ADM -->|approve| OUT((exit:<br/>write mirror<br/>status))
+  end
+  OUT --> BUS[("sites mirror columns<br/>= signalling bus")]
+</div>
+<p class="figcap">Fig. 3 — The two-level approval template. Every module implements this today; it stays in code, per module, exactly as-is. Only the <em>entry gate</em> and the <em>exit signal</em> become platform concerns.</p>
+
+<p>The consequence for the architecture: <strong>a module needs to expose only three things to the platform</strong> — (1) an entry gate it asks the platform to evaluate, (2) an exit signal it writes to the bus (its mirror column), and (3) a declared set of forms/fields. Its internals — routers, services, screens, the reject/re-upload loops — remain private code. This is why the transformation is safe: we are wrapping modules, not rewriting them.</p>
+
+<!-- ============================================================ -->
+<h2 id="s4"><span class="num">Section 4</span>The module graph — what becomes designable</h2>
+
+<p>Everything that <span class="src">workflow_unlocks.py</span> and the per-service asserts do today becomes three small tables and one evaluator:</p>
+
+<table>
+  <tr><th style="width:26%">New table (schema <code>flow</code>)</th><th>Purpose</th><th style="width:36%">Replaces</th></tr>
+  <tr><td><code>flow_definitions</code></td><td>A named, versioned flow per tenant (or shared): status <code>draft / published / retired</code></td><td>The implicit single flow</td></tr>
+  <tr><td><code>flow_nodes</code></td><td>One row per module in a flow: module key, entry-gate condition (JSON), join semantics (<code>all-of / any-of</code>)</td><td><code>_assert_design_unlocked</code>, <code>_assert_launched</code>, project/NSO gates</td></tr>
+  <tr><td><code>flow_edges</code></td><td>Directed dependency: upstream module + the mirror value that satisfies it (e.g. <code>legal.legal_dd_status = 'positive'</code>)</td><td><code>design_unlock_ready()</code> and friends in <span class="src">workflow_unlocks.py</span></td></tr>
+</table>
+
+<p>Gate conditions are stored as <strong>JsonLogic</strong> expressions — e.g. <code>{"and":[{"==":[{"var":"legal_dd_status"},"positive"]},{"==":[{"var":"finance_status"},"approved"]}]}</code> — evaluated against the site's mirror columns by a ~50-line evaluator. Complex or data-driven gates (later, e.g. "footfall above threshold") register a named Python predicate the expression can reference, so the escape hatch is explicit, not a workaround.</p>
+
+<div class="mermaid">
+flowchart TB
+  ADMIN["Business admin<br/>FLOW DESIGNER UI<br/>(React Flow canvas)"] -->|"publish v3"| DEF[("flow_definitions<br/>flow_nodes / flow_edges<br/>(versioned rows)")]
+  DEF --> ENG["GATE EVALUATOR<br/>JsonLogic over mirror columns<br/>(one function, replaces 4 mechanisms)"]
+  SITE[("site<br/>stamped: flow_id + version")] --> ENG
+  ENG -->|"Design: OPEN<br/>Project: LOCKED (needs design_status=approved)"| QUEUES["Module queues & screens<br/>render from evaluation result"]
+  MODA["Module internals<br/>(exec ↔ supervisor ↔ admin)<br/>UNCHANGED CODE"] -->|"exit: write mirror"| SITE
+  ENG -->|"entry gate check"| MODA
+</div>
+<p class="figcap">Fig. 4 — The runtime loop. Modules keep writing mirrors exactly as today; the evaluator reads flow rows instead of hardcoded Python; every site carries the flow version it started on.</p>
+
+<div class="panel callout">
+  <h4>Why versioning is non-negotiable</h4>
+  <p style="margin:0">A site in Legal review must not break when the admin publishes flow v3. Each site is stamped with <code>flow_definition_id</code> at creation and finishes on that version. Publishing creates a new version; in-flight sites are untouched. This is the same expand-migrate-contract discipline your 44 migrations already follow, applied to workflow definitions.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="s5"><span class="num">Section 5</span>Dynamic fields — extending modules "like a web"</h2>
+
+<p>Your second ask: add fields (or small sub-flows) to modules without vertical-slice development. The mechanism mirrors the flow mechanism — <strong>schema as data</strong>:</p>
+
+<ol class="steps">
+  <li><strong>A field registry</strong> (<code>flow.field_definitions</code>): module key, field name, JSON Schema fragment (type, validation, enum options), display hints, and which internal stage it appears at (executive capture vs supervisor review).</li>
+  <li><strong>One JSONB extension column</strong> per module head-table (e.g. <code>site_details.extra</code>, <code>design_reviews.extra</code>). Registered fields live there — <em>no migration per field</em>. Fields that later prove core get promoted to real columns in a normal migration.</li>
+  <li><strong>Validation stays server-side:</strong> Pydantic validates the <code>extra</code> payload against the registered JSON Schema at the router boundary — same rigor as typed columns.</li>
+  <li><strong>Forms render themselves:</strong> the frontend renders registered fields with <code>react-jsonschema-form</code> inside the existing module screens. Your form components in <span class="src">frontend/src/modules/shared</span> become the RJSF widget theme, so dynamic fields look native.</li>
+</ol>
+
+<div class="mermaid">
+flowchart LR
+  REG[("field_definitions<br/>module + JSON Schema<br/>+ stage placement")] --> API["GET /meta/modules/:key/schema"]
+  API --> RJSF["RJSF renderer<br/>(themed with existing<br/>shared primitives)"]
+  RJSF --> FORM["Module screen shows<br/>new field natively"]
+  FORM -->|submit| VAL["Pydantic validates<br/>against same schema"]
+  VAL --> JB[("head-table<br/>.extra JSONB")]
+  JB -.->|"field promoted when proven"| MIG["normal migration<br/>→ real column"]
+</div>
+<p class="figcap">Fig. 5 — One schema definition drives the form, the validation, and the storage. Adding a field = inserting a row.</p>
+
+<!-- ============================================================ -->
+<h2 id="s6"><span class="num">Section 6</span>The ingestion framework</h2>
+
+<p>Data currently enters Matrix only through forms. The ingestion plane gives external data a governed front door, using the pattern your codebase already trusts — the transactional outbox in <span class="src">notification_service.py</span> (status, attempts, drain loop) — generalized into a job-driven worker:</p>
+
+<div class="mermaid">
+flowchart LR
+  subgraph EXT["External sources"]
+    CSV["Broker CSVs"]
+    API2["REST APIs<br/>footfall / market data"]
+    POS["POS / partners<br/>webhook push"]
+    PG["External Postgres"]
+  end
+  subgraph PLANE["Ingestion plane (schema: catalog)"]
+    SRC[("sources<br/>type + config + schedule")]
+    WORK["WORKER PROCESS<br/>(2nd Railway service,<br/>polls jobs table)"]
+    RAW[("raw.* tables<br/>+ _ingested_at / _sync_id")]
+    SYNC[("syncs<br/>watermark + status + attempts")]
+    HLTH["freshness &amp; health checks"]
+  end
+  subgraph USE["Consumption"]
+    TR["Transforms<br/>(SQL / Python)"]
+    STG[("staging.*")]
+    GATE["Flow gates can reference<br/>ingested metrics"]
+    ENRICH["Site enrichment /<br/>new entities"]
+  end
+  CSV --> SRC
+  API2 --> SRC
+  POS --> SRC
+  PG --> SRC
+  SRC --> WORK --> RAW
+  WORK --> SYNC
+  RAW --> TR --> STG --> ENRICH
+  STG --> GATE
+  RAW -.-> HLTH
+</div>
+<p class="figcap">Fig. 6 — Four connector shapes cover the realistic retail-expansion sources. Everything lands raw, watermarked, and cataloged before any transform touches it.</p>
+
+<p>The payoff for the flow platform: once ingested metrics exist in <code>staging.*</code>, a gate condition in the flow designer can reference them — "NSO opens only if projected sales ≥ X", "auto-flag approval if footfall &lt; threshold". The two halves of this document compose.</p>
+
+<!-- ============================================================ -->
+<h2 id="s7"><span class="num">Section 7</span>Technology choices that make this easier</h2>
+
+<table>
+  <tr><th style="width:22%">Technology</th><th style="width:20%">Used for</th><th>Why it fits this codebase</th></tr>
+  <tr><td><strong>JsonLogic</strong><br><span class="tag new">new</span> <code>panzi-json-logic</code> (py)</td><td>Gate conditions as data</td><td>Tiny, deterministic, no eval() risk; expressions are JSON so the flow designer can build them visually and the backend evaluates them in one function. Replaces <span class="src">workflow_unlocks.py</span> logic 1:1.</td></tr>
+  <tr><td><strong>JSON Schema + Pydantic</strong><br><span class="tag keep">already in stack</span></td><td>Dynamic field definitions</td><td>Pydantic (already your validation layer) validates JSONB payloads against registered schemas — dynamic fields get the same server-side rigor as typed columns.</td></tr>
+  <tr><td><strong>React Flow</strong> (@xyflow/react)<br><span class="tag new">new</span></td><td>Visual flow designer</td><td>The standard React library for node-graph editors; drag modules, draw edges, edit gates. Renders the same graph the evaluator executes — design-time and runtime share one source.</td></tr>
+  <tr><td><strong>react-jsonschema-form</strong> (RJSF)<br><span class="tag new">new</span></td><td>Rendering dynamic fields</td><td>Generates forms from the same JSON Schema the backend validates. Themeable with your existing <span class="src">modules/shared</span> primitives so fields look native.</td></tr>
+  <tr><td><strong>dlt</strong> (dlthub)<br><span class="tag new">new, optional</span></td><td>Ingestion connectors</td><td>Lightweight Python EL library: handles pagination, schema inference, incremental watermarks, and loads straight into Postgres. Saves ~2 weeks of connector plumbing vs hand-rolling; runs inside your worker, no new infra.</td></tr>
+  <tr><td><strong>Postgres jobs table + worker</strong><br><span class="tag keep">pattern exists</span></td><td>Scheduling &amp; async work</td><td>Your outbox drain already proves the pattern (status/attempts/idempotent retry). A second Railway process polling <code>catalog.jobs</code> extends it. <em>Procrastinate</em> (Postgres-backed task queue) is the upgrade if job volume grows.</td></tr>
+  <tr><td><strong>Supabase Storage</strong><br><span class="tag keep">already in stack</span></td><td>Raw file landing zone</td><td><span class="src">storage_service.py</span> (service-role upload, signed URLs, bytes-outside-transactions) is reused as-is for CSV/document ingestion.</td></tr>
+  <tr><td><strong>Mermaid</strong><br><span class="tag keep">used in docs</span></td><td>Living documentation</td><td>Your docs already use it; flow definitions can auto-export to Mermaid so documentation of any published flow is generated, never stale.</td></tr>
+</table>
+
+<div class="panel risk">
+  <h4>Deliberately rejected</h4>
+  <p style="margin:0"><strong>Temporal / Airflow / Camunda-BPMN engines:</strong> these replace your module internals with their execution model — the opposite of the black-box decision. Your graph is small (8–15 nodes), gates are evaluated on-demand against mirror columns, and module internals stay in FastAPI. A DB-driven evaluator is ~200 lines and fully debuggable. <strong>Kafka / event buses:</strong> the mirror-column bus + outbox already gives you reliable signalling at your scale. <strong>Microservices split:</strong> the monolith with clean service boundaries is an asset here, not debt.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="s8"><span class="num">Section 8</span>Phased plan with timeline</h2>
+
+<div class="mermaid">
+gantt
+  dateFormat  YYYY-MM-DD
+  axisFormat  %b %d
+  title 14-week transformation timeline (1–2 developers)
+  section Foundation
+  P0 Codify the module contract        :p0, 2026-07-27, 14d
+  section Flow platform
+  P1 Module graph as data              :p1, after p0, 14d
+  P2 Flow designer UI + versioning     :p2, after p1, 14d
+  section Extensibility
+  P3 Dynamic field registry            :p3, after p2, 14d
+  section Data
+  P4 Ingestion plane + worker          :p4, after p3, 21d
+  P5 Transforms + data-driven gates    :p5, after p4, 14d
+  section Hardening
+  P6 Catalog UI, docs export, cleanup  :p6, after p5, 7d
+</div>
+<p class="figcap">Fig. 7 — Every phase ships independently; the app is fully functional at each boundary.</p>
+
+<h3>Phase 0 — Codify the module contract (weeks 1–2)</h3>
+<p><span class="tag change">refactor</span> Extract the shared write choreography (lock → assert → write mirror → audit → stage_event → outbox) from <span class="src">bd_service.py</span> and siblings into one <code>execute_transition()</code> in <span class="src">_common.py</span>. Add <code>GET /meta/workflows</code> serializing <code>ALLOWED_TRANSITIONS</code> + unlock rules; frontend consumes it and <span class="src">frontend/src/lib/stateMachine.js</span> is deleted. <em>Zero behavior change; the duplication of Fig. 2 drops from four sources to two.</em><br><strong>Exit criteria:</strong> all module services route transitions through the helper; frontend renders transitions from the endpoint; regression suite green.</p>
+
+<h3>Phase 1 — Module graph as data (weeks 3–4)</h3>
+<p><span class="tag new">new</span> Create <code>flow_definitions / flow_nodes / flow_edges</code>; seed v1 as the exact current flow (including the Legal ∥ Finance all-of join). Build the JsonLogic gate evaluator; <span class="src">workflow_unlocks.py</span> and the per-service asserts (<code>_assert_design_unlocked</code>, <code>_assert_launched</code>, project gate) delegate to it. Stamp <code>sites.flow_definition_id</code>.<br><strong>Exit criteria:</strong> deleting a hardcoded gate assert changes nothing, because the evaluator answers identically from rows.</p>
+
+<h3>Phase 2 — Flow designer UI + versioning (weeks 5–6)</h3>
+<p><span class="tag new">new</span> React Flow canvas in the business-admin portal: view the live graph, clone to draft, reorder edges, edit gates via a condition builder, publish as a new version. New sites bind to the newest published version; in-flight sites finish on theirs. <em>This is the milestone where "approval order changes without a deploy" is delivered.</em><br><strong>Exit criteria:</strong> an admin reorders two modules in staging and a new site follows the new order while an old site is unaffected.</p>
+
+<h3>Phase 3 — Dynamic field registry (weeks 7–8)</h3>
+<p><span class="tag new">new</span> <code>field_definitions</code> table + <code>extra</code> JSONB columns on module head-tables (<span class="src">site_details, design_reviews, project_reviews, nso_reviews</span>). Pydantic validation against registered schemas; RJSF rendering themed with <span class="src">modules/shared</span> primitives; fields placeable at executive-capture or supervisor-review stages.<br><strong>Exit criteria:</strong> a new field appears in a module form, validates, persists, and shows in audit diffs — via one inserted row.</p>
+
+<h3>Phase 4 — Ingestion plane (weeks 9–11)</h3>
+<p><span class="tag new">new</span> <code>catalog</code> schema (sources, syncs, jobs, datasets, health); the worker as a second Railway process; four connectors (CSV via <span class="src">storage_service.py</span>, REST pull via dlt, webhook push endpoint, external Postgres). Sources UI in the admin portal.<br><strong>Exit criteria:</strong> a non-developer connects a CSV and an API source from the UI; data lands in <code>raw.*</code>, watermarked and health-checked, with no deploy.</p>
+
+<h3>Phase 5 — Transforms + data-driven gates (weeks 12–13)</h3>
+<p><span class="tag new">new</span> Transform registry (SQL / Python) run by the worker; first pipelines (market CSV → staging; POS events → daily sales). Extend the gate evaluator so flow conditions can reference staging metrics.<br><strong>Exit criteria:</strong> a published flow contains a gate that reads ingested data, end-to-end.</p>
+
+<h3>Phase 6 — Hardening (week 14)</h3>
+<p><span class="tag change">polish</span> Catalog/lineage UI, auto-export of published flows to Mermaid docs, load-test the evaluator, retire dead code paths (contract step of expand-migrate-contract).</p>
+
+<!-- ============================================================ -->
+<h2 id="s9"><span class="num">Section 9</span>How production survives the transition</h2>
+
+<div class="mermaid">
+flowchart LR
+  subgraph T1["Weeks 1–4"]
+    A["Code &amp; rows agree<br/>(rows seeded from code,<br/>code still authoritative)"]
+  end
+  subgraph T2["Weeks 3–4 flip"]
+    B["Evaluator authoritative,<br/>old asserts delegate<br/>(strangler pattern)"]
+  end
+  subgraph T3["Weeks 5+"]
+    C["Rows authoritative,<br/>designer edits them,<br/>dead code removed"]
+  end
+  A --> B --> C
+</div>
+<p class="figcap">Fig. 8 — The strangler sequence: at no point does an old route break; each mechanism is retired only after its replacement has answered identically in production.</p>
+
+<p>Three disciplines carry the whole plan, and all three already exist in the repo: <strong>(1)</strong> expand-migrate-contract migrations (<span class="src">backend/database/migrations/</span>, 44 so far); <strong>(2)</strong> the regression test suite (<span class="src">backend/tests/</span>, ~35 files) as the safety net for every service that moves onto <code>execute_transition()</code>; <strong>(3)</strong> version stamping, which isolates every in-flight site from every published change — the same principle protects flow definitions, field definitions, and transform definitions alike.</p>
+
+<!-- ============================================================ -->
+<h2 id="s10"><span class="num">Section 10</span>Open questions to discuss</h2>
+
+<table>
+  <tr><th style="width:34%">Question</th><th>Why it matters now</th></tr>
+  <tr><td>Are flows per-tenant, or shared templates with tenant overrides?</td><td>Decides whether <code>flow_definitions.tenant_id</code> is nullable and how the designer's "clone" works. Cheap now, expensive to retrofit.</td></tr>
+  <tr><td>Join semantics: is <em>any-of</em> needed at launch, or only <em>all-of</em>?</td><td>Today's only join (Legal ∥ Finance → Design) is all-of. Supporting any-of from day one costs little in the schema; adding it later touches the evaluator and the designer.</td></tr>
+  <tr><td>Can an admin edit a <em>draft</em> flow's gates freely, but only <em>append</em> modules to published flows?</td><td>Guardrails on the designer determine how much validation the publish step needs (cycle detection, unreachable-module checks, orphaned-mirror checks).</td></tr>
+  <tr><td>Which module gets the first dynamic field in production?</td><td>Recommend <span class="src">site_details</span> (BD capture) — highest field-request churn, lowest risk, and <code>completion_pct</code> logic will need a rule for extra fields.</td></tr>
+  <tr><td>Worker hosting: second Railway service vs. in-process scheduler first?</td><td>Second process is cleaner (Rubix "design for disruption" principle) but adds ~$; in-process APScheduler is an acceptable week-9 shortcut if budget-constrained.</td></tr>
+</table>
+
+<footer>
+  Grounded in: backend/app/domain/state_machine.py · backend/app/services/workflow_unlocks.py, _common.py, design_service.py, project_service.py, financial_closure_service.py, launch_service.py, notification_service.py, storage_service.py · backend/app/db/models.py · backend/database/verified.sql &amp; migrations/ · frontend/src/lib/stateMachine.js · frontend/src/modules/shared. Companion document: <em>matrix-data-os-study-guide.md</em> (Palantir-derived long-range architecture).
+</footer>
+
+</div>
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'neutral', flowchart: { curve: 'basis' }, gantt: { barHeight: 22, fontSize: 13 } });
+</script>
+</body>
+</html>

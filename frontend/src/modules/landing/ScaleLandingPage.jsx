@@ -7,6 +7,7 @@ import {
   signupAsSupervisor,
   signupAsExecutive,
 } from '../../services/api/supabaseAuth.js';
+import { addWorkspaceCode } from '../../utils/workspaceStorage.js';
 import './ScaleLanding.css';
 
 /* -----------------------------------------------------------------
@@ -463,7 +464,7 @@ function OntologyReveal({ progress }) {
 /* ------------------------------------------------------------------
    Hero copy (video + serif headline + email + manifesto + socials)
 ------------------------------------------------------------------ */
-function HeroCopy({ heroOpacity, onHeroSubmit, heroEmail, setHeroEmail }) {
+function HeroCopy({ heroOpacity, onSignIn }) {
   const videoRef = useRef(null);
 
   useEffect(() => {
@@ -528,16 +529,12 @@ function HeroCopy({ heroOpacity, onHeroSubmit, heroEmail, setHeroEmail }) {
          <h1 className="hero-title-serif">
           Built for <em>retail expansion.</em>
         </h1>
-        <div style={{ maxWidth: 480, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <form className="hero-email liquid-glass" onSubmit={onHeroSubmit}>
-            <input
-              type="email"
-              placeholder="Enter your work email"
-              aria-label="Email"
-              value={heroEmail}
-              onChange={(e) => setHeroEmail(e.target.value)}
-            />
-            <button type="submit" aria-label="Request membership">
+        <div style={{ maxWidth: 480, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'stretch' }}>
+          <form className="hero-email liquid-glass" onSubmit={(e) => { e.preventDefault(); onSignIn(); }} style={{ width: '100%', display: 'flex', paddingLeft: 24 }}>
+            <button type="button" onClick={onSignIn} style={{ background: 'none', border: 'none', padding: 0, color: '#fff', fontSize: 15, fontWeight: 500, letterSpacing: '0.05em', cursor: 'pointer', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
+              SIGN IN
+            </button>
+            <button type="submit" aria-label="Sign in">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
@@ -595,13 +592,7 @@ function Nav({ onRequestMembership, membershipEmail, setMembershipEmail, onSignI
         {/* ── Brand ── */}
         <div className="nav-brand">
           <span className="mark">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M4 7 L 20 7 L 12 12 L 20 17 L 4 17 L 12 12 Z"
-                stroke="var(--scale-accent)" strokeWidth="1.4" strokeLinejoin="round"
-                style={{ filter: 'drop-shadow(0 0 6px var(--scale-glow))' }}
-              />
-            </svg>
+            <img src="/brand-logo.jpeg" alt="Brand Logo" width="22" height="22" style={{ borderRadius: 4, objectFit: 'contain' }} />
           </span>
           <span className="nav-brand-text">{PRODUCT_NAME}</span>
           <span className="nav-brand-dot" />
@@ -709,6 +700,7 @@ function AuthModal({ mode, onMode, onClose, prefillEmail, lockRegister = false }
     setBusy(true);
     try {
       const data = await signInWithWorkspaceCode(email, code);
+      addWorkspaceCode(code);
       onClose();
       navigate(routeFromToken(data?.access_token));
     } catch (error) {
@@ -894,7 +886,7 @@ export default function ScaleLandingPage() {
   const [scrolledVh, setScrolledVh] = useState(0);
   const [authMode, setAuthMode] = useState(null);
   const [membershipEmail, setMembershipEmail] = useState('');
-  const [heroEmail, setHeroEmail] = useState('');
+
   const [prefillEmail, setPrefillEmail] = useState('');
   const [showCodeDialog, setShowCodeDialog] = useState(false);
 
@@ -995,10 +987,7 @@ export default function ScaleLandingPage() {
     setAuthMode('register');
   };
 
-  const handleHeroSubmit = (event) => {
-    event.preventDefault();
-    openMembershipFlow(heroEmail.trim());
-  };
+
 
   const requestMembership = () => {
     openMembershipFlow(membershipEmail.trim());
@@ -1044,9 +1033,7 @@ export default function ScaleLandingPage() {
 
           <HeroCopy
             heroOpacity={heroOpacity}
-            onHeroSubmit={handleHeroSubmit}
-            heroEmail={heroEmail}
-            setHeroEmail={setHeroEmail}
+            onSignIn={() => setShowCodeDialog(true)}
           />
         </div>
       </div>

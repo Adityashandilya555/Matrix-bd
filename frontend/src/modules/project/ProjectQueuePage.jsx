@@ -30,14 +30,6 @@ const STATUS_FILTERS = [
   { key: 'done', label: 'Done', color: 'var(--zm-success)' },
 ];
 
-const BUDGET_LABELS = {
-  draft: 'Draft',
-  pending_supervisor: 'Supervisor review',
-  pending_admin: 'Admin review',
-  approved: 'Approved',
-  rejected: 'Rejected',
-};
-
 function StatusPill({ value, tone = 'var(--zm-accent)' }) {
   return (
     <span style={{
@@ -175,7 +167,7 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
             <span>City</span>
             <span>Project status</span>
             <span>Budget</span>
-            <span style={{ textAlign: 'right' }}>Action</span>
+            <span style={{ textAlign: 'right', paddingRight: 16 }}>Action</span>
           </div>
 
           <div style={{ overflowY: 'auto' }}>
@@ -213,12 +205,12 @@ export default function ProjectQueuePage({ mode = 'pipeline' }) {
               </span>
               <span style={{ color: 'var(--zm-fg-2)' }}>{row.city}</span>
               <StatusPill value={STATUS_LABELS[row.projectStatus] || row.projectStatus}/>
-              <StatusPill value={BUDGET_LABELS[row.budgetStatus] || row.budgetStatus} tone={row.budgetStatus === 'approved' ? 'var(--zm-success)' : 'var(--zm-copper)'}/>
+              <StatusPill value={row.budgetStatus === 'approved' ? 'Available' : 'Pending'} tone={row.budgetStatus === 'approved' ? 'var(--zm-success)' : 'var(--zm-copper)'}/>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); open(row); }}
                 style={{
-                  justifySelf: 'end',
+                  justifySelf: 'end', marginRight: 16,
                   height: 32,
                   padding: '0 14px',
                   border: 'none',

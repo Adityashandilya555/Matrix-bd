@@ -19,6 +19,7 @@ from app.domain.schemas.project import (
     ProjectHistoryResponse,
     ProjectQueueResponse,
     ProjectStateResponse,
+    QAReportsResponse,
     ReviewRequest,
 )
 from app.rbac.guards import require_module, require_role
@@ -30,7 +31,9 @@ from app.services.project_service import (
     svc_get_project,
     svc_get_project_history_detail,
     svc_list_project_delegations_for_site,
+    svc_mark_qa_reports_viewed,
     svc_propose_initialization,
+    svc_qa_reports_for_site,
     svc_nso_handover_queue,
     svc_nso_queue,
     svc_project_queue,
@@ -87,6 +90,31 @@ async def nso_handover_queue(
 ) -> ProjectQueueResponse:
     """NSO Handover tab — project-completed sites awaiting the push to NSO."""
     return await svc_nso_handover_queue(db, tenant_id=tenant_id)
+
+
+@router.get("/{site_id}/quality-audit/reports", response_model=QAReportsResponse)
+async def qa_reports_for_site(
+    site_id: str,
+    db: DbDep,
+    _auth: ProjectMember,
+    _module: InProjectModule,
+    tenant_id: TenantId,
+) -> QAReportsResponse:
+    """The before/after quality-audit reports (with short-lived signed download
+    URLs) for the NSO Handover View dialog. Does not mark them viewed."""
+    return await svc_qa_reports_for_site(db, tenant_id=tenant_id, site_id=site_id)
+
+
+@router.post("/{site_id}/quality-audit/reports/mark-viewed", response_model=OkResponse)
+async def mark_qa_reports_viewed(
+    site_id: str,
+    db: DbDep,
+    _auth: ProjectMember,
+    _module: InProjectModule,
+    tenant_id: TenantId,
+) -> OkResponse:
+    """Clear the unread (yellow) flag once a Project user opens the reports."""
+    return await svc_mark_qa_reports_viewed(db, tenant_id=tenant_id, site_id=site_id)
 
 
 @router.get("/quality-audit/admin-queue", response_model=ProjectQueueResponse)

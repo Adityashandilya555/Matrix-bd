@@ -407,7 +407,7 @@ export default function ModuleProcessFlowPage({ moduleKey }) {
   const filtered = listState.items.filter((item) => {
     const needle = query.trim().toLowerCase();
     if (!needle) return true;
-    return [item.siteCode, item.siteName, item.city, item.submittedByName]
+    return [item.siteCode, item.caCode, item.siteName, item.city, item.submittedByName]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(needle));
   });
@@ -542,7 +542,7 @@ export default function ModuleProcessFlowPage({ moduleKey }) {
                 <>
                   <div>
                     <div style={{ fontFamily: 'var(--zm-font-mono)', color: 'var(--zm-fg-3)', fontSize: 12 }}>
-                      {detailState.detail.siteCode || 'No code'} · {detailState.detail.city || 'No city'}
+                      {detailState.detail.caCode || detailState.detail.siteCode || 'No code'} · {detailState.detail.city || 'No city'}
                     </div>
                     <h2 style={{ margin: '4px 0 0', fontSize: 26 }}>{detailState.detail.siteName || 'Untitled site'} flow</h2>
                     <p style={{ margin: '6px 0 0', color: 'var(--zm-fg-3)' }}>

@@ -21,7 +21,7 @@ export function HeaderTag({ icon, label, tone = 'default' }) {
   );
 }
 
-export default function PageHeader({ file, eyebrow, title, lede, right }) {
+export default function PageHeader({ title, lede, right, onBack }) {
   return (
     <header style={{
       display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24,
@@ -30,21 +30,22 @@ export default function PageHeader({ file, eyebrow, title, lede, right }) {
       position: 'relative',
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, flex: 1 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          {file && (
-            <span style={{
-              fontFamily: 'var(--zm-font-mono)', fontSize: 10, fontWeight: 600,
-              letterSpacing: '0.18em', color: 'var(--zm-fg-4)',
-              whiteSpace: 'nowrap', flex: '0 0 auto',
-            }}>{file}</span>
-          )}
-          {file && <span style={{ width: 18, height: 1, background: 'var(--zm-line-strong)', flex: '0 0 auto' }}/>}
-          <span style={{
-            fontFamily: 'var(--zm-font-body)', fontSize: 10, fontWeight: 700,
-            letterSpacing: '0.22em', textTransform: 'uppercase', color: 'var(--zm-fg-3)',
-            whiteSpace: 'nowrap',
-          }}>{eyebrow}</span>
-        </div>
+
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Go back"
+            style={{
+              alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6,
+              border: 'none', background: 'transparent', cursor: 'pointer', padding: '2px 0',
+              color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontWeight: 700,
+              fontSize: 11.5, letterSpacing: '0.06em', textTransform: 'uppercase',
+            }}
+          >
+            <span aria-hidden="true" style={{ fontSize: 15, lineHeight: 1 }}>←</span> Back
+          </button>
+        )}
 
         <h1 className="zm-page-title" style={{
           margin: 0, color: 'var(--zm-fg)',

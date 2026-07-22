@@ -28,6 +28,12 @@ function queueItemFromServer(row) {
     projectCompletedAt: row.project_completed_at,
     allocatedToName: row.allocated_to_name,
     submittedByName: row.submitted_by_name,
+    qaBeforeUploadedAt: row.qa_before_uploaded_at,
+    qaBeforePushedAt: row.qa_before_pushed_at,
+    qaAfterUploadedAt: row.qa_after_uploaded_at,
+    qaAfterPushedAt: row.qa_after_pushed_at,
+    qaReportUnread: row.qa_report_unread,
+    qaReportDelegateName: row.qa_report_delegate_name,
   };
 }
 
@@ -143,6 +149,12 @@ export async function allocateProject(siteId, executiveId, notes) {
   const data = await client.post(`/project/${siteId}/allocate`, body).then((r) => r.data);
   notifySiteDataChanged({ source: 'project', action: 'allocate', siteId });
   return stateFromServer(data);
+}
+
+export async function revokeProjectAllocation(siteId, userId) {
+  const data = await client.delete(`/project/${siteId}/allocate/${userId}`).then((r) => r.data);
+  notifySiteDataChanged({ source: 'project', action: 'revoke_allocation', siteId });
+  return data;
 }
 
 export async function saveProjectBudget(
@@ -261,4 +273,33 @@ export async function pushToNso(siteId) {
   const data = await client.post(`/project/${siteId}/push-to-nso`, {}).then((r) => r.data);
   notifySiteDataChanged({ source: 'project', action: 'push_to_nso', siteId });
   return stateFromServer(data);
+}
+
+// ── Quality-audit reports (NSO Handover View dialog) ─────────────────────────
+function qaReportFromServer(r) {
+  if (!r) return null;
+  return {
+    kind: r.kind,
+    fileName: r.file_name,
+    uploadedAt: r.uploaded_at,
+    pushedAt: r.pushed_at,
+    downloadUrl: r.download_url,
+  };
+}
+
+export async function getQAReports(siteId) {
+  const data = await client.get(`/project/${siteId}/quality-audit/reports`).then((r) => r.data);
+  return {
+    siteId: data.site_id,
+    before: qaReportFromServer(data.before),
+    after: qaReportFromServer(data.after),
+    timeBetweenSeconds: data.time_between_seconds,
+    unread: data.unread,
+  };
+}
+
+export async function markQAReportsViewed(siteId) {
+  const data = await client.post(`/project/${siteId}/quality-audit/reports/mark-viewed`, {}).then((r) => r.data);
+  notifySiteDataChanged({ source: 'project', action: 'qa_reports_viewed', siteId });
+  return data;
 }

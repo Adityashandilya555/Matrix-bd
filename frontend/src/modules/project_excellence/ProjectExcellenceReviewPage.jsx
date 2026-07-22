@@ -1,6 +1,7 @@
 // skipcq: JS-0833
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import ExcellenceDocuments from '../shared/documents/ExcellenceDocuments.jsx';
 import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import { useSession } from '../../state/SessionContext.jsx';
 import { usePageContext } from '../../App.jsx';
@@ -8,7 +9,9 @@ import { listMyTeam } from '../../services/api/adapters/httpAdapter.js';
 import {
   allocatePE,
   getPE,
+  listPEDelegations,
   reviewPEBudget,
+  revokePEAllocation,
   savePEBudget,
   adminReviewPEBudget,
 } from '../../services/api/projectExcellenceApi.js';
@@ -101,11 +104,17 @@ export default function ProjectExcellenceReviewPage() {
   const [execList, setExecList] = React.useState([]);
   const [teamError, setTeamError] = React.useState(null);
   const [allocExec, setAllocExec] = React.useState('');
+  const [allocation, setAllocation] = React.useState(null);
+  const [actionError, setActionError] = React.useState(null);
   const [reviewComments, setReviewComments] = React.useState('');
 
-  const refresh = React.useCallback(() => {
+  const refresh = React.useCallback((silent = false) => {
     let cancelled = false;
-    setLoading(true);
+    // silent: a background refresh (window-focus after a file dialog closes,
+    // or a site-data event) must NOT flip to the full-page loading spinner —
+    // that unmounts the whole page, including an in-progress attachment upload.
+    // Mirrors DesignReviewPage's silent-load. useSiteDataRefresh passes silent.
+    if (!silent) setLoading(true);
     setError(null);
     setTeamError(null);
     Promise.all([
@@ -115,8 +124,12 @@ export default function ProjectExcellenceReviewPage() {
       !isBusinessAdmin
         ? listMyTeam('project_excellence').then((t) => ({ ok: true, team: t })).catch((e) => ({ ok: false, error: e }))
         : Promise.resolve({ ok: true, team: [] }),
-    ]).then(([data, teamRes]) => {
+      isSupervisor
+        ? listPEDelegations(siteId).then((d) => d.items?.[0] || null).catch(() => null)
+        : Promise.resolve(null),
+    ]).then(([data, teamRes, deleg]) => {
       if (cancelled) return;
+      setAllocation(deleg);
       setState(data);
       setBudgetItems(budgetFromState(data));
       setAreaFields({
@@ -143,7 +156,7 @@ export default function ProjectExcellenceReviewPage() {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [siteId, isBusinessAdmin]);
+  }, [siteId, isBusinessAdmin, isSupervisor]);
 
   React.useEffect(() => refresh(), [refresh]);
   useSiteDataRefresh(refresh, { sources: ['project_excellence', 'businessAdmin'] });
@@ -190,8 +203,30 @@ export default function ProjectExcellenceReviewPage() {
     try {
       const data = await allocatePE(siteId, targetUserId);
       setState(data);
+      setAllocExec('');
+      // Refetch the live delegation so the "Allocated · X / Revoke" badge appears
+      // immediately, instead of the allocate dropdown lingering (mirrors
+      // DesignReviewPage.onAllocate — the reference pattern).
+      const d = await listPEDelegations(siteId).catch(() => ({ items: [] }));
+      setAllocation(d.items?.[0] || null);
     } catch (err) {
       setError(err?.detail || err?.message || 'Allocation failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onRevoke = async () => {
+    if (!allocation) return;
+    setActionError(null);
+    setSaving(true);
+    try {
+      await revokePEAllocation(siteId, allocation.delegateUserId);
+      setAllocation(null);
+      refresh();
+      showToast?.('Allocation revoked.', 'success');
+    } catch (err) {
+      setActionError(err?.detail || err?.message || 'Revoke failed');
     } finally {
       setSaving(false);
     }
@@ -288,44 +323,63 @@ export default function ProjectExcellenceReviewPage() {
         )}
       </SectionCard>
 
-      {/* Allocation (supervisor only, unallocated sites) */}
-      {isSupervisor && !state?.allocatedTo && state?.excellenceStatus === 'pending' && (
-        <SectionCard title="Allocate site">
+      {/* Allocation (supervisor only) */}
+      {isSupervisor && (
+        <SectionCard title="Allocation">
+          {actionError && <div style={{ marginBottom: 8, color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5 }}>{actionError}</div>}
           {teamError && (
             <div role="alert" style={{ marginBottom: 10, color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5 }}>
               {teamError}
             </div>
           )}
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <select
-              value={allocExec}
-              onChange={(e) => setAllocExec(e.target.value)}
-              style={{
-                flex: 1, height: 36, padding: '0 10px', borderRadius: 7,
-                border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)',
-                fontFamily: 'var(--zm-font-body)', fontSize: 13,
-              }}
-            >
-              <option value="">Select executive…</option>
-              <option value="__self__">Delegate to self (me)</option>
-              {execList.map((u) => (
-                <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              disabled={!allocExec || saving}
-              onClick={handleAllocate}
-              style={{
-                height: 36, padding: '0 16px', borderRadius: 7, border: 'none',
-                background: 'var(--zm-accent)', color: '#fff', cursor: 'pointer',
-                fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700,
-                opacity: !allocExec || saving ? 0.5 : 1,
-              }}
-            >
-              Allocate
-            </button>
-          </div>
+          {allocation ? (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', height: 22, padding: '0 10px',
+                borderRadius: 4, border: '1px solid var(--zm-accent)', color: 'var(--zm-accent)',
+                fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 10,
+                letterSpacing: '0.12em', textTransform: 'uppercase',
+              }}>Allocated · {allocation.delegateName || allocation.delegateEmail}</span>
+              <button type="button" disabled={saving} onClick={onRevoke} style={{
+                height: 32, padding: '0 14px', border: 'none', borderRadius: 7,
+                background: 'var(--zm-danger)', color: '#fff', fontFamily: 'var(--zm-font-body)',
+                fontSize: 12, fontWeight: 800, cursor: 'pointer', opacity: saving ? 0.6 : 1,
+              }}>Revoke</button>
+            </div>
+          ) : state?.excellenceStatus === 'pending' || state?.excellenceStatus === 'allocated' ? (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <select
+                value={allocExec}
+                onChange={(e) => setAllocExec(e.target.value)}
+                style={{
+                  flex: 1, height: 36, padding: '0 10px', borderRadius: 7,
+                  border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)',
+                  fontFamily: 'var(--zm-font-body)', fontSize: 13,
+                }}
+              >
+                <option value="">Select executive…</option>
+                <option value="__self__">Delegate to self (me)</option>
+                {execList.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={!allocExec || saving}
+                onClick={handleAllocate}
+                style={{
+                  height: 36, padding: '0 16px', borderRadius: 7, border: 'none',
+                  background: 'var(--zm-accent)', color: '#fff', cursor: 'pointer',
+                  fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700,
+                  opacity: !allocExec || saving ? 0.5 : 1,
+                }}
+              >
+                Allocate
+              </button>
+            </div>
+          ) : (
+            <span style={{ fontSize: 13, color: 'var(--zm-fg-3)' }}>Not available for allocation.</span>
+          )}
         </SectionCard>
       )}
 
@@ -403,6 +457,9 @@ export default function ProjectExcellenceReviewPage() {
             />
           </div>
         ))}
+
+        {/* Attachments — image documents shared with Financial Closure */}
+        <ExcellenceDocuments siteId={siteId} canUpload={canEditBudget} />
 
         {/* Comments (read-only feedback) */}
         {state?.budgetSupervisorComments && (

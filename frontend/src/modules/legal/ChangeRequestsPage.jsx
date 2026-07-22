@@ -191,7 +191,7 @@ export default function ChangeRequestsPage() {
             <span>Field / change</span>
             <span>Requested by</span>
             <span>Status</span>
-            <span style={{ textAlign: 'right' }}>Action</span>
+            <span style={{ textAlign: 'right', paddingRight: 16 }}>Action</span>
           </div>
           
           <div style={{ flex: 1, overflowY: 'auto' }}>
