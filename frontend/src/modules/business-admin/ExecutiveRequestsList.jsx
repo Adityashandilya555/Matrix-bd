@@ -75,10 +75,10 @@ export default function ExecutiveRequestsList({ data, onApprove, onReject, onRet
                 </span>
                 
                 <div style={{ display: 'flex', gap: 6, justifySelf: 'end' }}>
-                  <Button variant="ghost" tone="danger" size="sm"
+                  <Button variant="ghost" size="sm"
                     loading={isBusy} disabled={isBusy}
                     onClick={() => act(onReject, r.id)}>Reject</Button>
-                  <Button variant="solid" tone="accent" size="sm"
+                  <Button variant="solid" size="sm"
                     loading={isBusy} disabled={isBusy}
                     onClick={() => act(onApprove, r.id)}>Approve</Button>
                 </div>
