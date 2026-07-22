@@ -283,6 +283,7 @@ class SiteResponse(BaseModel):
     # Reject / archive justification shown on the Archive page's Reason column.
     rejection_reason: Optional[str] = None
     archive_note: Optional[str] = None
+    loi_rejection_note: Optional[str] = None
     archived_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     # Pipeline fields a supervisor amended that the site's executive hasn't

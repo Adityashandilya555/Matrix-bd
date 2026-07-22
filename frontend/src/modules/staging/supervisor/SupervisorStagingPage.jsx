@@ -9,6 +9,7 @@ import { bdSiteStatusRoute } from '../../../router/routes.js';
 import { useFocusSite } from '../../../hooks/useFocusSite.js';
 import StateKpiTile from '../../shared/primitives/StateKpiTile.jsx';
 import { STAGES } from '../../shared/primitives/constants.js';
+import LOIDialog from './LOIDialog.jsx';
 
 // Render bodies preserved exactly from Staging.jsx — supervisor-only view.
 
@@ -112,7 +113,8 @@ export default function SupervisorStagingPage({ onOpenSite: onOpenSiteProp, show
   const navigate = useNavigate();
   const onOpenSite = onOpenSiteProp || ctx.onOpenSite;
   const showToast = showToastProp || ctx.showToast;
-  const { staging, pushSite } = useSites();
+  const { staging, pushSite, sendBackLOI } = useSites();
+  const [loiDialogSite, setLoiDialogSite] = React.useState(null);
   useFocusSite(); // scroll/flash a row reached via /staging?focus=<id>
   const [filters, setFilters] = React.useState({ q: '', city: 'All', month: 'All', status: 'all' });
 
@@ -151,7 +153,14 @@ export default function SupervisorStagingPage({ onOpenSite: onOpenSiteProp, show
       setPushingIds((prev) => { const next = new Set(prev); next.delete(site.id); return next; });
     }
   };
-  const onViewLOI = (site) => { showToast?.(`Opening LOI · ${site.name} (mock).`); };
+  // Opens the preview dialog, which also carries the send-back action so the
+  // supervisor can see the document and reject it in one place.
+  const onViewLOI = (site) => { setLoiDialogSite(site); };
+
+  const onSendBackLOI = async (site, comments) => {
+    await sendBackLOI(site, comments);
+    showToast?.(`Sent back · ${site.name} — the executive has been notified.`);
+  };
   const onViewStatus = (site) => { navigate(bdSiteStatusRoute(site.id)); };
 
   return (
@@ -180,6 +189,14 @@ export default function SupervisorStagingPage({ onOpenSite: onOpenSiteProp, show
           {filtered.length === 0 && (<div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>No sites are in process yet.</div>)}
         </div>
       </div>
+      {loiDialogSite && (
+        <LOIDialog
+          site={loiDialogSite}
+          onClose={() => setLoiDialogSite(null)}
+          onSendBack={onSendBackLOI}
+          canSendBack={!loiDialogSite.pushed}
+        />
+      )}
     </div>
   );
 }

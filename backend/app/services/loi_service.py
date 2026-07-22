@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -16,7 +17,11 @@ from fastapi import HTTPException, status as http_status
 
 from app.services._common import fetch_site_for_update_or_404, fetch_site_or_404
 from app.services.audit_service import write_audit_event
-from app.services.notification_service import enqueue as notify_enqueue, recipients_for_supervisors
+from app.services.notification_service import (
+    enqueue as notify_enqueue,
+    recipients_for_site_owner,
+    recipients_for_supervisors,
+)
 from app.services.storage_service import safe_object_name, signed_url, upload_bytes
 
 
@@ -66,6 +71,20 @@ async def svc_upload_loi(
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         assert_transition(SiteStatus(site.status), SiteStatus.LOI_UPLOADED)
 
+        # Demote any previous LOI before adding the new primary. A send-back →
+        # re-upload cycle would otherwise leave several rows all flagged
+        # is_primary=True (there is no unique constraint), and
+        # business_admin_documents_service lists every row unfiltered.
+        await session.execute(
+            update(models.SiteFile)
+            .where(
+                models.SiteFile.site_id == site.id,
+                models.SiteFile.tenant_id == tenant_id,
+                models.SiteFile.file_type == "loi",
+                models.SiteFile.is_primary.is_(True),
+            )
+            .values(is_primary=False)
+        )
         session.add(models.SiteFile(
             tenant_id=tenant_id,
             site_id=site.id,
@@ -80,6 +99,8 @@ async def svc_upload_loi(
         ))
         site.status = SiteStatus.LOI_UPLOADED.value
         site.loi_uploaded_at = datetime.now(timezone.utc)
+        # A fresh upload answers the send-back, so the rejection banner must go.
+        site.loi_rejection_note = None
 
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
@@ -123,13 +144,88 @@ async def svc_view_loi(
     )
     file = (await session.execute(stmt)).scalar_one_or_none()
     if file is None:
+        # Nothing uploaded yet — a legitimate answer, not an error.
         return LOIViewResponse(site_id=str(site.id), file_url=None, uploaded_at=None, uploaded_by=None)
+
+    url = await signed_url(file.storage_path)
+    if url is None:
+        # The row exists, so a null URL can only mean the signer failed —
+        # signed_url swallows missing config, non-2xx, and httpx/JSON errors.
+        # Returning 200-with-null here is what made "View LOI" look dead; a 503
+        # is honest and tells the caller it is worth retrying.
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The LOI is stored but its download link could not be generated. Please try again in a moment.",
+        )
     return LOIViewResponse(
         site_id=str(site.id),
-        file_url=await signed_url(file.storage_path),
+        file_url=url,
         uploaded_at=file.uploaded_at.date(),
         uploaded_by=str(file.uploaded_by),
     )
+
+
+# ── LOI send-back ─────────────────────────────────────────────────────────────
+
+async def svc_send_back_loi(
+    session: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    actor: dict,
+    site_id: str | UUID,
+    comments: str,
+) -> OkResponse:
+    """Supervisor rejects an uploaded LOI, returning the site to APPROVED.
+
+    The executive then re-uploads through the unchanged upload path — that is
+    the whole reason this returns to APPROVED rather than inventing a new
+    status. loi_uploaded_at is cleared so the days-to-LOI clock resumes from
+    approved_at: the LOI genuinely is not done, and leaving the timestamp would
+    freeze the SLA bar at its old value while the row reads "Awaiting LOI".
+    """
+    note = (comments or "").strip()
+    if not note:
+        # Validate before opening a transaction — the executive needs to be told
+        # what was wrong with the file.
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Comments are required to send an LOI back.",
+        )
+
+    async with transaction(session):
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        # Guards a double-click and a send-back racing the supervisor's own
+        # Push-to-Legal: the loser gets 422 instead of corrupting the state.
+        assert_transition(SiteStatus(site.status), SiteStatus.APPROVED)
+
+        site.status = SiteStatus.APPROVED.value
+        site.loi_uploaded_at = None
+        site.loi_rejection_note = note
+
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=site.id,
+            actor_id=actor["sub"], actor_name=actor.get("name"),
+            action="send_back_loi",
+            from_status=SiteStatus.LOI_UPLOADED.value,
+            to_status=SiteStatus.APPROVED.value,
+            detail=note,
+        )
+        # The site owner is exactly who svc_upload_loi permits to re-upload.
+        recipients = await recipients_for_site_owner(session, site=site)
+        if recipients:
+            await notify_enqueue(
+                session, tenant_id=tenant_id, event="loi_sent_back",
+                recipient_ids=recipients, site_id=site.id,
+                channels=("in_app", "email"),
+                payload={"site_id": str(site.id), "site_name": site.name, "comments": note},
+                subject=f"LOI needs re-upload: {site.name}",
+                body=(
+                    f"The LOI for '{site.name}' ({site.code}) was sent back by your supervisor.\n\n"
+                    f"Comments: {note}\n\n"
+                    f"Open the staging list to upload the corrected document."
+                ),
+            )
+    return OkResponse(message="LOI sent back for re-upload.")
 
 
 async def svc_set_loi_timeline(

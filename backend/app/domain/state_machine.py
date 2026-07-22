@@ -30,8 +30,14 @@ ALLOWED_TRANSITIONS: dict[SiteStatus, list[SiteStatus]] = {
     SiteStatus.SHORTLISTED:        [SiteStatus.DETAILS_SUBMITTED, SiteStatus.REJECTED, SiteStatus.ARCHIVED],
     SiteStatus.DETAILS_SUBMITTED:  [SiteStatus.APPROVED,          SiteStatus.REJECTED, SiteStatus.ARCHIVED],
     SiteStatus.APPROVED:           [SiteStatus.LOI_UPLOADED,      SiteStatus.REJECTED, SiteStatus.ARCHIVED],
-    # BD supervisor "Push" now sends to Legal Review (not directly to Payments)
-    SiteStatus.LOI_UPLOADED:       [SiteStatus.LEGAL_REVIEW,      SiteStatus.REJECTED, SiteStatus.ARCHIVED],
+    # BD supervisor "Push" now sends to Legal Review (not directly to Payments).
+    # Send-back loop: a supervisor who rejects the uploaded LOI (wrong file)
+    # returns the site to APPROVED, so the executive re-uploads through the
+    # unchanged APPROVED → LOI_UPLOADED path. loi_uploaded_at is cleared, so the
+    # days-to-LOI clock keeps running from approved_at — the LOI genuinely is
+    # not done yet.
+    SiteStatus.LOI_UPLOADED:       [SiteStatus.LEGAL_REVIEW,      SiteStatus.APPROVED,
+                                    SiteStatus.REJECTED,          SiteStatus.ARCHIVED],
     # Legal supervisor works through the 4-step checklist
     SiteStatus.LEGAL_REVIEW:       [SiteStatus.LEGAL_APPROVED,    SiteStatus.LEGAL_REJECTED],
     # Legal approved → Payments module (terminal until Payments is built)

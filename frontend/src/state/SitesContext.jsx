@@ -120,6 +120,9 @@ function toStagingShape(site) {
     pushed,
     stage: legacyStageFor(site.status),
     loiUrl: site.loiUrl,
+    // Set when a supervisor sends the LOI back; cleared on the next successful
+    // upload. Drives the executive's "Re-upload LOI" state.
+    loiRejectionNote: site.loiRejectionNote || '',
   };
 }
 
@@ -325,6 +328,14 @@ export function SitesProvider({ children }) {
     await refreshAndBroadcast('upload_loi');
   }, [refreshAndBroadcast]);
 
+  const sendBackLOI = useCallback(async (site, comments) => {
+    const note = String(comments || '').trim();
+    // Guard client-side too, so an empty note never costs a round trip.
+    if (!note) throw new Error('Comments are required to send an LOI back.');
+    await siteService.sendBackLoi(site.id, note);
+    await refreshAndBroadcast('send_back_loi');
+  }, [refreshAndBroadcast]);
+
   const pushSite = useCallback(async (site) => {
     await siteService.pushToPayments(site.id, 'supervisor');
     await refreshAndBroadcast('send_to_legal');
@@ -372,10 +383,10 @@ export function SitesProvider({ children }) {
     loading, error,
     moveDraftToShortlist, rejectDraft, archiveDraft, reviveSite,
     saveDraftDetails, submitDetailsForReview, approveShortlistToStaging, markSiteViewed,
-    uploadLOI, pushSite, createDraft,
+    uploadLOI, sendBackLOI, pushSite, createDraft,
     sites,
     refresh,
-  }), [drafts, shortlist, staging, archive, loading, error, moveDraftToShortlist, rejectDraft, archiveDraft, reviveSite, saveDraftDetails, submitDetailsForReview, approveShortlistToStaging, markSiteViewed, uploadLOI, pushSite, createDraft, sites, refresh]);
+  }), [drafts, shortlist, staging, archive, loading, error, moveDraftToShortlist, rejectDraft, archiveDraft, reviveSite, saveDraftDetails, submitDetailsForReview, approveShortlistToStaging, markSiteViewed, uploadLOI, sendBackLOI, pushSite, createDraft, sites, refresh]);
 
   return (
     <SitesContext.Provider value={value}>
