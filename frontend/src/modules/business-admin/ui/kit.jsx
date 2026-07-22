@@ -176,6 +176,24 @@ export function Card({ as: Tag = 'div', interactive = false, raised = false, sty
 
 // ── Button ────────────────────────────────────────────────────────────────────
 
+// Layout base for every Button. Without an explicit flex layout the icon (an
+// inline SVG) sits on the text baseline with no spacing — the "distorted" look
+// on the approval buttons. inline-flex + centering + gap fixes it everywhere.
+const BTN_BASE = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 7,
+  whiteSpace: 'nowrap',
+  lineHeight: 1,
+  fontFamily: 'var(--zm-font-body)',
+  fontWeight: 650,
+  letterSpacing: '0.01em',
+  cursor: 'pointer',
+  boxSizing: 'border-box',
+  userSelect: 'none',
+};
+
 const BTN_VARIANTS = {
   solid:   { background: T.invBg, color: T.invText, border: '1px solid transparent' },
   success: { background: T.success, color: '#fff', border: '1px solid transparent' },
@@ -185,8 +203,8 @@ const BTN_VARIANTS = {
   subtle:  { background: T.chip, color: T.text, border: '1px solid transparent' },
 };
 const BTN_SIZES = {
-  sm: { height: 30, padding: '0 12px', fontSize: 12.5, borderRadius: 9 },
-  md: { height: 36, padding: '0 16px', fontSize: 13,   borderRadius: 10 },
+  sm: { height: 32, padding: '0 14px', fontSize: 12.5, borderRadius: 8 },
+  md: { height: 38, padding: '0 18px', fontSize: 13,   borderRadius: 9 },
 };
 
 export function Button({ variant = 'subtle', size = 'sm', loading = false, icon, children, style, disabled, ...rest }) {
@@ -205,10 +223,12 @@ export function Button({ variant = 'subtle', size = 'sm', loading = false, icon,
       // Disabled/in-flight buttons must LOOK non-clickable — otherwise an admin
       // who clicks (e.g. Financial Closure) sees no state change. The disabled
       // visual is appended last so it wins over variant/caller styles.
-      style={{ fontWeight: 650, cursor: 'pointer', ...BTN_VARIANTS[variant], ...BTN_SIZES[size], ...style, ...(isDisabled ? { cursor: 'not-allowed', opacity: 0.55 } : {}) }}
+      style={{ ...BTN_BASE, ...BTN_VARIANTS[variant], ...BTN_SIZES[size], ...style, ...(isDisabled ? { cursor: 'not-allowed', opacity: 0.55 } : {}) }}
       {...rest}
     >
-      {loading ? <Spinner /> : icon}
+      {loading
+        ? <Spinner />
+        : (icon ? <span style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>{icon}</span> : null)}
       {children}
     </button>
   );
