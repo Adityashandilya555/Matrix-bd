@@ -4,8 +4,8 @@
 // commits it; while editable an uploaded doc gets a × that deletes it; the
 // picker disappears once one file exists (max-1); read-only mode shows links
 // only.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { it, expect, vi, beforeEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const listExcellenceDocuments = vi.fn();
@@ -27,8 +27,8 @@ beforeEach(() => {
   listExcellenceDocuments.mockReset().mockResolvedValue({ documents: [] });
   uploadExcellenceDocument.mockReset();
   deleteExcellenceDocument.mockReset();
-  if (!global.URL.createObjectURL) global.URL.createObjectURL = vi.fn(() => 'blob:x');
-  if (!global.URL.revokeObjectURL) global.URL.revokeObjectURL = vi.fn();
+  if (!globalThis.URL.createObjectURL) globalThis.URL.createObjectURL = vi.fn(() => 'blob:x');
+  if (!globalThis.URL.revokeObjectURL) globalThis.URL.revokeObjectURL = vi.fn();
 });
 
 it('stages a selected file without uploading, and requires an explicit Upload', async () => {
