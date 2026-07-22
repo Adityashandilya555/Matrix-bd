@@ -97,7 +97,9 @@ class AllocateFCRequest(BaseModel):
 
 
 class SaveFCBudgetRequest(BaseModel):
-    items: list[FCBudgetItemIn] = Field(default_factory=list)
+    # min_length=1 — same wipe guard as SavePEBudgetRequest: an empty array
+    # would delete-and-reinsert all 11 closure rows as NULLs.
+    items: list[FCBudgetItemIn] = Field(min_length=1)
     action: BudgetAction = "save"
     comments: Optional[str] = None
 

@@ -318,7 +318,7 @@ class SiteFile(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
     site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id"), nullable=False)
     uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    file_type: Mapped[str] = mapped_column(Text, nullable=False)  # chk_site_files_file_type: loi | photo | quality_audit
+    file_type: Mapped[str] = mapped_column(Text, nullable=False)  # chk_site_files_file_type: loi | photo | quality_audit | excellence | closure
     file_name: Mapped[str] = mapped_column(Text, nullable=False)
     storage_path: Mapped[str] = mapped_column(Text, nullable=False)
     file_size_kb: Mapped[Optional[int]] = mapped_column(Integer)

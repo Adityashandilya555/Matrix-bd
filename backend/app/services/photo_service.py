@@ -5,11 +5,13 @@ import uuid as _uuid
 from typing import Optional
 from uuid import UUID
 
+from fastapi import HTTPException, status as http_status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
 from app.db.session import transaction
-from app.services._common import assert_executive_owns_site, fetch_site_or_404
+from app.services._common import fetch_site_or_404
 from app.services.audit_service import write_audit_event
 from app.services.storage_service import safe_object_name, signed_url, upload_bytes
 
@@ -26,6 +28,8 @@ async def svc_upload_site_file(
     file_type: str = "photo",
     path_prefix: str = "photos",
     audit_action: str = "upload_photo",
+    max_count: Optional[int] = None,
+    delegation_modules: Optional[tuple[str, ...]] = None,
 ) -> dict:
     """Upload a file to Supabase Storage and persist a ``site_files`` row.
 
@@ -37,14 +41,31 @@ async def svc_upload_site_file(
     ``file_size_kb``, and ``mime_type`` so the frontend can immediately
     replace its local blob URL with the persisted signed URL.
 
-    Any authenticated executive (owning the site) or supervisor/business_admin
-    may upload — there is no site-status restriction.
+    Any authenticated executive (owning the site, or holding an active
+    delegation in one of ``delegation_modules``) or supervisor/business_admin
+    may upload — there is no site-status restriction. ``max_count`` caps how
+    many rows of ``file_type`` a site may hold (409 beyond it).
     """
     # Validate tenant + executive ownership (#104) BEFORE the storage write so
     # a non-owner can't even litter the bucket. Capture what we need, then end
     # the read txn so the slow upload doesn't pin a pgBouncer slot (#89).
+    from app.services.site_documents_service import assert_site_doc_access
+
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-    assert_executive_owns_site(actor, site)
+    await assert_site_doc_access(session, actor=actor, site=site, delegation_modules=delegation_modules)
+    if max_count is not None:
+        existing = (await session.execute(
+            select(func.count()).select_from(models.SiteFile).where(
+                models.SiteFile.site_id == site.id,
+                models.SiteFile.tenant_id == site.tenant_id,
+                models.SiteFile.file_type == file_type,
+            )
+        )).scalar_one()
+        if existing >= max_count:
+            raise HTTPException(
+                status_code=http_status.HTTP_409_CONFLICT,
+                detail="An attachment already exists for this phase — remove it first.",
+            )
     site_pk = site.id
     await session.rollback()
 
