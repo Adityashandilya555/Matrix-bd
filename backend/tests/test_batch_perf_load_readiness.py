@@ -327,7 +327,7 @@ async def test_design_admin_queue_signs_urls_concurrently(make_session, fake_res
         )
         for i in range(4)
     ]
-    rows = [(d, "C", "Name", "City") for d in delivs]
+    rows = [(d, "C", "CA-C", "Name", "City") for d in delivs]
     sess = make_session(fake_result(all_rows=rows))
 
     state = {"cur": 0, "max": 0}
@@ -343,6 +343,7 @@ async def test_design_admin_queue_signs_urls_concurrently(make_session, fake_res
     out = await design_service.svc_design_admin_queue(sess, tenant_id="t1")
     assert out.total == 2                 # 4 deliverables grouped into 2 sites
     assert state["max"] >= 2              # signed concurrently (was 1 sequential)
+    assert all(s.site_code == "CA-C" for s in out.items)  # ca_code preferred over placeholder code
 
 
 # ── #133 — the Approval model has no duplicate indexes ─────────────────────

@@ -210,7 +210,7 @@ async def _build_design_response(
     ]
     return DesignReviewResponse(
         site_id=str(site.id),
-        site_code=site.code or "",
+        site_code=site.ca_code or site.code or "",
         site_name=site.name,
         city=site.city,
         submitted_by_name=submitted_by_name,
@@ -320,7 +320,7 @@ async def svc_design_queue(
         submitted_by_name = names.get(site.submitted_by, "")
         items.append(DesignQueueItem(
             site_id=str(site.id),
-            site_code=site.code or "",
+            site_code=site.ca_code or site.code or "",
             site_name=site.name,
             city=site.city,
             design_status=site.design_status or "pending",
@@ -1032,7 +1032,7 @@ async def svc_design_admin_queue(
     rows = (await session.execute(
         select(
             models.DesignDeliverable,
-            models.Site.code, models.Site.name, models.Site.city,
+            models.Site.code, models.Site.ca_code, models.Site.name, models.Site.city,
         )
         .join(models.Site, models.Site.id == models.DesignDeliverable.site_id)
         .join(models.DesignReview, models.DesignReview.site_id == models.DesignDeliverable.site_id)
@@ -1059,11 +1059,11 @@ async def svc_design_admin_queue(
 
     by_site: dict[str, DesignAdminQueueSite] = {}
     order: list[str] = []
-    for (d, code, name, city) in rows:
+    for (d, code, ca_code, name, city) in rows:
         sid = str(d.site_id)
         if sid not in by_site:
             by_site[sid] = DesignAdminQueueSite(
-                site_id=sid, site_code=code or "", site_name=name, city=city, deliverables=[],
+                site_id=sid, site_code=ca_code or code or "", site_name=name, city=city, deliverables=[],
             )
             order.append(sid)
         by_site[sid].deliverables.append(AdminQueueDeliverable(
@@ -1221,7 +1221,7 @@ async def svc_design_gfc_queue(
         submitted_by_name = names.get(site.submitted_by)
         items.append(DesignGfcQueueItem(
             site_id=str(site.id),
-            site_code=site.code or "",
+            site_code=site.ca_code or site.code or "",
             site_name=site.name,
             city=site.city,
             boq_estimated_amount=(
