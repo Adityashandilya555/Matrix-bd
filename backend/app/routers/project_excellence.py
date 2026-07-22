@@ -67,14 +67,20 @@ _EXCELLENCE_ALLOWED_MIME = {"image/png", "image/jpeg", "application/pdf"}
 _EXCELLENCE_MAX_BYTES = 5 * 1024 * 1024
 # One budget attachment per phase: 'excellence' is uploaded by Project
 # Excellence, 'closure' by Financial Closure (which also sees the PE doc
-# read-only). The module delegation that authorizes an executive to WRITE each
-# kind; READs additionally accept Project-module delegates (they see the PE
-# doc on the read-only Project budget card).
-_DOC_KIND_MODULES: dict[str, tuple[str, ...]] = {
+# read-only). Authorization is per-phase and per-direction (least privilege):
+#   WRITE (upload/delete) — only the phase that owns the kind.
+#   READ  — the PE 'excellence' doc is also read-only in Financial Closure and
+#           the Project budget card; the FC 'closure' doc is private to FC.
+# A read-only Project delegate must never be able to delete, and cross-phase
+# delegates must not reach the other phase's file (see PR #440 review).
+_DOC_WRITE_MODULES: dict[str, tuple[str, ...]] = {
     "excellence": ("project_excellence",),
     "closure": ("financial_closure",),
 }
-_DOC_READ_MODULES: tuple[str, ...] = ("project_excellence", "financial_closure", "project")
+_DOC_READ_MODULES: dict[str, tuple[str, ...]] = {
+    "excellence": ("project_excellence", "financial_closure", "project"),
+    "closure": ("financial_closure",),
+}
 _DocKind = Literal["excellence", "closure"]
 
 
@@ -383,7 +389,7 @@ async def list_excellence_documents(
     from app.services.site_documents_service import get_site_documents
     return await get_site_documents(
         db, site_id=site_id, tenant_id=tenant_id, current_user=current_user,
-        file_type=kind, delegation_modules=_DOC_READ_MODULES,
+        file_type=kind, delegation_modules=_DOC_READ_MODULES[kind],
     )
 
 
@@ -413,7 +419,7 @@ async def upload_excellence_document(
         content_type=file.content_type, file_bytes=body_bytes,
         file_type=kind, path_prefix=kind,
         audit_action=f"upload_{kind}_doc",
-        max_count=1, delegation_modules=_DOC_KIND_MODULES[kind],
+        max_count=1, delegation_modules=_DOC_WRITE_MODULES[kind],
     )
 
 
@@ -430,8 +436,10 @@ async def delete_excellence_document(
     most one). Scoped to excellence/closure rows only — LOIs, photos, and QA
     reports are untouchable from here."""
     from app.services.site_documents_service import svc_delete_site_document
+    # Authorize by the file's OWN phase (write modules), not the read set — a
+    # read-only Project delegate or a cross-phase delegate must not delete.
     await svc_delete_site_document(
         db, tenant_id=tenant_id, actor=current_user, site_id=site_id, file_id=file_id,
-        delegation_modules=_DOC_READ_MODULES,
+        write_modules=_DOC_WRITE_MODULES,
     )
     return OkResponse(ok=True)

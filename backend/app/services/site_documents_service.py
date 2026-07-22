@@ -103,22 +103,26 @@ async def svc_delete_site_document(
     site_id: str | UUID,
     file_id: str | UUID,
     allowed_types: tuple[str, ...] = ("excellence", "closure"),
-    delegation_modules: tuple[str, ...] | None = None,
+    write_modules: dict[str, tuple[str, ...]] | None = None,
 ) -> dict[str, Any]:
     """Delete one site attachment (row first, then best-effort storage object).
 
     Scoped to ``allowed_types`` so this endpoint can never delete LOIs, site
-    photos, or QA reports. 404 (not 403) on a wrong-tenant/unknown/foreign-type
-    id, matching the repo's don't-reveal-existence convention.
+    photos, or QA reports. Deletion is authorized by the file's OWN phase:
+    ``write_modules[file_type]`` is the delegation an executive must hold — a
+    read-only Project delegate, or a delegate of the other phase, cannot delete
+    (PR #440 review). Supervisors/business_admins bypass the executive check.
+    404 (not 403) on a wrong-tenant/unknown/foreign-type id.
     """
     site = await fetch_site_or_404(db, site_id=site_id, tenant_id=tenant_id)
-    await assert_site_doc_access(db, actor=actor, site=site, delegation_modules=delegation_modules)
 
     try:
         file_pk = _uuid.UUID(str(file_id))
     except ValueError:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Attachment not found") from None
 
+    # Load the row first (tenant+site scoped) so we can authorize against its
+    # actual phase rather than the union of read modules.
     row = (await db.execute(
         select(models.SiteFile).where(
             models.SiteFile.id == file_pk,
@@ -131,6 +135,8 @@ async def svc_delete_site_document(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Attachment not found")
 
     storage_path, file_name, file_type = row.storage_path, row.file_name, row.file_type
+    delete_modules = (write_modules or {}).get(file_type, ())
+    await assert_site_doc_access(db, actor=actor, site=site, delegation_modules=delete_modules)
     async with transaction(db):
         # Statement-form delete (budget_service precedent) — plays well with
         # both AsyncSession and the tests' RecordingSession.

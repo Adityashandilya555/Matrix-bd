@@ -121,7 +121,8 @@ async def test_upload_closure_kind_writes_closure_row_under_prefix(session, fake
     monkeypatch.setattr(photo_service, "signed_url", _fake_sign)
 
     site = _site()
-    session.queue(fake_result(scalar=site), fake_result(scalar=0))  # site, then max-1 count
+    # site, fast-fail count(0), advisory-lock result, in-txn recheck count(0)
+    session.queue(fake_result(scalar=site), fake_result(scalar=0), fake_result(), fake_result(scalar=0))
 
     await photo_service.svc_upload_site_file(
         session, tenant_id=TENANT, actor=_supervisor(), site_id=str(site.id),
@@ -133,6 +134,9 @@ async def test_upload_closure_kind_writes_closure_row_under_prefix(session, fake
     assert len(rows) == 1
     assert rows[0].file_type == "closure"
     assert rows[0].storage_path.startswith(f"closure/{TENANT}/")
+    # The max-1 cap is enforced under an advisory lock (race-safe), not just the
+    # fast-fail pre-check.
+    assert "pg_advisory_xact_lock" in session.sql.lower()
 
 
 async def test_upload_second_file_same_kind_is_409_before_storage(session, fake_result, monkeypatch):
@@ -178,7 +182,8 @@ async def test_delegated_executive_may_upload(session, fake_result, monkeypatch)
     monkeypatch.setattr(sd, "svc_is_delegated", _delegated)
 
     site = _site()  # exec is neither submitted_by nor assigned_to
-    session.queue(fake_result(scalar=site), fake_result(scalar=0))  # site, count
+    # site, fast-fail count(0), advisory-lock result, in-txn recheck count(0)
+    session.queue(fake_result(scalar=site), fake_result(scalar=0), fake_result(), fake_result(scalar=0))
     out = await photo_service.svc_upload_site_file(
         session, tenant_id=TENANT, actor=_executive(), site_id=str(site.id),
         filename="floor.png", content_type="image/png", file_bytes=b"PNG",
@@ -263,6 +268,74 @@ def test_delete_scoped_to_excellence_and_closure_only():
     from app.services.site_documents_service import svc_delete_site_document
     sig = inspect.signature(svc_delete_site_document)
     assert sig.parameters["allowed_types"].default == ("excellence", "closure")
+
+
+_WRITE_MODULES = {"excellence": ("project_excellence",), "closure": ("financial_closure",)}
+
+
+async def test_delete_by_readonly_project_delegate_is_403(session, fake_result, monkeypatch):
+    """PR #440 review: a read-only Project delegate (module='project') must NOT
+    be able to delete a budget attachment via the API even though the UI is
+    read-only. Deletion is authorized by the file's own phase write-module."""
+    import app.services.site_documents_service as sd
+
+    async def _delegated(_s, *, tenant_id, site_id, user_id, module):
+        return module == "project"  # only the read-only Project delegation
+
+    monkeypatch.setattr(sd, "svc_is_delegated", _delegated)
+    site = _site()
+    row = types.SimpleNamespace(
+        id=uuid.uuid4(), storage_path=f"excellence/{TENANT}/x.png",
+        file_name="x.png", file_type="excellence",
+    )
+    session.queue(fake_result(scalar=site), fake_result(scalar=row))
+    with pytest.raises(HTTPException) as exc:
+        await sd.svc_delete_site_document(
+            session, tenant_id=TENANT, actor=_executive(), site_id=str(site.id),
+            file_id=str(row.id), write_modules=_WRITE_MODULES,
+        )
+    assert exc.value.status_code == 403
+
+
+async def test_delete_by_phase_delegate_succeeds(session, fake_result, monkeypatch):
+    """The owning-phase delegate (excellence → project_excellence) may delete."""
+    import app.services.site_documents_service as sd
+
+    async def _delegated(_s, *, tenant_id, site_id, user_id, module):
+        return module == "project_excellence"
+
+    async def _audit(_s, **kw):
+        return None
+
+    async def _purge(*, path):
+        return True
+
+    monkeypatch.setattr(sd, "svc_is_delegated", _delegated)
+    monkeypatch.setattr(sd, "write_audit_event", _audit)
+    monkeypatch.setattr(sd.storage_service, "delete_object", _purge)
+    site = _site()
+    row = types.SimpleNamespace(
+        id=uuid.uuid4(), storage_path=f"excellence/{TENANT}/x.png",
+        file_name="x.png", file_type="excellence",
+    )
+    session.queue(fake_result(scalar=site), fake_result(scalar=row))
+    out = await sd.svc_delete_site_document(
+        session, tenant_id=TENANT, actor=_executive(), site_id=str(site.id),
+        file_id=str(row.id), write_modules=_WRITE_MODULES,
+    )
+    assert out["ok"] is True
+
+
+def test_document_read_scope_is_least_privilege_per_kind():
+    """PR #440 review: kind='closure' must not expose FC's file to Project/PE
+    delegates; the PE 'excellence' doc stays readable by Project + FC."""
+    from app.routers import project_excellence as pe
+    assert pe._DOC_READ_MODULES["closure"] == ("financial_closure",)
+    assert "project" not in pe._DOC_READ_MODULES["closure"]
+    assert "project" in pe._DOC_READ_MODULES["excellence"]
+    # Writes are always phase-private (upload/delete).
+    assert pe._DOC_WRITE_MODULES["excellence"] == ("project_excellence",)
+    assert pe._DOC_WRITE_MODULES["closure"] == ("financial_closure",)
 
 
 # ── Pagination parity ─────────────────────────────────────────────────────────

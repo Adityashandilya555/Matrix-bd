@@ -6,14 +6,24 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
 from app.db.session import transaction
 from app.services._common import fetch_site_or_404
 from app.services.audit_service import write_audit_event
-from app.services.storage_service import safe_object_name, signed_url, upload_bytes
+from app.services.storage_service import delete_object, safe_object_name, signed_url, upload_bytes
+
+
+async def _phase_file_count(session: AsyncSession, *, site_id, tenant_id, file_type: str) -> int:
+    return (await session.execute(
+        select(func.count()).select_from(models.SiteFile).where(
+            models.SiteFile.site_id == site_id,
+            models.SiteFile.tenant_id == tenant_id,
+            models.SiteFile.file_type == file_type,
+        )
+    )).scalar_one()
 
 
 async def svc_upload_site_file(
@@ -54,19 +64,16 @@ async def svc_upload_site_file(
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
     await assert_site_doc_access(session, actor=actor, site=site, delegation_modules=delegation_modules)
     if max_count is not None:
-        existing = (await session.execute(
-            select(func.count()).select_from(models.SiteFile).where(
-                models.SiteFile.site_id == site.id,
-                models.SiteFile.tenant_id == site.tenant_id,
-                models.SiteFile.file_type == file_type,
-            )
-        )).scalar_one()
-        if existing >= max_count:
+        # Fast-fail before the slow upload. NOT authoritative on its own — the
+        # in-transaction recheck below (under an advisory lock) is what actually
+        # enforces the cap against a two-tab/retry race.
+        if await _phase_file_count(session, site_id=site.id, tenant_id=site.tenant_id, file_type=file_type) >= max_count:
             raise HTTPException(
                 status_code=http_status.HTTP_409_CONFLICT,
                 detail="An attachment already exists for this phase — remove it first.",
             )
     site_pk = site.id
+    tenant_pk = site.tenant_id
     await session.rollback()
 
     file_id = _uuid.uuid4()
@@ -84,27 +91,48 @@ async def svc_upload_site_file(
         content_type=content_type or "image/jpeg",
     )
 
-    async with transaction(session):
-        session.add(models.SiteFile(
-            id=file_id,
-            tenant_id=tenant_id,
-            site_id=site_pk,
-            uploaded_by=actor["sub"],
-            file_type=file_type,
-            file_name=filename,
-            storage_path=storage_path,
-            file_size_kb=max(1, len(file_bytes) // 1024),
-            mime_type=content_type,
-            is_primary=False,
-            source="manual_upload",
-        ))
+    try:
+        async with transaction(session):
+            if max_count is not None:
+                # Serialize concurrent uploads for this (site, phase) so the
+                # recheck is authoritative — there is no unique index, and two
+                # tabs could both clear the fast-fail above before either row
+                # is committed. The xact lock releases at commit/rollback and is
+                # pgBouncer-transaction-pooler safe.
+                await session.execute(
+                    text("SELECT pg_advisory_xact_lock(hashtext(:k))"),
+                    {"k": f"{site_pk}:{file_type}"},
+                )
+                if await _phase_file_count(session, site_id=site_pk, tenant_id=tenant_pk, file_type=file_type) >= max_count:
+                    raise HTTPException(
+                        status_code=http_status.HTTP_409_CONFLICT,
+                        detail="An attachment already exists for this phase — remove it first.",
+                    )
+            session.add(models.SiteFile(
+                id=file_id,
+                tenant_id=tenant_id,
+                site_id=site_pk,
+                uploaded_by=actor["sub"],
+                file_type=file_type,
+                file_name=filename,
+                storage_path=storage_path,
+                file_size_kb=max(1, len(file_bytes) // 1024),
+                mime_type=content_type,
+                is_primary=False,
+                source="manual_upload",
+            ))
 
-        await write_audit_event(
-            session, tenant_id=tenant_id, site_id=site_pk,
-            actor_id=actor["sub"], actor_name=actor["name"],
-            action=audit_action,
-            detail=filename,
-        )
+            await write_audit_event(
+                session, tenant_id=tenant_id, site_id=site_pk,
+                actor_id=actor["sub"], actor_name=actor["name"],
+                action=audit_action,
+                detail=filename,
+            )
+    except HTTPException:
+        # The object was already written; a lost race (or any failed insert)
+        # would otherwise leave it dangling. Best-effort purge, then re-raise.
+        await delete_object(path=storage_path)
+        raise
 
     url = await signed_url(storage_path)
     return {
