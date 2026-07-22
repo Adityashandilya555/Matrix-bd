@@ -88,11 +88,16 @@ export const TABULAR = { fontVariantNumeric: 'tabular-nums', fontFeatureSettings
 // ── Icons ────────────────────────────────────────────────────────────────────
 // Single consistent stroke family (1.6px, round joins). No emoji as icons.
 
-function Svg({ size = 18, children, ...rest }) {
+function Svg({ size = 18, children, style, ...rest }) {
   return (
+    // display:block takes the glyph out of inline flow, so it can't sit on the
+    // text baseline even when a parent forgets to be a flex container.
+    // flexShrink:0 stops a long label squashing it. `style` is spread LAST so
+    // callers keep winning — Icon.caret's rotate() and WorkspaceSwitcherPanel's
+    // both rely on that.
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
-      aria-hidden="true" {...rest}>
+      aria-hidden="true" style={{ display: 'block', flexShrink: 0, ...style }} {...rest}>
       {children}
     </svg>
   );
@@ -205,7 +210,23 @@ export function Button({ variant = 'subtle', size = 'sm', loading = false, icon,
       // Disabled/in-flight buttons must LOOK non-clickable — otherwise an admin
       // who clicks (e.g. Financial Closure) sees no state change. The disabled
       // visual is appended last so it wins over variant/caller styles.
-      style={{ fontWeight: 650, cursor: 'pointer', ...BTN_VARIANTS[variant], ...BTN_SIZES[size], ...style, ...(isDisabled ? { cursor: 'not-allowed', opacity: 0.55 } : {}) }}
+      // The flex trio comes FIRST so a caller passing `display` still wins —
+      // layout here is a default, not an override. (Contrast the disabled block
+      // last, which is a correctness override per the comment above.)
+      //
+      // Without it the button fell back to UA `inline-block`, so `icon` and
+      // `children` laid out as inline boxes sharing a baseline: the <svg>'s
+      // bottom edge sat ON the text baseline, floating a 15px glyph ~3px high
+      // against 13px text. None of .zm-btn / .zm-btn-primary / .zm-btn-danger
+      // has a CSS rule anywhere, so this inline style is the only layout there
+      // is. lineHeight:1 stops the UA line box fighting the fixed 30/36 height.
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        gap: 6, lineHeight: 1, whiteSpace: 'nowrap',
+        fontWeight: 650, cursor: 'pointer',
+        ...BTN_VARIANTS[variant], ...BTN_SIZES[size], ...style,
+        ...(isDisabled ? { cursor: 'not-allowed', opacity: 0.55 } : {}),
+      }}
       {...rest}
     >
       {loading ? <Spinner /> : icon}
@@ -235,7 +256,9 @@ export function IconButton({ label, loading = false, size = 32, children, style,
 function Spinner({ size = 14 }) {
   return (
     <svg className="ac-spin-svg" width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true"
-      style={{ animation: 'ac-spin .8s linear infinite' }}>
+      // Matches Svg so the label doesn't shift when a button swaps its icon
+      // for the spinner mid-action.
+      style={{ display: 'block', flexShrink: 0, animation: 'ac-spin .8s linear infinite' }}>
       <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
       <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
     </svg>

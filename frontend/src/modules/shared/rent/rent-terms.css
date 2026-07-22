@@ -1,0 +1,56 @@
+/* RentTermsForm — the hover/focus affordances inline styles can't express.
+ *
+ * Uses only --zm-* custom properties, which are declared on plain :root
+ * (public/colors_and_type.css) and therefore resolve identically on the BD
+ * surface and inside the business-admin portal's createPortal drawer. This
+ * stylesheet deliberately lives beside the component rather than reusing the
+ * portal's approval-center.css, which is scoped to that module only.
+ *
+ * DELIBERATE: nothing here sets `border-color`.
+ * A selected rent-type option marks itself with an inline
+ * `border: 1px solid var(--zm-accent)`. The portal's own .ac-interactive uses
+ * `border-color: var(--zm-line-strong) !important` on hover, which would beat
+ * that inline style and ERASE the selection ring the moment you hovered the
+ * selected card. Hover here changes only elevation, never colour.
+ */
+
+.rt-option {
+  transition: transform .16s ease, box-shadow .16s ease, background-color .2s ease;
+}
+.rt-option:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--zm-shadow-2);
+}
+.rt-option:active:not(:disabled) {
+  transform: translateY(0);
+}
+/* Roving tabindex means only the checked option is a tab stop, so the ring has
+   to be unmistakable when it lands. */
+.rt-option:focus-visible {
+  outline: 2px solid var(--zm-accent);
+  outline-offset: 2px;
+}
+.rt-option:disabled {
+  cursor: default;
+}
+
+/* NumField renders a borderless <input> inside a bordered wrapper, so the focus
+   ring must come from the wrapper — :focus-within, not :focus. */
+.rt-field {
+  transition: border-color .14s ease, box-shadow .14s ease;
+}
+.rt-field:focus-within {
+  border-color: var(--zm-accent) !important;
+  box-shadow: var(--zm-ring-focus);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rt-option,
+  .rt-field {
+    transition: none;
+  }
+  .rt-option:hover:not(:disabled),
+  .rt-option:active:not(:disabled) {
+    transform: none;
+  }
+}

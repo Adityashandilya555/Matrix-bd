@@ -351,12 +351,15 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
                 <RentTermsForm value={form} onChange={handleRentChange} tokens={AC_TOKENS} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: T.textFaint }}>Comment on rent (optional)</div>
-                  <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={2}
+                  {/* ac-input supplies the focus ring and placeholder colour
+                      that inline styles can't; sizing matches SiteApprovalPanel's
+                      taStyle so every admin textarea reads the same. */}
+                  <textarea className="ac-input" value={comment} onChange={(e) => setComment(e.target.value)} rows={2}
                     placeholder="Why these terms…"
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${T.line}`, background: T.surface, color: T.text, fontFamily: 'inherit', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }} />
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: T.radiusSm, border: `1px solid ${T.lineStrong}`, background: T.chip, color: T.text, fontFamily: 'inherit', fontSize: 12.5, lineHeight: 1.55, resize: 'vertical', boxSizing: 'border-box' }} />
                 </div>
                 <div>
-                  <Button variant="subtle" size="sm" loading={saving} onClick={handleSaveRent}>Save rent changes</Button>
+                  <Button variant="solid" size="sm" loading={saving} onClick={handleSaveRent}>Save rent changes</Button>
                 </div>
               </div>
             )}
