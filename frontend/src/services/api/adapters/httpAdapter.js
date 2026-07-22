@@ -334,6 +334,7 @@ export function siteFromServer(s) {
     rejectionReason: s.rejection_reason ?? null,
     rejectionReasons: s.rejection_reason ? [s.rejection_reason] : [],
     archiveNote: s.archive_note ?? '',
+    loiRejectionNote: s.loi_rejection_note ?? '',
     updatedAt: s.updated_at,
     _archivedAt: s.archived_at ? String(s.archived_at).slice(0, 10) : undefined,
     // Pipeline fields a supervisor amended that the exec hasn't re-read yet.
@@ -448,6 +449,26 @@ export async function uploadLoi(id, file) {
     timeout: UPLOAD_TIMEOUT_MS,
   });
   return r.data;
+}
+
+// Fetch the LOI's short-lived signed URL for preview. The backend 503s when a
+// file exists but cannot be signed, so a resolved response always carries a
+// usable fileUrl unless nothing has been uploaded yet (fileUrl and uploadedAt
+// both null).
+export async function viewLoi(id) {
+  const d = await get(`/loi/${id}`);
+  return {
+    siteId:     d.site_id,
+    fileUrl:    d.file_url ?? null,
+    uploadedAt: d.uploaded_at ?? null,
+    uploadedBy: d.uploaded_by ?? null,
+  };
+}
+
+export async function sendBackLoi(id, comments) {
+  const result = await post(`/loi/${id}/send-back`, { comments });
+  notifySiteDataChanged({ source: 'bd', action: 'loi_sent_back', siteId: id });
+  return result;
 }
 
 export async function uploadPhoto(id, file) {

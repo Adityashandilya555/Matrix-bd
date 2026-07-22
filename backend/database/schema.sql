@@ -120,6 +120,7 @@ CREATE TABLE public.sites (
   finance_status           text NOT NULL DEFAULT 'pending'::text,
   rejection_reason         text,
   archive_note             text,
+  loi_rejection_note       text,                                   -- supervisor's reason for sending an LOI back (20260807)
   archived_from_status     text,
   is_launched              boolean NOT NULL DEFAULT false,  -- set by Launch Approval workflow (202606094)
   launched_at              timestamp with time zone,

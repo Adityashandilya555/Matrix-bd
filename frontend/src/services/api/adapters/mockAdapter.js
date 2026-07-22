@@ -159,9 +159,55 @@ export async function uploadLoi(id, file) {
     updatedAt: new Date().toISOString(),
     _loiUploadedAt: uploadedAt,
     _daysToLOI: site._daysSinceApproval ?? 0,
+    // A fresh upload answers any previous send-back.
+    loiRejectionNote: '',
   };
   upsertSite(updated);
   return { url, uploadedAt };
+}
+
+export async function viewLoi(id) {
+  await delay(200, 400);
+  maybeFail();
+  const site = getSiteById(id);
+  if (!site) throw new Error(`Site not found: ${id}`);
+  return {
+    siteId: id,
+    fileUrl: site.loiUrl || null,
+    uploadedAt: site._loiUploadedAt || null,
+    uploadedBy: site.createdBy || null,
+  };
+}
+
+export async function sendBackLoi(id, comments) {
+  await delay(200, 400);
+  maybeFail();
+  const site = getSiteById(id);
+  if (!site) throw new Error(`Site not found: ${id}`);
+  const note = String(comments || '').trim();
+  if (!note) throw new Error('Comments are required to send an LOI back.');
+  // Mirrors the backend: back to APPROVED so the executive re-uploads through
+  // the unchanged path, with loi_uploaded_at cleared so the SLA clock resumes.
+  assertTransition(site.status, SiteStatus.APPROVED);
+  upsertSite({
+    ...site,
+    status: SiteStatus.APPROVED,
+    loiUrl: null,
+    _loiUploadedAt: null,
+    _daysToLOI: null,
+    loiRejectionNote: note,
+    auditTrail: [...(site.auditTrail || []), {
+      id: Math.random().toString(36).slice(2, 10),
+      at: new Date().toISOString(),
+      by: 'supervisor',
+      fromStatus: site.status,
+      toStatus: SiteStatus.APPROVED,
+      action: 'send_back_loi',
+      note,
+    }],
+    updatedAt: new Date().toISOString(),
+  });
+  return { ok: true, message: 'LOI sent back for re-upload.' };
 }
 
 export async function archiveSite(id, note) {

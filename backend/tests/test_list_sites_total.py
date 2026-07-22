@@ -25,7 +25,7 @@ def _site(**over):
         agreement_status="pending", licensing_status="pending", design_status="pending",
         is_launched=False, launched_at=None, finance_status="pending", kyc_verified=False,
         ca_code=None, finance_amount=None, approved_at=None, loi_uploaded_at=None,
-        rejection_reason=None, archive_note=None, archived_at=None,
+        rejection_reason=None, archive_note=None, loi_rejection_note=None, archived_at=None,
         updated_at=datetime(2026, 7, 1, tzinfo=timezone.utc),
     )
     base.update(over)

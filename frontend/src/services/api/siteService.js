@@ -84,6 +84,16 @@ export async function uploadLoi(siteId, file, uploadedBy) {
   return adapter.uploadLoi(siteId, { ...file, uploadedBy });
 }
 
+// Signed URL + metadata for the uploaded LOI, so a supervisor can preview it
+// before pushing to Legal or sending it back.
+export async function viewLoi(siteId) {
+  return adapter.viewLoi(siteId);
+}
+
+export async function sendBackLoi(siteId, comments) {
+  return adapter.sendBackLoi(siteId, comments);
+}
+
 export async function pushToPayments(siteId, by) {
   // Compatibility wrapper for the existing "push" button. After PR #4's
   // workflow change, BD push no longer terminates in Payments; it starts Legal.

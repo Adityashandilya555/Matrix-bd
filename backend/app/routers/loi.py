@@ -12,11 +12,21 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from app.core.deps import DbDep, TenantId
 from app.core.uploads import read_upload_capped
 from app.domain.schemas.common import OkResponse
-from app.domain.schemas.loi import LOIUploadResponse, LOIViewResponse, SetLOITimelineRequest
+from app.domain.schemas.loi import (
+    LOIUploadResponse,
+    LOIViewResponse,
+    SendBackLOIRequest,
+    SetLOITimelineRequest,
+)
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
 from app.services._common import fetch_site_or_404
-from app.services.loi_service import svc_set_loi_timeline, svc_upload_loi, svc_view_loi
+from app.services.loi_service import (
+    svc_send_back_loi,
+    svc_set_loi_timeline,
+    svc_upload_loi,
+    svc_view_loi,
+)
 
 router = APIRouter(prefix="/loi", tags=["LOI"])
 
@@ -63,6 +73,24 @@ async def view_loi(
         if str(site.submitted_by) != uid and str(site.assigned_to or "") != uid:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
     return await svc_view_loi(db, tenant_id=tenant_id, site_id=site_id)
+
+
+@router.post(
+    "/{site_id}/send-back",
+    response_model=OkResponse,
+    summary="Supervisor: send an uploaded LOI back for re-upload (comments required)",
+)
+async def send_back_loi(
+    site_id: str,
+    body: SendBackLOIRequest,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
+    tenant_id: TenantId,
+) -> OkResponse:
+    return await svc_send_back_loi(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
+        comments=body.comments,
+    )
 
 
 @router.post(

@@ -333,6 +333,7 @@ def site_to_response(
         "loi_uploaded_at": site.loi_uploaded_at,
         "rejection_reason": site.rejection_reason,
         "archive_note": site.archive_note,
+        "loi_rejection_note": site.loi_rejection_note,
         "archived_at": site.archived_at,
         "updated_at": site.updated_at,
         "launch_status": launch.status if launch else None,

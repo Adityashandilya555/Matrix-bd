@@ -175,6 +175,9 @@ class Site(Base):
     # Soft-delete / rejection metadata
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
     archive_note: Mapped[Optional[str]] = mapped_column(Text)
+    # Supervisor's reason for sending an uploaded LOI back. Cleared on the next
+    # successful upload; the audit event keeps the permanent record.
+    loi_rejection_note: Mapped[Optional[str]] = mapped_column(Text)
     # Snapshot of sites.status taken at archive time so Revive can restore exactly.
     archived_from_status: Mapped[Optional[str]] = mapped_column(Text)
 
