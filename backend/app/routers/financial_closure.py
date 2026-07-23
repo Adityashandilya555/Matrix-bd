@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.deps import DbDep, TenantId
 from app.domain.schemas.common import OkResponse
+from app.domain.schemas.project import QAReportsResponse
 from app.domain.schemas.financial_closure import (
     AllocateFCRequest,
     FCAdminReviewRequest,
@@ -34,6 +35,7 @@ from app.services.financial_closure_service import (
     svc_save_fc_budget,
     svc_send_for_financial_closure,
 )
+from app.services.project_service import svc_qa_reports_for_site
 
 router = APIRouter(prefix="/financial-closure", tags=["Financial Closure"])
 
@@ -83,6 +85,17 @@ async def fc_admin_detail(
     site_id: str, db: DbDep, _auth: BusinessAdmin, tenant_id: TenantId,
 ) -> FCStateResponse:
     return await svc_get_fc_admin_detail(db, tenant_id=tenant_id, site_id=site_id)
+
+
+@router.get("/admin-detail/{site_id}/qa-reports", response_model=QAReportsResponse)
+async def fc_admin_qa_reports(
+    site_id: str, db: DbDep, _auth: BusinessAdmin, tenant_id: TenantId,
+) -> QAReportsResponse:
+    """The before/after quality-audit report PDFs (signed URLs) for the admin's
+    Financial Closure review card. Reuses the actor-agnostic project-side
+    service; the project route is project-module-gated, so the admin needs its
+    own. Read-only, does not mark viewed."""
+    return await svc_qa_reports_for_site(db, tenant_id=tenant_id, site_id=site_id)
 
 
 @router.post("/{site_id}/finalize", response_model=FCStateResponse)

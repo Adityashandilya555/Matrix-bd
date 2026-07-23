@@ -674,24 +674,107 @@ function QualityAuditBlock({ site }) {
   );
 }
 
+// Read-only attachment links (admin drawer, T-token) — the closure card's
+// project-team / QA documents, mirroring BudgetBlock's PE-attachment row.
+function AttachmentLinks({ title, docs }) {
+  if (!docs || docs.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ color: T.textFaint, fontSize: 11, marginBottom: 6 }}>{title}</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {docs.map((d) => (
+          <a
+            key={d.id || d.url}
+            href={d.url || undefined}
+            target="_blank"
+            rel="noreferrer"
+            title={d.fileName}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+              borderRadius: T.radiusSm, border: `1px solid ${T.lineStrong}`, background: T.chip,
+              color: T.text, fontSize: 12.5, textDecoration: 'none', maxWidth: 280,
+            }}
+          >
+            <Icon.doc size={14} style={{ flexShrink: 0 }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.fileName}</span>
+            {d.fileSizeKb ? (
+              <span style={{ color: T.textFaint, fontSize: 11, flexShrink: 0 }}>
+                {d.fileSizeKb < 1024 ? `${d.fileSizeKb} KB` : `${(d.fileSizeKb / 1024).toFixed(1)} MB`}
+              </span>
+            ) : null}
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Financial closure finalize (tier-2 business-admin) ───────────────────────
-function ClosureBlock({ site, onFinalize }) {
+function ClosureBlock({ site, fetchDetail, fetchDocuments, fetchQAReports, onFinalize }) {
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(null);
+  const [detail, setDetail] = React.useState(null);
+  const [excellenceDocs, setExcellenceDocs] = React.useState([]);
+  const [closureDocs, setClosureDocs] = React.useState([]);
+  const [qa, setQa] = React.useState(null);
   const fc = site.financialClosure || {};
+
+  // Non-fatal: any failed fetch just hides its row; finalize still works.
+  React.useEffect(() => {
+    let live = true;
+    if (fetchDetail) fetchDetail(site.siteId).then((d) => { if (live) setDetail(d); }).catch(() => {});
+    if (fetchDocuments) {
+      fetchDocuments(site.siteId, 'excellence').then((d) => { if (live) setExcellenceDocs(Array.isArray(d) ? d : []); }).catch(() => {});
+      fetchDocuments(site.siteId, 'closure').then((d) => { if (live) setClosureDocs(Array.isArray(d) ? d : []); }).catch(() => {});
+    }
+    if (fetchQAReports) fetchQAReports(site.siteId).then((r) => { if (live) setQa(r); }).catch(() => {});
+    return () => { live = false; };
+  }, [fetchDetail, fetchDocuments, fetchQAReports, site.siteId]);
+
   const decide = async (decision) => {
     setBusy(true); setErr(null);
     try { await onFinalize(site.siteId, { decision }); }
     catch (e) { setErr(e?.detail || e?.message || 'Action failed'); }
     finally { setBusy(false); }
   };
+
+  const totals = detail || fc;
+  const lines = detail?.lines || [];
+  const varColor = (v) => ((v || 0) > 0 ? T.dangerText : (v || 0) < 0 ? T.successText : T.textMuted);
+  const qaDocs = [qa?.before, qa?.after]
+    .filter((r) => r && r.downloadUrl)
+    .map((r) => ({ id: `qa-${r.kind}`, fileName: `${r.kind === 'before' ? 'Before' : 'After'} — ${r.fileName || 'report.pdf'}`, url: r.downloadUrl }));
+  const cols = '1fr 72px 72px 72px';
+
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 8 }}>
-        <RequestMeta label="GFC budget" value={inr(fc.gfcBudgetTotal)} />
-        <RequestMeta label="Closure actual" value={inr(fc.closureBudgetTotal)} />
-        <RequestMeta label="Variation" value={inr(fc.variationTotal)} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+        <RequestMeta label="GFC budget" value={inr(totals.gfcBudgetTotal)} />
+        <RequestMeta label="Closure actual" value={inr(totals.closureBudgetTotal)} />
+        <RequestMeta label="Variation" value={inr(totals.variationTotal)} />
       </div>
+
+      {lines.length > 0 && (
+        <div style={{ display: 'grid', gap: 4, marginBottom: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, fontSize: 10, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em', paddingBottom: 4, borderBottom: `1px solid ${T.line}` }}>
+            <span/>
+            {['GFC', 'Actual', 'Var'].map((h) => <span key={h} style={{ textAlign: 'right' }}>{h}</span>)}
+          </div>
+          {lines.map((it) => (
+            <div key={it.idx} style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, fontSize: 12, alignItems: 'baseline' }}>
+              <span style={{ color: T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.idx}. {it.label}</span>
+              <span style={{ fontFamily: T.mono, color: T.textMuted, textAlign: 'right', ...TABULAR }}>{inr(it.gfcAmount)}</span>
+              <span style={{ fontFamily: T.mono, color: T.text, textAlign: 'right', ...TABULAR }}>{inr(it.closureAmount)}</span>
+              <span style={{ fontFamily: T.mono, color: varColor(it.variation), textAlign: 'right', ...TABULAR }}>{inr(it.variation)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <AttachmentLinks title="Project Excellence attachment" docs={excellenceDocs} />
+      <AttachmentLinks title="Financial Closure attachment" docs={closureDocs} />
+      <AttachmentLinks title="Quality-audit reports" docs={qaDocs} />
+
       {err && <div role="alert" style={{ color: T.dangerText, fontSize: 12, margin: '6px 0' }}>{err}</div>}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
         <Button variant="success" size="md" loading={busy} icon={!busy && <Icon.check size={15} />}
@@ -747,7 +830,7 @@ export default function SiteApprovalPanel({ site, handlers }) {
       )}
       {site.financialClosure && (
         <BlockShell icon={Icon.wallet} tone="payment" title="Financial closure" amount={site.financialClosure.closureBudgetTotal}>
-          <ClosureBlock site={site} onFinalize={handlers.onClosureFinalize} />
+          <ClosureBlock site={site} fetchDetail={handlers.fetchClosureDetail} fetchDocuments={handlers.fetchClosureDocuments} fetchQAReports={handlers.fetchClosureQAReports} onFinalize={handlers.onClosureFinalize} />
         </BlockShell>
       )}
     </div>

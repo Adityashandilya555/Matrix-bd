@@ -171,6 +171,28 @@ export async function completePEQualityAudit(siteId) {
 }
 
 // ── Quality-audit reports (before/after PDFs) ────────────────────────────────
+function qaReportFromServer(r) {
+  if (!r) return null;
+  return {
+    kind: r.kind,
+    fileName: r.file_name,
+    uploadedAt: r.uploaded_at,
+    pushedAt: r.pushed_at,
+    downloadUrl: r.download_url,
+  };
+}
+
+// The before/after report PDFs with short-lived signed URLs so the PE push box
+// can offer a "View" link. Mirrors projectApi.getQAReports, on the PE-gated route.
+export async function getPEQAReports(siteId) {
+  const data = await client.get(`/project-excellence/${siteId}/quality-audit/reports`).then((r) => r.data);
+  return {
+    siteId: data.site_id,
+    before: qaReportFromServer(data.before),
+    after: qaReportFromServer(data.after),
+  };
+}
+
 export async function uploadQAReport(siteId, kind, file) {
   const form = new FormData();
   form.append('file', file);
