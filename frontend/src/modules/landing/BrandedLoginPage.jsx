@@ -13,12 +13,20 @@ import {
   PendingApprovalError,
   InvalidCredentialsError,
 } from '../../services/api/supabaseAuth.js';
-import LottiePanel from './LottiePanel.jsx';
-import dataSecurityAnim from '../../assets/lottie/data-security.json';
+import blueTokaiLogo from '../../assets/brands/blue-tokai.png';
+import gotTeaLogo from '../../assets/brands/got-tea.png';
+import suchaliLogo from '../../assets/brands/suchali.png';
 import './branded-auth.css';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CODE_RE = /^[A-Za-z0-9-]{4,32}$/;
+
+// Brands showcased on the workspace-access panel ("Powering operations for").
+const BRAND_LOGOS = [
+  { name: 'Blue Tokai', src: blueTokaiLogo },
+  { name: 'Got Tea', src: gotTeaLogo },
+  { name: "Suchali's", src: suchaliLogo },
+];
 
 function decodeJwtPayload(token) {
   try {
@@ -298,15 +306,32 @@ export default function BrandedLoginPage() {
     <div className="bl-shell">
       <div className="bl-card bl-card--split">
         <aside className="bl-aside">
-          <LottiePanel
-            data={dataSecurityAnim}
-            className="bl-aside-anim"
-            fallbackClassName="bl-aside-anim bl-aside-fallback"
-          />
-          <div className="bl-aside-copy">
+          <span className="bl-aurora bl-aurora--1" aria-hidden="true" />
+          <span className="bl-aurora bl-aurora--2" aria-hidden="true" />
+          <span className="bl-aurora bl-aurora--3" aria-hidden="true" />
+          <span className="bl-dotgrid" aria-hidden="true" />
+
+          <div className="bl-aside-top">
             <span className="bl-aside-brand">{PRODUCT_NAME}</span>
-            <h2>Secure access to your workspace</h2>
-            <p>Sign in to continue to {brand.status === 'ready' ? brand.name : 'your workspace'}.</p>
+            <h2>One platform.<br />Every brand.</h2>
+            <p>From site scouting to store handover — run every location in one place.</p>
+          </div>
+
+          <div className="bl-aside-bottom">
+            <div className="bl-trust">
+              <span className="bl-trust-label">Powering operations for</span>
+              <div className="bl-trust-logos">
+                {BRAND_LOGOS.map((b) => (
+                  <div className="bl-trust-item" key={b.name}>
+                    <span className="bl-trust-token"><img src={b.src} alt={b.name} /></span>
+                    <span className="bl-trust-name">{b.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <p className="bl-aside-tagline">
+              Sign in to continue to <b>{brand.status === 'ready' ? brand.name : 'your workspace'}</b>.
+            </p>
           </div>
         </aside>
 

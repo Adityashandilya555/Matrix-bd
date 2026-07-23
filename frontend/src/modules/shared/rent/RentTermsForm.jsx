@@ -15,9 +15,12 @@ import Icon from '../primitives/Icon.jsx';
  *   rent_type, expected_rent, rev_share_pct, escalation_pct,
  *   expected_escalation_years, rent_free_days, lock_in_months, tenure_months
  *
- * Theme-agnostic: pass `tokens` so it themes inside both the BD (zm) surface and
- * the business-admin portal (ac) surface.
+ * Theme-agnostic: pass `tokens` so it themes inside both the BD surface
+ * (LaunchReviewModal) and the business-admin portal (LaunchApprovalTab). Both
+ * maps now resolve to the shared --zm-* system; see the note on AC_TOKENS.
  */
+
+import './rent-terms.css';
 
 export const ZM_TOKENS = {
   bg: 'var(--zm-bg)', surface: 'var(--zm-surface)', surface2: 'var(--zm-surface-2)',
@@ -28,13 +31,26 @@ export const ZM_TOKENS = {
   fontBody: 'var(--zm-font-body)', fontMono: 'var(--zm-font-mono)',
 };
 
+// The business-admin portal migrated to the shared zm- design system in 92faf4c,
+// which deleted every --ac-* declaration from approval-center.css and repointed
+// kit.jsx's `T`. This map was missed, so each var() below referenced a property
+// that no longer existed — invalid at computed-value time, which resolves to
+// `unset`. Borders became `border-style: none` and backgrounds went transparent
+// while text still rendered (colour merely inherits), so the whole panel drew as
+// bare labels floating on white.
+//
+// These now mirror kit.jsx's `T`. That makes AC_TOKENS all but identical to
+// ZM_TOKENS — deliberately, and both are kept: the two surfaces are free to
+// diverge again, and a single `tokens` prop is what lets this component live in
+// shared/ without importing anything from business-admin/. fontMono stays a
+// literal because the portal has no --zm-font-mono equivalent in this context.
 export const AC_TOKENS = {
-  bg: 'var(--ac-bg)', surface: 'var(--ac-surface)', surface2: 'var(--ac-surface-inset)',
-  line: 'var(--ac-line)', lineStrong: 'var(--ac-line-strong)',
-  accent: 'var(--ac-accent)', accentSoft: 'var(--ac-accent-soft)',
-  fg: 'var(--ac-text)', fgMuted: 'var(--ac-text-muted)', fgFaint: 'var(--ac-text-faint)',
-  danger: 'var(--ac-danger)',
-  fontBody: 'var(--ac-font, system-ui)', fontMono: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  bg: 'var(--zm-bg)', surface: 'var(--zm-surface)', surface2: 'var(--zm-surface-2)',
+  line: 'var(--zm-line)', lineStrong: 'var(--zm-line-strong, var(--zm-line))',
+  accent: 'var(--zm-accent)', accentSoft: 'var(--zm-accent-soft)',
+  fg: 'var(--zm-fg)', fgMuted: 'var(--zm-fg-2)', fgFaint: 'var(--zm-fg-3)',
+  danger: 'var(--zm-danger)',
+  fontBody: 'var(--zm-font-body, system-ui)', fontMono: 'ui-monospace, SFMono-Regular, Menlo, monospace',
 };
 
 const RENT_TYPES = [
@@ -53,7 +69,7 @@ function NumField({ t, label, value, onChange, prefix, suffix, placeholder, read
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <Label t={t}>{label}</Label>
-      <div style={{ display: 'flex', alignItems: 'stretch', height: 38, border: `1px solid ${t.line}`, borderRadius: 6, background: readOnly ? t.surface2 : t.bg, overflow: 'hidden' }}>
+      <div className="rt-field" style={{ display: 'flex', alignItems: 'stretch', height: 38, border: `1px solid ${t.line}`, borderRadius: 6, background: readOnly ? t.surface2 : t.bg, overflow: 'hidden' }}>
         {prefix && <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: t.fgFaint, fontFamily: t.fontMono, fontSize: 12, background: t.surface2, borderRight: `1px solid ${t.line}` }}>{prefix}</span>}
         <input
           type="number" min="0" step="any" inputMode="decimal"
@@ -73,17 +89,57 @@ export default function RentTermsForm({ value = {}, onChange, readOnly = false, 
   const set = (k) => (val) => onChange?.(k, val);
   const rentType = v.rent_type || '';
 
+  // Arrow-key navigation for the radiogroup. Without this, role="radio" would
+  // be a downgrade rather than a fix: it promises arrow keys and a single tab
+  // stop, and shipping the role without the behaviour strands keyboard users
+  // worse off than plain buttons did.
+  const onOptionKeyDown = (e) => {
+    if (readOnly) return;
+    const KEYS = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+    const step = KEYS[e.key];
+    if (!step) return;
+    e.preventDefault();
+    const current = RENT_TYPES.findIndex((rt) => rt.id === rentType);
+    const from = current === -1 ? 0 : current;
+    const next = (from + step + RENT_TYPES.length) % RENT_TYPES.length;
+    onChange?.('rent_type', RENT_TYPES[next].id);
+    // Move focus to match selection, as the radiogroup pattern requires.
+    e.currentTarget.querySelector(`[data-rt-index="${next}"]`)?.focus();
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* Rent type */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Label t={t}>Rent type</Label>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-          {RENT_TYPES.map((rt) => {
+        {/* auto-fit at 260px lands a clean 2x2 in both consumers (the portal
+            drawer is ~676px, the BD modal ~768px) and collapses to one column
+            on mobile. The old repeat(3, 1fr) orphaned the 4th option on its
+            own row. */}
+        <div
+          role="radiogroup"
+          aria-label="Rent type"
+          // -1, not 0: the roving tabindex on the options makes THEM the tab
+          // stops, so the group must never be one itself. This only satisfies
+          // jsx-a11y/interactive-supports-focus, which can't see that pattern.
+          tabIndex={-1}
+          onKeyDown={onOptionKeyDown}
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 8 }}
+        >
+          {RENT_TYPES.map((rt, i) => {
             const selected = rentType === rt.id;
             return (
               <button
                 type="button" key={rt.id} disabled={readOnly}
+                className="rt-option"
+                role="radio"
+                aria-checked={selected}
+                // Roving tabindex: the group is ONE tab stop and arrows move
+                // within it, which is what a screen-reader user is promised the
+                // moment they hear "radio button". Falls back to the first
+                // option when nothing is selected yet.
+                tabIndex={selected || (!rentType && i === 0) ? 0 : -1}
+                data-rt-index={i}
                 onClick={() => !readOnly && onChange?.('rent_type', rt.id)}
                 style={{
                   textAlign: 'left', padding: 12, borderRadius: 8,
@@ -175,7 +231,7 @@ export default function RentTermsForm({ value = {}, onChange, readOnly = false, 
             {(v.staggered_escalation || []).map((esc, idx) => (
               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ flex: '0 0 100px', display: 'flex', alignItems: 'center', height: 38, padding: '0 10px', background: t.surface2, border: `1px solid ${t.line}`, borderRadius: 6, fontFamily: t.fontBody, fontSize: 13, color: t.fgMuted }}>Year {idx + 1}</div>
-                <div style={{ flex: 1, display: 'flex', alignItems: 'stretch', height: 38, border: `1px solid ${t.line}`, borderRadius: 6, background: readOnly ? t.surface2 : t.bg, overflow: 'hidden' }}>
+                <div className="rt-field" style={{ flex: 1, display: 'flex', alignItems: 'stretch', height: 38, border: `1px solid ${t.line}`, borderRadius: 6, background: readOnly ? t.surface2 : t.bg, overflow: 'hidden' }}>
                   <input type="number" min="0" step="any" value={esc.percent ?? ''} readOnly={readOnly} disabled={readOnly} onChange={(e) => {
                     const next = [...v.staggered_escalation];
                     next[idx].percent = e.target.value === '' ? null : Number(e.target.value);

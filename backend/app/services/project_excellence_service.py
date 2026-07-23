@@ -437,6 +437,19 @@ async def svc_save_pe_budget(
                 detail=f"Budget is already {budget.status}.",
             )
 
+        # Defense in depth behind the schema's min_length=1: an empty items
+        # array must never reach replace_budget_items — it deletes all 11 rows
+        # and re-inserts NULLs, silently wiping the saved budget.
+        if not body.items:
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No budget line items provided — refusing to overwrite the saved budget.",
+            )
+        if body.action == "submit" and all(i.amount is None for i in body.items):
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Enter at least one budget amount before submitting.",
+            )
         labels = {item.idx: item.label for item in body.items if item.label}
         amounts = {item.idx: item.amount for item in body.items}
         total = await budget_service.replace_budget_items(
@@ -497,10 +510,12 @@ async def svc_review_pe_budget(
 
 
 async def svc_pe_budget_admin_queue(
-    session: AsyncSession, *, tenant_id: str | UUID,
+    session: AsyncSession, *, tenant_id: str | UUID, limit: int = 500, offset: int = 0,
 ) -> PEBudgetAdminQueueResponse:
-    """List PE budgets awaiting business-admin review, oldest-updated first."""
-    rows = (await session.execute(
+    """One page of PE budgets awaiting business-admin review, oldest-updated
+    first. ``total`` is the full filtered count (svc_pe_queue pattern) — the
+    endpoint was previously unbounded."""
+    stmt = (
         select(models.Site, models.SiteBudget)
         .join(
             models.SiteBudget,
@@ -511,7 +526,10 @@ async def svc_pe_budget_admin_queue(
             models.Site.tenant_id == tenant_id,
             models.SiteBudget.status == "pending_admin",
         )
-        .order_by(models.SiteBudget.updated_at.asc())
+    )
+    total = await count_rows(session, stmt)
+    rows = (await session.execute(
+        stmt.order_by(models.SiteBudget.updated_at.asc(), models.Site.id).limit(limit).offset(offset)
     )).all()
     delegates, names = await _batch_pe_prefetch(session, [site for site, _b in rows])
     items = [
@@ -522,7 +540,7 @@ async def svc_pe_budget_admin_queue(
         )
         for (site, budget) in rows
     ]
-    return PEBudgetAdminQueueResponse(items=items, total=len(items))
+    return PEBudgetAdminQueueResponse(items=items, total=total)
 
 
 async def svc_admin_review_pe_budget(

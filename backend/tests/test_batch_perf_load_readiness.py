@@ -96,14 +96,15 @@ async def test_budget_admin_queue_batches_lookups(make_session, fake_result):
 
     rows = [(_fake_site(i), None) for i in range(3)]
     sess = make_session(
-        fake_result(all_rows=rows),      # outer sites+budgets
+        fake_result(scalar=3),           # count_rows total (queue is now paginated)
+        fake_result(all_rows=rows),      # outer sites+budgets page
         fake_result(all_rows=[]),        # batched delegates
         fake_result(all_rows=[]),        # batched names
     )
     out = await project_excellence_service.svc_pe_budget_admin_queue(sess, tenant_id="t1")
     assert out.total == 3
-    # 1 outer + 1 delegate-batch + 1 name-batch = 3, regardless of N (was 1+2N=7).
-    assert len(sess.executed) == 3
+    # 1 count + 1 outer + 1 delegate-batch + 1 name-batch = 4, regardless of N (was 1+2N).
+    assert len(sess.executed) == 4
 
 
 async def test_project_nso_queue_batches_lookups(make_session, fake_result):
@@ -327,7 +328,7 @@ async def test_design_admin_queue_signs_urls_concurrently(make_session, fake_res
         )
         for i in range(4)
     ]
-    rows = [(d, "C", "Name", "City") for d in delivs]
+    rows = [(d, "C", "CA-C", "Name", "City") for d in delivs]
     sess = make_session(fake_result(all_rows=rows))
 
     state = {"cur": 0, "max": 0}
@@ -343,6 +344,7 @@ async def test_design_admin_queue_signs_urls_concurrently(make_session, fake_res
     out = await design_service.svc_design_admin_queue(sess, tenant_id="t1")
     assert out.total == 2                 # 4 deliverables grouped into 2 sites
     assert state["max"] >= 2              # signed concurrently (was 1 sequential)
+    assert all(s.site_code == "CA-C" for s in out.items)  # ca_code preferred over placeholder code
 
 
 # ── #133 — the Approval model has no duplicate indexes ─────────────────────

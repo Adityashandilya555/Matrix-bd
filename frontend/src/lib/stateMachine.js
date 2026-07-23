@@ -22,7 +22,11 @@ export const ALLOWED_TRANSITIONS = {
   [SiteStatus.SHORTLISTED]:        [SiteStatus.DETAILS_SUBMITTED, SiteStatus.REJECTED, SiteStatus.ARCHIVED],
   [SiteStatus.DETAILS_SUBMITTED]:  [SiteStatus.APPROVED, SiteStatus.REJECTED, SiteStatus.ARCHIVED],
   [SiteStatus.APPROVED]:           [SiteStatus.LOI_UPLOADED, SiteStatus.REJECTED, SiteStatus.ARCHIVED],
-  [SiteStatus.LOI_UPLOADED]:       [SiteStatus.LEGAL_REVIEW, SiteStatus.REJECTED, SiteStatus.ARCHIVED],
+  // Send-back loop: a supervisor who rejects the uploaded LOI (wrong file)
+  // returns the site to APPROVED so the executive re-uploads through the
+  // unchanged APPROVED → LOI_UPLOADED path (see backend loi_service).
+  [SiteStatus.LOI_UPLOADED]:       [SiteStatus.LEGAL_REVIEW, SiteStatus.APPROVED,
+                                    SiteStatus.REJECTED, SiteStatus.ARCHIVED],
   [SiteStatus.LEGAL_REVIEW]:       [SiteStatus.LEGAL_APPROVED, SiteStatus.LEGAL_REJECTED],
   [SiteStatus.LEGAL_APPROVED]:     [SiteStatus.PUSHED_TO_PAYMENTS],
   // Recovery loop: a CR approval that flips the last failing DD item revives

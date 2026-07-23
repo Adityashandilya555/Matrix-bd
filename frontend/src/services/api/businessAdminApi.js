@@ -110,6 +110,23 @@ export async function fetchBudgetDetail(siteId) {
   };
 }
 
+// A phase's budget attachments (kind='excellence' from PE, 'closure' from
+// Financial Closure) — shown read-only in the approval drawer so the admin can
+// open exactly what was submitted. business_admin passes the role-gated
+// documents endpoint (DocMember) for both kinds.
+export async function fetchBudgetDocuments(siteId, kind = 'excellence') {
+  const d = await client
+    .get(`/project-excellence/${siteId}/documents`, { params: { kind } })
+    .then((r) => r.data);
+  return (d.documents || []).map((r) => ({
+    id: r.id,
+    fileName: r.file_name,
+    fileSizeKb: r.file_size_kb,
+    mimeType: r.mime_type,
+    url: r.url,
+  }));
+}
+
 // ── Quality-audit confirmation (business-admin, second tier) ─────────────────
 
 export async function getQualityAuditQueue() {
@@ -155,6 +172,38 @@ export async function finalizeClosure(siteId, { decision, comments } = {}) {
   const result = await client.post(`/financial-closure/${siteId}/finalize`, body).then((r) => r.data);
   notifySiteDataChanged({ source: 'businessAdmin', action: `closure_${decision}`, siteId });
   return result;
+}
+
+// Full closure breakdown for the approval drawer — the 11 GFC/closure/variation
+// lines + totals + area/covers, from the existing Business-Admin-safe detail
+// route (mirrors fetchBudgetDetail for the PE budget).
+export async function fetchClosureDetail(siteId) {
+  const d = await client.get(`/financial-closure/admin-detail/${siteId}`).then((r) => r.data);
+  return {
+    siteId: d.site_id,
+    closureStatus: d.closure_status,
+    submittedByName: d.submitted_by_name,
+    lines: (d.lines || []).map((r) => ({
+      idx: r.idx, label: r.label,
+      gfcAmount: num(r.gfc_amount), closureAmount: num(r.closure_amount), variation: num(r.variation),
+    })),
+    gfcBudgetTotal: num(d.gfc_budget_total),
+    closureBudgetTotal: num(d.closure_budget_total),
+    variationTotal: num(d.variation_total),
+    totalIndoorAreaSqft: num(d.total_indoor_area_sqft),
+    totalAreaSqft: num(d.total_area_sqft),
+    covers: num(d.covers),
+    supervisorComments: d.supervisor_comments,
+    adminComments: d.admin_comments,
+  };
+}
+
+// The before/after quality-audit report PDFs (signed URLs) for the closure
+// review card — actor-agnostic service behind a Business-Admin-gated route.
+export async function fetchClosureQAReports(siteId) {
+  const d = await client.get(`/financial-closure/admin-detail/${siteId}/qa-reports`).then((r) => r.data);
+  const map = (r) => (r ? { kind: r.kind, fileName: r.file_name, uploadedAt: r.uploaded_at, pushedAt: r.pushed_at, downloadUrl: r.download_url } : null);
+  return { before: map(d.before), after: map(d.after) };
 }
 
 // ── Department org tree ──────────────────────────────────────────────────────

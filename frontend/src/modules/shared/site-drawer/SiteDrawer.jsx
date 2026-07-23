@@ -6,6 +6,7 @@ import { getSiteActivity, colorForAction, labelForEntry } from '../../../service
 import { getSiteDocuments } from '../../../services/api/siteService.js';
 import { SiteStatus } from '../../../lib/stateMachine.js';
 import { safeHref } from '../../../lib/safeHref.js';
+import ImageLightbox from '../media/ImageLightbox.jsx';
 import { useSession } from '../../../state/SessionContext.jsx';
 import { useSites } from '../../../state/SitesContext.jsx';
 
@@ -179,20 +180,28 @@ function LOITracker({ site }) {
   );
 }
 
-function PhotoTile({ photo }) {
+// A real <button>, not a div: the tile is a CSS background image, so it had no
+// accessible name, no keyboard activation and no focus ring. As a button it
+// gets all three for free and needs no jsx-a11y disable.
+function PhotoTile({ photo, onOpen }) {
   if (!photo?.url) return null;
   return (
-    <div style={{
-      border: '1px solid var(--zm-line)', borderRadius: 10, overflow: 'hidden',
-      background: `url(${photo.url}) center/cover`,
-      aspectRatio: '4 / 3', position: 'relative',
-      display: 'flex', alignItems: 'flex-end',
-    }}>
+    <button
+      type="button"
+      onClick={() => onOpen?.(photo)}
+      aria-label={`View photo · ${photo.name || 'site photo'}`}
+      style={{
+        border: '1px solid var(--zm-line)', borderRadius: 10, overflow: 'hidden',
+        background: `url(${photo.url}) center/cover`,
+        aspectRatio: '4 / 3', position: 'relative',
+        display: 'flex', alignItems: 'flex-end',
+        padding: 0, font: 'inherit', cursor: 'pointer', textAlign: 'left', width: '100%',
+      }}>
       <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.4), transparent 50%)' }}/>
       <span style={{ position: 'relative', padding: 10, color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 11, fontWeight: 600 }}>
         {photo.name || photo.caption || 'Site photo'}
       </span>
-    </div>
+    </button>
   );
 }
 
@@ -208,19 +217,36 @@ function SiteOverviewTab({ site, editedFields = [] }) {
   const [photos, setPhotos] = useState(() =>
     Array.isArray(site.photos) ? site.photos.filter((photo) => photo?.url) : []
   );
+  const [lightboxPhoto, setLightboxPhoto] = useState(null);
+
+  // Lifted out of the effect so the lightbox can re-run it: the signed URLs
+  // expire after 300s, so a drawer left open holds dead links. mimeType is
+  // carried through (the API returns it) — the lightbox needs it to avoid
+  // rendering an <img> for something that is not an image.
+  const loadPhotos = React.useCallback(async () => {
+    const res = await getSiteDocuments(site.id);
+    return (res?.documents || [])
+      .filter((d) => d.fileType === 'photo' && d.url)
+      .map((d) => ({ id: d.id, url: d.url, name: d.fileName, mimeType: d.mimeType }));
+  }, [site.id]);
+
   useEffect(() => {
     let cancelled = false;
-    getSiteDocuments(site.id)
-      .then((res) => {
+    loadPhotos()
+      .then((fetched) => {
         if (cancelled) return;
-        const fetched = (res?.documents || [])
-          .filter((d) => d.fileType === 'photo' && d.url)
-          .map((d) => ({ id: d.id, url: d.url, name: d.fileName }));
         if (fetched.length) setPhotos(fetched);
       })
       .catch(() => { /* photos are non-blocking — ignore load errors */ });
     return () => { cancelled = true; };
-  }, [site.id]);
+  }, [loadPhotos]);
+
+  // Re-sign on demand and hand the lightbox the fresh URL for its photo.
+  const refreshPhotoUrl = React.useCallback(async (photo) => {
+    const fetched = await loadPhotos();
+    if (fetched.length) setPhotos(fetched);
+    return fetched.find((p) => p.id === photo?.id)?.url || null;
+  }, [loadPhotos]);
   // Staggered rent stores a per-year schedule (not a single escalation %), so
   // render the schedule (e.g. "Yr1 9% · Yr2 4%") instead of the empty single field.
   const staggeredSchedule = Array.isArray(site.staggeredEscalation) ? site.staggeredEscalation : [];
@@ -317,7 +343,7 @@ function SiteOverviewTab({ site, editedFields = [] }) {
         </div>
         {photos.length > 0 ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-            {photos.map((photo) => <PhotoTile key={photo.id || photo.url} photo={photo}/>)}
+            {photos.map((photo) => <PhotoTile key={photo.id || photo.url} photo={photo} onOpen={setLightboxPhoto}/>)}
           </div>
         ) : (
           <div style={{ padding: 18, background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 10, fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>
@@ -325,6 +351,12 @@ function SiteOverviewTab({ site, editedFields = [] }) {
           </div>
         )}
       </section>
+      <ImageLightbox
+        open={Boolean(lightboxPhoto)}
+        photo={lightboxPhoto}
+        onClose={() => setLightboxPhoto(null)}
+        onRefreshUrl={refreshPhotoUrl}
+      />
     </div>
   );
 }

@@ -101,12 +101,33 @@ export default function ProjectExcellenceReviewPage() {
 
   const [budgetItems, setBudgetItems] = React.useState(DEFAULT_BUDGET);
   const [areaFields, setAreaFields] = React.useState({ total_indoor_area_sqft: '', total_area_sqft: '', covers: '' });
+  // Unsaved-edit guard (mirrors ProjectReviewPage.budgetDirty): while the form
+  // is dirty, background refreshes must not re-seed it from the server draft —
+  // that clobber (window focus after the attachment file dialog closes, or the
+  // upload's own site-data event) wiped typed values, and Submit then persisted
+  // an all-null budget that reached the admin as ₹0/—.
+  const [budgetDirty, setBudgetDirty] = React.useState(false);
+  const dirtyRef = React.useRef(false);
+  const markDirty = () => { dirtyRef.current = true; setBudgetDirty(true); };
   const [execList, setExecList] = React.useState([]);
   const [teamError, setTeamError] = React.useState(null);
   const [allocExec, setAllocExec] = React.useState('');
   const [allocation, setAllocation] = React.useState(null);
   const [actionError, setActionError] = React.useState(null);
   const [reviewComments, setReviewComments] = React.useState('');
+
+  // Re-seed the budget form from a server payload and mark it clean — used by
+  // the initial load and every post-save/review re-sync.
+  const rehydrateBudget = React.useCallback((data) => {
+    setBudgetItems(budgetFromState(data));
+    setAreaFields({
+      total_indoor_area_sqft: data.totalIndoorAreaSqft ?? '',
+      total_area_sqft: data.totalAreaSqft ?? '',
+      covers: data.covers ?? '',
+    });
+    dirtyRef.current = false;
+    setBudgetDirty(false);
+  }, []);
 
   const refresh = React.useCallback((silent = false) => {
     let cancelled = false;
@@ -131,12 +152,8 @@ export default function ProjectExcellenceReviewPage() {
       if (cancelled) return;
       setAllocation(deleg);
       setState(data);
-      setBudgetItems(budgetFromState(data));
-      setAreaFields({
-        total_indoor_area_sqft: data.totalIndoorAreaSqft ?? '',
-        total_area_sqft: data.totalAreaSqft ?? '',
-        covers: data.covers ?? '',
-      });
+      // Only re-seed the form when it's clean — never clobber unsaved edits.
+      if (!dirtyRef.current) rehydrateBudget(data);
       if (!isBusinessAdmin) {
         if (teamRes.ok) {
           // listMyTeam returns a bare array of executives already scoped to this
@@ -156,19 +173,35 @@ export default function ProjectExcellenceReviewPage() {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [siteId, isBusinessAdmin, isSupervisor]);
+  }, [siteId, isBusinessAdmin, isSupervisor, rehydrateBudget]);
 
   React.useEffect(() => refresh(), [refresh]);
-  useSiteDataRefresh(refresh, { sources: ['project_excellence', 'businessAdmin'] });
+  useSiteDataRefresh(refresh, {
+    sources: ['project_excellence', 'businessAdmin'],
+    // Primary guard: while there are unsaved edits (or a save is in flight),
+    // skip background refreshes entirely (mirrors ProjectReviewPage). The
+    // dirtyRef check inside refresh() is the synchronous backstop for the race
+    // where this closure is momentarily stale.
+    skipWhen: () => budgetDirty || saving,
+  });
 
   const handleBudgetChange = (idx, field, value) => {
+    markDirty();
     setBudgetItems((prev) => prev.map((item) => item.idx === idx ? { ...item, [field]: value } : item));
   };
 
+  const savingRef = React.useRef(false); // re-entrancy guard against rapid double-clicks
+  const docsRef = React.useRef(null);    // imperative handle to the attachment slot
   const handleSaveBudget = async (action = 'save') => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setError(null);
     try {
+      // Persist a staged-but-not-uploaded attachment first, so it's never lost
+      // when the user clicks Save/Submit without clicking Upload. A failed
+      // upload throws → the budget save aborts with the error shown.
+      if (docsRef.current?.hasStaged()) await docsRef.current.commitStaged();
       const data = await savePEBudget(siteId, {
         items: budgetItems.map((item) => ({
           idx: item.idx,
@@ -181,7 +214,7 @@ export default function ProjectExcellenceReviewPage() {
         covers: areaFields.covers || null,
       });
       setState(data);
-      setBudgetItems(budgetFromState(data));
+      rehydrateBudget(data);
       if (action === 'submit') {
         showToast?.('Budget submitted for review.', 'success');
         navigate(ROUTES.PROJECT_EXCELLENCE);
@@ -191,6 +224,7 @@ export default function ProjectExcellenceReviewPage() {
     } catch (err) {
       setError(err?.detail || err?.message || 'Save failed');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -237,7 +271,7 @@ export default function ProjectExcellenceReviewPage() {
     try {
       const data = await reviewPEBudget(siteId, { decision, comments: reviewComments });
       setState(data);
-      setBudgetItems(budgetFromState(data));
+      rehydrateBudget(data);
       setReviewComments('');
       showToast?.(decision === 'approve' ? 'Budget approved — sent to admin.' : 'Budget sent back.', decision === 'approve' ? 'success' : 'danger');
       navigate(ROUTES.PROJECT_EXCELLENCE);
@@ -253,7 +287,7 @@ export default function ProjectExcellenceReviewPage() {
     try {
       const data = await adminReviewPEBudget(siteId, { decision, comments: reviewComments });
       setState(data);
-      setBudgetItems(budgetFromState(data));
+      rehydrateBudget(data);
       setReviewComments('');
     } catch (err) {
       setError(err?.detail || err?.message || 'Admin review failed');
@@ -400,7 +434,10 @@ export default function ProjectExcellenceReviewPage() {
                 type="number"
                 min="0"
                 value={areaFields[key]}
-                onChange={(e) => setAreaFields((prev) => ({ ...prev, [key]: e.target.value }))}
+                onChange={(e) => { markDirty(); const v = e.target.value; setAreaFields((prev) => ({ ...prev, [key]: v })); }}
+                // Scrolling the page over a focused number input silently
+                // increments/decrements it — blur instead of changing values.
+                onWheel={(e) => e.currentTarget.blur()}
                 disabled={!canEditBudget}
                 style={{
                   display: 'block', width: '100%', marginTop: 4, height: 36, padding: '0 10px',
@@ -447,6 +484,7 @@ export default function ProjectExcellenceReviewPage() {
               placeholder="0"
               value={item.amount}
               onChange={(e) => handleBudgetChange(item.idx, 'amount', e.target.value)}
+              onWheel={(e) => e.currentTarget.blur()}
               disabled={!canEditBudget}
               style={{
                 height: 36, padding: '0 10px', borderRadius: 7, border: '1px solid var(--zm-line)',
@@ -458,8 +496,10 @@ export default function ProjectExcellenceReviewPage() {
           </div>
         ))}
 
-        {/* Attachments — image documents shared with Financial Closure */}
-        <ExcellenceDocuments siteId={siteId} canUpload={canEditBudget} />
+        {/* Budget attachment — one file for the PE phase; Financial Closure and
+            the Project budget card read the same doc. Staged-then-upload with a
+            corner × to discard a mis-pick or replace the uploaded file. */}
+        <ExcellenceDocuments ref={docsRef} siteId={siteId} kind="excellence" canEdit={canEditBudget} />
 
         {/* Comments (read-only feedback) */}
         {state?.budgetSupervisorComments && (
@@ -483,10 +523,11 @@ export default function ProjectExcellenceReviewPage() {
               style={{
                 height: 36, padding: '0 18px', borderRadius: 7, border: '1px solid var(--zm-line)',
                 background: 'transparent', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)',
-                fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
+                opacity: saving ? 0.55 : 1,
               }}
             >
-              Save draft
+              {saving ? 'Saving…' : 'Save draft'}
             </button>
             <button
               type="button"
@@ -495,10 +536,11 @@ export default function ProjectExcellenceReviewPage() {
               style={{
                 height: 36, padding: '0 18px', borderRadius: 7, border: 'none',
                 background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)',
-                fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
+                opacity: saving ? 0.55 : 1,
               }}
             >
-              Submit for review
+              {saving ? 'Submitting…' : 'Submit for review'}
             </button>
           </div>
         )}

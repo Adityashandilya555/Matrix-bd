@@ -9,8 +9,9 @@ import {
   getDesignGfcQueue, getDesignGfcReview, decideGfc,
 } from '../../services/api/designApi.js';
 import {
-  getFinanceQueue, approveFinance, rejectFinance, getBudgetQueue, reviewBudget, fetchBudgetDetail,
+  getFinanceQueue, approveFinance, rejectFinance, getBudgetQueue, reviewBudget, fetchBudgetDetail, fetchBudgetDocuments,
   getQualityAuditQueue, confirmQualityAudit, getClosureAdminQueue, finalizeClosure,
+  fetchClosureDetail, fetchClosureQAReports,
   getOrg, getAllSites, getSiteHistory,
   getExecutiveRequests, approveExecutiveRequest, rejectExecutiveRequest,
 } from '../../services/api/businessAdminApi.js';
@@ -40,10 +41,13 @@ export const REAL_FETCHERS = {
   listBudget:        getBudgetQueue,
   reviewBudget,
   fetchBudgetDetail,
+  fetchBudgetDocuments,
   listQualityAudit:  getQualityAuditQueue,
   confirmQualityAudit,
   listClosure:       getClosureAdminQueue,
   finalizeClosure,
+  fetchClosureDetail,
+  fetchClosureQAReports,
   listSupervisors:   listPendingSupervisors,
   approveSupervisor,
   rejectSupervisor,
@@ -201,8 +205,12 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     onApproveFinance: async (siteId) => { await fetchers.approveFinance(siteId); await loadFinance(true); },
     onRejectFinance: async (siteId, reason) => { await fetchers.rejectFinance(siteId, reason); await loadFinance(true); },
     fetchBudgetDetail: fetchers.fetchBudgetDetail,
+    fetchBudgetDocuments: fetchers.fetchBudgetDocuments,
     onBudgetDecide: async (siteId, payload) => { await fetchers.reviewBudget(siteId, payload); await loadBudget(true); },
     onQualityConfirm: async (siteId, payload) => { await fetchers.confirmQualityAudit(siteId, payload); await loadQualityAudit(true); },
+    fetchClosureDetail: fetchers.fetchClosureDetail,
+    fetchClosureDocuments: fetchers.fetchBudgetDocuments,  // kind-parameterized: excellence + closure
+    fetchClosureQAReports: fetchers.fetchClosureQAReports,
     onClosureFinalize: async (siteId, payload) => { await fetchers.finalizeClosure(siteId, payload); await loadClosure(true); },
     // departments
     onApproveSupervisor: async (u) => { await fetchers.approveSupervisor(u.id, u.module); await loadSupervisors(true); await loadOrg(true); },

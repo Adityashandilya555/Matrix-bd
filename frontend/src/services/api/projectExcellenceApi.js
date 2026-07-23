@@ -171,6 +171,28 @@ export async function completePEQualityAudit(siteId) {
 }
 
 // ── Quality-audit reports (before/after PDFs) ────────────────────────────────
+function qaReportFromServer(r) {
+  if (!r) return null;
+  return {
+    kind: r.kind,
+    fileName: r.file_name,
+    uploadedAt: r.uploaded_at,
+    pushedAt: r.pushed_at,
+    downloadUrl: r.download_url,
+  };
+}
+
+// The before/after report PDFs with short-lived signed URLs so the PE push box
+// can offer a "View" link. Mirrors projectApi.getQAReports, on the PE-gated route.
+export async function getPEQAReports(siteId) {
+  const data = await client.get(`/project-excellence/${siteId}/quality-audit/reports`).then((r) => r.data);
+  return {
+    siteId: data.site_id,
+    before: qaReportFromServer(data.before),
+    after: qaReportFromServer(data.after),
+  };
+}
+
 export async function uploadQAReport(siteId, kind, file) {
   const form = new FormData();
   form.append('file', file);
@@ -181,20 +203,32 @@ export async function uploadQAReport(siteId, kind, file) {
   return data;
 }
 
-// ── Excellence document attachments (images; shared with Financial Closure) ──
-export async function listExcellenceDocuments(siteId) {
-  const data = await client.get(`/project-excellence/${siteId}/documents`).then((r) => r.data);
+// ── Budget attachments (kind='excellence' for PE, 'closure' for Financial
+// Closure — each phase holds at most one; shared list/upload/delete API) ──
+export async function listExcellenceDocuments(siteId, kind = 'excellence') {
+  const data = await client
+    .get(`/project-excellence/${siteId}/documents`, { params: { kind } })
+    .then((r) => r.data);
   return { siteId, documents: data.documents || [] };
 }
 
-export async function uploadExcellenceDocument(siteId, file) {
+export async function uploadExcellenceDocument(siteId, file, kind = 'excellence') {
   const form = new FormData();
   form.append('file', file);
   const data = await client
-    .post(`/project-excellence/${siteId}/documents`, form, { timeout: UPLOAD_TIMEOUT_MS })
+    .post(`/project-excellence/${siteId}/documents`, form, { params: { kind }, timeout: UPLOAD_TIMEOUT_MS })
     .then((r) => r.data);
   notifySiteDataChanged({ source: 'project_excellence', action: 'excellence_doc_upload', siteId });
   notifySiteDataChanged({ source: 'financial_closure', action: 'excellence_doc_upload', siteId });
+  return data;
+}
+
+export async function deleteExcellenceDocument(siteId, fileId) {
+  const data = await client
+    .delete(`/project-excellence/${siteId}/documents/${fileId}`)
+    .then((r) => r.data);
+  notifySiteDataChanged({ source: 'project_excellence', action: 'excellence_doc_delete', siteId });
+  notifySiteDataChanged({ source: 'financial_closure', action: 'excellence_doc_delete', siteId });
   return data;
 }
 
