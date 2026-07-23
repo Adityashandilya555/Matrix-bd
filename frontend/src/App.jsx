@@ -14,6 +14,14 @@ import { extractGoogleMapsCoords, looksLikeMapsUrl } from './lib/googleMaps.js';
 import { GRID_LAYERS, GRID_ATTACH, stageVignette, canvasBase } from './lib/surfaces.js';
 import { INDIAN_CITIES_DATA } from './constants/indianCities.js';
 import CitySelect from './modules/shared/primitives/CitySelect.jsx';
+import RentTermsFormV2 from './modules/shared/rent/RentTermsFormV2.jsx';
+import { ZM_TOKENS } from './modules/shared/rent/RentTermsForm.jsx';
+
+// Configurable rent-type UI (FEATURE_RENT_V2). Inlined per the USE_MOCK
+// convention (a shared import.meta module trips DeepSource JS-0833). No PROD
+// guard — unlike mock mode this is a real flag meant to enable in production for
+// a cohort. Default OFF => the current four-card selector renders unchanged.
+const FEATURE_RENT_V2 = import.meta.env.VITE_FEATURE_RENT_V2 === 'true';
 
 // App.jsx is now the chrome shell only.
 // Routing is handled by AppRouter / <Outlet/>.
@@ -357,11 +365,30 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
   const idMgRevshare = useId();
   const idMgEscalation = useId();
   const idAreaSqft = useId();
-  const [form, setForm] = useState({ name: '', visitDate: '', city: '', model: '', googlePin: '', googleMapsUrl: '', rentType: '', expectedRent: '', expectedEscalation: '', expectedEscalationYears: '', expectedRevshare: '', areaSqft: '', staggeredEscalation: [{ year: 1, percent: '' }] });
+  const [form, setForm] = useState({ name: '', visitDate: '', city: '', model: '', googlePin: '', googleMapsUrl: '', rentType: '', expectedRent: '', expectedEscalation: '', expectedEscalationYears: '', expectedRevshare: '', revshareDinein: '', revshareDelivery: '', areaSqft: '', staggeredEscalation: [{ year: 1, percent: '' }] });
   const [pinStatus, setPinStatus] = useState(null); // { tone: 'info'|'ok'|'err', msg: string }
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  // FEATURE_RENT_V2 — map the modal's camelCase form <-> the canonical snake_case
+  // contract RentTermsFormV2 speaks (a subset of CreateDraftRequest). Only used
+  // when the flag is on; the four-card selector below is otherwise untouched.
+  const rentV2Value = {
+    rent_type: form.rentType,
+    expected_rent: form.expectedRent,
+    expected_escalation_pct: form.expectedEscalation,
+    expected_escalation_years: form.expectedEscalationYears,
+    revshare_dinein_pct: form.revshareDinein,
+    revshare_delivery_pct: form.revshareDelivery,
+    staggered_escalation: form.staggeredEscalation,
+  };
+  const RENT_V2_TO_FORM = {
+    rent_type: 'rentType', expected_rent: 'expectedRent',
+    expected_escalation_pct: 'expectedEscalation', expected_escalation_years: 'expectedEscalationYears',
+    revshare_dinein_pct: 'revshareDinein', revshare_delivery_pct: 'revshareDelivery',
+    staggered_escalation: 'staggeredEscalation',
+  };
+  const handleRentV2Change = (key, val) => setForm(prev => ({ ...prev, [RENT_V2_TO_FORM[key]]: val }));
   // Rent-type-specific essentials. Mirrors AddDetailsPage so the data captured
   // upfront matches what the shortlist form expects to prefill from.
   const rentReady =
@@ -472,6 +499,9 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
               )}
             </div>
           </div>
+          {FEATURE_RENT_V2 ? (
+            <RentTermsFormV2 value={rentV2Value} onChange={handleRentV2Change} tokens={ZM_TOKENS} />
+          ) : (<>
           <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
             <legend style={{ ...labelBase, padding: 0, marginBottom: 6 }}>Rent type</legend>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
@@ -656,6 +686,7 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
           {!form.rentType && (
             <div style={{ padding: 14, background: 'var(--zm-surface-2)', borderRadius: 8, fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)', textAlign: 'center' }}>Pick a rent type above to reveal the rent fields.</div>
           )}
+          </>)}
         </div>
         <div style={{ padding: 12, background: 'var(--zm-accent-soft)', borderRadius: 8, fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-2)', display: 'flex', alignItems: 'flex-start', gap: 8 }}><span style={{ color: 'var(--zm-accent)', display: 'inline-flex', marginTop: 1 }}><Icon name="alert" size={14}/></span>Once submitted, your supervisor reviews the shortlist (Yes / No). All seven fields stay editable until then; edits at shortlist are logged into the site Activity feed.</div>
         {submitError && (

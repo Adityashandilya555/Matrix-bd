@@ -152,6 +152,8 @@ async def svc_create_draft(
     expected_revshare_pct: float | None = None,
     area_sqft: float | None = None,
     staggered_escalation: list | None = None,
+    revshare_dinein_pct: float | None = None,
+    revshare_delivery_pct: float | None = None,
 ) -> SiteResponse:
     """Create a pipeline draft. One canonical implementation used by both
     `POST /api/bd/drafts` and `POST /api/sites`.
@@ -181,6 +183,8 @@ async def svc_create_draft(
             expected_escalation_pct=expected_escalation_pct,
             expected_escalation_years=expected_escalation_years,
             expected_revshare_pct=expected_revshare_pct,
+            revshare_dinein_pct=revshare_dinein_pct,
+            revshare_delivery_pct=revshare_delivery_pct,
             area_sqft=area_sqft if area_sqft is not None else 0,
             staggered_escalation=_prepare_staggered_escalation(staggered_escalation, rent_type),
             rent_set_at=_determine_rent_set_at(
@@ -271,6 +275,8 @@ def _pipeline_before_incoming(site: models.Site, details: dict) -> tuple[dict, d
         "expected_rent": float(site.expected_rent) if site.expected_rent is not None else None,
         "rent_type": site.rent_type,
         "area_sqft": float(site.area_sqft) if site.area_sqft is not None else None,
+        "revshare_dinein_pct": float(site.revshare_dinein_pct) if site.revshare_dinein_pct is not None else None,
+        "revshare_delivery_pct": float(site.revshare_delivery_pct) if site.revshare_delivery_pct is not None else None,
     }
     incoming = {
         "name": details.get("name"),
@@ -281,6 +287,8 @@ def _pipeline_before_incoming(site: models.Site, details: dict) -> tuple[dict, d
         "expected_rent": _to_float(details.get("rent")),
         "rent_type": details.get("rent_type"),
         "area_sqft": _to_float(details.get("area_sqft")),
+        "revshare_dinein_pct": _to_float(details.get("revshare_dinein_pct")),
+        "revshare_delivery_pct": _to_float(details.get("revshare_delivery_pct")),
     }
     return before, incoming
 

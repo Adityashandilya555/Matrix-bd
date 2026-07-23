@@ -365,11 +365,24 @@ export function SitesProvider({ children }) {
       expectedEscalationPct: ['fixed', 'mg_revshare'].includes(form.rentType) && form.expectedEscalation ? Number(form.expectedEscalation) : null,
       expectedEscalationYears: ['fixed', 'mg_revshare'].includes(form.rentType) && form.expectedEscalationYears ? Number(form.expectedEscalationYears) : null,
       expectedRevsharePct: ['revshare', 'mg_revshare'].includes(form.rentType) && form.expectedRevshare ? Number(form.expectedRevshare) : null,
+      // Revenue-share split (FEATURE_RENT_V2). Sent whenever present on either
+      // path; null-safe for the legacy four-card selector, which never sets
+      // these form fields, so the flag-off payload is byte-identical.
+      revshareDineinPct: form.revshareDinein !== '' && form.revshareDinein != null ? Number(form.revshareDinein) : null,
+      revshareDeliveryPct: form.revshareDelivery !== '' && form.revshareDelivery != null ? Number(form.revshareDelivery) : null,
       areaSqft: form.areaSqft ? Number(form.areaSqft) : null,
       staggeredEscalation: form.rentType === 'staggered'
         ? (form.staggeredEscalation || [])
             .filter(e => e.year !== '' && e.year != null && e.percent !== '' && e.percent != null)
-            .map(e => ({ year: Number(e.year), percent: Number(e.percent) }))
+            .map(e => ({
+              year: Number(e.year),
+              percent: Number(e.percent),
+              // Per-year rev-share split rides inside the JSONB item (superset);
+              // each key is omitted unless filled so legacy items stay {year,percent}.
+              ...(e.dine_in_pct !== '' && e.dine_in_pct != null ? { dine_in_pct: Number(e.dine_in_pct) } : {}),
+              ...(e.delivery_pct !== '' && e.delivery_pct != null ? { delivery_pct: Number(e.delivery_pct) } : {}),
+              ...(e.mg !== '' && e.mg != null ? { mg: Number(e.mg) } : {}),
+            }))
         : null,
       createdBy: { id: session?.id || session?.sub || undefined, name: sessionDisplayName, role },
       role,

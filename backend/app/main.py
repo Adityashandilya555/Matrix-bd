@@ -381,7 +381,10 @@ async def _verify_schema():
         required_columns = {
             'area_sqft', 'staggered_escalation', 'google_maps_url',
             'expected_rent', 'rent_type', 'expected_escalation_pct',
-            'expected_escalation_years', 'expected_revshare_pct', 'rent_set_at'
+            'expected_escalation_years', 'expected_revshare_pct', 'rent_set_at',
+            # Added in 20260809 (revenue-share split). The ORM SELECTs every
+            # mapped column, so a missing one 500s every sites query — fail fast.
+            'revshare_dinein_pct', 'revshare_delivery_pct',
         }
         res = await conn.execute(text("""
             SELECT column_name
