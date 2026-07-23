@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 // RentTermsFormV2 — the configurable rent-type block (FEATURE_RENT_V2). Reframes
 // rent entry as "Is the rent staggered?" (No -> fixed, Yes -> staggered) plus an
 // optional REV SHARE dine-in/delivery split. Emits the canonical snake_case keys.

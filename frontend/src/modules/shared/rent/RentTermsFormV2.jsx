@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import React from 'react';
 import Icon from '../primitives/Icon.jsx';
 import { ZM_TOKENS } from './RentTermsForm.jsx';
@@ -106,7 +107,7 @@ export default function RentTermsFormV2({ value = {}, onChange, readOnly = false
       onChange?.('revshare_dinein_pct', null);
       onChange?.('revshare_delivery_pct', null);
       if (schedule.length) {
-        onChange?.('staggered_escalation', schedule.map(({ dine_in_pct, delivery_pct, ...rest }) => rest));
+        onChange?.('staggered_escalation', schedule.map(({ dine_in_pct: _din, delivery_pct: _del, ...rest }) => rest));
       }
     }
   };
