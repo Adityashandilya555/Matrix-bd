@@ -5,6 +5,7 @@
 // upload's own site-data event) re-seeded the form from the empty server draft,
 // clobbering the typed values before Submit persisted them. These lock the
 // dirty-guard: a background refresh must NOT overwrite unsaved edits.
+import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -32,7 +33,14 @@ vi.mock('react-router-dom', () => ({
 }));
 // The attachment section makes its own API calls on mount; stub it out so this
 // test focuses on the budget grid.
-vi.mock('../../shared/documents/ExcellenceDocuments.jsx', () => ({ default: () => null }));
+// forwardRef so the page's ref={docsRef} attaches cleanly; hasStaged()=false
+// means the auto-commit path is skipped (this test is about the budget grid).
+vi.mock('../../shared/documents/ExcellenceDocuments.jsx', () => ({
+  default: React.forwardRef(function MockDocs(_props, ref) {
+    React.useImperativeHandle(ref, () => ({ hasStaged: () => false, commitStaged: async () => {} }), []);
+    return null;
+  }),
+}));
 let fireBackgroundRefresh = null;
 vi.mock('../../../hooks/useSiteDataRefresh.js', () => ({
   useSiteDataRefresh: (fn) => { fireBackgroundRefresh = fn; },
