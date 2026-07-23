@@ -190,7 +190,10 @@ export default function ProjectExcellenceReviewPage() {
     setBudgetItems((prev) => prev.map((item) => item.idx === idx ? { ...item, [field]: value } : item));
   };
 
+  const savingRef = React.useRef(false); // re-entrancy guard against rapid double-clicks
   const handleSaveBudget = async (action = 'save') => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -216,6 +219,7 @@ export default function ProjectExcellenceReviewPage() {
     } catch (err) {
       setError(err?.detail || err?.message || 'Save failed');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -514,10 +518,11 @@ export default function ProjectExcellenceReviewPage() {
               style={{
                 height: 36, padding: '0 18px', borderRadius: 7, border: '1px solid var(--zm-line)',
                 background: 'transparent', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)',
-                fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
+                opacity: saving ? 0.55 : 1,
               }}
             >
-              Save draft
+              {saving ? 'Saving…' : 'Save draft'}
             </button>
             <button
               type="button"
@@ -526,10 +531,11 @@ export default function ProjectExcellenceReviewPage() {
               style={{
                 height: 36, padding: '0 18px', borderRadius: 7, border: 'none',
                 background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)',
-                fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
+                opacity: saving ? 0.55 : 1,
               }}
             >
-              Submit for review
+              {saving ? 'Submitting…' : 'Submit for review'}
             </button>
           </div>
         )}

@@ -9,6 +9,7 @@ import { ROUTES } from '../../router/routes.js';
 import { listMyTeam } from '../../services/api/adapters/httpAdapter.js';
 import {
   getPEQualityAuditQueue,
+  getPEQAReports,
   uploadQAReport,
   pushQAReport,
   listQADelegations,
@@ -75,10 +76,25 @@ function KpiTile({ label, count, active, tone, onClick }) {
 }
 
 // One before/after report slot inside the dialog.
-function ReportSlot({ kind, label, uploadedAt, pushedAt, canManage, canPush, busy, uploading, onUpload, onPush }) {
+function ReportSlot({ kind, label, uploadedAt, pushedAt, fileUrl, fileName, canManage, canPush, busy, uploading, pushing, onUpload, onPush }) {
   const fileRef = React.useRef(null);
   const pushed = Boolean(pushedAt);
   const uploaded = Boolean(uploadedAt);
+  // The uploaded PDF can be viewed by anyone who can open the dialog (supervisor
+  // or delegated executive), independent of the manage/upload controls.
+  const viewLink = uploaded && fileUrl ? (
+    <a
+      href={fileUrl} target="_blank" rel="noopener noreferrer" title={fileName || 'Open PDF'}
+      style={{
+        height: 32, padding: '0 12px', borderRadius: 7, border: '1px solid var(--zm-accent)',
+        background: 'color-mix(in srgb, var(--zm-accent) 10%, var(--zm-surface))', color: 'var(--zm-accent)',
+        fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 800, textDecoration: 'none',
+        display: 'inline-flex', alignItems: 'center', gap: 7,
+      }}
+    >
+      <Icon name="box" size={12}/> View PDF
+    </a>
+  ) : null;
   return (
     <div style={{ border: '1px solid var(--zm-line)', borderRadius: 10, padding: 14, background: 'var(--zm-surface-2)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
@@ -92,11 +108,12 @@ function ReportSlot({ kind, label, uploadedAt, pushedAt, canManage, canPush, bus
         </span>
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--zm-fg-3)', marginTop: 6, fontFamily: 'var(--zm-font-mono)' }}>
-        {uploaded ? `Uploaded ${fmtDateTime(uploadedAt)}` : 'PDF · max 25 MB'}
+        {uploaded ? `Uploaded ${fmtDateTime(uploadedAt)}${fileName ? ` · ${fileName}` : ''}` : 'PDF · max 25 MB'}
         {pushed ? ` · Pushed ${fmtDateTime(pushedAt)}` : ''}
       </div>
-      {canManage && (
+      {canManage ? (
         <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+          {viewLink}
           <input
             ref={fileRef} type="file" accept="application/pdf" style={{ display: 'none' }}
             onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(kind, f); e.target.value = ''; }}
@@ -115,11 +132,15 @@ function ReportSlot({ kind, label, uploadedAt, pushedAt, canManage, canPush, bus
             background: pushed ? 'var(--zm-success)' : 'var(--zm-accent)', color: '#fff',
             fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 800,
             cursor: (busy || !uploaded || pushed || !canPush) ? 'not-allowed' : 'pointer',
-            opacity: (!uploaded || pushed || !canPush) ? 0.5 : 1,
+            opacity: (busy && pushing) || (!uploaded || pushed || !canPush) ? 0.5 : 1,
           }}>
-            {pushed ? 'Pushed ✓' : 'Push'}
+            {pushed ? 'Pushed ✓' : pushing ? 'Pushing…' : 'Push'}
           </button>
         </div>
+      ) : (
+        // Read-only viewer (a supervisor viewing someone else's delegated site):
+        // still let them open the uploaded PDF.
+        viewLink && <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>{viewLink}</div>
       )}
       {kind === 'after' && !canPush && !pushed && (
         <div style={{ fontSize: 11, color: 'var(--zm-fg-3)', marginTop: 8 }}>Push the “before” report first.</div>
@@ -142,23 +163,25 @@ export default function ProjectExcellenceQualityAuditPage() {
   const [chosenExec, setChosenExec] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [uploadingKind, setUploadingKind] = React.useState(null); // 'before' | 'after' while a PDF uploads
+  const [pushingKind, setPushingKind] = React.useState(null);     // 'before' | 'after' while a push is in flight
+  const [qaReports, setQaReports] = React.useState(null);         // { before, after } signed PDFs for the open dialog
   const [actionError, setActionError] = React.useState(null);
+  const inFlight = React.useRef(false);                           // re-entrancy guard against rapid double-clicks
 
+  // Returns the fetch promise so runAction can keep buttons disabled THROUGH the
+  // refetch — otherwise the un-awaited reload dropped the guard while the row
+  // still held stale (pre-push) flags, briefly re-enabling a duplicate push.
   const load = React.useCallback(() => {
-    let cancelled = false;
     setState((prev) => ({ ...prev, status: prev.items.length ? prev.status : 'loading', error: null }));
-    getPEQualityAuditQueue()
-      .then((data) => { if (!cancelled) setState({ status: 'ready', items: data.items, error: null }); })
-      .catch((err) => {
-        if (!cancelled) setState((prev) => ({
-          ...prev, status: prev.items.length ? 'ready' : 'error',
-          error: err?.detail || err?.message || 'Failed to load the quality-audit queue',
-        }));
-      });
-    return () => { cancelled = true; };
+    return getPEQualityAuditQueue()
+      .then((data) => setState({ status: 'ready', items: data.items, error: null }))
+      .catch((err) => setState((prev) => ({
+        ...prev, status: prev.items.length ? 'ready' : 'error',
+        error: err?.detail || err?.message || 'Failed to load the quality-audit queue',
+      })));
   }, []);
 
-  React.useEffect(() => load(), [load]);
+  React.useEffect(() => { load(); }, [load]);
   useSiteDataRefresh(load, { sources: ['project', 'project_excellence', 'businessAdmin'] });
 
   React.useEffect(() => {
@@ -187,16 +210,30 @@ export default function ProjectExcellenceQualityAuditPage() {
     : filter === 'secondary' ? items.filter(needsSecondary) : items;
   const dialogRow = items.find((r) => r.siteId === dialogSiteId) || null;
 
+  // Signed before/after PDF URLs for the open dialog — refetched when an upload
+  // changes the timestamps so the "View PDF" link always points at the latest.
+  React.useEffect(() => {
+    if (!dialogSiteId) { setQaReports(null); return undefined; }
+    let cancelled = false;
+    getPEQAReports(dialogSiteId)
+      .then((r) => { if (!cancelled) setQaReports(r); })
+      .catch(() => { if (!cancelled) setQaReports(null); });
+    return () => { cancelled = true; };
+  }, [dialogSiteId, dialogRow?.qaBeforeUploadedAt, dialogRow?.qaAfterUploadedAt]);
+
   const runAction = async (fn, okMsg) => {
+    if (inFlight.current) return;   // block a rapid second click / stale-state re-fire
+    inFlight.current = true;
     setActionError(null);
     setBusy(true);
     try {
       await fn();
       if (okMsg) showToast?.(okMsg, 'success');
-      load();
+      await load();                 // keep buttons disabled until the refetch reflects the new state
     } catch (err) {
       setActionError(err?.detail || err?.message || 'Action failed');
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
@@ -206,7 +243,11 @@ export default function ProjectExcellenceQualityAuditPage() {
     runAction(() => uploadQAReport(dialogSiteId, kind, file), `${kind === 'before' ? 'Before' : 'After'} report uploaded.`)
       .finally(() => setUploadingKind(null));
   };
-  const onPush = (kind) => runAction(() => pushQAReport(dialogSiteId, kind), `${kind === 'before' ? 'Before' : 'After'} report pushed.`);
+  const onPush = (kind) => {
+    setPushingKind(kind);
+    runAction(() => pushQAReport(dialogSiteId, kind), `${kind === 'before' ? 'Before' : 'After'} report pushed.`)
+      .finally(() => setPushingKind(null));
+  };
   const onAllocate = () => {
     const target = chosenExec === '__self__' ? myUserId : chosenExec;
     if (!target) { setActionError('Could not resolve the executive — refresh and try again.'); return; }
@@ -374,16 +415,18 @@ export default function ProjectExcellenceQualityAuditPage() {
               <ReportSlot
                 kind="before" label="Before quality audit (primary)"
                 uploadedAt={dialogRow.qaBeforeUploadedAt} pushedAt={dialogRow.qaBeforePushedAt}
+                fileUrl={qaReports?.before?.downloadUrl} fileName={qaReports?.before?.fileName}
                 canManage={isSupervisor || Boolean(dialogRow.qaReportDelegateName)} canPush busy={busy}
-                uploading={uploadingKind === 'before'}
+                uploading={uploadingKind === 'before'} pushing={pushingKind === 'before'}
                 onUpload={onUpload} onPush={onPush}
               />
               <ReportSlot
                 kind="after" label="After quality audit (secondary)"
                 uploadedAt={dialogRow.qaAfterUploadedAt} pushedAt={dialogRow.qaAfterPushedAt}
+                fileUrl={qaReports?.after?.downloadUrl} fileName={qaReports?.after?.fileName}
                 canManage={isSupervisor || Boolean(dialogRow.qaReportDelegateName)}
                 canPush={Boolean(dialogRow.qaBeforePushedAt)} busy={busy}
-                uploading={uploadingKind === 'after'}
+                uploading={uploadingKind === 'after'} pushing={pushingKind === 'after'}
                 onUpload={onUpload} onPush={onPush}
               />
             </div>

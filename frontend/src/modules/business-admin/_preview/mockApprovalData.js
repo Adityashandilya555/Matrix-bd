@@ -164,6 +164,22 @@ export const mockFetchers = {
     return { items, budgetTotal: per * 11, totalIndoorAreaSqft: 316, totalAreaSqft: 804, covers: 30 };
   },
   fetchBudgetDocuments: async () => { await wait(200); return []; },
+  fetchClosureDetail: async (siteId) => {
+    await wait(300);
+    const row = store.closure?.find((s) => s.siteId === siteId) || {};
+    const labels = [
+      'Professional Fees', 'HVAC', 'Furniture, Light & Planters', 'Civil & Interiors',
+      'Kitchen Equipment', 'Branding', 'Crockery & Small Equipments', 'Utilities',
+      'Licencing', 'BD Cost', 'Misc',
+    ];
+    const lines = labels.map((label, i) => ({ idx: i + 1, label, gfcAmount: 0, closureAmount: 0, variation: 0 }));
+    return {
+      siteId, closureStatus: row.closureStatus, submittedByName: row.submittedByName, lines,
+      gfcBudgetTotal: row.gfcBudgetTotal || 0, closureBudgetTotal: row.closureBudgetTotal || 0,
+      variationTotal: row.variationTotal || 0, totalIndoorAreaSqft: null, totalAreaSqft: null, covers: null,
+    };
+  },
+  fetchClosureQAReports: async () => { await wait(200); return { before: null, after: null }; },
 
   listSupervisors: async () => { await wait(500); return structuredClone(store.supervisors); },
   approveSupervisor: async (id) => { await wait(450); store.supervisors = store.supervisors.filter((u) => u.id !== id); return { ok: true }; },

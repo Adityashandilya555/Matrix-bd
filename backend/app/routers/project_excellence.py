@@ -12,6 +12,7 @@ from app.domain.schemas.project import (
     ProjectDelegationsResponse,
     ProjectQueueResponse,
     ProjectStateResponse,
+    QAReportsResponse,
 )
 from app.domain.schemas.project_excellence import (
     AdminBudgetReviewRequest,
@@ -32,6 +33,7 @@ from app.services.project_service import (
     svc_pe_complete_quality_audit,
     svc_pe_quality_audit_queue,
     svc_push_qa_report,
+    svc_qa_reports_for_site,
     svc_record_qa_report,
     svc_revoke_qa_delegation,
 )
@@ -191,6 +193,35 @@ async def push_qa_report(
     return await svc_push_qa_report(
         db, tenant_id=tenant_id, actor=current_user, site_id=site_id, kind=kind,
     )
+
+
+@router.get("/{site_id}/quality-audit/reports", response_model=QAReportsResponse)
+async def qa_reports_for_site(
+    site_id: str,
+    db: DbDep,
+    current_user: PEMember,
+    _module: InPEModule,
+    tenant_id: TenantId,
+) -> QAReportsResponse:
+    """The before/after quality-audit reports (with short-lived signed download
+    URLs) so a PE supervisor/delegate can VIEW the uploaded PDFs from the push
+    box — not just re-upload. Reuses the module-agnostic project-side service;
+    the project route is project-module-gated, so PE needs its own. Read-only,
+    does not mark viewed."""
+    # Scope executives to the sites they can see in their QA queue — PE-assigned
+    # OR quality-audit-delegated (supervisors see all). Without this an executive
+    # could mint signed URLs for ANY site's report PDFs by guessing its id, since
+    # the signing service is actor-agnostic (PR #445 review). Fail closed to 404,
+    # matching get_pe.
+    if _is_executive(current_user):
+        allowed = await svc_is_delegated(
+            db, tenant_id=tenant_id, site_id=site_id, user_id=current_user["sub"], module="project_excellence",
+        ) or await svc_is_delegated(
+            db, tenant_id=tenant_id, site_id=site_id, user_id=current_user["sub"], module="quality_audit",
+        )
+        if not allowed:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
+    return await svc_qa_reports_for_site(db, tenant_id=tenant_id, site_id=site_id)
 
 
 @router.get("/{site_id}/quality-audit/delegations", response_model=ProjectDelegationsResponse)
