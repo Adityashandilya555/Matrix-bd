@@ -20,8 +20,6 @@ Endpoints:
   POST   /design/{site_id}/deliverables/{kind}         → submit recce|2d|3d|boq (exec/supervisor)
   POST   /design/{site_id}/deliverables/{kind}/review  → approve/reject a deliverable (supervisor)
   GET    /design/{site_id}                             → full design review state
-  GET    /design/{site_id}/reversible-actions          → admin's undoable decisions (business admin)
-  POST   /design/{site_id}/reversible-actions/{id}/undo → undo a 2D/3D decision (business admin)
 """
 from __future__ import annotations
 
@@ -41,8 +39,6 @@ from app.domain.schemas.design import (
     DesignQueueResponse,
     DesignReviewResponse,
     GfcDecisionRequest,
-    ReversibleActionItem,
-    ReversibleActionListResponse,
     ReviewDeliverableRequest,
     SubmitDeliverableRequest,
 )
@@ -59,12 +55,10 @@ from app.services.design_service import (
     svc_get_design_review,
     svc_gfc_decision,
     svc_list_design_delegations_for_site,
-    svc_list_reversible_actions,
     svc_request_gfc_approval,
     svc_review_deliverable,
     svc_revoke_design_delegation,
     svc_submit_deliverable,
-    svc_undo_admin_review,
 )
 from app.services.storage_service import upload_bytes as storage_upload
 
@@ -332,53 +326,6 @@ async def request_gfc_approval(
 ) -> DesignReviewResponse:
     return await svc_request_gfc_approval(
         db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
-    )
-
-
-# ── Undo: business-admin deliverable decision (require_role only, no module) ──
-
-@router.get(
-    "/{site_id}/reversible-actions",
-    response_model=ReversibleActionListResponse,
-    summary="Business admin: their own still-undoable decisions on this site",
-)
-async def list_reversible_actions(
-    site_id: str,
-    db: DbDep,
-    current_user: BusinessAdmin,
-    tenant_id: TenantId,
-) -> ReversibleActionListResponse:
-    rows = await svc_list_reversible_actions(
-        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
-    )
-    items = [
-        ReversibleActionItem(
-            id=str(r.id),
-            audit_log_id=str(r.audit_log_id) if r.audit_log_id else None,
-            action=r.action,
-            entity_type=r.entity_type,
-            created_at=r.created_at,
-        )
-        for r in rows
-    ]
-    return ReversibleActionListResponse(items=items, total=len(items))
-
-
-@router.post(
-    "/{site_id}/reversible-actions/{reversible_id}/undo",
-    response_model=DesignReviewResponse,
-    summary="Business admin: undo their own 2D/3D deliverable decision",
-)
-async def undo_admin_review(
-    site_id: str,
-    reversible_id: str,
-    db: DbDep,
-    current_user: BusinessAdmin,
-    tenant_id: TenantId,
-) -> DesignReviewResponse:
-    return await svc_undo_admin_review(
-        db, tenant_id=tenant_id, actor=current_user,
-        site_id=site_id, reversible_id=reversible_id,
     )
 
 

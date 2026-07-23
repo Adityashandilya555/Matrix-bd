@@ -48,6 +48,7 @@ from app.services.notification_service import (
     recipients_for_site_owner,
     recipients_for_supervisors,
 )
+from app.services import reversible_service
 
 
 # ── Authorisation guards ──────────────────────────────────────────────────
@@ -466,13 +467,15 @@ async def svc_approve_shortlist(
             decided_at=approved_at,
         ))
 
-        await write_audit_event(
+        audit = await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor["name"],
             action="approve_details",
             from_status=current_status.value,
             to_status=SiteStatus.APPROVED.value,
             detail=f"expected_loi_days={expected_loi_days}",
+            # flush so the row id exists for reversible_actions.audit_log_id.
+            flush=True,
         )
         owners = await recipients_for_site_owner(session, site=site)
         await notify_enqueue(
@@ -481,8 +484,62 @@ async def svc_approve_shortlist(
             channels=("email", "in_app"),
             payload={"site_id": str(site.id), "expected_loi_days": expected_loi_days},
         )
+
+        # Undo snapshot. Approval opens no downstream module (the site merely
+        # becomes visible in staging, derived from status), so the compensating
+        # restore is a plain status revert with nothing to tear down. The undo
+        # refuses once an LOI has been uploaded — the `after` frontier below
+        # captures status='approved', so any later move fails the check.
+        reversible_service.record_reversible(
+            session,
+            tenant_id=tenant_id, site_id=site.id, audit_log_id=audit.id if audit else None,
+            action=reversible_service.ACTION_BD_SITE_APPROVAL,
+            entity_type="site", entity_id=site.id, actor_id=actor["sub"],
+            before={"site": {"status": current_status.value, "approved_at": None}},
+            after={"site": {"status": SiteStatus.APPROVED.value,
+                            "approved_at": approved_at.isoformat()}},
+        )
     created_by_name = await fetch_user_name(session, site.submitted_by)
     return site_to_response(site, created_by_name=created_by_name)
+
+
+async def apply_reversible_undo(session: AsyncSession, *, row, site, actor) -> None:
+    """Compensating restore for a BD site approval — called by
+    reversible_service after it has locked the site + snapshot and run the common
+    guards. Returns the site to details_submitted.
+
+    This writes site.status directly, bypassing assert_transition, exactly as
+    svc_revive_site does: APPROVED -> DETAILS_SUBMITTED is not a forward edge, and
+    an undo is not a forward transition. The frontier check is what keeps it safe
+    — it refuses the moment status is anything but the 'approved' the snapshot
+    recorded (e.g. an LOI upload moved it to loi_uploaded).
+    """
+    snapshot = row.snapshot or {}
+    reversible_service.assert_nothing_moved(
+        expected=snapshot["after"],
+        live={"site": {"status": site.status,
+                       "approved_at": site.approved_at.isoformat() if site.approved_at else None}},
+    )
+
+    before = snapshot["before"]["site"]
+    prior_status = site.status
+    site.status = before["status"]
+    site.approved_at = reversible_service.parse_iso_or_none(before["approved_at"])
+
+    await write_audit_event(
+        session, tenant_id=site.tenant_id, site_id=site.id,
+        actor_id=actor["sub"], actor_name=actor.get("name"),
+        action="bd_site_approval_undone",
+        from_status=prior_status, to_status=site.status,
+        detail="site approval undone by the admin who made it",
+    )
+    owners = await recipients_for_site_owner(session, site=site)
+    if owners:
+        await notify_enqueue(
+            session, tenant_id=site.tenant_id, event="site_approval_undone",
+            recipient_ids=owners, site_id=site.id, channels=("in_app",),
+            payload={"site_id": str(site.id), "site_name": site.name},
+        )
 
 
 # ── Send to Legal Review (replaces the old "push to payments" terminal action) ─

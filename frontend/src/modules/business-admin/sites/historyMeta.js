@@ -58,6 +58,8 @@ const LABELS = {
   design_admin_approved: 'admin approved a 2D/3D deliverable',
   design_admin_rejected: 'admin sent back a 2D/3D deliverable',
   design_admin_review_undone: 'admin undid their 2D/3D decision',
+  design_supervisor_review_undone: 'admin undid a supervisor 2D/3D decision',
+  bd_site_approval_undone: 'admin undid a site approval',
   design_boq_approved: 'approved the BOQ',
   design_gfc_approved: 'granted Good-For-Construction',
   design_gfc_rejected: 'sent back the GFC package',

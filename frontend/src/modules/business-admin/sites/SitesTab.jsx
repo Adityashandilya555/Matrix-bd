@@ -2,7 +2,7 @@ import React from 'react';
 import { T, Icon, Card, Drawer, Skeleton, EmptyState, ErrorState, Avatar, TABULAR } from '../ui/kit.jsx';
 import { MODULE_META, moduleForAction, labelForEntry, dotColor } from './historyMeta.js';
 import { humanizeAuditDetail } from '../../../services/api/audit.js';
-import { getAdminSiteDocuments, getReversibleActions, undoAdminReview } from '../../../services/api/businessAdminApi.js';
+import { getAdminSiteDocuments, getReversibleActions, undoReversibleAction } from '../../../services/api/businessAdminApi.js';
 import { reviveSite } from '../../../services/api/adapters/httpAdapter.js';
 import { usePageContext } from '../../../App.jsx';
 // Every site rendered as a BD-style pipeline card (LOI → Legal → CA → Design →
@@ -314,7 +314,7 @@ function HistoryDrawer({ site, fetchHistory, onClose }) {
     setUndoError(null);
     setUndoing(reversibleId);
     try {
-      await undoAdminReview(site.siteId, reversibleId);
+      await undoReversibleAction(site.siteId, reversibleId);
       // Re-read both: the undo adds an audit entry and consumes the snapshot.
       const d = await load(site.siteId);
       setState({ status: 'ready', items: d.items, error: null });

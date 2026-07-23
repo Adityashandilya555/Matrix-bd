@@ -263,7 +263,7 @@ export async function getAllSites() {
 // here, because only they may undo one. An empty list means no Undo buttons.
 
 export async function getReversibleActions(siteId) {
-  const d = await client.get(`/design/${siteId}/reversible-actions`).then((r) => r.data);
+  const d = await client.get(`/sites/${siteId}/reversible-actions`).then((r) => r.data);
   return {
     items: (d.items || []).map((r) => ({
       id: r.id,
@@ -276,9 +276,11 @@ export async function getReversibleActions(siteId) {
   };
 }
 
-export async function undoAdminReview(siteId, reversibleId) {
+// Undo any whitelisted decision (design 2D/3D review, BD site approval). The
+// endpoint is action-agnostic; the backend dispatches by the snapshot's action.
+export async function undoReversibleAction(siteId, reversibleId) {
   return client
-    .post(`/design/${siteId}/reversible-actions/${reversibleId}/undo`)
+    .post(`/sites/${siteId}/reversible-actions/${reversibleId}/undo`)
     .then((r) => r.data);
 }
 

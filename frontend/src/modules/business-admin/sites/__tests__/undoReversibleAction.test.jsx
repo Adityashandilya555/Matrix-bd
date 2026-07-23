@@ -15,13 +15,13 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const getReversibleActions = vi.fn();
-const undoAdminReview = vi.fn();
+const undoReversibleAction = vi.fn();
 const fetchHistory = vi.fn();
 
 vi.mock('../../../../services/api/businessAdminApi.js', () => ({
   getAdminSiteDocuments: vi.fn().mockResolvedValue({ items: [] }),
   getReversibleActions: (...a) => getReversibleActions(...a),
-  undoAdminReview: (...a) => undoAdminReview(...a),
+  undoReversibleAction: (...a) => undoReversibleAction(...a),
 }));
 vi.mock('../../../../services/api/adapters/httpAdapter.js', () => ({ reviveSite: vi.fn() }));
 vi.mock('../../../../App.jsx', () => ({ usePageContext: () => ({ showToast: vi.fn() }) }));
@@ -53,7 +53,7 @@ const openDrawer = async (user) => {
 beforeEach(() => {
   fetchHistory.mockReset().mockResolvedValue({ items: [entry()], total: 1 });
   getReversibleActions.mockReset().mockResolvedValue({ items: [], total: 0 });
-  undoAdminReview.mockReset().mockResolvedValue({});
+  undoReversibleAction.mockReset().mockResolvedValue({});
 });
 
 describe('undo button visibility', () => {
@@ -105,7 +105,7 @@ describe('performing an undo', () => {
     await openDrawer(user);
 
     await user.click(await screen.findByRole('button', { name: /undo this decision/i }));
-    expect(undoAdminReview).toHaveBeenCalledWith('s1', 'rev-1');
+    expect(undoReversibleAction).toHaveBeenCalledWith('s1', 'rev-1');
   });
 
   it('re-reads both lists so the consumed snapshot disappears', async () => {
@@ -129,7 +129,7 @@ describe('performing an undo', () => {
 
   it('surfaces the backend refusal verbatim', async () => {
     const user = userEvent.setup();
-    undoAdminReview.mockRejectedValue({
+    undoReversibleAction.mockRejectedValue({
       detail: 'GFC has already been decided for this site and the Project Excellence budget is open.',
     });
     await openDrawer(user);
@@ -145,7 +145,7 @@ describe('performing an undo', () => {
   it('disables the button while the request is in flight', async () => {
     const user = userEvent.setup();
     let release;
-    undoAdminReview.mockReturnValue(new Promise((res) => { release = res; }));
+    undoReversibleAction.mockReturnValue(new Promise((res) => { release = res; }));
     await openDrawer(user);
 
     const btn = await screen.findByRole('button', { name: /undo this decision/i });
