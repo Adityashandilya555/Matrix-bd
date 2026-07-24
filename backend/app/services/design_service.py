@@ -997,14 +997,16 @@ async def svc_review_deliverable(
                 ),
             )
 
-        # Snapshot the supervisor-review gate BEFORE mutating, but only for the
-        # 2D/3D kinds — the same scope the admin-review undo covers. Recce's
-        # approve advances the stage and opens the next upload, which the tight
-        # field-set frontier check can't fully police, so it stays out of scope.
+        # Snapshot the supervisor-review gate BEFORE mutating — this is the only
+        # record of these values. Captured unconditionally (it is a pure field
+        # read) and kept non-Optional so the record call below type-checks; only
+        # 2D/3D actually persist a snapshot. Recce is out of scope: its approve
+        # advances the stage and opens the next upload, which the tight field-set
+        # frontier check cannot fully police.
         undoable = kind in _NEEDS_ADMIN
         before = _capture_supervisor_review_state(
             deliverable=deliverable, review=review, site=site,
-        ) if undoable else None
+        )
 
         now = datetime.now(timezone.utc)
         deliverable.reviewed_by = actor["sub"]
