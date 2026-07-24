@@ -15,12 +15,15 @@ A row exists ONLY for an action that has a hand-written compensating restore, so
 the row's existence is itself the whitelist. It is consumed exactly once; the
 original audit row is never deleted, so the ledger shows action-then-undo.
 
-Import direction: owning services import THIS module (for record_reversible +
-the action constants). This module reaches back into them only via a lazy import
-inside the dispatcher, so there is no import cycle.
+Import direction is strictly one-way: owning services import THIS module (for
+record_reversible + the action constants) and register their restore via
+register_handler at import time. This module imports none of them — a lazy
+import inside the dispatcher would work at runtime but is still a cycle to any
+static analyser, and the registry costs nothing.
 """
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
@@ -157,20 +160,33 @@ async def _fetch_open_reversible_for_update(
     return row
 
 
+# action -> compensating restore, populated by each owning service at import
+# time via register_handler. A registry rather than an import: this module must
+# not import design_service/bd_service (they import IT, for record_reversible and
+# the action constants), and a lazy import inside the dispatcher would still be a
+# cycle to any static analyser even though it works at runtime.
+_HANDLERS: dict[str, Callable[..., Awaitable[None]]] = {}
+
+
+def register_handler(action: str, handler: Callable[..., Awaitable[None]]) -> None:
+    """Register the restore for one action. Called at import time by the service
+    that owns the gate, so the dependency arrow only ever points one way."""
+    _HANDLERS[action] = handler
+
+
 async def _dispatch_undo(session: AsyncSession, *, row, site, actor) -> None:
-    """Route to the owning service's compensating restore. Lazy imports break the
-    cycle (those modules import this one at top level)."""
-    if row.action in (ACTION_DESIGN_ADMIN_REVIEW, ACTION_DESIGN_SUPERVISOR_REVIEW):
-        from app.services import design_service
-        await design_service.apply_reversible_undo(session, row=row, site=site, actor=actor)
-    elif row.action == ACTION_BD_SITE_APPROVAL:
-        from app.services import bd_service
-        await bd_service.apply_reversible_undo(session, row=row, site=site, actor=actor)
-    else:
+    """Route to the owning service's compensating restore."""
+    handler = _HANDLERS.get(row.action)
+    if handler is None:
+        # Either a genuinely unknown action, or the owning service was never
+        # imported (so it never registered). The app imports every router — and
+        # therefore every service — at startup, so in practice this is the
+        # former.
         raise HTTPException(
             status_code=http_status.HTTP_409_CONFLICT,
             detail=f"'{row.action}' is not an undoable action.",
         )
+    await handler(session, row=row, site=site, actor=actor)
 
 
 async def svc_undo_reversible_action(

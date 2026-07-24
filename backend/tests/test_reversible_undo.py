@@ -179,9 +179,37 @@ def test_only_the_admin_review_path_has_the_gfc_hard_stop():
 
 
 def test_each_gate_records_a_snapshot():
+    """Every whitelisted gate persists a snapshot in the same transaction as the
+    mutation. The supervisor gate routes through a helper (extracted to keep
+    svc_review_deliverable under the C901 gate), so follow that one call deep."""
     assert "reversible_service.record_reversible" in inspect.getsource(ds.svc_admin_review_deliverable)
-    assert "reversible_service.record_reversible" in inspect.getsource(ds.svc_review_deliverable)
+    assert "_record_supervisor_review_snapshot" in inspect.getsource(ds.svc_review_deliverable)
+    assert "reversible_service.record_reversible" in inspect.getsource(ds._record_supervisor_review_snapshot)
     assert "reversible_service.record_reversible" in inspect.getsource(bd_service.svc_approve_shortlist)
+
+
+def test_dispatcher_does_not_import_the_owning_services():
+    """The registry exists so the dependency arrow points one way only. A lazy
+    import inside the dispatcher would work at runtime but is still a cycle to a
+    static analyser — which is exactly what DeepSource flagged (PYL-R0401)."""
+    import ast
+    src = inspect.getsource(rs)
+    tree = ast.parse(src)
+    imported = {
+        alias.name for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+        for alias in node.names
+    } | {
+        node.module for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert not any("design_service" in m or "bd_service" in m for m in imported)
+    # ...and every action really is registered by its owner.
+    assert set(rs._HANDLERS) == {
+        rs.ACTION_DESIGN_ADMIN_REVIEW,
+        rs.ACTION_DESIGN_SUPERVISOR_REVIEW,
+        rs.ACTION_BD_SITE_APPROVAL,
+    }
 
 
 def test_router_exposes_undo_under_business_admin_on_sites():

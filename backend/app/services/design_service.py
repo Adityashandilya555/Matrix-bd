@@ -1049,18 +1049,10 @@ async def svc_review_deliverable(
                 )
 
         if undoable:
-            after = _capture_supervisor_review_state(
-                deliverable=deliverable, review=review, site=site,
-            )
-            reversible_service.record_reversible(
-                session,
-                tenant_id=tenant_id, site_id=site.id,
-                audit_log_id=audit.id if audit is not None else None,
-                action=reversible_service.ACTION_DESIGN_SUPERVISOR_REVIEW,
-                entity_type=UNDO_ENTITY_DELIVERABLE, entity_id=deliverable.id,
-                actor_id=actor["sub"],
-                before=before, after=after,
-                extra={"kind": kind, "decision": body.decision},
+            _record_supervisor_review_snapshot(
+                session, tenant_id=tenant_id, actor=actor, site=site, review=review,
+                deliverable=deliverable, kind=kind, decision=body.decision,
+                before=before, audit=audit,
             )
 
     return await _build_design_response(session, site)
@@ -1155,6 +1147,29 @@ def _capture_admin_review_state(
             "design_status": site.design_status,
         },
     }
+
+
+def _record_supervisor_review_snapshot(
+    session: AsyncSession, *, tenant_id, actor, site, review, deliverable,
+    kind: str, decision: str, before: dict, audit,
+) -> None:
+    """Persist the supervisor-review undo snapshot. Extracted from
+    svc_review_deliverable purely to keep that function under the C901
+    complexity gate — it is a straight-line write with no branching of its own.
+    """
+    after = _capture_supervisor_review_state(
+        deliverable=deliverable, review=review, site=site,
+    )
+    reversible_service.record_reversible(
+        session,
+        tenant_id=tenant_id, site_id=site.id,
+        audit_log_id=audit.id if audit is not None else None,
+        action=reversible_service.ACTION_DESIGN_SUPERVISOR_REVIEW,
+        entity_type=UNDO_ENTITY_DELIVERABLE, entity_id=deliverable.id,
+        actor_id=actor["sub"],
+        before=before, after=after,
+        extra={"kind": kind, "decision": decision},
+    )
 
 
 def _capture_supervisor_review_state(
@@ -1718,3 +1733,14 @@ async def svc_gfc_decision(
                 )
 
     return await _build_design_response(session, site)
+
+
+# Register the design restores with the undo dispatcher. Done here, at import
+# time, so reversible_service never has to import this module — that one-way
+# arrow is what keeps the dependency acyclic.
+reversible_service.register_handler(
+    reversible_service.ACTION_DESIGN_ADMIN_REVIEW, apply_reversible_undo,
+)
+reversible_service.register_handler(
+    reversible_service.ACTION_DESIGN_SUPERVISOR_REVIEW, apply_reversible_undo,
+)

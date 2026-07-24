@@ -850,3 +850,10 @@ async def _upsert_site_details(
         for k, v in payload.items():
             setattr(row, k, v)
     await session.flush()
+
+
+# See the note in design_service: registering here keeps reversible_service free
+# of any import back into the owning services.
+reversible_service.register_handler(
+    reversible_service.ACTION_BD_SITE_APPROVAL, apply_reversible_undo,
+)
