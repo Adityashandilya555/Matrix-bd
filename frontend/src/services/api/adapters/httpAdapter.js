@@ -194,6 +194,8 @@ function detailsToServer(details = {}) {
     tenure: clean(details.tenure ?? null),
     total_op_cost: clean(details.total_op_cost ?? details.totalOpCost ?? null),
     area_sqft: clean(details.area_sqft ?? details.areaSqft ?? null),
+    revshare_dinein_pct: clean(details.revshare_dinein_pct ?? details.revshareDineinPct ?? null),
+    revshare_delivery_pct: clean(details.revshare_delivery_pct ?? details.revshareDeliveryPct ?? null),
     staggered_escalation: details.staggered_escalation ?? details.staggeredEscalation ?? null,
   };
 }
@@ -235,6 +237,10 @@ export function siteFromServer(s) {
     // draft's Add Details form reads it back instead of a blank year 1.
     staggeredEscalation: s.staggered_escalation ?? null,
     revshare: s.revshare ?? s.expected_revshare_pct ?? '',
+    // Revenue-share split — surfaced in the details blob so the Add Details form
+    // re-hydrates a saved dine-in/delivery split (FEATURE_RENT_V2).
+    revshareDineinPct: s.revshare_dinein_pct ?? null,
+    revshareDeliveryPct: s.revshare_delivery_pct ?? null,
     _savedAt: s.details_saved_at ?? '',
     score: s.score ?? '',
     estSales: s.est_sales ?? '',
@@ -289,6 +295,8 @@ export function siteFromServer(s) {
     staggeredEscalation: s.staggered_escalation ?? null,
     areaSqft: s.area_sqft ?? null,
     expectedRevsharePct: s.expected_revshare_pct,
+    revshareDineinPct: s.revshare_dinein_pct ?? null,
+    revshareDeliveryPct: s.revshare_delivery_pct ?? null,
     score: s.score,
     estSales: s.est_sales,
     nearestStarbucks: s.nearest_starbucks,
@@ -377,6 +385,11 @@ export async function createSite(payload) {
     expected_escalation_pct: payload.expectedEscalationPct ?? null,
     expected_escalation_years: payload.expectedEscalationYears ?? null,
     expected_revshare_pct: payload.expectedRevsharePct ?? null,
+    // Revenue-share split (FEATURE_RENT_V2). null when the UI doesn't send them,
+    // so old payloads are byte-identical. Per-year split keys ride inside
+    // staggered_escalation, which is already passed through verbatim below.
+    revshare_dinein_pct: payload.revshareDineinPct ?? null,
+    revshare_delivery_pct: payload.revshareDeliveryPct ?? null,
     area_sqft: payload.areaSqft ?? null,
     staggered_escalation: payload.staggeredEscalation ?? null,
   };

@@ -105,6 +105,12 @@ class Site(Base):
     # Cadence in years for the escalation (1 = yearly, 3 = every 3 yrs, 5 = every 5 yrs).
     expected_escalation_years: Mapped[Optional[int]] = mapped_column(Integer)
     expected_revshare_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
+    # Optional revenue-share split (Dine-in % / Delivery %) — the one genuinely
+    # new element in the configurable rent-type UI (FEATURE_RENT_V2). Nullable +
+    # additive; rides on either the fixed or staggered path. A single-percent
+    # deal still uses expected_revshare_pct. See migration 20260809.
+    revshare_dinein_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
+    revshare_delivery_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
     rent_set_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     # Pipeline-stage area (sqft). Captured at draft creation; flows to
     # site_details.carpet_area_sqft when the Add Details form is filled.
@@ -995,6 +1001,10 @@ class LaunchApproval(Base):
     fixed_rent_amt: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
     expected_rent: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
     rev_share_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
+    # Revenue-share split (FEATURE_RENT_V2) staged for the launch loop — mirrors
+    # sites.revshare_dinein_pct / revshare_delivery_pct. See migration 20260810.
+    revshare_dinein_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
+    revshare_delivery_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
     escalation_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
     escalation_date: Mapped[Optional[date]] = mapped_column(Date)
     expected_escalation_years: Mapped[Optional[int]] = mapped_column(Integer)

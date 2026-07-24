@@ -80,6 +80,8 @@ export async function createSite(payload) {
     expectedEscalationPct: payload.expectedEscalationPct ?? null,
     expectedEscalationYears: payload.expectedEscalationYears ?? null,
     expectedRevsharePct: payload.expectedRevsharePct ?? null,
+    revshareDineinPct: payload.revshareDineinPct ?? null,
+    revshareDeliveryPct: payload.revshareDeliveryPct ?? null,
     areaSqft: payload.areaSqft ?? null,
     staggeredEscalation: payload.staggeredEscalation ?? null,
     score: '', estSales: '', carpet: '', rent: payload.expectedRent ?? '', totalOpCost: 0,
@@ -326,6 +328,9 @@ export async function patchSiteDetails(id, details) {
     googlePin: details.googlePin ?? site.googlePin,
     rentType: details.rentType ?? site.rentType,
     expectedRent: details.rent != null && details.rent !== '' ? Number(details.rent) : site.expectedRent,
+    // Revenue-share split (FEATURE_RENT_V2) — scoped to fixed like the real backend.
+    revshareDineinPct: details.rentType === 'fixed' ? (details.revshareDineinPct ?? null) : (site.revshareDineinPct ?? null),
+    revshareDeliveryPct: details.rentType === 'fixed' ? (details.revshareDeliveryPct ?? null) : (site.revshareDeliveryPct ?? null),
     staggeredEscalation: details.rentType === 'staggered'
       ? (details.staggeredEscalation ?? site.staggeredEscalation ?? null)
       : site.staggeredEscalation,

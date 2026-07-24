@@ -105,7 +105,7 @@ def _assert_can_edit_details(actor: dict, site: models.Site) -> None:
 def _prepare_staggered_escalation(staggered_escalation: list | None, rent_type: str | None) -> list | None:
     if not staggered_escalation or rent_type != "staggered":
         return None
-    return [e if isinstance(e, dict) else e.model_dump() for e in staggered_escalation]
+    return [e if isinstance(e, dict) else e.model_dump(exclude_none=True) for e in staggered_escalation]
 
 def _determine_rent_set_at(
     now: datetime, expected_rent, expected_escalation_pct, expected_revshare_pct, staggered_escalation
@@ -152,6 +152,8 @@ async def svc_create_draft(
     expected_revshare_pct: float | None = None,
     area_sqft: float | None = None,
     staggered_escalation: list | None = None,
+    revshare_dinein_pct: float | None = None,
+    revshare_delivery_pct: float | None = None,
 ) -> SiteResponse:
     """Create a pipeline draft. One canonical implementation used by both
     `POST /api/bd/drafts` and `POST /api/sites`.
@@ -181,6 +183,8 @@ async def svc_create_draft(
             expected_escalation_pct=expected_escalation_pct,
             expected_escalation_years=expected_escalation_years,
             expected_revshare_pct=expected_revshare_pct,
+            revshare_dinein_pct=revshare_dinein_pct,
+            revshare_delivery_pct=revshare_delivery_pct,
             area_sqft=area_sqft if area_sqft is not None else 0,
             staggered_escalation=_prepare_staggered_escalation(staggered_escalation, rent_type),
             rent_set_at=_determine_rent_set_at(
@@ -271,6 +275,8 @@ def _pipeline_before_incoming(site: models.Site, details: dict) -> tuple[dict, d
         "expected_rent": float(site.expected_rent) if site.expected_rent is not None else None,
         "rent_type": site.rent_type,
         "area_sqft": float(site.area_sqft) if site.area_sqft is not None else None,
+        "revshare_dinein_pct": float(site.revshare_dinein_pct) if site.revshare_dinein_pct is not None else None,
+        "revshare_delivery_pct": float(site.revshare_delivery_pct) if site.revshare_delivery_pct is not None else None,
     }
     incoming = {
         "name": details.get("name"),
@@ -281,6 +287,8 @@ def _pipeline_before_incoming(site: models.Site, details: dict) -> tuple[dict, d
         "expected_rent": _to_float(details.get("rent")),
         "rent_type": details.get("rent_type"),
         "area_sqft": _to_float(details.get("area_sqft")),
+        "revshare_dinein_pct": _to_float(details.get("revshare_dinein_pct")),
+        "revshare_delivery_pct": _to_float(details.get("revshare_delivery_pct")),
     }
     return before, incoming
 
@@ -302,9 +310,18 @@ def _apply_staggered_escalation(site: models.Site, details: dict, incoming: dict
     esc_raw = details.get("staggered_escalation")
     if current_rent_type == "staggered":
         if esc_raw is not None:
-            site.staggered_escalation = [e if isinstance(e, dict) else e.model_dump() for e in esc_raw]
+            site.staggered_escalation = [e if isinstance(e, dict) else e.model_dump(exclude_none=True) for e in esc_raw]
     else:
         site.staggered_escalation = None
+
+
+def _apply_split_fields(site: models.Site, details: dict) -> None:
+    """Revenue-share split (FEATURE_RENT_V2) is explicitly clearable: presence in
+    the payload — not truthiness — decides, so a REV SHARE toggle-off nulls the
+    row instead of being silently skipped like the None/'' partial-save fields."""
+    for key in ("revshare_dinein_pct", "revshare_delivery_pct"):
+        if key in details:
+            setattr(site, key, _to_float(details[key]))
 
 
 async def svc_save_details(
@@ -343,6 +360,7 @@ async def svc_save_details(
             actor_role=(actor.get("role") or None),
         )
         _apply_incoming_pipeline_fields(site, incoming)
+        _apply_split_fields(site, details)
         if incoming.get("expected_rent") is not None:
             site.rent_set_at = datetime.now(timezone.utc)
         _apply_staggered_escalation(site, details, incoming)
@@ -407,6 +425,7 @@ async def svc_submit_details(
                 before=before, after=incoming,
             )
             _apply_incoming_pipeline_fields(site, incoming)
+            _apply_split_fields(site, details)
             _apply_staggered_escalation(site, details, incoming)
             await _upsert_site_details(session, tenant_id=tenant_id, site_id=site.id, details=details)
 

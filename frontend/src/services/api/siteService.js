@@ -52,10 +52,20 @@ export async function submitDetails(siteId, formData, by) {
     tenure:           toNumber(formData.tenure),
     totalOpCost:      toNumber(formData.totalOpCost),
     areaSqft:         toNumber(formData.areaSqft),
+    // Revenue-share split (FEATURE_RENT_V2) — flat scalars scoped to fixed so a
+    // Yes/No flip can't leak them onto a staggered site; the per-year split rides
+    // inside staggeredEscalation below.
+    revshareDineinPct:  formData.rentType === 'fixed' ? toNumber(formData.revshareDineinPct)  : undefined,
+    revshareDeliveryPct: formData.rentType === 'fixed' ? toNumber(formData.revshareDeliveryPct) : undefined,
     staggeredEscalation: formData.rentType === 'staggered'
       ? (formData.staggeredEscalation || [])
           .filter(e => e.year !== '' && e.year != null && e.percent !== '' && e.percent != null)
-          .map(e => ({ year: Number(e.year), percent: Number(e.percent) }))
+          .map(e => ({
+            year: Number(e.year),
+            percent: Number(e.percent),
+            ...(e.dine_in_pct !== '' && e.dine_in_pct != null ? { dine_in_pct: Number(e.dine_in_pct) } : {}),
+            ...(e.delivery_pct !== '' && e.delivery_pct != null ? { delivery_pct: Number(e.delivery_pct) } : {}),
+          }))
       : undefined,
   };
   return transitionSite(siteId, SiteStatus.DETAILS_SUBMITTED, {
@@ -168,8 +178,16 @@ export async function saveDraftDetails(siteId, formData) {
   coerced.staggeredEscalation = formData.rentType === 'staggered'
     ? (formData.staggeredEscalation || [])
         .filter(e => e.year !== '' && e.year != null && e.percent !== '' && e.percent != null)
-        .map(e => ({ year: Number(e.year), percent: Number(e.percent) }))
+        .map(e => ({
+          year: Number(e.year),
+          percent: Number(e.percent),
+          ...(e.dine_in_pct !== '' && e.dine_in_pct != null ? { dine_in_pct: Number(e.dine_in_pct) } : {}),
+          ...(e.delivery_pct !== '' && e.delivery_pct != null ? { delivery_pct: Number(e.delivery_pct) } : {}),
+        }))
     : undefined;
+  // Revenue-share split — flat scalars scoped to fixed (mirrors submitDetails).
+  coerced.revshareDineinPct  = formData.rentType === 'fixed' ? toNumber(formData.revshareDineinPct)  : undefined;
+  coerced.revshareDeliveryPct = formData.rentType === 'fixed' ? toNumber(formData.revshareDeliveryPct) : undefined;
   return adapter.patchSiteDetails(siteId, { ...coerced, _savedAt: new Date().toISOString() });
 }
 

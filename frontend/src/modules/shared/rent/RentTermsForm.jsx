@@ -22,6 +22,11 @@ import Icon from '../primitives/Icon.jsx';
 
 import './rent-terms.css';
 
+// Reveal the Dine-in / Delivery revenue-share split in the launch review only
+// when the feature is on (FEATURE_RENT_V2). Flag OFF => the launch form is
+// unchanged. Inlined per the USE_MOCK convention (see App.jsx).
+const FEATURE_RENT_V2 = import.meta.env.VITE_FEATURE_RENT_V2 === 'true';
+
 export const ZM_TOKENS = {
   bg: 'var(--zm-bg)', surface: 'var(--zm-surface)', surface2: 'var(--zm-surface-2)',
   line: 'var(--zm-line)', lineStrong: 'var(--zm-line-strong)',
@@ -253,6 +258,14 @@ export default function RentTermsForm({ value = {}, onChange, readOnly = false, 
         </div>
       )}
 
+      {/* Revenue-share split (FEATURE_RENT_V2) — carried through the launch loop */}
+      {FEATURE_RENT_V2 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+          <NumField t={t} label="Dine-in share" value={v.revshare_dinein_pct} onChange={set('revshare_dinein_pct')} suffix="% of sales" placeholder="optional" readOnly={readOnly} />
+          <NumField t={t} label="Delivery share" value={v.revshare_delivery_pct} onChange={set('revshare_delivery_pct')} suffix="% of sales" placeholder="optional" readOnly={readOnly} />
+          <div/>
+        </div>
+      )}
       {/* Always-on rent-linked terms */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
         <NumField t={t} label="Rent-free days" value={v.rent_free_days} onChange={set('rent_free_days')} suffix="days" placeholder="optional" readOnly={readOnly} />

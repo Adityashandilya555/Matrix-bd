@@ -362,14 +362,27 @@ export function SitesProvider({ children }) {
       googleMapsUrl: form.googleMapsUrl || null,
       rentType: form.rentType || null,
       expectedRent: ['fixed', 'mg_revshare', 'staggered'].includes(form.rentType) && form.expectedRent ? Number(form.expectedRent) : null,
-      expectedEscalationPct: ['fixed', 'mg_revshare'].includes(form.rentType) && form.expectedEscalation ? Number(form.expectedEscalation) : null,
+      expectedEscalationPct: ['fixed', 'mg_revshare'].includes(form.rentType) && form.expectedEscalation !== '' && form.expectedEscalation != null ? Number(form.expectedEscalation) : null,
       expectedEscalationYears: ['fixed', 'mg_revshare'].includes(form.rentType) && form.expectedEscalationYears ? Number(form.expectedEscalationYears) : null,
       expectedRevsharePct: ['revshare', 'mg_revshare'].includes(form.rentType) && form.expectedRevshare ? Number(form.expectedRevshare) : null,
+      // Revenue-share split (FEATURE_RENT_V2) — flat scalars scoped to fixed so a
+      // Yes/No flip can't leak them onto a staggered site (the per-year split
+      // rides inside staggeredEscalation). null for the legacy four-card selector,
+      // which never sets these fields, so the flag-off payload is unchanged.
+      revshareDineinPct: form.rentType === 'fixed' && form.revshareDinein !== '' && form.revshareDinein != null ? Number(form.revshareDinein) : null,
+      revshareDeliveryPct: form.rentType === 'fixed' && form.revshareDelivery !== '' && form.revshareDelivery != null ? Number(form.revshareDelivery) : null,
       areaSqft: form.areaSqft ? Number(form.areaSqft) : null,
       staggeredEscalation: form.rentType === 'staggered'
         ? (form.staggeredEscalation || [])
             .filter(e => e.year !== '' && e.year != null && e.percent !== '' && e.percent != null)
-            .map(e => ({ year: Number(e.year), percent: Number(e.percent) }))
+            .map(e => ({
+              year: Number(e.year),
+              percent: Number(e.percent),
+              // Per-year rev-share split rides inside the JSONB item (superset);
+              // each key is omitted unless filled so legacy items stay {year,percent}.
+              ...(e.dine_in_pct !== '' && e.dine_in_pct != null ? { dine_in_pct: Number(e.dine_in_pct) } : {}),
+              ...(e.delivery_pct !== '' && e.delivery_pct != null ? { delivery_pct: Number(e.delivery_pct) } : {}),
+            }))
         : null,
       createdBy: { id: session?.id || session?.sub || undefined, name: sessionDisplayName, role },
       role,

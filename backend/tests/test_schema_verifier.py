@@ -26,6 +26,7 @@ async def test_verify_schema_success(mock_engine_connect):
             ('area_sqft',), ('staggered_escalation',), ('google_maps_url',),
             ('expected_rent',), ('rent_type',), ('expected_escalation_pct',),
             ('expected_escalation_years',), ('expected_revshare_pct',), ('rent_set_at',),
+            ('revshare_dinein_pct',), ('revshare_delivery_pct',),
         ], is_fetchall=True),
         # 2. model data_type (fetchone)
         _make_result(('text',)),
@@ -46,6 +47,7 @@ async def test_verify_schema_missing_staggered(mock_engine_connect):
             ('area_sqft',), ('staggered_escalation',), ('google_maps_url',),
             ('expected_rent',), ('rent_type',), ('expected_escalation_pct',),
             ('expected_escalation_years',), ('expected_revshare_pct',), ('rent_set_at',),
+            ('revshare_dinein_pct',), ('revshare_delivery_pct',),
         ], is_fetchall=True),
         _make_result(('text',)),
         # No constraint includes 'staggered'
@@ -65,6 +67,7 @@ async def test_verify_schema_model_not_text(mock_engine_connect):
             ('area_sqft',), ('staggered_escalation',), ('google_maps_url',),
             ('expected_rent',), ('rent_type',), ('expected_escalation_pct',),
             ('expected_escalation_years',), ('expected_revshare_pct',), ('rent_set_at',),
+            ('revshare_dinein_pct',), ('revshare_delivery_pct',),
         ], is_fetchall=True),
         # Model is enum
         _make_result(('USER-DEFINED',)),
@@ -84,6 +87,7 @@ async def test_verify_schema_missing_columns(mock_engine_connect):
             ('area_sqft',), ('google_maps_url',),
             ('expected_rent',), ('rent_type',), ('expected_escalation_pct',),
             ('expected_escalation_years',), ('expected_revshare_pct',), ('rent_set_at',),
+            ('revshare_dinein_pct',), ('revshare_delivery_pct',),
         ], is_fetchall=True),
     ]
 

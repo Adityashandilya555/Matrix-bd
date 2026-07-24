@@ -2,6 +2,11 @@ import React from 'react';
 import Icon from '../../shared/primitives/Icon.jsx';
 import StatusPill from '../../shared/primitives/StatusPill.jsx';
 import * as siteService from '../../../services/api/siteService.js';
+import RentTermsFormV2 from '../../shared/rent/RentTermsFormV2.jsx';
+
+// FEATURE_RENT_V2 — inlined per the USE_MOCK convention (see App.jsx). Default
+// OFF => the four-card selector + inline rent fields below render unchanged.
+const FEATURE_RENT_V2 = import.meta.env.VITE_FEATURE_RENT_V2 === 'true';
 
 // Keep in sync with PIPELINE_MODELS in App.jsx (the New Pipeline create form).
 // A model chosen there must be selectable here, or the Model dropdown shows blank.
@@ -136,6 +141,10 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
       carpet: s(item.carpet ?? (item.areaSqft || null)), cam: s(item.cam),
       escalation: s(item.escalation ?? item.expectedEscalationPct),
       revshare: s(item.revshare ?? item.expectedRevsharePct),
+      // Revenue-share split (FEATURE_RENT_V2). Resumed drafts read it from the
+      // details blob (spread above); a fresh open reads the site-row values.
+      revshareDineinPct: s(item.revshareDineinPct),
+      revshareDeliveryPct: s(item.revshareDeliveryPct),
       rentFreeDays: s(item.rentFreeDays),
       cadex: s(item.cadex), deposit: s(item.deposit), brokerage: s(item.brokerage), lockin: s(item.lockin), tenure: s(item.tenure),
       // Staggered rent schedule read back from the site row (normalized below).
@@ -146,7 +155,13 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
   // Normalize a staggered schedule into the editor shape ({ year, percent-as-string }).
   const normStaggered = (arr) =>
     Array.isArray(arr) && arr.length
-      ? arr.map((e, i) => ({ year: e.year ?? i + 1, percent: s(e.percent) }))
+      ? arr.map((e, i) => ({
+          year: e.year ?? i + 1,
+          percent: s(e.percent),
+          // Preserve the per-year rev-share split (FEATURE_RENT_V2) on re-hydrate.
+          ...(e.dine_in_pct != null && e.dine_in_pct !== '' ? { dine_in_pct: e.dine_in_pct } : {}),
+          ...(e.delivery_pct != null && e.delivery_pct !== '' ? { delivery_pct: e.delivery_pct } : {}),
+        }))
       : null;
   // A resumed draft (item.details) can carry a details blob that predates
   // staggered support and drops the schedule — so fall back to the site-row
@@ -159,6 +174,25 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
     normStaggered(item.staggeredEscalation) ||
     [{ year: 1, percent: '' }];
   const [f, setF] = React.useState(init);
+  // FEATURE_RENT_V2 — map AddDetails `f` state <-> RentTermsFormV2's canonical
+  // contract. Escalation cadence is omitted (showCadence={false}) because Add
+  // Details has never captured escalation years; escalation % lives in
+  // site_details, the split is promoted onto the sites row like at creation.
+  const rentV2Value = {
+    rent_type: f.rentType,
+    expected_rent: f.rent,
+    expected_escalation_pct: f.escalation,
+    rev_share_pct: f.revshare, // legacy single revshare (revshare/mg_revshare summary)
+    revshare_dinein_pct: f.revshareDineinPct,
+    revshare_delivery_pct: f.revshareDeliveryPct,
+    staggered_escalation: f.staggeredEscalation,
+  };
+  const RENT_V2_TO_F = {
+    rent_type: 'rentType', expected_rent: 'rent', expected_escalation_pct: 'escalation',
+    revshare_dinein_pct: 'revshareDineinPct', revshare_delivery_pct: 'revshareDeliveryPct',
+    staggered_escalation: 'staggeredEscalation',
+  };
+  const handleRentV2Change = (key, val) => { if (RENT_V2_TO_F[key]) setF(prev => ({ ...prev, [RENT_V2_TO_F[key]]: val })); };
   // Track which photo IDs are mid-upload so the tile can show a spinner
   const [uploadingPhotoIds, setUploadingPhotoIds] = React.useState(new Set());
 
@@ -277,13 +311,13 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
   REQUIRED.forEach(k => { if (!f[k] && f[k] !== 0) errors[k] = 'Required'; });
   if (f.rentType === 'fixed') {
     if (!f.rent) errors.rent = 'Required';
-    if (!f.escalation) errors.escalation = 'Set escalation %';
+    if (f.escalation === '' || f.escalation == null) errors.escalation = 'Set escalation %';
   }
   if (f.rentType === 'revshare' && !f.revshare) errors.revshare = 'Set revenue share %';
   if (f.rentType === 'mg_revshare') {
     if (!f.rent) errors.rent = 'Set minimum guarantee';
     if (!f.revshare) errors.revshare = 'Set revenue share %';
-    if (!f.escalation) errors.escalation = 'Set escalation %';
+    if (f.escalation === '' || f.escalation == null) errors.escalation = 'Set escalation %';
   }
   if (f.rentType === 'staggered') {
     if (!f.rent) errors.rent = 'Set base rent';
@@ -341,6 +375,12 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
             <FormSection n="12·14" title="Carpet · CAM · rent">
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}><TextField label="Carpet area" value={f.carpet} onChange={upd('carpet')} required mono suffix="sqft" placeholder="e.g. 850" hint="Same as covered / built-up area"/><TextField label="CAM" value={f.cam} onChange={upd('cam')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 25000" hint="Full rupees · no commas"/><div/></div>
               <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {FEATURE_RENT_V2 ? (
+                <>
+                <RentTermsFormV2 value={rentV2Value} onChange={handleRentV2Change} showCadence={false} />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}><TextField label="Rent-free days" value={f.rentFreeDays} onChange={upd('rentFreeDays')} mono suffix="days" hint="Optional fit-out grace"/><div/><div/></div>
+                </>
+                ) : (<>
                 <fieldset style={{ border: 'none', margin: 0, padding: 0 }}><legend style={{ display: 'block', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)', marginBottom: 8, padding: 0 }}>Rent type <span style={{ color: 'var(--zm-danger)', fontWeight: 700 }}>*</span></legend><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>{RENT_TYPES.map(rt => (<button type="button" key={rt.id} onClick={() => upd('rentType')(rt.id)} className="zm-btn" style={{ textAlign: 'left', padding: 12, borderRadius: 8, border: '1px solid ' + (f.rentType === rt.id ? 'var(--zm-accent)' : 'var(--zm-line)'), background: f.rentType === rt.id ? 'var(--zm-accent-soft)' : 'var(--zm-surface)', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 10, fontFamily: 'inherit' }}><span style={{ width: 16, height: 16, borderRadius: 999, marginTop: 1, border: '1.5px solid ' + (f.rentType === rt.id ? 'var(--zm-accent)' : 'var(--zm-line-strong)'), background: f.rentType === rt.id ? 'var(--zm-accent)' : 'transparent', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 16px' }}>{f.rentType === rt.id && <span style={{ width: 6, height: 6, borderRadius: 999, background: '#fff' }}/>}</span><span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}><span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12.5, color: 'var(--zm-fg)' }}>{rt.label}</span><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, color: 'var(--zm-fg-3)' }}>{rt.sub}</span></span></button>))}</div></fieldset>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
                   {f.rentType === 'fixed' && (<><TextField label="Rent (monthly)" value={f.rent} onChange={upd('rent')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 180000" hint="Full rupees · no commas" error={errors.rent}/><TextField label="Escalation" value={f.escalation} onChange={upd('escalation')} required mono suffix="% / yr" placeholder="e.g. 5" error={errors.escalation}/><TextField label="Rent-free days" value={f.rentFreeDays} onChange={upd('rentFreeDays')} mono suffix="days" hint="Optional fit-out grace"/></>)}
@@ -376,6 +416,7 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
                   )}
                   {!f.rentType && (<div style={{ gridColumn: 'span 3', padding: 16, background: 'var(--zm-surface-2)', borderRadius: 8, fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-3)', textAlign: 'center' }}>Pick a rent type above to reveal the rent fields.</div>)}
                 </div>
+                </>)}
               </div>
               <div style={{ background: 'var(--zm-accent-soft)', border: '1px solid var(--zm-accent-line)', borderRadius: 10, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 16 }}>
                 <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-accent)' }}>Auto · total op cost</span>
