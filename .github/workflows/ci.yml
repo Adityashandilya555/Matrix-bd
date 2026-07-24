@@ -32,7 +32,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel
           pip install -e ".[dev]"
-          pip install ruff
+          # Pin ruff. An unpinned `pip install ruff` pulled a newer release whose
+          # expanded default rule set (UP045/UP017/UP006/B008/SIM102/…) fails the
+          # WHOLE repo — 979 Optional[X] hits alone, all in files this PR never
+          # touched. Pinned to the last known-good version so CI is reproducible;
+          # bump this deliberately, paired with a repo-wide `ruff check --fix`.
+          pip install "ruff==0.15.16"
       - name: Ruff lint (defaults + C901 complexity gate, max-complexity 15)
         run: ruff check app
       - name: Ruff docstring gate (#241 Phase 1)
