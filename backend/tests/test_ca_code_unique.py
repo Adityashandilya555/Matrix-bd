@@ -35,6 +35,7 @@ _ClashRow = namedtuple("_ClashRow", "name code")
 
 
 def _site(tenant_id: uuid.UUID, **over) -> models.Site:
+    """A finance-editable site; `over` sets whatever the case under test needs."""
     defaults = dict(
         id=uuid.uuid4(), tenant_id=tenant_id, status="loi_uploaded",
         name="Capital Walk", city="Gurugram", code="BT-GUR-TKMV",
@@ -46,12 +47,15 @@ def _site(tenant_id: uuid.UUID, **over) -> models.Site:
 
 
 def _actor(site: models.Site) -> dict:
+    """A supervisor who owns the site — the role both finance writers require."""
     return {"sub": str(site.submitted_by), "name": "Eve Exec", "role": "supervisor"}
 
 
 # ── The pre-check ────────────────────────────────────────────────────────────
 
 async def test_code_already_used_by_another_site_is_refused(make_session, fake_result):
+    """The pre-check names the site holding the code. 'Already in use' alone
+    leaves the user hunting the pipeline for the collision."""
     tenant_id = uuid.uuid4()
     site = _site(tenant_id)
     # The clash lookup returns (name, code) of the site already holding the code.
@@ -75,6 +79,8 @@ async def test_code_already_used_by_another_site_is_refused(make_session, fake_r
 
 
 async def test_free_code_is_claimed_and_normalised(make_session, fake_result):
+    """An unused code is stored upper-cased and trimmed, so the functional
+    unique index on upper(ca_code) sees one canonical form."""
     tenant_id = uuid.uuid4()
     site = _site(tenant_id)
     sess = make_session(
@@ -119,7 +125,11 @@ async def test_clash_lookup_is_tenant_scoped_and_excludes_self(make_session, fak
         sess, tenant_id=tenant_id, actor=_actor(site), site_id=site.id, ca_code="CA-777",
     )
 
-    clash_sql = next(s for s in sess.executed if "upper(sites.ca_code)" in s)
+    # Not next(...): a bare generator raises StopIteration when the lookup was
+    # never issued, which reads as a crash rather than a failed assertion.
+    clash_sqls = [s for s in sess.executed if "upper(sites.ca_code)" in s]
+    assert clash_sqls, "no CA-code clash lookup was issued"
+    clash_sql = clash_sqls[0]
     assert "sites.tenant_id =" in clash_sql
     assert "sites.id !=" in clash_sql
 
@@ -147,6 +157,7 @@ async def test_request_approval_also_guards_the_code(make_session, fake_result):
 # ── The lost race (index does the refusing) ──────────────────────────────────
 
 def _integrity_error(message: str) -> IntegrityError:
+    """A DB IntegrityError carrying `message`, to drive the lost-race path."""
     class _Orig(Exception):
         sqlstate = "23505"
 
@@ -154,6 +165,8 @@ def _integrity_error(message: str) -> IntegrityError:
 
 
 def test_unique_violation_becomes_a_409():
+    """A lost race that trips the index surfaces as the same 409 the pre-check
+    raises — the user should not see a raw constraint error."""
     exc = _integrity_error(
         'duplicate key value violates unique constraint "uq_sites_tenant_ca_code"'
     )
@@ -175,6 +188,8 @@ def test_other_integrity_errors_still_propagate():
 # ── The migration ────────────────────────────────────────────────────────────
 
 def test_migration_creates_the_partial_unique_index():
+    """The migration is the actual guarantee: partial (so code-less sites do not
+    collide) and functional on upper() (so a legacy mixed-case row still clashes)."""
     sql = open(_MIGRATION, encoding="utf-8").read()
     assert re.search(
         r"CREATE UNIQUE INDEX IF NOT EXISTS\s+uq_sites_tenant_ca_code", sql, re.IGNORECASE,

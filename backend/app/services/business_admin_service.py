@@ -30,9 +30,9 @@ from app.services import storage_service
 from app.services._common import fetch_site_for_update_or_404, fetch_user_names
 from app.services.audit_service import write_audit_event
 # The predicate for "this deliverable's file_url is an object key we wrote, not a
-# legacy free-text link" already exists next door — deleting the same set the
+# legacy free-text link" already exists next door — purging exactly the set the
 # documents view signs keeps the two from drifting apart.
-from app.services.business_admin_documents_service import _storage_path as _deliverable_storage_path
+from app.services.business_admin_documents_service import deliverable_storage_path
 from app.services.finance_service import svc_finance_approve, svc_finance_reject
 
 
@@ -669,7 +669,7 @@ async def delete_site(
                     models.DesignDeliverable.file_url.isnot(None),
                 )
             )).scalars().all()
-            if _deliverable_storage_path(key)
+            if deliverable_storage_path(key)
         ]
 
         await write_audit_event(

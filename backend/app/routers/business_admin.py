@@ -166,6 +166,12 @@ async def delete_site(
     current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
 ) -> dict:
+    """Permanently delete a site and everything cascading from it.
+
+    Business-admin only, and the one hard-delete in the product — archive stays
+    the reversible path. The service row-locks and tenant-scopes the site, so a
+    forged id from another workspace is a 404.
+    """
     return await svc.delete_site(db, tenant_id, site_id, current_user)
 
 

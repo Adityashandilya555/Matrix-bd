@@ -29,6 +29,7 @@ from app.services import storage_service
 
 
 def _site(tenant_id: uuid.UUID) -> models.Site:
+    """A site with a CA code, so the audit detail has something to record."""
     return models.Site(
         id=uuid.uuid4(), tenant_id=tenant_id, status="loi_uploaded",
         name="Capital Walk", city="Gurugram", code="BT-GUR-TKMV", ca_code="CA-300",
@@ -36,14 +37,17 @@ def _site(tenant_id: uuid.UUID) -> models.Site:
 
 
 def _actor() -> dict:
+    """The business admin — the only role permitted to hard-delete."""
     return {"sub": str(uuid.uuid4()), "name": "Ada Admin", "role": "business_admin"}
 
 
 @pytest.fixture
 def deleted_paths(monkeypatch) -> list[str]:
+    """Capture the storage keys the service asks to purge, without a network call."""
     seen: list[str] = []
 
     async def _fake_delete(*, path: str) -> bool:
+        """Stand-in for storage_service.delete_object: records, never calls out."""
         seen.append(path)
         return True
 
@@ -54,6 +58,8 @@ def deleted_paths(monkeypatch) -> list[str]:
 async def test_deletes_the_site_and_removes_its_storage_objects(
     make_session, fake_result, deleted_paths,
 ):
+    """The happy path: one DELETE inside the transaction (the DB cascade does the
+    rest), then every collected object key purged after the commit."""
     tenant_id = uuid.uuid4()
     site = _site(tenant_id)
     sess = make_session(
@@ -116,6 +122,7 @@ async def test_storage_failure_does_not_fail_a_completed_delete(
     """The row is already gone by the time storage is touched. Reporting failure
     would tell the admin the site is still there when it is not."""
     async def _boom(*, path: str) -> bool:
+        """An unreachable storage API, to prove it cannot fail a done delete."""
         raise RuntimeError("storage unreachable")
 
     monkeypatch.setattr(storage_service, "delete_object", _boom)

@@ -26,9 +26,13 @@ from app.services._common import fetch_site_or_404
 _SITE_FILE_MODULE = {"loi": "BD", "photo": "BD", "quality_audit": "Project"}
 
 
-def _storage_path(file_url: Optional[str]) -> Optional[str]:
-    """Storage object key to sign for a design deliverable — only paths we wrote
-    under 'design/'. A legacy free-text file_url is not an object key."""
+def deliverable_storage_path(file_url: Optional[str]) -> Optional[str]:
+    """Storage object key for a design deliverable — only paths we wrote under
+    'design/'. A legacy free-text file_url is a link, not an object key.
+
+    Public because the site delete needs the same predicate to decide which
+    blobs to purge; keeping one definition is what stops the two drifting.
+    """
     return file_url if file_url and file_url.startswith("design/") else None
 
 
@@ -77,7 +81,7 @@ async def list_site_documents(
         asyncio.gather(*[_sign(f.storage_path) for f in files]),
         # Sign only 'design/' storage objects; legacy http(s) URLs are passed
         # through unsigned in the item build below (_legacy_link).
-        asyncio.gather(*[_sign(_storage_path(d.file_url)) for d in deliverables]),
+        asyncio.gather(*[_sign(deliverable_storage_path(d.file_url)) for d in deliverables]),
     )
 
     items: list[dict[str, Any]] = []
