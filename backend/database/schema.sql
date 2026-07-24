@@ -147,6 +147,10 @@ CREATE INDEX idx_sites_tenant_id_status ON public.sites(tenant_id, status);
 CREATE INDEX idx_sites_assigned_to ON public.sites(assigned_to);
 CREATE INDEX idx_sites_supervisor_id ON public.sites(supervisor_id);
 CREATE INDEX idx_sites_submitted_by ON public.sites(submitted_by);
+-- A CA / Commercial Code belongs to exactly one site per workspace (20260810).
+-- Functional on upper() so a legacy mixed-case row still collides with its twin.
+CREATE UNIQUE INDEX uq_sites_tenant_ca_code ON public.sites(tenant_id, upper(ca_code))
+  WHERE ca_code IS NOT NULL AND ca_code <> '';
 
 -- ── site_details ──────────────────────────────────────────────────────────────
 CREATE TABLE public.site_details (
@@ -173,7 +177,7 @@ CREATE TABLE public.site_details (
   created_at            timestamp with time zone NOT NULL DEFAULT now(),
   updated_at            timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT site_details_pkey PRIMARY KEY (id),
-  CONSTRAINT site_details_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id),
+  CONSTRAINT site_details_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id) ON DELETE CASCADE,
   CONSTRAINT site_details_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id),
   CONSTRAINT chk_site_details_rent_type CHECK (
       rent_type IN ('fixed','revshare','mg_revshare','staggered') OR rent_type IS NULL
@@ -197,7 +201,7 @@ CREATE TABLE public.site_files (
   onedrive_synced_at timestamp with time zone,
   uploaded_at      timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT site_files_pkey PRIMARY KEY (id),
-  CONSTRAINT site_files_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id),
+  CONSTRAINT site_files_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id) ON DELETE CASCADE,
   CONSTRAINT site_files_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id),
   CONSTRAINT site_files_uploaded_by_fkey FOREIGN KEY (uploaded_by) REFERENCES public.users(id),
   CONSTRAINT chk_site_files_file_type CHECK (
@@ -278,7 +282,7 @@ CREATE TABLE public.stage_events (
   metadata    jsonb,
   occurred_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT stage_events_pkey PRIMARY KEY (id),
-  CONSTRAINT stage_events_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id),
+  CONSTRAINT stage_events_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id) ON DELETE CASCADE,
   CONSTRAINT stage_events_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id),
   CONSTRAINT stage_events_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.users(id),
   CONSTRAINT chk_stage_events_actor_role CHECK (
@@ -307,7 +311,7 @@ CREATE TABLE public.notification_outbox (
   created_at      timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT notification_outbox_pkey PRIMARY KEY (id),
   CONSTRAINT notification_outbox_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id),
-  CONSTRAINT notification_outbox_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id),
+  CONSTRAINT notification_outbox_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id) ON DELETE CASCADE,
   CONSTRAINT notification_outbox_recipient_id_fkey FOREIGN KEY (recipient_id) REFERENCES public.users(id)
 );
 CREATE INDEX idx_notification_outbox_status ON public.notification_outbox(status);
@@ -327,7 +331,7 @@ CREATE TABLE public.approvals (
   notes               text,
   created_at          timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT approvals_pkey PRIMARY KEY (id),
-  CONSTRAINT approvals_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id),
+  CONSTRAINT approvals_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id) ON DELETE CASCADE,
   CONSTRAINT approvals_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id),
   CONSTRAINT approvals_approver_id_fkey FOREIGN KEY (approver_id) REFERENCES public.users(id)
 );

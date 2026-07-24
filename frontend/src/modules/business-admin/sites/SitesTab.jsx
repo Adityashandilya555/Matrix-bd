@@ -2,7 +2,7 @@ import React from 'react';
 import { T, Icon, Card, Drawer, Skeleton, EmptyState, ErrorState, Avatar, TABULAR } from '../ui/kit.jsx';
 import { MODULE_META, moduleForAction, labelForEntry, dotColor } from './historyMeta.js';
 import { humanizeAuditDetail } from '../../../services/api/audit.js';
-import { getAdminSiteDocuments, getReversibleActions, undoReversibleAction } from '../../../services/api/businessAdminApi.js';
+import { getAdminSiteDocuments, getReversibleActions, undoReversibleAction, deleteSite } from '../../../services/api/businessAdminApi.js';
 import { reviveSite } from '../../../services/api/adapters/httpAdapter.js';
 import { usePageContext } from '../../../App.jsx';
 // Every site rendered as a BD-style pipeline card (LOI → Legal → CA → Design →
@@ -32,6 +32,51 @@ function ReviveDialog({ site, onCancel, onConfirm, busy }) {
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onCancel} disabled={busy} className="zm-btn" style={{ height: 36, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: busy ? 'not-allowed' : 'pointer' }}>Cancel</button>
           <button onClick={() => onConfirm(site, note.trim())} disabled={busy} className="zm-btn-primary" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer' }}>{busy ? 'Reviving…' : 'Revive site'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Deleting a site is the one irreversible action in the portal — it drops the
+// row and every child table cascades with it. Two dialogs rather than one: the
+// first is the ordinary "did you mean to click that", the second spells out that
+// the data is gone for good. Both are dismissible; only the second one calls the
+// API. Same overlay/surface treatment as ReviveDialog so the portal reads as one
+// piece, with the danger palette reserved for the final step.
+function DeleteSiteDialog({ site, step, onCancel, onAdvance, onConfirm, busy }) {
+  if (!site) return null;
+  const isFinal = step === 2;
+  const label = `${site.siteName}${site.siteCode ? ` (${site.siteCode})` : ''}`;
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)', zIndex: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div role="alertdialog" aria-modal="true" aria-label={isFinal ? 'Final delete confirmation' : 'Delete site confirmation'}
+        style={{ background: 'var(--zm-surface)', border: `1px solid ${isFinal ? cm(T.danger, 45) : 'var(--zm-line)'}`, borderRadius: 14, width: 520, maxWidth: 'calc(100vw - 32px)', padding: 26, boxShadow: 'var(--zm-shadow-pop)', display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: isFinal ? T.danger : T.textMuted }}>
+              {isFinal ? 'Final confirmation' : 'Deleting'} · {site.siteCode || site.siteName}
+            </span>
+            <h2 style={{ margin: '4px 0 6px', fontFamily: 'var(--zm-font-display)', fontWeight: 700, fontSize: 20, letterSpacing: '-0.02em', color: isFinal ? T.danger : 'var(--zm-fg)' }}>
+              {isFinal ? 'This cannot be undone' : 'Do you really want to delete this site?'}
+            </h2>
+            <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 13, lineHeight: 1.5, color: 'var(--zm-fg-3)' }}>
+              {isFinal
+                ? <>This is the final confirmation for deleting <strong style={{ color: 'var(--zm-fg)' }}>{label}</strong>. After deletion all data related to this site — its history, documents, approvals, budgets and every module’s records — will be lost and cannot be recovered.</>
+                : <><strong style={{ color: 'var(--zm-fg)' }}>{label}</strong> will be removed from the pipeline. You’ll be asked to confirm once more before anything is deleted.</>}
+            </p>
+          </div>
+          <button onClick={onCancel} disabled={busy} aria-label="Close" className="zm-icon-btn" style={{ background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)', borderRadius: 8, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--zm-fg-2)', cursor: busy ? 'not-allowed' : 'pointer' }}><Icon.x size={14}/></button>
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onCancel} disabled={busy} className="zm-btn"
+            style={{ height: 36, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: busy ? 'not-allowed' : 'pointer' }}>
+            {isFinal ? 'Cancel' : 'No'}
+          </button>
+          <button onClick={isFinal ? () => onConfirm(site) : onAdvance} disabled={busy} className="zm-btn-danger"
+            style={{ height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: T.danger, color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.7 : 1 }}>
+            {isFinal ? (busy ? 'Deleting…' : 'Delete permanently') : 'Yes'}
+          </button>
         </div>
       </div>
     </div>
@@ -471,6 +516,8 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
   const [openSite, setOpenSite] = React.useState(null);
 
   const [reviving, setReviving] = React.useState(null);
+  // { site, step } — step 1 is "are you sure", step 2 is the point of no return.
+  const [deleting, setDeleting] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
   const { showToast } = usePageContext() || {};
 
@@ -501,6 +548,21 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
       onRetry?.(true); // reload sites
     } catch (err) {
       showToast?.(err?.message || 'Could not revive site', 'danger');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDeleteConfirm = async (site) => {
+    setBusy(true);
+    try {
+      await deleteSite(site.siteId);
+      setDeleting(null);
+      showToast?.(`Deleted · ${site.siteName} and all its data are gone`);
+      onRetry?.(true); // reload sites
+    } catch (err) {
+      // The backend is specific about refusals; pass its text through.
+      showToast?.(err?.detail || err?.message || 'Could not delete site', 'danger');
     } finally {
       setBusy(false);
     }
@@ -582,6 +644,22 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
                         <Icon.refresh size={12}/> Revive
                       </button>
                     )}
+                    {/* Sits beside History, deliberately quieter than it: the card
+                        is one big click target for the history drawer, so this
+                        must not read as the primary action — and must not open
+                        the drawer on its way to the dialog. */}
+                    <button type="button" title="Delete this site permanently"
+                      /* Named per site: every row has a "Delete site" button, so
+                         the bare label tells a screen-reader user nothing about
+                         which one they are on. */
+                      aria-label={`Delete site ${s.siteName}`}
+                      onClick={(e) => { e.stopPropagation(); setDeleting({ site: s, step: 1 }); }}
+                      className="ac-delete-site"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 11px',
+                        borderRadius: 999, border: `1px solid ${T.line}`, background: 'transparent',
+                        fontSize: 11.5, fontWeight: 650, color: T.textMuted, cursor: 'pointer' }}>
+                      <Icon.trash size={13} /> Delete site
+                    </button>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 11px',
                       borderRadius: 999, border: `1px solid ${isSiteRejected(s) ? cm(T.danger, 25) : T.line}`, background: isSiteRejected(s) ? cmSolid(T.danger, 8) : T.chip,
                       fontSize: 11.5, fontWeight: 650, color: T.textMuted }}>
@@ -600,6 +678,16 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
 
       <HistoryDrawer site={openSite} fetchHistory={fetchHistory} onClose={() => setOpenSite(null)} />
       {reviving && <ReviveDialog site={reviving} onCancel={() => setReviving(null)} onConfirm={onReviveConfirm} busy={busy}/>}
+      {deleting && (
+        <DeleteSiteDialog
+          site={deleting.site}
+          step={deleting.step}
+          busy={busy}
+          onCancel={() => { if (!busy) setDeleting(null); }}
+          onAdvance={() => setDeleting((d) => ({ ...d, step: 2 }))}
+          onConfirm={onDeleteConfirm}
+        />
+      )}
     </div>
   );
 }
