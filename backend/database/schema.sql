@@ -235,6 +235,34 @@ CREATE TABLE public.audit_logs (
 CREATE INDEX idx_audit_logs_site_id_created_at ON public.audit_logs(site_id, created_at);
 CREATE INDEX idx_audit_logs_tenant_id_created_at ON public.audit_logs(tenant_id, created_at);
 
+-- ── reversible_actions ───────────────────────────────────────────────────────
+-- Before-value snapshots for the whitelisted undoable actions (20260806).
+-- The audit log cannot serve this purpose — design records no before-state —
+-- so the prior values are captured here at action time, the same shape that
+-- makes archive/revive work. A row existing IS the whitelist check.
+CREATE TABLE public.reversible_actions (
+  id           uuid NOT NULL DEFAULT uuid_generate_v4(),
+  tenant_id    uuid NOT NULL,
+  site_id      uuid NOT NULL,
+  audit_log_id uuid,
+  action       text NOT NULL,                    -- 'design_admin_review'
+  entity_type  text NOT NULL,                    -- 'design_deliverable'
+  entity_id    uuid NOT NULL,
+  actor_id     uuid NOT NULL,                    -- original-actor guard
+  snapshot     jsonb NOT NULL,                   -- before-values + snapshot_version
+  created_at   timestamp with time zone NOT NULL DEFAULT now(),
+  consumed_at  timestamp with time zone,         -- NULL = still undoable
+  consumed_by  uuid,
+  CONSTRAINT reversible_actions_pkey PRIMARY KEY (id),
+  CONSTRAINT reversible_actions_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id),
+  CONSTRAINT reversible_actions_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id) ON DELETE CASCADE,
+  CONSTRAINT reversible_actions_audit_log_id_fkey FOREIGN KEY (audit_log_id) REFERENCES public.audit_logs(id),
+  CONSTRAINT reversible_actions_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.users(id),
+  CONSTRAINT reversible_actions_consumed_by_fkey FOREIGN KEY (consumed_by) REFERENCES public.users(id)
+);
+CREATE INDEX idx_reversible_actions_site_open ON public.reversible_actions(site_id, consumed_at);
+CREATE INDEX idx_reversible_actions_tenant_created ON public.reversible_actions(tenant_id, created_at DESC);
+
 -- ── stage_events ─────────────────────────────────────────────────────────────
 CREATE TABLE public.stage_events (
   id          uuid NOT NULL DEFAULT uuid_generate_v4(),

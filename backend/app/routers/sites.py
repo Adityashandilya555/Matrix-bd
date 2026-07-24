@@ -14,7 +14,11 @@ from pydantic import BaseModel, Field
 from app.core.deps import DbDep, TenantId
 from app.core.uploads import read_upload_capped
 from app.domain.schemas.audit import AuditListResponse
-from app.domain.schemas.common import OkResponse
+from app.domain.schemas.common import (
+    OkResponse,
+    ReversibleActionItem,
+    ReversibleActionListResponse,
+)
 from app.domain.schemas.loi import LOIUploadResponse
 from app.domain.schemas.site import (
     ArchiveSiteRequest,
@@ -52,8 +56,16 @@ from app.services.finance_service import (
 from app.services.loi_service import svc_upload_loi
 from app.services.query_service import get_site as svc_get_site
 from app.services.query_service import list_site_activity, list_sites
+from app.services.reversible_service import (
+    svc_list_reversible_actions,
+    svc_undo_reversible_action,
+)
 
 router = APIRouter(prefix="/sites", tags=["Sites"])
+
+# Undo is business-admin only. require_role admits business_admin regardless;
+# the service re-checks and scopes rows to the acting admin.
+BusinessAdmin = Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))]
 
 
 # ── List + read ────────────────────────────────────────────────────────────
@@ -531,4 +543,54 @@ async def upload_loi_alias(
     return await svc_upload_loi(
         db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
         filename=file.filename or "loi.pdf", content_type=file.content_type, file_bytes=body,
+    )
+
+
+
+# ── Undo: whitelisted, side-effect-free approval decisions ───────────────────
+# Keyed on site_id and action-agnostic — BD site approval and design 2D/3D
+# reviews both surface here, in the cross-module site activity drawer.
+
+@router.get(
+    "/{site_id}/reversible-actions",
+    response_model=ReversibleActionListResponse,
+    summary="Business admin: their own still-undoable decisions on this site",
+)
+async def list_reversible_actions(
+    site_id: str,
+    db: DbDep,
+    current_user: BusinessAdmin,
+    tenant_id: TenantId,
+) -> ReversibleActionListResponse:
+    rows = await svc_list_reversible_actions(
+        db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
+    )
+    items = [
+        ReversibleActionItem(
+            id=str(r.id),
+            audit_log_id=str(r.audit_log_id) if r.audit_log_id else None,
+            action=r.action,
+            entity_type=r.entity_type,
+            created_at=r.created_at,
+        )
+        for r in rows
+    ]
+    return ReversibleActionListResponse(items=items, total=len(items))
+
+
+@router.post(
+    "/{site_id}/reversible-actions/{reversible_id}/undo",
+    response_model=OkResponse,
+    summary="Business admin: undo their own whitelisted decision on this site",
+)
+async def undo_reversible_action(
+    site_id: str,
+    reversible_id: str,
+    db: DbDep,
+    current_user: BusinessAdmin,
+    tenant_id: TenantId,
+) -> OkResponse:
+    return await svc_undo_reversible_action(
+        db, tenant_id=tenant_id, actor=current_user,
+        site_id=site_id, reversible_id=reversible_id,
     )

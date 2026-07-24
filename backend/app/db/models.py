@@ -265,6 +265,46 @@ class AuditLog(Base):
     )
 
 
+class ReversibleAction(Base):
+    """Before-value snapshot for a whitelisted undoable action (20260806).
+
+    The audit log cannot serve as the source of truth for an inverse: the
+    design module records no before-state on any of its audit rows. So the
+    prior values are captured here, at action time — the same shape that makes
+    archive/revive work via ``sites.archived_from_status``.
+
+    A row is created ONLY by an action that has a hand-written compensating
+    function, so the row's existence is itself the whitelist check. It is
+    consumed exactly once (``consumed_at``); the original audit row is never
+    deleted, so the ledger shows action-then-undo.
+    """
+
+    __tablename__ = "reversible_actions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4())
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), nullable=False)
+    # Links the snapshot to the audit row the UI renders, so the button can be
+    # attached to the right entry. Nullable: the audit write is best-effort.
+    audit_log_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("audit_logs.id"))
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_type: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    # The actor who performed the original action — only they may undo it.
+    actor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    # Before-values, plus a snapshot_version so a row written by an older
+    # deploy is refused rather than mis-restored.
+    snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    consumed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    consumed_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+    __table_args__ = (
+        Index("idx_reversible_actions_site_open", "site_id", "consumed_at"),
+        Index("idx_reversible_actions_tenant_created", "tenant_id", "created_at"),
+    )
+
+
 class StageEvent(Base):
     __tablename__ = "stage_events"
 

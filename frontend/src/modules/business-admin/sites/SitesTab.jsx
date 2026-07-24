@@ -2,7 +2,7 @@ import React from 'react';
 import { T, Icon, Card, Drawer, Skeleton, EmptyState, ErrorState, Avatar, TABULAR } from '../ui/kit.jsx';
 import { MODULE_META, moduleForAction, labelForEntry, dotColor } from './historyMeta.js';
 import { humanizeAuditDetail } from '../../../services/api/audit.js';
-import { getAdminSiteDocuments } from '../../../services/api/businessAdminApi.js';
+import { getAdminSiteDocuments, getReversibleActions, undoReversibleAction } from '../../../services/api/businessAdminApi.js';
 import { reviveSite } from '../../../services/api/adapters/httpAdapter.js';
 import { usePageContext } from '../../../App.jsx';
 // Every site rendered as a BD-style pipeline card (LOI → Legal → CA → Design →
@@ -273,17 +273,60 @@ function DocumentsSection({ siteId }) {
 function HistoryDrawer({ site, fetchHistory, onClose }) {
   const [state, setState] = React.useState({ status: 'loading', items: [], error: null });
   const [mod, setMod] = React.useState('all');
+  // audit_log_id -> reversible id, for the entries this admin may still undo.
+  // Loaded separately from the audit feed so the shared AuditEvent schema —
+  // which several other read paths consume — stays untouched.
+  const [undoable, setUndoable] = React.useState({});
+  const [undoing, setUndoing] = React.useState(null);
+  const [undoError, setUndoError] = React.useState(null);
+
+  const load = React.useCallback(async (siteId) => {
+    const [history, reversible] = await Promise.allSettled([
+      fetchHistory(siteId),
+      getReversibleActions(siteId),
+    ]);
+    if (history.status === 'rejected') throw history.reason;
+    // A failure here must not break the history view — the drawer's job is to
+    // show the trail; the Undo affordance is a bonus on top of it.
+    const map = {};
+    if (reversible.status === 'fulfilled') {
+      for (const r of reversible.value.items || []) {
+        if (r.auditLogId) map[r.auditLogId] = r.id;
+      }
+    }
+    return { items: history.value.items || [], undoable: map };
+  }, [fetchHistory]);
 
   React.useEffect(() => {
     if (!site) return undefined;
     let live = true;
     setState({ status: 'loading', items: [], error: null });
     setMod('all');
-    fetchHistory(site.siteId)
-      .then((d) => { if (live) setState({ status: 'ready', items: d.items || [], error: null }); })
+    setUndoable({});
+    setUndoError(null);
+    load(site.siteId)
+      .then((d) => { if (live) { setState({ status: 'ready', items: d.items, error: null }); setUndoable(d.undoable); } })
       .catch((e) => { if (live) setState({ status: 'error', items: [], error: e?.detail || e?.message || 'Failed to load history' }); });
     return () => { live = false; };
-  }, [site, fetchHistory]);
+  }, [site, load]);
+
+  const onUndo = async (reversibleId) => {
+    setUndoError(null);
+    setUndoing(reversibleId);
+    try {
+      await undoReversibleAction(site.siteId, reversibleId);
+      // Re-read both: the undo adds an audit entry and consumes the snapshot.
+      const d = await load(site.siteId);
+      setState({ status: 'ready', items: d.items, error: null });
+      setUndoable(d.undoable);
+    } catch (e) {
+      // The backend explains WHY precisely (budget open, site moved on, already
+      // undone). Surface that text rather than a generic failure.
+      setUndoError(e?.detail || e?.message || 'Could not undo that decision.');
+    } finally {
+      setUndoing(null);
+    }
+  };
 
   const counts = React.useMemo(() => {
     const c = { all: state.items.length };
@@ -334,6 +377,14 @@ function HistoryDrawer({ site, fetchHistory, onClose }) {
         <EmptyState icon={Icon.clock} title="No history yet" hint="Activity across all modules will appear here as the site progresses." />
       )}
 
+      {undoError && (
+        <div role="alert" style={{ margin: '0 0 10px', padding: '8px 11px', borderRadius: 8,
+          border: `1px solid ${cm(T.danger, 40)}`, background: cm(T.danger, 10),
+          color: T.danger, fontSize: 12, lineHeight: 1.45 }}>
+          {undoError}
+        </div>
+      )}
+
       {state.status === 'ready' && visible.length > 0 && (() => {
         // Group by calendar day so long histories stay scannable; each entry
         // keeps a ring marker + module pill on a shared rail.
@@ -380,6 +431,20 @@ function HistoryDrawer({ site, fetchHistory, onClose }) {
                             <div style={{ marginTop: 6, padding: '7px 10px', borderLeft: `2px solid ${cm(mColor, 45)}`,
                               borderRadius: '4px 10px 10px 4px', background: T.surfaceInset, fontSize: 12,
                               lineHeight: 1.45, color: T.textMuted, wordBreak: 'break-word' }}>{detailNote}</div>
+                          )}
+                          {undoable[e.id] && (
+                            <button
+                              type="button"
+                              disabled={undoing !== null}
+                              onClick={() => onUndo(undoable[e.id])}
+                              style={{ marginTop: 8, height: 26, padding: '0 10px', borderRadius: 6,
+                                border: `1px solid ${cm(T.danger, 40)}`, background: cm(T.danger, 10),
+                                color: T.danger, fontSize: 11.5, fontWeight: 700,
+                                cursor: undoing !== null ? 'wait' : 'pointer',
+                                opacity: undoing !== null ? 0.6 : 1 }}
+                            >
+                              {undoing === undoable[e.id] ? 'Undoing…' : 'Undo this decision'}
+                            </button>
                           )}
                         </div>
                       </div>
