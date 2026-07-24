@@ -257,6 +257,15 @@ export async function getAllSites() {
   return { items: allItems, total };
 }
 
+// Permanently removes a site and everything attached to it (details, documents,
+// history, approvals, budgets — all cascaded server-side) and frees its CA code.
+// Not an archive: there is no undo, which is why the caller confirms twice.
+export async function deleteSite(siteId) {
+  const result = await client.delete(`/business-admin/sites/${siteId}`).then((r) => r.data);
+  notifySiteDataChanged({ source: 'businessAdmin', action: 'site_deleted', siteId });
+  return result;
+}
+
 // ── Undo: business-admin 2D/3D deliverable decisions ────────────────────────
 //
 // Only decisions the CALLING admin made and has not already undone come back

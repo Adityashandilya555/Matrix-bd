@@ -26,8 +26,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import models
 from app.db.session import transaction
 from app.domain.schemas.business_admin import Module
-from app.services._common import fetch_user_names
+from app.services import storage_service
+from app.services._common import fetch_site_for_update_or_404, fetch_user_names
 from app.services.audit_service import write_audit_event
+# The predicate for "this deliverable's file_url is an object key we wrote, not a
+# legacy free-text link" already exists next door — deleting the same set the
+# documents view signs keeps the two from drifting apart.
+from app.services.business_admin_documents_service import _storage_path as _deliverable_storage_path
 from app.services.finance_service import svc_finance_approve, svc_finance_reject
 
 
@@ -618,6 +623,77 @@ async def list_admin_sites(
         for site in site_rows
     ]
     return {"items": items, "total": total_count}
+
+
+async def delete_site(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+    site_id: str | UUID,
+    actor: dict,
+) -> dict:
+    """Permanently delete a site and everything attached to it.
+
+    This is the only hard-delete in the product. It exists for the duplicate-row
+    case: two people file the same location, and the admin needs one of them gone
+    rather than archived (an archived duplicate still occupies its CA code and
+    still shows up in the closed views). Archive/revive remains the reversible
+    path — this one is not recoverable, which is why the UI gates it behind two
+    confirmations.
+
+    Every child table cascades from sites(id) (20260811), so the single DELETE
+    tears down details, files, audit trail, delegations, legal / design / project
+    / NSO / launch rows and budgets atomically. The record of the deletion itself
+    is written with ``site_id=None`` — a row carrying site_id would be cascaded
+    away by the very delete it exists to document.
+
+    Storage objects are removed after the commit, best-effort: an unreachable
+    storage API must not resurrect a site the database has already dropped.
+    """
+    async with transaction(session):
+        # Row-locked + tenant-scoped: an admin cannot delete another workspace's
+        # site, and a concurrent workflow write can't interleave with the delete.
+        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
+        label = site.ca_code or site.code or str(site.id)
+
+        # Collect the storage keys BEFORE the rows go away. Design deliverables
+        # only carry an object key when the path is one we wrote (legacy free-text
+        # file_url values are links, not keys) — same predicate the documents
+        # service uses to decide what it can sign.
+        paths = list((await session.execute(
+            select(models.SiteFile.storage_path).where(models.SiteFile.site_id == site.id)
+        )).scalars().all())
+        paths += [
+            key for key in (await session.execute(
+                select(models.DesignDeliverable.file_url).where(
+                    models.DesignDeliverable.site_id == site.id,
+                    models.DesignDeliverable.file_url.isnot(None),
+                )
+            )).scalars().all()
+            if _deliverable_storage_path(key)
+        ]
+
+        await write_audit_event(
+            session,
+            tenant_id=tenant_id,
+            site_id=None,
+            actor_id=actor.get("sub"),
+            actor_name=actor.get("name"),
+            action="site_deleted",
+            entity_id=site.id,
+            entity_type="site",
+            detail=(
+                f"code={label} name={site.name} city={site.city} "
+                f"status={site.status} files={len(paths)}"
+            ),
+        )
+        await session.delete(site)
+
+    for path in paths:
+        # delete_object logs and swallows its own failures; an orphaned blob is a
+        # cleanup chore, a failed request here would be a lie about the outcome.
+        await storage_service.delete_object(path=path)
+
+    return {"ok": True, "message": f"Site {label} deleted", "site_id": str(site_id)}
 
 
 async def approve_finance(
