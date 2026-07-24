@@ -51,4 +51,19 @@ describe('RentTermsFormV2', () => {
     fireEvent.change(screen.getByDisplayValue('150000'), { target: { value: '160000' } });
     expect(onChange).toHaveBeenCalledWith('expected_rent', 160000);
   });
+
+  it('renders REV SHARE OFF when the split values are empty strings (#5)', () => {
+    render(<RentTermsFormV2 value={{ rent_type: 'fixed', revshare_dinein_pct: '', revshare_delivery_pct: '' }} onChange={vi.fn()} />);
+    expect(screen.getByRole('checkbox').checked).toBe(false);
+  });
+
+  it('shows a legacy branch + convert action for revshare/mg_revshare (#7)', () => {
+    const onChange = vi.fn();
+    render(<RentTermsFormV2 value={{ rent_type: 'mg_revshare', rev_share_pct: 12, expected_rent: 90000 }} onChange={onChange} />);
+    expect(screen.getByText(/Legacy rent type/)).toBeTruthy();
+    // The Yes/No control is hidden until the user explicitly converts.
+    expect(screen.queryByText('Yes — staggered')).toBeNull();
+    fireEvent.click(screen.getByText('Convert to staggered'));
+    expect(onChange).toHaveBeenCalledWith('rent_type', 'staggered');
+  });
 });

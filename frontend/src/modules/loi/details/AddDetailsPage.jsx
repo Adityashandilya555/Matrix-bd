@@ -155,7 +155,13 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
   // Normalize a staggered schedule into the editor shape ({ year, percent-as-string }).
   const normStaggered = (arr) =>
     Array.isArray(arr) && arr.length
-      ? arr.map((e, i) => ({ year: e.year ?? i + 1, percent: s(e.percent) }))
+      ? arr.map((e, i) => ({
+          year: e.year ?? i + 1,
+          percent: s(e.percent),
+          // Preserve the per-year rev-share split (FEATURE_RENT_V2) on re-hydrate.
+          ...(e.dine_in_pct != null && e.dine_in_pct !== '' ? { dine_in_pct: e.dine_in_pct } : {}),
+          ...(e.delivery_pct != null && e.delivery_pct !== '' ? { delivery_pct: e.delivery_pct } : {}),
+        }))
       : null;
   // A resumed draft (item.details) can carry a details blob that predates
   // staggered support and drops the schedule — so fall back to the site-row
@@ -176,6 +182,7 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
     rent_type: f.rentType,
     expected_rent: f.rent,
     expected_escalation_pct: f.escalation,
+    rev_share_pct: f.revshare, // legacy single revshare (revshare/mg_revshare summary)
     revshare_dinein_pct: f.revshareDineinPct,
     revshare_delivery_pct: f.revshareDeliveryPct,
     staggered_escalation: f.staggeredEscalation,
@@ -304,13 +311,13 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
   REQUIRED.forEach(k => { if (!f[k] && f[k] !== 0) errors[k] = 'Required'; });
   if (f.rentType === 'fixed') {
     if (!f.rent) errors.rent = 'Required';
-    if (!f.escalation) errors.escalation = 'Set escalation %';
+    if (f.escalation === '' || f.escalation == null) errors.escalation = 'Set escalation %';
   }
   if (f.rentType === 'revshare' && !f.revshare) errors.revshare = 'Set revenue share %';
   if (f.rentType === 'mg_revshare') {
     if (!f.rent) errors.rent = 'Set minimum guarantee';
     if (!f.revshare) errors.revshare = 'Set revenue share %';
-    if (!f.escalation) errors.escalation = 'Set escalation %';
+    if (f.escalation === '' || f.escalation == null) errors.escalation = 'Set escalation %';
   }
   if (f.rentType === 'staggered') {
     if (!f.rent) errors.rent = 'Set base rent';
@@ -369,7 +376,10 @@ export default function AddDetailsPage({ item, onClose, onSubmit, onSaveDraft, s
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}><TextField label="Carpet area" value={f.carpet} onChange={upd('carpet')} required mono suffix="sqft" placeholder="e.g. 850" hint="Same as covered / built-up area"/><TextField label="CAM" value={f.cam} onChange={upd('cam')} required mono prefix="₹" suffix="/mo" placeholder="e.g. 25000" hint="Full rupees · no commas"/><div/></div>
               <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {FEATURE_RENT_V2 ? (
+                <>
                 <RentTermsFormV2 value={rentV2Value} onChange={handleRentV2Change} showCadence={false} />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}><TextField label="Rent-free days" value={f.rentFreeDays} onChange={upd('rentFreeDays')} mono suffix="days" hint="Optional fit-out grace"/><div/><div/></div>
+                </>
                 ) : (<>
                 <fieldset style={{ border: 'none', margin: 0, padding: 0 }}><legend style={{ display: 'block', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12, color: 'var(--zm-fg)', marginBottom: 8, padding: 0 }}>Rent type <span style={{ color: 'var(--zm-danger)', fontWeight: 700 }}>*</span></legend><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>{RENT_TYPES.map(rt => (<button type="button" key={rt.id} onClick={() => upd('rentType')(rt.id)} className="zm-btn" style={{ textAlign: 'left', padding: 12, borderRadius: 8, border: '1px solid ' + (f.rentType === rt.id ? 'var(--zm-accent)' : 'var(--zm-line)'), background: f.rentType === rt.id ? 'var(--zm-accent-soft)' : 'var(--zm-surface)', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 10, fontFamily: 'inherit' }}><span style={{ width: 16, height: 16, borderRadius: 999, marginTop: 1, border: '1.5px solid ' + (f.rentType === rt.id ? 'var(--zm-accent)' : 'var(--zm-line-strong)'), background: f.rentType === rt.id ? 'var(--zm-accent)' : 'transparent', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 16px' }}>{f.rentType === rt.id && <span style={{ width: 6, height: 6, borderRadius: 999, background: '#fff' }}/>}</span><span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}><span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 12.5, color: 'var(--zm-fg)' }}>{rt.label}</span><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, color: 'var(--zm-fg-3)' }}>{rt.sub}</span></span></button>))}</div></fieldset>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>

@@ -378,6 +378,7 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
     expected_rent: form.expectedRent,
     expected_escalation_pct: form.expectedEscalation,
     expected_escalation_years: form.expectedEscalationYears,
+    rev_share_pct: form.expectedRevshare, // legacy single revshare (for the legacy-type summary)
     revshare_dinein_pct: form.revshareDinein,
     revshare_delivery_pct: form.revshareDelivery,
     staggered_escalation: form.staggeredEscalation,
@@ -388,13 +389,13 @@ function NewPipelineModal({ onClose, onSubmit, dark }) {
     revshare_dinein_pct: 'revshareDinein', revshare_delivery_pct: 'revshareDelivery',
     staggered_escalation: 'staggeredEscalation',
   };
-  const handleRentV2Change = (key, val) => setForm(prev => ({ ...prev, [RENT_V2_TO_FORM[key]]: val }));
+  const handleRentV2Change = (key, val) => { if (RENT_V2_TO_FORM[key]) setForm(prev => ({ ...prev, [RENT_V2_TO_FORM[key]]: val })); };
   // Rent-type-specific essentials. Mirrors AddDetailsPage so the data captured
   // upfront matches what the shortlist form expects to prefill from.
   const rentReady =
     form.rentType === 'revshare' ? !!form.expectedRevshare
-    : form.rentType === 'fixed' ? !!form.expectedRent && !!form.expectedEscalation && !!form.expectedEscalationYears
-    : form.rentType === 'mg_revshare' ? !!form.expectedRent && !!form.expectedRevshare && !!form.expectedEscalation && !!form.expectedEscalationYears
+    : form.rentType === 'fixed' ? !!form.expectedRent && (form.expectedEscalation !== '' && form.expectedEscalation != null) && !!form.expectedEscalationYears
+    : form.rentType === 'mg_revshare' ? !!form.expectedRent && !!form.expectedRevshare && (form.expectedEscalation !== '' && form.expectedEscalation != null) && !!form.expectedEscalationYears
     : form.rentType === 'staggered' ? !!form.expectedRent && form.staggeredEscalation.every(e => e.percent !== '' && e.percent != null) && form.staggeredEscalation.length > 0
     : false;
   const ready = form.name && form.visitDate && form.city && form.model && form.googlePin && form.rentType && rentReady;

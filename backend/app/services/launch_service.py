@@ -674,6 +674,11 @@ def _commit_rent_to_canonical(site: models.Site, detail: models.SiteDetail, row:
     site.expected_escalation_pct = row.escalation_pct
     site.expected_escalation_years = row.expected_escalation_years
     site.expected_revshare_pct = row.rev_share_pct
+    # Revenue-share split (revshare_dinein_pct / revshare_delivery_pct) is NOT part
+    # of the launch-approval staging row (deferred D4), so it is intentionally left
+    # as the pipeline-stage value rather than nulled — nulling would drop valid
+    # data whenever launch merely confirms the pipeline rent. Wire it through
+    # launch_approvals when D4 lands so a renegotiated launch can update it too.
     site.rent_set_at = now
     # site_details — detailed rent terms
     detail.rent_type = row.rent_type

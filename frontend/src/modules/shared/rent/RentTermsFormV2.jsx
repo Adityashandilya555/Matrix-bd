@@ -36,14 +36,27 @@ function Label({ t, children }) {
   return <label style={{ fontFamily: t.fontBody, fontWeight: 600, fontSize: 12, color: t.fg }}>{children}</label>;
 }
 
-function NumBox({ t, value, onChange, prefix, suffix, placeholder, readOnly, flex = 1 }) {
+function NumBox({ t, value, onChange, prefix, suffix, placeholder, readOnly, flex = 1, max }) {
+  // Hold raw keystrokes locally so a decimal like "4.5" isn't collapsed to "4"
+  // mid-typing, while still emitting the coerced number immediately (no blur
+  // race). Re-sync only when the external value truly diverges from what's shown
+  // (re-hydrate, or a REV SHARE toggle-off that clears the field).
+  const [raw, setRaw] = React.useState(asStr(value));
+  React.useEffect(() => {
+    if (value == null ? raw !== '' : Number(raw) !== value) setRaw(asStr(value));
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  const handle = (e) => {
+    const s = e.target.value;
+    setRaw(s);
+    onChange(s === '' ? null : Number(s));
+  };
   return (
     <div className="rt-field" style={{ flex, display: 'flex', alignItems: 'stretch', height: 38, border: `1px solid ${t.line}`, borderRadius: 6, background: readOnly ? t.surface2 : t.bg, overflow: 'hidden', minWidth: 0 }}>
       {prefix && <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: t.fgFaint, fontFamily: t.fontMono, fontSize: 12, background: t.surface2, borderRight: `1px solid ${t.line}` }}>{prefix}</span>}
       <input
-        type="number" min="0" step="any" inputMode="decimal"
-        value={asStr(value)} placeholder={placeholder} readOnly={readOnly} disabled={readOnly}
-        onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
+        type="number" min="0" max={max} step="any" inputMode="decimal"
+        value={raw} placeholder={placeholder} readOnly={readOnly}
+        onChange={handle}
         style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: t.fontMono, fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: readOnly ? t.fgMuted : t.fg, width: '100%', minWidth: 0 }}
       />
       {suffix && <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: t.fgFaint, fontFamily: t.fontMono, fontSize: 12, background: t.surface2, borderLeft: `1px solid ${t.line}`, whiteSpace: 'nowrap' }}>{suffix}</span>}
@@ -66,12 +79,19 @@ export default function RentTermsFormV2({ value = {}, onChange, readOnly = false
   const set = (k) => (val) => onChange?.(k, val);
   const rentType = v.rent_type || '';
   const schedule = Array.isArray(v.staggered_escalation) ? v.staggered_escalation : [];
+  // Legacy single-percent types (revshare / mg_revshare) have no home in the V2
+  // fixed/staggered model — show a read-only summary + an explicit convert action
+  // instead of a blank block that silently rewrites rent_type on the first click.
+  const isLegacy = rentType === 'revshare' || rentType === 'mg_revshare';
 
   // REV SHARE is on when any split value is already present, or the user turned
   // it on this session. Deriving-then-latching avoids a flash-off on re-hydrate.
+  // Treat '' as absent — App.jsx seeds these form fields to '' (not null), so a
+  // bare `!= null` check rendered REV SHARE ON by default on the create form.
+  const _has = (x) => x != null && x !== '';
   const splitPresent =
-    v.revshare_dinein_pct != null || v.revshare_delivery_pct != null ||
-    schedule.some((e) => e && (e.dine_in_pct != null || e.delivery_pct != null));
+    _has(v.revshare_dinein_pct) || _has(v.revshare_delivery_pct) ||
+    schedule.some((e) => e && (_has(e.dine_in_pct) || _has(e.delivery_pct)));
   const [revShareOn, setRevShareOn] = React.useState(splitPresent);
   React.useEffect(() => { if (splitPresent) setRevShareOn(true); }, [splitPresent]);
 
@@ -82,9 +102,13 @@ export default function RentTermsFormV2({ value = {}, onChange, readOnly = false
   };
   const chooseFlat = () => {
     if (readOnly) return;
+    // Switching away from staggered nulls the schedule on save (backend
+    // _apply_staggered_escalation). Confirm before discarding a non-empty one.
+    const hasSchedule = schedule.some((e) => e && e.percent !== '' && e.percent != null);
+    if (hasSchedule && typeof window !== 'undefined' && !window.confirm(
+      'Switching to flat rent will discard the staggered escalation schedule when you save. Continue?'
+    )) return;
     onChange?.('rent_type', 'fixed');
-    // Leave any staggered schedule in state untouched; the create/details
-    // mappers only emit staggered_escalation when rent_type === 'staggered'.
   };
 
   const patchRow = (idx, key, val) => {
@@ -125,13 +149,35 @@ export default function RentTermsFormV2({ value = {}, onChange, readOnly = false
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {isLegacy ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 14, background: t.surface2, border: `1px solid ${t.line}`, borderRadius: 8 }}>
+          <span style={{ fontFamily: t.fontBody, fontWeight: 600, fontSize: 12.5, color: t.fg }}>
+            Legacy rent type: {rentType === 'revshare' ? 'Revenue share' : 'MG + Revenue share'}
+          </span>
+          <span style={{ fontFamily: t.fontMono, fontSize: 12, color: t.fgMuted }}>
+            {rentType === 'mg_revshare' && _has(v.expected_rent) ? `MG ₹${v.expected_rent} · ` : ''}
+            Revenue share {_has(v.rev_share_pct) ? `${v.rev_share_pct}%` : '—'}
+          </span>
+          {!readOnly && (
+            <>
+              <span style={{ fontFamily: t.fontBody, fontSize: 11, color: t.fgFaint }}>
+                This form configures flat / staggered rent. Convert to migrate — the revenue-share terms are replaced and the change is logged.
+              </span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {seg(false, 'Convert to flat', chooseFlat)}
+                {seg(false, 'Convert to staggered', chooseStaggered)}
+              </div>
+            </>
+          )}
+        </div>
+      ) : (<>
       {/* Is the rent staggered? */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <Label t={t}>Is the rent staggered?</Label>
         <span style={{ fontFamily: t.fontBody, fontSize: 11, color: t.fgFaint, marginTop: -2 }}>
           Staggered rent steps up each year of the term. Choose No for a single fixed rent with one escalation.
         </span>
-        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+        <div role="group" aria-label="Is the rent staggered?" style={{ display: 'flex', gap: 6, marginTop: 4 }}>
           {seg(rentType === 'staggered', 'Yes — staggered', chooseStaggered)}
           {seg(rentType === 'fixed', 'No — flat rent', chooseFlat)}
         </div>
@@ -152,7 +198,7 @@ export default function RentTermsFormV2({ value = {}, onChange, readOnly = false
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Field t={t} label="Rent (monthly)"><NumBox t={t} value={v.expected_rent} onChange={set('expected_rent')} prefix="₹" suffix="/mo" placeholder="120000" readOnly={readOnly} /></Field>
-            <Field t={t} label="Escalation"><NumBox t={t} value={v.expected_escalation_pct} onChange={set('expected_escalation_pct')} suffix="%" placeholder="e.g. 4.5" readOnly={readOnly} /></Field>
+            <Field t={t} label="Escalation"><NumBox t={t} value={v.expected_escalation_pct} onChange={set('expected_escalation_pct')} suffix="%" max={100} placeholder="e.g. 4.5" readOnly={readOnly} /></Field>
           </div>
           {showCadence && (
             <Field t={t} label="Escalation cadence">
@@ -172,8 +218,8 @@ export default function RentTermsFormV2({ value = {}, onChange, readOnly = false
           )}
           {revShareOn && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <Field t={t} label="Dine-in share"><NumBox t={t} value={v.revshare_dinein_pct} onChange={set('revshare_dinein_pct')} suffix="% of sales" placeholder="e.g. 8" readOnly={readOnly} /></Field>
-              <Field t={t} label="Delivery share"><NumBox t={t} value={v.revshare_delivery_pct} onChange={set('revshare_delivery_pct')} suffix="% of sales" placeholder="e.g. 5" readOnly={readOnly} /></Field>
+              <Field t={t} label="Dine-in share"><NumBox t={t} value={v.revshare_dinein_pct} onChange={set('revshare_dinein_pct')} suffix="% of sales" max={100} placeholder="e.g. 8" readOnly={readOnly} /></Field>
+              <Field t={t} label="Delivery share"><NumBox t={t} value={v.revshare_delivery_pct} onChange={set('revshare_delivery_pct')} suffix="% of sales" max={100} placeholder="e.g. 5" readOnly={readOnly} /></Field>
             </div>
           )}
         </div>
@@ -191,11 +237,11 @@ export default function RentTermsFormV2({ value = {}, onChange, readOnly = false
               )}
             </div>
             {schedule.map((esc, idx) => (
-              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div key={esc.year ?? idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ flex: '0 0 76px', display: 'flex', alignItems: 'center', height: 38, padding: '0 10px', background: t.surface2, border: `1px solid ${t.line}`, borderRadius: 6, fontFamily: t.fontBody, fontSize: 13, color: t.fgMuted, whiteSpace: 'nowrap' }}>Year {idx + 1}</div>
-                <NumBox t={t} value={esc?.percent} onChange={(val) => patchRow(idx, 'percent', val)} suffix="Esc %" placeholder="0" readOnly={readOnly} />
-                {revShareOn && <NumBox t={t} value={esc?.dine_in_pct} onChange={(val) => patchRow(idx, 'dine_in_pct', val)} suffix="Dine %" placeholder="0" readOnly={readOnly} />}
-                {revShareOn && <NumBox t={t} value={esc?.delivery_pct} onChange={(val) => patchRow(idx, 'delivery_pct', val)} suffix="Del %" placeholder="0" readOnly={readOnly} />}
+                <NumBox t={t} value={esc?.percent} onChange={(val) => patchRow(idx, 'percent', val)} suffix="Esc %" max={100} placeholder="0" readOnly={readOnly} />
+                {revShareOn && <NumBox t={t} value={esc?.dine_in_pct} onChange={(val) => patchRow(idx, 'dine_in_pct', val)} suffix="Dine %" max={100} placeholder="0" readOnly={readOnly} />}
+                {revShareOn && <NumBox t={t} value={esc?.delivery_pct} onChange={(val) => patchRow(idx, 'delivery_pct', val)} suffix="Del %" max={100} placeholder="0" readOnly={readOnly} />}
                 {!readOnly && idx > 0 && idx === schedule.length - 1 && (
                   <button type="button" onClick={removeLastYear} title="Remove" style={{ width: 34, height: 34, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, background: t.surface, border: `1px solid ${t.line}`, color: t.danger, cursor: 'pointer', flexShrink: 0 }}><Icon name="x" size={16} /></button>
                 )}
@@ -210,6 +256,7 @@ export default function RentTermsFormV2({ value = {}, onChange, readOnly = false
           {readOnly ? 'No rent type set.' : 'Choose Yes or No above to configure the rent schedule.'}
         </div>
       )}
+      </>)}
     </div>
   );
 }
