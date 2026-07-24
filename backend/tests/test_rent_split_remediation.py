@@ -42,3 +42,30 @@ def test_split_columns_are_audit_tracked():
     for col in ("revshare_dinein_pct", "revshare_delivery_pct"):
         assert col in audit_service.PIPELINE_FIELDS
         assert col in audit_service._FIELD_AUDIT_LABEL
+
+
+# ── D4: launch-approval loop ─────────────────────────────────────────────────
+
+def test_launch_rent_fields_request_accepts_split():
+    from app.domain.schemas.launch import LaunchRentFieldsRequest
+    req = LaunchRentFieldsRequest(revshare_dinein_pct=8, revshare_delivery_pct=5)
+    assert req.revshare_dinein_pct == 8
+    assert req.revshare_delivery_pct == 5
+
+
+def test_launch_split_is_editable_and_labeled():
+    from app.domain.schemas.launch import RENT_EDITABLE_FIELDS, RENT_FIELD_LABELS
+    for col in ("revshare_dinein_pct", "revshare_delivery_pct"):
+        assert col in RENT_EDITABLE_FIELDS
+        assert col in RENT_FIELD_LABELS
+
+
+def test_apply_rent_edits_applies_split_and_diffs():
+    from app.domain.schemas.launch import LaunchRentFieldsRequest
+    from app.services.launch_service import _apply_rent_edits
+    row = SimpleNamespace(revshare_dinein_pct=None, revshare_delivery_pct=None)
+    changes = _apply_rent_edits(row, LaunchRentFieldsRequest(revshare_dinein_pct=8))
+    assert row.revshare_dinein_pct == 8
+    assert any(c["field"] == "revshare_dinein_pct" for c in changes)
+    # A field not sent is left untouched (exclude_unset).
+    assert row.revshare_delivery_pct is None

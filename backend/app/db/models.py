@@ -1001,6 +1001,10 @@ class LaunchApproval(Base):
     fixed_rent_amt: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
     expected_rent: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
     rev_share_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
+    # Revenue-share split (FEATURE_RENT_V2) staged for the launch loop — mirrors
+    # sites.revshare_dinein_pct / revshare_delivery_pct. See migration 20260810.
+    revshare_dinein_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
+    revshare_delivery_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
     escalation_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
     escalation_date: Mapped[Optional[date]] = mapped_column(Date)
     expected_escalation_years: Mapped[Optional[int]] = mapped_column(Integer)

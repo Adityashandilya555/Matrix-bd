@@ -749,6 +749,8 @@ CREATE TABLE public.launch_approvals (
   fixed_rent_amt          numeric(14,2),
   expected_rent           numeric(14,2),
   rev_share_pct           numeric(6,2),
+  revshare_dinein_pct     numeric(6,2),                          -- revenue-share split: Dine-in % (20260810)
+  revshare_delivery_pct   numeric(6,2),                          -- revenue-share split: Delivery % (20260810)
   escalation_pct          numeric(6,2),
   escalation_date         date,
   expected_escalation_years integer,
