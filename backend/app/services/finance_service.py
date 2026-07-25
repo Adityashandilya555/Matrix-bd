@@ -6,16 +6,23 @@ finance_status column tracks the sub-workflow:
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import NoReturn, Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
 import re
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db import models
 from app.db.session import transaction
 from app.domain.state_machine import SiteStatus
-from app.services._common import assert_executive_owns_site, fetch_site_for_update_or_404
+from app.services._common import (
+    assert_executive_owns_site,
+    fetch_site_for_update_or_404,
+    is_unique_violation,
+)
 from app.services.audit_service import write_audit_event
 from app.services.workflow_unlocks import maybe_unlock_design
 from app.services.notification_service import (
@@ -31,6 +38,60 @@ _LOI_AND_BEYOND = {
 }
 
 _FINANCE_STATUS_ORDER = ("pending", "awaiting_supervisor", "awaiting_admin", "approved")
+
+
+_CA_CODE_TAKEN = (
+    "CA code {code} is already in use by '{name}' ({site_code}). "
+    "Each site needs its own CA code."
+)
+
+
+async def _assign_ca_code(
+    session: AsyncSession, *, site, tenant_id: str | UUID, ca_code: Optional[str],
+) -> None:
+    """Claim a CA / Commercial Code for this site.
+
+    A code belongs to exactly one site per workspace. The real guarantee is the
+    partial unique index ``uq_sites_tenant_ca_code`` (20260810) — this lookup
+    exists so the common case gets a message naming the site that already holds
+    the code, instead of a bare constraint error. The caller already holds the
+    row lock from ``fetch_site_for_update_or_404``.
+    """
+    normalized = (ca_code or "").strip().upper() or None
+    if normalized == site.ca_code:
+        return
+    if normalized is not None:
+        clash = (await session.execute(
+            select(models.Site.name, models.Site.code).where(
+                models.Site.tenant_id == tenant_id,
+                models.Site.id != site.id,
+                func.upper(models.Site.ca_code) == normalized,
+            )
+        )).first()
+        if clash:
+            raise HTTPException(
+                http_status.HTTP_409_CONFLICT,
+                detail=_CA_CODE_TAKEN.format(
+                    code=normalized, name=clash.name, site_code=clash.code or "no code",
+                ),
+            )
+    site.ca_code = normalized
+
+
+def _raise_ca_code_conflict(exc: IntegrityError, ca_code: Optional[str]) -> NoReturn:
+    """Turn a lost race on uq_sites_tenant_ca_code into the same 409 the
+    pre-check raises. Only a unique violation on that index is translated — an
+    FK / NOT NULL / CHECK failure is a real error and must propagate."""
+    if not (is_unique_violation(exc) and "uq_sites_tenant_ca_code" in str(exc)):
+        raise exc
+    code = (ca_code or "").strip().upper()
+    raise HTTPException(
+        http_status.HTTP_409_CONFLICT,
+        detail=(
+            f"CA code {code} was just claimed by another site. "
+            "Each site needs its own CA code."
+        ),
+    ) from exc
 
 
 def _finance_snapshot(site) -> dict:
@@ -57,34 +118,37 @@ async def svc_save_finance_draft(
     Available to exec and supervisor. Only permitted while finance_status is
     'pending' (once submitted for approval the fields are locked).
     """
-    async with transaction(session):
-        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        assert_executive_owns_site(actor, site)
+    try:
+        async with transaction(session):
+            site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
+            assert_executive_owns_site(actor, site)
 
-        if site.status not in _LOI_AND_BEYOND:
-            raise HTTPException(
-                http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Finance details can only be entered after the LOI is uploaded.",
+            if site.status not in _LOI_AND_BEYOND:
+                raise HTTPException(
+                    http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Finance details can only be entered after the LOI is uploaded.",
+                )
+            if site.finance_status != "pending":
+                raise HTTPException(
+                    http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Finance is already in '{site.finance_status}' — fields are locked.",
+                )
+
+            if kyc_verified is not None:
+                site.kyc_verified = kyc_verified
+            if ca_code is not None:
+                await _assign_ca_code(session, site=site, tenant_id=tenant_id, ca_code=ca_code)
+            if finance_amount is not None:
+                site.finance_amount = finance_amount
+
+            await write_audit_event(
+                session, tenant_id=tenant_id, site_id=site.id,
+                actor_id=actor["sub"], actor_name=actor["name"],
+                action="finance_draft_saved",
+                detail=f"kyc={site.kyc_verified} ca_code={site.ca_code} amount={site.finance_amount}",
             )
-        if site.finance_status != "pending":
-            raise HTTPException(
-                http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Finance is already in '{site.finance_status}' — fields are locked.",
-            )
-
-        if kyc_verified is not None:
-            site.kyc_verified = kyc_verified
-        if ca_code is not None:
-            site.ca_code = ca_code.strip() or None
-        if finance_amount is not None:
-            site.finance_amount = finance_amount
-
-        await write_audit_event(
-            session, tenant_id=tenant_id, site_id=site.id,
-            actor_id=actor["sub"], actor_name=actor["name"],
-            action="finance_draft_saved",
-            detail=f"kyc={site.kyc_verified} ca_code={site.ca_code} amount={site.finance_amount}",
-        )
+    except IntegrityError as exc:
+        _raise_ca_code_conflict(exc, ca_code)
 
     return _finance_snapshot(site)
 
@@ -104,66 +168,69 @@ async def svc_finance_request_approval(
     Requires KYC verified + CA code set + amount entered.
     Transitions finance_status: pending → awaiting_supervisor.
     """
-    async with transaction(session):
-        site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        assert_executive_owns_site(actor, site)
+    try:
+        async with transaction(session):
+            site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
+            assert_executive_owns_site(actor, site)
 
-        if site.status not in _LOI_AND_BEYOND:
-            raise HTTPException(
-                http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Finance approval can only be requested after the LOI is uploaded.",
-            )
-        if site.finance_status != "pending":
-            raise HTTPException(
-                http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Already in '{site.finance_status}' — cannot re-submit.",
-            )
+            if site.status not in _LOI_AND_BEYOND:
+                raise HTTPException(
+                    http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Finance approval can only be requested after the LOI is uploaded.",
+                )
+            if site.finance_status != "pending":
+                raise HTTPException(
+                    http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Already in '{site.finance_status}' — cannot re-submit.",
+                )
 
-        if kyc_verified is not None:
-            site.kyc_verified = kyc_verified
-        if ca_code is not None:
-            site.ca_code = ca_code.strip() or None
-        if finance_amount is not None:
-            site.finance_amount = finance_amount
+            if kyc_verified is not None:
+                site.kyc_verified = kyc_verified
+            if ca_code is not None:
+                await _assign_ca_code(session, site=site, tenant_id=tenant_id, ca_code=ca_code)
+            if finance_amount is not None:
+                site.finance_amount = finance_amount
 
-        if not site.kyc_verified:
-            raise HTTPException(
-                http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="KYC must be verified before requesting approval.",
-            )
-        if not site.ca_code:
-            raise HTTPException(
-                http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="CA code must be entered before requesting approval.",
-            )
-        if site.finance_amount is None:
-            raise HTTPException(
-                http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Amount must be entered before requesting approval.",
-            )
+            if not site.kyc_verified:
+                raise HTTPException(
+                    http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="KYC must be verified before requesting approval.",
+                )
+            if not site.ca_code:
+                raise HTTPException(
+                    http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="CA code must be entered before requesting approval.",
+                )
+            if site.finance_amount is None:
+                raise HTTPException(
+                    http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Amount must be entered before requesting approval.",
+                )
 
-        site.finance_status = "awaiting_supervisor"
+            site.finance_status = "awaiting_supervisor"
 
-        await write_audit_event(
-            session, tenant_id=tenant_id, site_id=site.id,
-            actor_id=actor["sub"], actor_name=actor["name"],
-            action="finance_submitted",
-            detail=f"ca_code={site.ca_code} amount={site.finance_amount}",
-        )
-        supervisors = await recipients_for_supervisors(session, tenant_id=tenant_id)
-        safe_ca = re.sub(r"[^\w\-]", "", site.ca_code or "")
-        await notify_enqueue(
-            session, tenant_id=tenant_id, event="finance_submitted",
-            recipient_ids=supervisors, site_id=site.id,
-            channels=("in_app",),
-            payload={"site_id": str(site.id), "site_name": site.name, "ca_code": site.ca_code},
-            subject=f"Finance approval requested: {safe_ca or site.name}",
-            body=(
-                f"Executive has requested finance approval for site "
-                f"'{site.name}' ({safe_ca or site.code}).\n"
-                f"Amount: ₹{site.finance_amount:,.2f}"
-            ),
-        )
+            await write_audit_event(
+                session, tenant_id=tenant_id, site_id=site.id,
+                actor_id=actor["sub"], actor_name=actor["name"],
+                action="finance_submitted",
+                detail=f"ca_code={site.ca_code} amount={site.finance_amount}",
+            )
+            supervisors = await recipients_for_supervisors(session, tenant_id=tenant_id)
+            safe_ca = re.sub(r"[^\w\-]", "", site.ca_code or "")
+            await notify_enqueue(
+                session, tenant_id=tenant_id, event="finance_submitted",
+                recipient_ids=supervisors, site_id=site.id,
+                channels=("in_app",),
+                payload={"site_id": str(site.id), "site_name": site.name, "ca_code": site.ca_code},
+                subject=f"Finance approval requested: {safe_ca or site.name}",
+                body=(
+                    f"Executive has requested finance approval for site "
+                    f"'{site.name}' ({safe_ca or site.code}).\n"
+                    f"Amount: ₹{site.finance_amount:,.2f}"
+                ),
+            )
+    except IntegrityError as exc:
+        _raise_ca_code_conflict(exc, ca_code)
 
     return _finance_snapshot(site)
 

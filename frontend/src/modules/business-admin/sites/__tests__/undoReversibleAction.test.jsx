@@ -22,6 +22,7 @@ vi.mock('../../../../services/api/businessAdminApi.js', () => ({
   getAdminSiteDocuments: vi.fn().mockResolvedValue({ items: [] }),
   getReversibleActions: (...a) => getReversibleActions(...a),
   undoReversibleAction: (...a) => undoReversibleAction(...a),
+  deleteSite: vi.fn(),
 }));
 vi.mock('../../../../services/api/adapters/httpAdapter.js', () => ({ reviveSite: vi.fn() }));
 vi.mock('../../../../App.jsx', () => ({ usePageContext: () => ({ showToast: vi.fn() }) }));

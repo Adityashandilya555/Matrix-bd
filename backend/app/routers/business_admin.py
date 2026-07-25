@@ -150,6 +150,31 @@ async def list_admin_sites(
     return await svc.list_admin_sites(db, tenant_id, limit=limit, offset=offset)
 
 
+@router.delete(
+    "/sites/{site_id}",
+    summary="Permanently delete a site and everything attached to it",
+    description=(
+        "Hard delete — not archive. Removes the site plus its details, documents, "
+        "audit trail, approvals, budgets and every module's rows via FK cascade, "
+        "and frees its CA code. Not recoverable; the UI gates it behind two "
+        "confirmations. The deletion itself is recorded in audit_logs."
+    ),
+)
+async def delete_site(
+    site_id: str,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> dict:
+    """Permanently delete a site and everything cascading from it.
+
+    Business-admin only, and the one hard-delete in the product — archive stays
+    the reversible path. The service row-locks and tenant-scopes the site, so a
+    forged id from another workspace is a 404.
+    """
+    return await svc.delete_site(db, tenant_id, site_id, current_user)
+
+
 @router.get("/finance-approvals", response_model=list[FinanceApprovalOut])
 async def list_finance_approvals(
     db: DbDep,
