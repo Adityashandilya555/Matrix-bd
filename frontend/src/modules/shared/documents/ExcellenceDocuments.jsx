@@ -10,14 +10,16 @@ import {
   uploadExcellenceDocument,
 } from '../../../services/api/projectExcellenceApi.js';
 
-// Budget attachment slot, per phase: kind='excellence' (Project Excellence)
-// or kind='closure' (Financial Closure). Each phase holds AT MOST ONE file
-// (PNG/JPEG/PDF, ≤5 MB — the backend enforces both, 409 on a second upload).
+// Budget attachment slot, per phase: kind='excellence' (Project Excellence) or
+// kind='closure' (Financial Closure). Each phase holds AT MOST ONE file
+// (PNG/JPEG/PDF, ≤5 MB).
 //
-// Selecting a file only STAGES it locally — a card appears with a corner ×
-// to discard a mis-pick, and nothing hits the network until the explicit
-// "Upload" button. While `canEdit`, the uploaded card also gets a corner ×
-// that deletes it server-side so it can be replaced (max-1).
+// Selecting a file only STAGES it locally (a card with a corner × to discard a
+// mis-pick). The staged file is persisted when you click "Upload" OR — via the
+// imperative `commitStaged()` handle — when the parent Save/Submits the budget,
+// so a staged attachment is never silently lost. Choosing a new file while one
+// exists REPLACES it: the old row is deleted first (it must not linger in the
+// DB), then the new one is uploaded.
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'application/pdf'];
@@ -63,14 +65,14 @@ function DocCard({ children }) {
   );
 }
 
-export default function ExcellenceDocuments({
+const ExcellenceDocuments = React.forwardRef(function ExcellenceDocuments({
   siteId,
   kind = 'excellence',
   canEdit = false,
   title = 'Attachments',
   showHeader = true,
   emptyText = 'No attachments yet.',
-}) {
+}, ref) {
   const { showToast } = usePageContext() || {};
   const [docs, setDocs] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -108,7 +110,9 @@ export default function ExcellenceDocuments({
     });
   };
 
-  // Selecting a file only stages it — no network until "Upload".
+  // Selecting a file only stages it — no network until commit (Upload button or
+  // the parent's Save/Submit). Choosing a file while one exists stages a
+  // REPLACEMENT; the existing doc is deleted at commit time.
   const handleSelect = (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -128,26 +132,33 @@ export default function ExcellenceDocuments({
     setStaged(file);
   };
 
+  // Persist the staged file. Replace semantics: delete any current doc FIRST
+  // (max-1 per phase; the backend 409s a second upload, and a replaced file must
+  // not linger in the DB), then upload. THROWS on failure so callers can react.
+  const doUpload = async () => {
+    for (const d of docs) {
+      await deleteExcellenceDocument(siteId, d.id);
+    }
+    const created = await uploadExcellenceDocument(siteId, staged, kind);
+    if (created?.id) {
+      setDocs([{
+        id: created.id, file_name: created.file_name,
+        file_size_kb: created.file_size_kb, mime_type: created.mime_type, url: created.url,
+      }]);
+    }
+    clearStaged();
+    await load();
+    return created;
+  };
+
   const handleUpload = async () => {
     if (!staged || uploadingRef.current) return; // guard the same-tick double-fire
+    const name = staged.name;
     uploadingRef.current = true;
     setUploading(true);
     try {
-      const created = await uploadExcellenceDocument(siteId, staged, kind);
-      // Optimistically prepend so the attachment shows immediately even if a
-      // background page refresh races the list refetch; load() reconciles.
-      if (created?.id) {
-        setDocs((prev) => [
-          {
-            id: created.id, file_name: created.file_name,
-            file_size_kb: created.file_size_kb, mime_type: created.mime_type, url: created.url,
-          },
-          ...prev.filter((d) => d.id !== created.id),
-        ]);
-      }
-      showToast?.(`Uploaded · ${staged.name}`, 'success');
-      clearStaged();
-      await load();
+      await doUpload();
+      showToast?.(`Uploaded · ${name}`, 'success');
     } catch (err) {
       showToast?.(err?.detail || err?.message || 'Upload failed', 'danger');
     } finally {
@@ -171,14 +182,39 @@ export default function ExcellenceDocuments({
     }
   };
 
+  // Imperative handle so the parent form can flush a staged attachment as part
+  // of Save/Submit (never lose it). commitStaged RETHROWS so the parent can
+  // abort the save when the upload fails. Read state through refs so the handle
+  // stays stable while always seeing the latest staged file / docs.
+  const stagedRef = React.useRef(null);
+  stagedRef.current = staged;
+  const commitStaged = async () => {
+    if (!staged || uploadingRef.current) return;
+    uploadingRef.current = true;
+    setUploading(true);
+    try {
+      await doUpload();
+    } finally {
+      uploadingRef.current = false;
+      setUploading(false);
+    }
+  };
+  const commitRef = React.useRef(commitStaged);
+  commitRef.current = commitStaged;
+  React.useImperativeHandle(ref, () => ({
+    hasStaged: () => Boolean(stagedRef.current),
+    commitStaged: () => commitRef.current(),
+  }), []);
+
   const labelStyle = {
     fontSize: 9.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
     color: 'var(--zm-fg-3)',
   };
 
-  // Max-1: the picker only shows while editable, with no uploaded doc and no
-  // staged pick. Replacing = × the uploaded card first, then pick again.
-  const showPicker = canEdit && !staged && docs.length === 0;
+  // The picker is available whenever editing and nothing is staged — including
+  // when a doc already exists (choosing another replaces it).
+  const showPicker = canEdit && !staged;
+  const hasDoc = docs.length > 0;
 
   return (
     <div style={showHeader ? { marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--zm-line)' } : undefined}>
@@ -245,8 +281,8 @@ export default function ExcellenceDocuments({
                 </div>
                 <div style={{ padding: '5px 7px', minWidth: 0 }}>
                   <div style={{ fontSize: 10.5, color: 'var(--zm-fg)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{staged.name}</div>
-                  <div style={{ fontSize: 9.5, color: 'var(--zm-fg-3)' }}>
-                    {fmtSize(Math.max(1, Math.round(staged.size / 1024)))} · not uploaded
+                  <div style={{ fontSize: 9.5, color: 'var(--zm-copper, var(--zm-fg-3))' }}>
+                    {fmtSize(Math.max(1, Math.round(staged.size / 1024)))} · {hasDoc ? 'will replace on save' : 'uploads on save'}
                   </div>
                 </div>
               </div>
@@ -284,7 +320,7 @@ export default function ExcellenceDocuments({
                 boxShadow: 'var(--zm-shadow-1)',
               }}
             >
-              {uploading ? 'Uploading…' : <><Icon name="upload" size={12} /> Upload</>}
+              {uploading ? 'Uploading…' : <><Icon name="upload" size={12} /> {hasDoc ? 'Upload replacement' : 'Upload'}</>}
             </button>
           ) : showPicker ? (
             <button
@@ -292,21 +328,26 @@ export default function ExcellenceDocuments({
               onClick={() => fileRef.current?.click()}
               className="zm-btn-primary"
               style={{
-                height: 32, padding: '0 12px', border: 'none', borderRadius: 7,
-                background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)',
+                height: 32, padding: '0 12px', borderRadius: 7,
+                border: hasDoc ? '1px solid var(--zm-line)' : 'none',
+                background: hasDoc ? 'var(--zm-surface)' : 'var(--zm-accent)',
+                color: hasDoc ? 'var(--zm-fg)' : '#fff',
+                fontFamily: 'var(--zm-font-body)',
                 fontSize: 12, fontWeight: 700, cursor: 'pointer',
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 boxShadow: 'var(--zm-shadow-1)',
               }}
             >
-              <Icon name="upload" size={12} /> Choose file
+              <Icon name="upload" size={12} /> {hasDoc ? 'Replace file' : 'Choose file'}
             </button>
           ) : null}
           <div style={{ fontSize: 10.5, color: 'var(--zm-fg-3)', marginTop: 6 }}>
-            PNG, JPEG or PDF, up to 5 MB. One file{docs.length ? ' — remove the current one to replace it.' : '.'}
+            PNG, JPEG or PDF, up to 5 MB. One file — saved when you upload or Save/Submit.
           </div>
         </>
       )}
     </div>
   );
-}
+});
+
+export default ExcellenceDocuments;

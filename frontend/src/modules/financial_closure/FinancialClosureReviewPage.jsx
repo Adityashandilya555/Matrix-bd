@@ -182,12 +182,16 @@ export default function FinancialClosureReviewPage() {
   };
 
   const savingRef = React.useRef(false); // re-entrancy guard against rapid double-clicks
+  const docsRef = React.useRef(null);    // imperative handle to the closure attachment slot
   const handleSaveBudget = async (action = 'save') => {
     if (savingRef.current) return;
     savingRef.current = true;
     setSaving(true);
     setError(null);
     try {
+      // Persist a staged-but-not-uploaded closure attachment first (never lose
+      // it on Save/Submit); a failed upload throws → the save aborts.
+      if (docsRef.current?.hasStaged()) await docsRef.current.commitStaged();
       const data = await saveFCBudget(siteId, {
         action,
         comments: reviewComments || null,
@@ -759,6 +763,7 @@ export default function FinancialClosureReviewPage() {
           emptyText="No attachment from Project Excellence."
         />
         <ExcellenceDocuments
+          ref={docsRef}
           siteId={siteId}
           kind="closure"
           canEdit={canEditBudget}

@@ -191,12 +191,17 @@ export default function ProjectExcellenceReviewPage() {
   };
 
   const savingRef = React.useRef(false); // re-entrancy guard against rapid double-clicks
+  const docsRef = React.useRef(null);    // imperative handle to the attachment slot
   const handleSaveBudget = async (action = 'save') => {
     if (savingRef.current) return;
     savingRef.current = true;
     setSaving(true);
     setError(null);
     try {
+      // Persist a staged-but-not-uploaded attachment first, so it's never lost
+      // when the user clicks Save/Submit without clicking Upload. A failed
+      // upload throws → the budget save aborts with the error shown.
+      if (docsRef.current?.hasStaged()) await docsRef.current.commitStaged();
       const data = await savePEBudget(siteId, {
         items: budgetItems.map((item) => ({
           idx: item.idx,
@@ -494,7 +499,7 @@ export default function ProjectExcellenceReviewPage() {
         {/* Budget attachment — one file for the PE phase; Financial Closure and
             the Project budget card read the same doc. Staged-then-upload with a
             corner × to discard a mis-pick or replace the uploaded file. */}
-        <ExcellenceDocuments siteId={siteId} kind="excellence" canEdit={canEditBudget} />
+        <ExcellenceDocuments ref={docsRef} siteId={siteId} kind="excellence" canEdit={canEditBudget} />
 
         {/* Comments (read-only feedback) */}
         {state?.budgetSupervisorComments && (
