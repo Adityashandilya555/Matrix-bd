@@ -116,7 +116,7 @@ function DraftRow({ draft, role, canDecide, onApprove, onReject, onArchive, onOp
     <div className="zm-row" data-site-id={draft.id} style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1fr 0.8fr 0.7fr ' + (canDecide ? '230px' : '90px'), alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: overdue ? 'rgba(185,28,28,0.05)' : 'transparent', position: 'relative' }}>
       {overdue && <span style={{ position: 'absolute', left: 0, top: 12, bottom: 12, width: 2, background: 'var(--zm-danger)', borderRadius: 2 }}/>}
       <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{draft.caCode || draft.code}</span>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 600, color: 'var(--zm-fg)' }}>{draft.name}</span><span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 10.5, color: 'var(--zm-fg-3)' }}>{draft.id}</span></div>
+      <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 600, color: 'var(--zm-fg)' }}>{draft.name}</span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Avatar name={draft.createdBy} size={22}/><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{draft.createdBy}</span></div>
       <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{draft.city}</span>
       <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{draft.visitDate}</span>
