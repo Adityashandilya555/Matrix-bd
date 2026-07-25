@@ -44,20 +44,28 @@ filterwarnings = [
 ]
 
 [tool.ruff.lint]
-# Phased docstring policy (#241). No global `select` is set here, so a plain
-# `ruff check` keeps ruff's defaults and does NOT flag the ~300 not-yet-documented
-# router/core symbols during the phased rollout. The Phase-1 gate enforces the
-# *presence* of docstrings on public service symbols (wired into CI by #223):
+# Explicit rule set — do NOT inherit ruff's built-in defaults. Ruff expands its
+# default selection between releases (0.16 folded UP045/UP017/I001/… into the
+# defaults), which would flag 1100+ pre-existing *style* findings across the
+# backend on a plain `ruff check` — no code change involved — and red every PR.
+# Selecting rules explicitly freezes lint behaviour across ruff versions with
+# zero code churn. This list is exactly what ruff 0.15.x enforced by default:
+#   E4/E7/E9  pycodestyle errors (imports, statements, runtime/syntax)
+#   F         pyflakes (undefined names, unused imports, f-strings, …)
+#   C901      our cyclomatic-complexity gate (#223 1.2; ceiling set below)
+# Adopting the newer stylistic families (pyupgrade/isort/bugbear/…) is a
+# deliberate, separate PR that runs their autofixes — not a surprise from a
+# version bump. Keep new/refactored functions at or under the C901 ceiling
+# (the #240 god-function extractions are tracked separately).
+select = ["E4", "E7", "E9", "F", "C901"]
+# Phased docstring policy (#241). The Phase-1 gate enforces the *presence* of
+# docstrings on public service symbols via a separate, explicitly-selected CI
+# step, so it is independent of the `select` above:
 #     ruff check app/services --select D101,D102,D103
-# The extend-ignore below covers the module/package/__init__ docstring rules and
-# the two mutually-exclusive multiline-summary rules so that a broader `--select D`
-# (stylistic D2xx/D4xx) can be adopted in a later phase without churn.
+# These ignores cover the module/package/__init__ docstring rules and the two
+# mutually-exclusive multiline-summary rules, so a broader `--select D` (stylistic
+# D2xx/D4xx) can be adopted in a later phase without churn.
 extend-ignore = ["D100", "D104", "D107", "D203", "D213"]
-# C901 cyclomatic-complexity gate (#223 1.2). Added to the default rule set so a
-# plain `ruff check backend/app` (wired into CI) fails if any function exceeds the
-# ceiling. The whole backend currently passes at 15; keep new/refactored code at
-# or below it (the #240 god-function extractions are tracked separately).
-extend-select = ["C901"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 15
