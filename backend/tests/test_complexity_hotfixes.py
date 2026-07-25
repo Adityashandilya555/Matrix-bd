@@ -55,6 +55,7 @@ def _row():
     return SimpleNamespace(
         id=uuid4(), tenant_id=uuid4(), status="launched",
         rent_type=None, expected_rent=None, fixed_rent_amt=None, rev_share_pct=None,
+        revshare_dinein_pct=None, revshare_delivery_pct=None,
         escalation_pct=None, escalation_date=None, expected_escalation_years=None,
         rent_free_days=None, lock_in_months=None, tenure_months=None, notes=None,
         admin_review_comment=None, admin_sent_for_review_at=_DT, admin_sent_for_review_by=uuid4(),

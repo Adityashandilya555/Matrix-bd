@@ -28,6 +28,10 @@ export function buildDrawerSite(row) {
     escalationYears: first(row.expectedEscalationYears, details.escalationYears),
     staggeredEscalation: first(row.staggeredEscalation, row.staggered_escalation, details.staggeredEscalation),
     revshare: first(row.expectedRevsharePct, row.revshare, details.revshare),
+    // Revenue-share split (FEATURE_RENT_V2) — surfaced so the approval drawer can
+    // read the flat Dine-in / Delivery %; per-year split rides in staggeredEscalation.
+    revshareDinein: first(row.revshareDineinPct, details.revshareDineinPct),
+    revshareDelivery: first(row.revshareDeliveryPct, details.revshareDeliveryPct),
     rentFree: first(row.rentFreeDays, details.rentFreeDays),
     estSales: first(row.estSales, details.estSales),
     nearestStarbucks: first(row.nearestStarbucks, details.nearestStarbucks),

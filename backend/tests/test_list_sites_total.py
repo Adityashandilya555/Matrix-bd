@@ -21,6 +21,7 @@ def _site(**over):
         status="shortlisted", visit_date=None, model="cafe", spoc_name="A",
         google_maps_pin=None, google_maps_url=None, expected_rent=100000, rent_type="fixed",
         expected_escalation_pct=5, expected_escalation_years=1, expected_revshare_pct=None,
+        revshare_dinein_pct=None, revshare_delivery_pct=None,
         area_sqft=800, staggered_escalation=None, legal_dd_status="pending",
         agreement_status="pending", licensing_status="pending", design_status="pending",
         is_launched=False, launched_at=None, finance_status="pending", kyc_verified=False,

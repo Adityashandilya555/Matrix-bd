@@ -40,6 +40,8 @@ RENT_EDITABLE_FIELDS: tuple[str, ...] = (
     "expected_rent",
     "fixed_rent_amt",
     "rev_share_pct",
+    "revshare_dinein_pct",
+    "revshare_delivery_pct",
     "escalation_pct",
     "escalation_date",
     "expected_escalation_years",
@@ -54,6 +56,8 @@ RENT_FIELD_LABELS: dict[str, str] = {
     "expected_rent": "Rent / MG (₹)",
     "fixed_rent_amt": "Fixed rent (₹)",
     "rev_share_pct": "Revenue share %",
+    "revshare_dinein_pct": "Dine-in share %",
+    "revshare_delivery_pct": "Delivery share %",
     "escalation_pct": "Escalation %",
     "escalation_date": "Escalation date",
     "expected_escalation_years": "Escalation cadence (yrs)",
@@ -71,6 +75,8 @@ class LaunchRentFieldsRequest(BaseModel):
     expected_rent: Optional[float] = None
     fixed_rent_amt: Optional[float] = None
     rev_share_pct: Optional[float] = None
+    revshare_dinein_pct: Optional[float] = None
+    revshare_delivery_pct: Optional[float] = None
     escalation_pct: Optional[float] = None
     escalation_date: Optional[date] = None
     expected_escalation_years: Optional[int] = None
@@ -160,6 +166,8 @@ class LaunchApprovalResponse(BaseModel):
     expected_rent: Optional[float] = None
     fixed_rent_amt: Optional[float] = None
     rev_share_pct: Optional[float] = None
+    revshare_dinein_pct: Optional[float] = None
+    revshare_delivery_pct: Optional[float] = None
     escalation_pct: Optional[float] = None
     escalation_date: Optional[date] = None
     expected_escalation_years: Optional[int] = None

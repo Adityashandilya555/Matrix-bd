@@ -9,15 +9,21 @@
 -- with CHECK constraints.
 
 -- ── Functions ─────────────────────────────────────────────────────────────────
+-- Superset validator (20260809): year+percent required; mg / dine_in_pct /
+-- delivery_pct optional per-year extras; SQL NULL and JSON 'null' both mean
+-- "no schedule" (20260731 hardening).
 CREATE OR REPLACE FUNCTION public.is_valid_staggered_escalation(arr jsonb)
 RETURNS boolean
 LANGUAGE plpgsql IMMUTABLE AS $$
 DECLARE
     elem jsonb;
-    y int;
-    p float;
+    y   int;
+    p   float;
+    mg  float;
+    din float;
+    del float;
 BEGIN
-    IF arr IS NULL THEN RETURN true; END IF;
+    IF arr IS NULL OR jsonb_typeof(arr) = 'null' THEN RETURN true; END IF;
     IF jsonb_typeof(arr) != 'array' THEN RETURN false; END IF;
     IF jsonb_array_length(arr) > 5 THEN RETURN false; END IF;
     FOR elem IN SELECT * FROM jsonb_array_elements(arr)
@@ -26,6 +32,12 @@ BEGIN
             y := (elem->>'year')::int;
             p := (elem->>'percent')::float;
             IF y <= 0 OR p < 0 OR p > 100 THEN RETURN false; END IF;
+            IF elem ? 'mg' THEN mg := (elem->>'mg')::float;
+                IF mg < 0 THEN RETURN false; END IF; END IF;
+            IF elem ? 'dine_in_pct' THEN din := (elem->>'dine_in_pct')::float;
+                IF din < 0 OR din > 100 THEN RETURN false; END IF; END IF;
+            IF elem ? 'delivery_pct' THEN del := (elem->>'delivery_pct')::float;
+                IF del < 0 OR del > 100 THEN RETURN false; END IF; END IF;
         EXCEPTION WHEN OTHERS THEN
             RETURN false;
         END;
@@ -126,6 +138,8 @@ CREATE TABLE public.sites (
   launched_at              timestamp with time zone,
   area_sqft                integer NOT NULL DEFAULT 0,
   staggered_escalation     jsonb,
+  revshare_dinein_pct      numeric(6,2),                          -- revenue-share split: Dine-in % (20260809)
+  revshare_delivery_pct    numeric(6,2),                          -- revenue-share split: Delivery % (20260809)
   created_at               timestamp with time zone NOT NULL DEFAULT now(),
   updated_at               timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT sites_pkey PRIMARY KEY (id),
@@ -141,7 +155,9 @@ CREATE TABLE public.sites (
       (rent_type IN ('fixed','revshare','mg_revshare','staggered')) OR (rent_type IS NULL)
   ),
   CONSTRAINT chk_area_sqft_positive CHECK (area_sqft >= 0),
-  CONSTRAINT chk_staggered_escalation CHECK (public.is_valid_staggered_escalation(staggered_escalation))
+  CONSTRAINT chk_staggered_escalation CHECK (public.is_valid_staggered_escalation(staggered_escalation)),
+  CONSTRAINT chk_revshare_dinein_range CHECK (revshare_dinein_pct IS NULL OR (revshare_dinein_pct BETWEEN 0 AND 100)),
+  CONSTRAINT chk_revshare_delivery_range CHECK (revshare_delivery_pct IS NULL OR (revshare_delivery_pct BETWEEN 0 AND 100))
 );
 CREATE INDEX idx_sites_tenant_id_status ON public.sites(tenant_id, status);
 CREATE INDEX idx_sites_assigned_to ON public.sites(assigned_to);
@@ -733,6 +749,8 @@ CREATE TABLE public.launch_approvals (
   fixed_rent_amt          numeric(14,2),
   expected_rent           numeric(14,2),
   rev_share_pct           numeric(6,2),
+  revshare_dinein_pct     numeric(6,2),                          -- revenue-share split: Dine-in % (20260810)
+  revshare_delivery_pct   numeric(6,2),                          -- revenue-share split: Delivery % (20260810)
   escalation_pct          numeric(6,2),
   escalation_date         date,
   expected_escalation_years integer,

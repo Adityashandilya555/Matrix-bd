@@ -51,9 +51,21 @@ def _validate_http_url(v: Optional[str]) -> Optional[str]:
 # ── Request models ─────────────────────────────────────────────────────────────
 
 class StaggeredEscalationItem(BaseModel):
-    """One year's escalation entry for staggered rent."""
+    """One year's escalation entry for staggered rent.
+
+    Superset shape (FEATURE_RENT_V2): ``year`` + ``percent`` stay required; ``mg``
+    / ``dine_in_pct`` / ``delivery_pct`` are optional per-year extras the
+    configurable rent UI may send. The DB validator
+    ``is_valid_staggered_escalation()`` enforces the same bounds, and legacy
+    ``{year, percent}`` items remain valid (new keys absent = fine).
+    """
     year: int = Field(..., gt=0, description="Escalation year (1-based, relative to lease start)")
-    percent: float = Field(..., gt=0, le=100, description="Percentage increase for that year")
+    # ge=0 (was gt=0) to match the DB CHECK, which has always allowed percent 0.
+    percent: float = Field(..., ge=0, le=100, description="Percentage increase for that year")
+    # Optional per-year extras — default None keeps old payloads valid.
+    mg: Optional[float] = Field(default=None, ge=0, description="Per-year minimum guarantee (rupees)")
+    dine_in_pct: Optional[float] = Field(default=None, ge=0, le=100, description="Per-year dine-in revenue share %")
+    delivery_pct: Optional[float] = Field(default=None, ge=0, le=100, description="Per-year delivery revenue share %")
 
 
 class CreateDraftRequest(BaseModel):
@@ -80,6 +92,11 @@ class CreateDraftRequest(BaseModel):
     # so out-of-range input returns a clean 422 instead of a database error.
     expected_escalation_years: Optional[int] = Field(default=None, ge=0, le=99)
     expected_revshare_pct: Optional[float] = Field(default=None, ge=0, le=100)
+    # Optional revenue-share split (Dine-in % / Delivery %) for FEATURE_RENT_V2.
+    # Snake_case only — the create adapter (httpAdapter.mapPayloadToApi) already
+    # emits snake, exactly like expected_revshare_pct above. Nullable + additive.
+    revshare_dinein_pct: Optional[float] = Field(default=None, ge=0, le=100)
+    revshare_delivery_pct: Optional[float] = Field(default=None, ge=0, le=100)
     # Pipeline-stage area in sqft. Defaults to 0; editable later in Add Details.
     area_sqft: Optional[float] = Field(default=None, ge=0, description="Site area in square feet")
     # Staggered rent escalation schedule: required when rent_type == 'staggered'.
@@ -149,6 +166,10 @@ class SaveDetailsRequest(BaseModel):
     rent: Optional[float] = None
     escalation: Optional[float] = Field(default=None, ge=0, le=100)
     revshare: Optional[float] = Field(default=None, ge=0, le=100)
+    # Revenue-share split (FEATURE_RENT_V2) — promoted onto the sites row (not
+    # site_details). AliasChoices matches this request's camelCase convention.
+    revshare_dinein_pct: Optional[float] = Field(default=None, ge=0, le=100, validation_alias=AliasChoices("revshare_dinein_pct", "revshareDineinPct"))
+    revshare_delivery_pct: Optional[float] = Field(default=None, ge=0, le=100, validation_alias=AliasChoices("revshare_delivery_pct", "revshareDeliveryPct"))
     rent_free_days: Optional[int] = Field(default=None, validation_alias=AliasChoices("rent_free_days", "rentFreeDays"))
     cadex: Optional[float] = None
     deposit: Optional[float] = None
@@ -222,6 +243,8 @@ class SiteResponse(BaseModel):
     expected_escalation_pct: Optional[float] = None
     expected_escalation_years: Optional[int] = None
     expected_revshare_pct: Optional[float] = None
+    revshare_dinein_pct: Optional[float] = None
+    revshare_delivery_pct: Optional[float] = None
     area_sqft: float = 0
     staggered_escalation: Optional[list] = None
 

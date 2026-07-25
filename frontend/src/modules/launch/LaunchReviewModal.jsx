@@ -63,7 +63,7 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
   const [savedFlash, setSavedFlash] = React.useState(false);
   const [err, setErr] = React.useState(null);
 
-  const RENT_KEYS = ['rent_type', 'expected_rent', 'rev_share_pct', 'escalation_pct', 'expected_escalation_years', 'rent_free_days', 'lock_in_months', 'tenure_months'];
+  const RENT_KEYS = ['rent_type', 'expected_rent', 'rev_share_pct', 'revshare_dinein_pct', 'revshare_delivery_pct', 'escalation_pct', 'expected_escalation_years', 'rent_free_days', 'lock_in_months', 'tenure_months'];
 
   const hydrate = React.useCallback((d) => {
     setData(d);

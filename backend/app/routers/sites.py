@@ -188,6 +188,8 @@ async def create_site(
             expected_escalation_pct=body.expected_escalation_pct,
             expected_escalation_years=body.expected_escalation_years,
             expected_revshare_pct=body.expected_revshare_pct,
+            revshare_dinein_pct=body.revshare_dinein_pct,
+            revshare_delivery_pct=body.revshare_delivery_pct,
             area_sqft=body.area_sqft,
             staggered_escalation=body.staggered_escalation,
         )
@@ -239,12 +241,23 @@ async def patch_site_status(
     if new_status == SiteStatus.SHORTLISTED:
         return await svc_shortlist_draft(db, tenant_id=tenant_id, actor=current_user, site_id=site_id)
     if new_status == SiteStatus.DETAILS_SUBMITTED:
+        from sqlalchemy.exc import DataError, IntegrityError
         details = payload.get("details") if isinstance(payload, dict) else None
         if details is None and isinstance(payload, dict):
             details = payload
-        return await svc_submit_details(
-            db, tenant_id=tenant_id, actor=current_user, site_id=site_id, details=details,
-        )
+        try:
+            # Submit writes details straight to columns WITHOUT Pydantic bounds, so
+            # an out-of-range revenue-share / escalation % reaches the CHECK
+            # constraints. Convert that IntegrityError into a clean 400 instead of
+            # a CORS-masked 500 (issue: split range on the submit path).
+            return await svc_submit_details(
+                db, tenant_id=tenant_id, actor=current_user, site_id=site_id, details=details,
+            )
+        except (DataError, IntegrityError):
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Invalid rent values — revenue-share and escalation percentages must be 0–100.",
+            )
     if new_status == SiteStatus.APPROVED:
         return await svc_approve_shortlist(
             db, tenant_id=tenant_id, actor=current_user, site_id=site_id,
