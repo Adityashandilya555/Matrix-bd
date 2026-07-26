@@ -99,6 +99,17 @@
 .ac-node { transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease; }
 .ac-pipeline-row.ac-interactive:hover .ac-node-active { box-shadow: 0 0 0 4px var(--zm-warning-soft); }
 
+/* Delete-site control: neutral at rest so it never competes with History on the
+   row, and only reveals it is destructive on hover / keyboard focus. */
+.ac-delete-site { transition: color .14s ease, border-color .14s ease, background-color .14s ease; }
+.ac-delete-site:hover,
+.ac-delete-site:focus-visible {
+  color: var(--zm-danger, #B91C1C);
+  border-color: color-mix(in srgb, var(--zm-danger, #B91C1C) 45%, transparent);
+  background: color-mix(in srgb, var(--zm-danger, #B91C1C) 9%, transparent);
+}
+.ac-delete-site:focus-visible { outline: 2px solid var(--zm-danger, #B91C1C); outline-offset: 2px; }
+
 /* ── Disclosure (org tree) ─────────────────────────────────────────────── */
 .ac-caret { transition: transform .18s ease; }
 .ac-caret.is-open { transform: rotate(90deg); }
@@ -108,5 +119,5 @@
   .ac-overlay, .ac-drawer, .ac-fade-in, .ac-stagger > * { animation: none; }
   .ac-skel { animation: none; }
   .ac-interactive:hover { transform: none; }
-  .ac-caret { transition: none; }
+  .ac-caret, .ac-delete-site { transition: none; }
 }
