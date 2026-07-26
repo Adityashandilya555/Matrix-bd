@@ -112,5 +112,15 @@ export function buildLaunchRentPayload(form) {
   // backend already nulling the schedule when the type isn't staggered. Legacy
   // revshare / mg_revshare edits keep their type, so rev_share_pct is preserved.
   if (form?.rent_type === 'fixed' || form?.rent_type === 'staggered') payload.rev_share_pct = null;
+  // Same rule for the FLAT dine-in/delivery split once the rent is staggered: V2
+  // edits that split PER YEAR (inside staggered_escalation), and renders the
+  // top-level pair only for rent_type='fixed'. A row switched fixed -> staggered
+  // would otherwise keep submitting scalars the user can no longer see, and
+  // _commit_rent_to_canonical would write them to site.revshare_dinein_pct /
+  // _delivery_pct — a split the staggered schedule never showed.
+  if (form?.rent_type === 'staggered') {
+    payload.revshare_dinein_pct = null;
+    payload.revshare_delivery_pct = null;
+  }
   return payload;
 }

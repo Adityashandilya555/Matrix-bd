@@ -213,7 +213,9 @@ export default function RentTermsFormV2({
                   <Field t={t} label="Minimum guarantee"><NumBox t={t} value={v.expected_rent} onChange={set('expected_rent')} prefix="₹" suffix="/mo" placeholder="80000" readOnly={readOnly} /></Field>
                   <Field t={t} label="Revenue share"><NumBox t={t} value={v.rev_share_pct} onChange={set('rev_share_pct')} suffix="% above MG" max={100} placeholder="e.g. 12.5" readOnly={readOnly} /></Field>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {/* One column when the cadence picker is hidden (showCadence=false),
+                    so the Escalation box doesn't sit beside an empty grid cell. */}
+                <div style={{ display: 'grid', gridTemplateColumns: cadenceField ? '1fr 1fr' : '1fr', gap: 12 }}>
                   <Field t={t} label="Escalation"><NumBox t={t} value={v.expected_escalation_pct} onChange={set('expected_escalation_pct')} suffix="%" max={100} placeholder="e.g. 4.5" readOnly={readOnly} /></Field>
                   {cadenceField}
                 </div>

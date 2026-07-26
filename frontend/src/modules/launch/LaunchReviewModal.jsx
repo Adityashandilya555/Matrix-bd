@@ -2,7 +2,7 @@ import React from 'react';
 import Icon from '../shared/primitives/Icon.jsx';
 import RentTermsForm, { ZM_TOKENS } from '../shared/rent/RentTermsForm.jsx';
 import RentTermsFormV2 from '../shared/rent/RentTermsFormV2.jsx';
-import { toV2Value, fromV2Key, pickLaunchRentFields, buildLaunchRentPayload } from '../shared/rent/launchRentAdapter.js';
+import { toV2Value, fromV2Key, pickLaunchRentFields, buildLaunchRentPayload } from '../shared/rent/launchRentAdapter.jsx';
 import {
   getLaunchApproval, saveLaunchRentFields, execReview, supervisorReview,
 } from '../../services/api/launchApprovalApi.js';

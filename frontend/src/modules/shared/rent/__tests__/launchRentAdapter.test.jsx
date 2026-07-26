@@ -9,7 +9,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   LAUNCH_RENT_KEYS, toV2Value, fromV2Key, pickLaunchRentFields, buildLaunchRentPayload,
-} from '../launchRentAdapter.js';
+} from '../launchRentAdapter.jsx';
 
 describe('launchRentAdapter — key translation', () => {
   it('renames escalation_pct -> expected_escalation_pct for the form, deleting the old key', () => {
@@ -94,6 +94,31 @@ describe('launchRentAdapter — payload builder', () => {
   it('preserves rev_share_pct for a legacy revshare / mg_revshare edit', () => {
     expect(buildLaunchRentPayload({ rent_type: 'revshare', rev_share_pct: 12 }).rev_share_pct).toBe(12);
     expect(buildLaunchRentPayload({ rent_type: 'mg_revshare', rev_share_pct: 12 }).rev_share_pct).toBe(12);
+  });
+
+  it('clears the FLAT dine-in/delivery split once the rent is staggered', () => {
+    // V2 renders the top-level split only for rent_type='fixed'; staggered edits
+    // it per year. Switching fixed -> staggered would otherwise keep submitting
+    // scalars the user can no longer see, and the final confirm writes them to
+    // site.revshare_dinein_pct / _delivery_pct.
+    const payload = buildLaunchRentPayload({
+      rent_type: 'staggered',
+      revshare_dinein_pct: 8,
+      revshare_delivery_pct: 5,
+      staggered_escalation: [{ year: 1, percent: 5, dine_in_pct: 9 }],
+    });
+    expect(payload.revshare_dinein_pct).toBeNull();
+    expect(payload.revshare_delivery_pct).toBeNull();
+    // ...and the PER-YEAR split is untouched — that is the one the user edits.
+    expect(payload.staggered_escalation).toEqual([{ year: 1, percent: 5, dine_in_pct: 9 }]);
+  });
+
+  it('keeps the flat split on a fixed rent', () => {
+    const payload = buildLaunchRentPayload({
+      rent_type: 'fixed', revshare_dinein_pct: 8, revshare_delivery_pct: 5,
+    });
+    expect(payload.revshare_dinein_pct).toBe(8);
+    expect(payload.revshare_delivery_pct).toBe(5);
   });
 });
 
