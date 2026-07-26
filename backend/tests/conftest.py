@@ -140,7 +140,9 @@ class RecordingSession:
     def add(self, obj: Any) -> None:
         self.added.append(obj)
 
-    def delete(self, obj: Any) -> None:
+    async def delete(self, obj: Any) -> None:
+        # AsyncSession.delete is a coroutine (it may need to lazy-load the
+        # object's relationships), so the stand-in has to be awaitable too.
         self.deleted.append(obj)
 
     # -- transaction helper plumbing -------------------------------------

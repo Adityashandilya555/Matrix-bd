@@ -60,6 +60,7 @@ from app.services._common import actor_can_supervise, actor_is_business_admin, c
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_is_delegated
 from app.services import budget_service
+from app.services import reversible_service
 from app.services.notification_service import (
     enqueue as notify_enqueue,
     recipients_for_business_admins,
@@ -709,20 +710,26 @@ async def _after_supervisor_approval(
     review: models.DesignReview,
     deliverable: models.DesignDeliverable,
     kind: str,
-) -> None:
+) -> Optional[models.AuditLog]:
     """Gate after a supervisor approves a deliverable.
 
     2D/3D/BOQ need a SECOND-tier business_admin approval before they advance.
     Recce advances immediately; BOQ completion is owned by the business admin.
+
+    Returns the 'awaiting_admin' audit row for the 2D/3D park (so the caller can
+    link an undo snapshot to it); None for the recce advance path, which is not
+    an undoable gate.
     """
     if kind in _NEEDS_ADMIN and deliverable.admin_status != "approved":
         if (site.design_status or "pending") in ("pending", "allocated"):
             site.design_status = "in_progress"
-        await write_audit_event(
+        audit = await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
             actor_id=actor["sub"], actor_name=actor.get("name"),
             action="design_deliverable_awaiting_admin",
             detail=f"kind={kind} approved by supervisor — awaiting business_admin approval",
+            # flush so the row id exists for reversible_actions.audit_log_id.
+            flush=True,
         )
         admins = await recipients_for_business_admins(session, tenant_id=tenant_id)
         deliverable_label = "BOQ" if kind == "boq" else kind.upper()
@@ -743,10 +750,11 @@ async def _after_supervisor_approval(
                     f"by the design supervisor and now needs your {gate_label}."
                 ),
             )
-    else:
-        await _advance_stage_after_approval(
-            session, tenant_id=tenant_id, actor=actor, site=site, review=review, kind=kind,
-        )
+        return audit
+    await _advance_stage_after_approval(
+        session, tenant_id=tenant_id, actor=actor, site=site, review=review, kind=kind,
+    )
+    return None
 
 
 async def _resolve_design_review(
@@ -989,16 +997,28 @@ async def svc_review_deliverable(
                 ),
             )
 
+        # Snapshot the supervisor-review gate BEFORE mutating — this is the only
+        # record of these values. Captured unconditionally (it is a pure field
+        # read) and kept non-Optional so the record call below type-checks; only
+        # 2D/3D actually persist a snapshot. Recce is out of scope: its approve
+        # advances the stage and opens the next upload, which the tight field-set
+        # frontier check cannot fully police.
+        undoable = kind in _NEEDS_ADMIN
+        before = _capture_supervisor_review_state(
+            deliverable=deliverable, review=review, site=site,
+        )
+
         now = datetime.now(timezone.utc)
         deliverable.reviewed_by = actor["sub"]
         deliverable.reviewed_at = now
         review.approved_by = actor["sub"]
         delegate = await _active_design_delegate(session, site_id=site.id)
+        audit: Optional[models.AuditLog] = None
 
         if body.decision == "approve":
             deliverable.status = "approved"
             deliverable.supervisor_comments = (body.comments or "").strip() or None
-            await _after_supervisor_approval(
+            audit = await _after_supervisor_approval(
                 session, tenant_id=tenant_id, actor=actor, site=site, review=review,
                 deliverable=deliverable, kind=kind,
             )
@@ -1007,11 +1027,12 @@ async def svc_review_deliverable(
             deliverable.status = "rejected"
             deliverable.supervisor_comments = (body.comments or "").strip() or None
             site.design_status = "in_progress"
-            await write_audit_event(
+            audit = await write_audit_event(
                 session, tenant_id=tenant_id, site_id=site.id,
                 actor_id=actor["sub"], actor_name=actor.get("name"),
                 action="design_deliverable_rejected",
                 detail=f"kind={kind}: {deliverable.supervisor_comments or ''}",
+                flush=True,
             )
             if delegate:
                 await notify_enqueue(
@@ -1026,6 +1047,13 @@ async def svc_review_deliverable(
                         f"Supervisor comments: {deliverable.supervisor_comments or '(none)'}"
                     ),
                 )
+
+        if undoable:
+            _record_supervisor_review_snapshot(
+                session, tenant_id=tenant_id, actor=actor, site=site, review=review,
+                deliverable=deliverable, kind=kind, decision=body.decision,
+                before=before, audit=audit,
+            )
 
     return await _build_design_response(session, site)
 
@@ -1084,16 +1112,105 @@ async def svc_design_admin_queue(
     return DesignAdminQueueResponse(items=[by_site[s] for s in order], total=len(order))
 
 
+# ── Undo support: snapshot the values a review decision overwrites ────────────
+#
+# The audit log cannot drive an inverse — design's audit rows record no
+# before-state at all — so the prior values are captured here, at action time.
+# The shared scaffolding (the table, the guards, the dispatcher) lives in
+# reversible_service; this file owns the design-specific capture and restore.
+
+UNDO_ENTITY_DELIVERABLE = "design_deliverable"
+
+
+def _capture_admin_review_state(
+    *, deliverable: models.DesignDeliverable, review: models.DesignReview, site: models.Site,
+) -> dict:
+    """Every field an admin approve/reject touches.
+
+    Captures actual values rather than deriving them (e.g. from _NEXT_STAGE), so
+    the snapshot stays correct if the advance logic changes underneath it — the
+    two-stage GFC change already moved what the 'gfc' branch writes once.
+    """
+    return {
+        "deliverable": {
+            "status": deliverable.status,
+            "admin_status": deliverable.admin_status,
+            "admin_reviewed_by": str(deliverable.admin_reviewed_by) if deliverable.admin_reviewed_by else None,
+            "admin_reviewed_at": deliverable.admin_reviewed_at.isoformat() if deliverable.admin_reviewed_at else None,
+            "admin_comments": deliverable.admin_comments,
+        },
+        "review": {
+            "current_stage": review.current_stage,
+            "approved_by": str(review.approved_by) if review.approved_by else None,
+        },
+        "site": {
+            "design_status": site.design_status,
+        },
+    }
+
+
+def _record_supervisor_review_snapshot(
+    session: AsyncSession, *, tenant_id, actor, site, review, deliverable,
+    kind: str, decision: str, before: dict, audit,
+) -> None:
+    """Persist the supervisor-review undo snapshot. Extracted from
+    svc_review_deliverable purely to keep that function under the C901
+    complexity gate — it is a straight-line write with no branching of its own.
+    """
+    after = _capture_supervisor_review_state(
+        deliverable=deliverable, review=review, site=site,
+    )
+    reversible_service.record_reversible(
+        session,
+        tenant_id=tenant_id, site_id=site.id,
+        audit_log_id=audit.id if audit is not None else None,
+        action=reversible_service.ACTION_DESIGN_SUPERVISOR_REVIEW,
+        entity_type=UNDO_ENTITY_DELIVERABLE, entity_id=deliverable.id,
+        actor_id=actor["sub"],
+        before=before, after=after,
+        extra={"kind": kind, "decision": decision},
+    )
+
+
+def _capture_supervisor_review_state(
+    *, deliverable: models.DesignDeliverable, review: models.DesignReview, site: models.Site,
+) -> dict:
+    """Every field a supervisor approve/reject touches, plus admin_status — which
+    the supervisor review does NOT write, but whose later change by an admin must
+    block the undo (the frontier check compares this whole set)."""
+    return {
+        "deliverable": {
+            "status": deliverable.status,
+            "admin_status": deliverable.admin_status,
+            "reviewed_by": str(deliverable.reviewed_by) if deliverable.reviewed_by else None,
+            "reviewed_at": deliverable.reviewed_at.isoformat() if deliverable.reviewed_at else None,
+            "supervisor_comments": deliverable.supervisor_comments,
+        },
+        "review": {
+            "current_stage": review.current_stage,
+            "approved_by": str(review.approved_by) if review.approved_by else None,
+        },
+        "site": {
+            "design_status": site.design_status,
+        },
+    }
+
+
 async def _admin_approve_deliverable(
     session: AsyncSession, *, tenant_id, actor, site, review, deliverable, kind, supervisors,
-) -> None:
-    """Admin approve path of svc_admin_review_deliverable (behaviour-preserving extract, #240)."""
+) -> models.AuditLog:
+    """Admin approve path of svc_admin_review_deliverable (behaviour-preserving extract, #240).
+
+    Returns the audit row so the caller can link it to the undo snapshot.
+    """
     deliverable.admin_status = "approved"
-    await write_audit_event(
+    audit = await write_audit_event(
         session, tenant_id=tenant_id, site_id=site.id,
         actor_id=actor["sub"], actor_name=actor.get("name"),
         action="design_admin_approved",
         detail=f"kind={kind} approved by business_admin",
+        # flush so the row id exists for reversible_actions.audit_log_id.
+        flush=True,
     )
     if review.current_stage == kind:
         await _advance_stage_after_approval(
@@ -1109,21 +1226,27 @@ async def _admin_approve_deliverable(
             subject=f"{deliverable_label} approved by admin: {site.name}",
             body=f"The admin approved the {deliverable_label} for '{site.name}'. {design_copy}",
         )
+    return audit
 
 
 async def _admin_reject_deliverable(
     session: AsyncSession, *, tenant_id, actor, site, deliverable, kind, supervisors,
-) -> None:
-    """Admin send-back path of svc_admin_review_deliverable (behaviour-preserving extract, #240)."""
+) -> models.AuditLog:
+    """Admin send-back path of svc_admin_review_deliverable (behaviour-preserving extract, #240).
+
+    Returns the audit row so the caller can link it to the undo snapshot.
+    """
     deliverable.status = "rejected"
     deliverable.admin_status = "pending"
     if (site.design_status or "pending") != "approved":
         site.design_status = "in_progress"
-    await write_audit_event(
+    audit = await write_audit_event(
         session, tenant_id=tenant_id, site_id=site.id,
         actor_id=actor["sub"], actor_name=actor.get("name"),
         action="design_admin_rejected",
         detail=f"kind={kind}: {deliverable.admin_comments or ''}",
+        # flush so the row id exists for reversible_actions.audit_log_id.
+        flush=True,
     )
     if supervisors:
         await notify_enqueue(
@@ -1137,6 +1260,7 @@ async def _admin_reject_deliverable(
                 f"Comments: {deliverable.admin_comments or '(none)'}"
             ),
         )
+    return audit
 
 
 async def svc_admin_review_deliverable(
@@ -1183,6 +1307,12 @@ async def svc_admin_review_deliverable(
                 ),
             )
 
+        # Capture the before-values BEFORE any mutation — this is the only
+        # record of them. Nothing downstream (audit included) preserves them.
+        before = _capture_admin_review_state(
+            deliverable=deliverable, review=review, site=site,
+        )
+
         now = datetime.now(timezone.utc)
         deliverable.admin_reviewed_by = actor["sub"]
         deliverable.admin_reviewed_at = now
@@ -1190,17 +1320,183 @@ async def svc_admin_review_deliverable(
         supervisors = await recipients_for_design_supervisors(session, tenant_id=tenant_id)
 
         if body.decision == "approve":
-            await _admin_approve_deliverable(
+            audit = await _admin_approve_deliverable(
                 session, tenant_id=tenant_id, actor=actor, site=site,
                 review=review, deliverable=deliverable, kind=kind, supervisors=supervisors,
             )
         else:
-            await _admin_reject_deliverable(
+            audit = await _admin_reject_deliverable(
                 session, tenant_id=tenant_id, actor=actor, site=site,
                 deliverable=deliverable, kind=kind, supervisors=supervisors,
             )
 
+        # Record the AFTER state too. The undo refuses unless the live values
+        # still match it — an exact "nothing downstream touched these fields"
+        # check, scoped to the fields we would overwrite. That is what this
+        # codebase has instead of optimistic locking (there is no version
+        # column, and Site.updated_at is a never-compared mtime).
+        after = _capture_admin_review_state(
+            deliverable=deliverable, review=review, site=site,
+        )
+
+        reversible_service.record_reversible(
+            session,
+            tenant_id=tenant_id, site_id=site.id,
+            audit_log_id=audit.id if audit is not None else None,
+            action=reversible_service.ACTION_DESIGN_ADMIN_REVIEW,
+            entity_type=UNDO_ENTITY_DELIVERABLE, entity_id=deliverable.id,
+            actor_id=actor["sub"],
+            before=before, after=after,
+            extra={"kind": kind, "decision": body.decision},
+        )
+
     return await _build_design_response(session, site)
+
+
+# ── Undo: design review decisions (dispatched from reversible_service) ────────
+
+async def apply_reversible_undo(session: AsyncSession, *, row, site, actor) -> None:
+    """Compensating restore for the design gates. Called by
+    reversible_service.svc_undo_reversible_action, which has already locked the
+    site + snapshot row and run the common guards (actor, consumed, version)."""
+    if row.action == reversible_service.ACTION_DESIGN_ADMIN_REVIEW:
+        await _undo_admin_review(session, row=row, site=site, actor=actor)
+    elif row.action == reversible_service.ACTION_DESIGN_SUPERVISOR_REVIEW:
+        await _undo_supervisor_review(session, row=row, site=site, actor=actor)
+    else:  # pragma: no cover - dispatcher already filtered
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail=f"'{row.action}' is not an undoable design action.",
+        )
+
+
+async def _load_review_and_deliverable(session, *, site, entity_id):
+    review = await _fetch_review_or_404(session, site_id=site.id)
+    deliverable = (await session.execute(
+        select(models.DesignDeliverable).where(
+            models.DesignDeliverable.id == entity_id,
+            models.DesignDeliverable.site_id == site.id,
+        )
+    )).scalar_one_or_none()
+    if deliverable is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="The deliverable for that decision no longer exists.",
+        )
+    return review, deliverable
+
+
+async def _undo_admin_review(session: AsyncSession, *, row, site, actor) -> None:
+    """Restore an admin 2D/3D approve/reject.
+
+    Deliberately narrow. GFC decisions are NOT undoable through this path: they
+    create the Project Excellence budget + 11 items via
+    budget_service.fetch_or_create_budget, and there is no budget teardown
+    anywhere in the codebase. The budget check below is the hard stop — without
+    it the PE admin queue (which filters on budget status alone, never on
+    design_status) would still serve a budget whose design approval no longer
+    exists.
+    """
+    snapshot = row.snapshot or {}
+    # THE HARD STOP — a GFC decision has opened the PE budget; nothing can delete it.
+    gfc_budget = await budget_service.fetch_budget(
+        session, site_id=site.id, phase=budget_service.GFC, tenant_id=site.tenant_id,
+    )
+    if gfc_budget is not None:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail=(
+                "GFC has already been decided for this site and the Project "
+                "Excellence budget is open. Undoing the design approval now "
+                "would leave that budget orphaned."
+            ),
+        )
+
+    review, deliverable = await _load_review_and_deliverable(session, site=site, entity_id=row.entity_id)
+    reversible_service.assert_nothing_moved(
+        expected=snapshot["after"],
+        live=_capture_admin_review_state(deliverable=deliverable, review=review, site=site),
+    )
+
+    before = snapshot["before"]
+    prior_stage = review.current_stage
+    deliverable.status = before["deliverable"]["status"]
+    deliverable.admin_status = before["deliverable"]["admin_status"]
+    deliverable.admin_reviewed_by = before["deliverable"]["admin_reviewed_by"]
+    deliverable.admin_reviewed_at = reversible_service.parse_iso_or_none(before["deliverable"]["admin_reviewed_at"])
+    deliverable.admin_comments = before["deliverable"]["admin_comments"]
+    review.current_stage = before["review"]["current_stage"]
+    review.approved_by = before["review"]["approved_by"]
+    site.design_status = before["site"]["design_status"]
+
+    kind = snapshot.get("kind") or "deliverable"
+    decision = snapshot.get("decision") or "decision"
+    await write_audit_event(
+        session, tenant_id=site.tenant_id, site_id=site.id,
+        actor_id=actor["sub"], actor_name=actor.get("name"),
+        action="design_admin_review_undone",
+        from_status=prior_stage, to_status=review.current_stage,
+        detail=f"admin {decision} of {kind} undone by the admin who made it",
+    )
+    await _notify_design_undo(session, site=site, kind=kind, decision=decision, tier="admin")
+
+
+async def _undo_supervisor_review(session: AsyncSession, *, row, site, actor) -> None:
+    """Restore a supervisor 2D/3D approve/reject.
+
+    No budget hard-stop is needed: the supervisor gate never opens the PE budget.
+    The frontier check catches the case that matters — a business admin having
+    reviewed the deliverable in the meantime moves admin_status, which is in the
+    captured field set.
+    """
+    snapshot = row.snapshot or {}
+    review, deliverable = await _load_review_and_deliverable(session, site=site, entity_id=row.entity_id)
+    reversible_service.assert_nothing_moved(
+        expected=snapshot["after"],
+        live=_capture_supervisor_review_state(deliverable=deliverable, review=review, site=site),
+    )
+
+    before = snapshot["before"]
+    prior_stage = review.current_stage
+    deliverable.status = before["deliverable"]["status"]
+    deliverable.admin_status = before["deliverable"]["admin_status"]
+    deliverable.reviewed_by = before["deliverable"]["reviewed_by"]
+    deliverable.reviewed_at = reversible_service.parse_iso_or_none(before["deliverable"]["reviewed_at"])
+    deliverable.supervisor_comments = before["deliverable"]["supervisor_comments"]
+    review.current_stage = before["review"]["current_stage"]
+    review.approved_by = before["review"]["approved_by"]
+    site.design_status = before["site"]["design_status"]
+
+    kind = snapshot.get("kind") or "deliverable"
+    decision = snapshot.get("decision") or "decision"
+    await write_audit_event(
+        session, tenant_id=site.tenant_id, site_id=site.id,
+        actor_id=actor["sub"], actor_name=actor.get("name"),
+        action="design_supervisor_review_undone",
+        from_status=prior_stage, to_status=review.current_stage,
+        detail=f"supervisor {decision} of {kind} undone by an admin",
+    )
+    await _notify_design_undo(session, site=site, kind=kind, decision=decision, tier="supervisor")
+
+
+async def _notify_design_undo(session, *, site, kind, decision, tier: str) -> None:
+    """The original decision already notified the supervisors — and the reject
+    paths sent EMAIL, which is at Resend and cannot be recalled. A correction
+    notice is the only way they learn the earlier message no longer holds."""
+    supervisors = await recipients_for_design_supervisors(session, tenant_id=site.tenant_id)
+    if not supervisors:
+        return
+    await notify_enqueue(
+        session, tenant_id=site.tenant_id, event="design_review_undone",
+        recipient_ids=supervisors, site_id=site.id, channels=("in_app",),
+        payload={"site_id": str(site.id), "site_name": site.name, "kind": kind, "tier": tier},
+        subject=f"Design decision reversed: {site.name}",
+        body=(
+            f"The business admin reversed the {tier} {decision} of the "
+            f"{kind.upper()} for '{site.name}'. Please disregard the earlier "
+            f"notification — the deliverable is awaiting review again."
+        ),
+    )
 
 
 # ── Supervisor: send an approved 3D for GFC sign-off ──────────────────────────
@@ -1437,3 +1733,14 @@ async def svc_gfc_decision(
                 )
 
     return await _build_design_response(session, site)
+
+
+# Register the design restores with the undo dispatcher. Done here, at import
+# time, so reversible_service never has to import this module — that one-way
+# arrow is what keeps the dependency acyclic.
+reversible_service.register_handler(
+    reversible_service.ACTION_DESIGN_ADMIN_REVIEW, apply_reversible_undo,
+)
+reversible_service.register_handler(
+    reversible_service.ACTION_DESIGN_SUPERVISOR_REVIEW, apply_reversible_undo,
+)
