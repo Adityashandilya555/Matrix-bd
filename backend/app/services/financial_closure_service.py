@@ -528,6 +528,7 @@ async def svc_review_fc_budget(
         if closure.status != "pending_supervisor":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Closure budget is not awaiting supervisor.")
         if body.decision == "approve":
+            await budget_service.assert_has_amounts(session, budget=closure, noun="closure budget")
             closure.status = "pending_admin"
         else:
             closure.status = "rejected"
@@ -604,6 +605,9 @@ async def svc_admin_finalize_fc(
         if closure.status != "pending_admin":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Closure budget is not awaiting admin.")
         if body.decision == "approve":
+            # Terminal: this sets financial_closure_status='closed' and archives
+            # the site. An empty closure would be unfixable after the fact.
+            await budget_service.assert_has_amounts(session, budget=closure, noun="closure budget")
             closure.status = "approved"
             closure.approved_at = datetime.now(timezone.utc)
             site.financial_closure_status = "closed"

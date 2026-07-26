@@ -437,9 +437,39 @@ function plusDaysISO(n) {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
+// A request whose amounts were never persisted renders as ₹0 and eleven
+// em-dashes, which is indistinguishable from a budget that is genuinely still
+// loading. Say what happened and point at the only correct remedy. Approving is
+// blocked in the same breath: the PE budget becomes the baseline every closure
+// variation is measured against, and the closure approval is terminal.
+function EmptyBudgetNotice({ noun }) {
+  return (
+    <div role="alert" style={{
+      display: 'flex', alignItems: 'flex-start', gap: 10,
+      margin: '6px 0 10px', padding: '10px 12px',
+      borderRadius: T.radiusSm,
+      border: `1px solid ${T.dangerText}`,
+      color: T.dangerText,
+      background: T.dangerSoft,
+      fontSize: 12.5, lineHeight: 1.5,
+    }}>
+      <Icon.alert size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+      <span>
+        No amounts were saved against this {noun}, so there is nothing to review.
+        Send it back so the executive can re-enter the line items — approving would
+        record a ₹0 baseline.
+      </span>
+    </div>
+  );
+}
+
 function BudgetBlock({ site, fetchDetail, fetchDocuments, onDecide }) {
   const [detail, setDetail] = React.useState(null);
   const [detailError, setDetailError] = React.useState(null);
+  // Set only when the server successfully returned the budget, so "this budget
+  // has no amounts" is never inferred from a failed or absent fetch — that
+  // would block approval on a request that is merely unreachable.
+  const [detailLoaded, setDetailLoaded] = React.useState(false);
   // Budget attachment(s) uploaded in PE — read-only, non-fatal if unavailable.
   const [docs, setDocs] = React.useState([]);
   const [comments, setComments] = React.useState('');
@@ -479,10 +509,12 @@ function BudgetBlock({ site, fetchDetail, fetchDocuments, onDecide }) {
       .then((d) => {
         if (!live) return;
         setDetail({ ...fallback, ...d });
+        setDetailLoaded(true);
       })
       .catch((err) => {
         if (!live) return;
         setDetail(fallback);
+        setDetailLoaded(false);
         setDetailError(err?.detail || err?.message || 'Could not load full project budget details.');
       });
     return () => { live = false; };
@@ -515,6 +547,9 @@ function BudgetBlock({ site, fetchDetail, fetchDocuments, onDecide }) {
     ? detail.budgetTotal
     : items.reduce((s, it) => s + (Number(it.amount) || 0), 0);
   const civilMepSum = sumByIdx(items, CIVIL_MEP_IDX);
+  // Zero saved amounts (all-NULL rows, or none at all) — the state legacy
+  // pre-guard submissions are stuck in. Backed by the same check server-side.
+  const noAmounts = detailLoaded && !items.some((it) => it.amount != null);
   const dim = (v, suffix = '') => (v != null ? `${v}${suffix}` : '—');
   return (
     <>
@@ -650,9 +685,10 @@ function BudgetBlock({ site, fetchDetail, fetchDocuments, onDecide }) {
       </label>
       <textarea className="ac-input" style={taStyle} placeholder="Add comments (required when sending back)"
         value={comments} onChange={(e) => setComments(e.target.value)} />
+      {noAmounts && <EmptyBudgetNotice noun="budget" />}
       {actionErr && <div role="alert" style={{ color: T.dangerText, fontSize: 12, margin: '6px 0' }}>{actionErr}</div>}
       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-        <Button variant="success" size="md" loading={busy} icon={!busy && <Icon.check size={15} />}
+        <Button variant="success" size="md" loading={busy} disabled={noAmounts} icon={!busy && <Icon.check size={15} />}
           onClick={() => decide('approve')}>Approve budget</Button>
         <Button variant="danger" size="md" disabled={busy} icon={<Icon.x size={15} />}
           onClick={() => decide('reject')}>Send back</Button>
@@ -740,6 +776,10 @@ function ClosureBlock({ site, fetchDetail, fetchDocuments, fetchQAReports, onFin
 
   const totals = detail || fc;
   const lines = detail?.lines || [];
+  // Same rule as BudgetBlock, on the closure actuals. `detail` is set only in
+  // the success path, so a failed fetch leaves finalize enabled rather than
+  // wrongly accusing the submission of being empty.
+  const noAmounts = !!detail && !lines.some((l) => l.closureAmount != null);
   const varColor = (v) => ((v || 0) > 0 ? T.dangerText : (v || 0) < 0 ? T.successText : T.textMuted);
   const qaDocs = [qa?.before, qa?.after]
     .filter((r) => r && r.downloadUrl)
@@ -775,9 +815,10 @@ function ClosureBlock({ site, fetchDetail, fetchDocuments, fetchQAReports, onFin
       <AttachmentLinks title="Financial Closure attachment" docs={closureDocs} />
       <AttachmentLinks title="Quality-audit reports" docs={qaDocs} />
 
+      {noAmounts && <EmptyBudgetNotice noun="closure budget" />}
       {err && <div role="alert" style={{ color: T.dangerText, fontSize: 12, margin: '6px 0' }}>{err}</div>}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-        <Button variant="success" size="md" loading={busy} icon={!busy && <Icon.check size={15} />}
+        <Button variant="success" size="md" loading={busy} disabled={noAmounts} icon={!busy && <Icon.check size={15} />}
           onClick={() => decide('approve')}>Financial Closure</Button>
         <Button variant="danger" size="md" disabled={busy} icon={<Icon.x size={15} />}
           onClick={() => decide('reject')}>Send back</Button>

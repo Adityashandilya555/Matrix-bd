@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Optional
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -130,6 +131,38 @@ async def replace_budget_items(
         ))
     budget.budget_total = total
     return total
+
+
+async def assert_has_amounts(
+    session: AsyncSession, *, budget: models.SiteBudget, noun: str = "budget",
+) -> None:
+    """Refuse to approve a budget whose 11 line items are all NULL.
+
+    The submit-time guards (#de99c27) stop an empty budget from *entering*
+    review, but nothing stopped one from *leaving* it. Rows submitted before
+    those guards landed are still sitting in ``pending_supervisor`` /
+    ``pending_admin`` with every amount NULL — they render to the approver as
+    ₹0 and eleven em-dashes, and approving one writes an approved ₹0 baseline
+    that Financial Closure then computes every variation against.
+
+    Mirrors the submit-time predicate exactly (``all amounts are None``) so the
+    two gates agree on what "empty" means. Deliberately not a total>0 test: a
+    genuine zero on a single line is legitimate, and ``budget_total`` is 0.0 for
+    both an all-NULL budget and an all-zero one.
+
+    Send-back is intentionally NOT gated — returning the budget to the executive
+    to re-enter the amounts is the correct remedy for exactly this state.
+    """
+    items = await budget_items(session, budget_id=budget.id, tenant_id=budget.tenant_id)
+    if items and any(i.amount is not None for i in items):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=(
+            f"This {noun} has no amounts — approving it would record a ₹0 baseline. "
+            "Send it back so the executive can re-enter the line items."
+        ),
+    )
 
 
 async def seed_items_from(

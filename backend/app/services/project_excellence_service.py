@@ -493,6 +493,7 @@ async def svc_review_pe_budget(
         if budget.status != "pending_supervisor":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Budget is not awaiting supervisor.")
         if body.decision == "approve":
+            await budget_service.assert_has_amounts(session, budget=budget)
             budget.status = "pending_admin"
         else:
             budget.status = "rejected"
@@ -560,6 +561,10 @@ async def svc_admin_review_pe_budget(
         if budget.status != "pending_admin":
             raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Budget is not awaiting admin.")
         if body.decision == "approve":
+            # Approval seeds the Project module and becomes the baseline every
+            # Financial Closure variation is computed against — so it must
+            # actually contain amounts.
+            await budget_service.assert_has_amounts(session, budget=budget)
             # The init date is mandatory on approval: it hands the site to the
             # Project module and proposes the date the executive will confirm.
             if body.initialization_date is None:
