@@ -69,3 +69,16 @@ def test_apply_rent_edits_applies_split_and_diffs():
     assert any(c["field"] == "revshare_dinein_pct" for c in changes)
     # A field not sent is left untouched (exclude_unset).
     assert row.revshare_delivery_pct is None
+
+
+def test_apply_rent_edits_normalizes_staggered_schedule():
+    # Launch loop: the year-wise schedule is editable; StaggeredEscalationItem's
+    # null optional keys are stripped so a {year, percent} row persists exactly.
+    from app.domain.schemas.launch import LaunchRentFieldsRequest
+    from app.services.launch_service import _apply_rent_edits
+    row = SimpleNamespace(staggered_escalation=None)
+    changes = _apply_rent_edits(row, LaunchRentFieldsRequest(
+        staggered_escalation=[{"year": 1, "percent": 5}, {"year": 2, "percent": 6}],
+    ))
+    assert row.staggered_escalation == [{"year": 1, "percent": 5}, {"year": 2, "percent": 6}]
+    assert any(c["field"] == "staggered_escalation" for c in changes)

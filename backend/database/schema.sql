@@ -754,6 +754,7 @@ CREATE TABLE public.launch_approvals (
   escalation_pct          numeric(6,2),
   escalation_date         date,
   expected_escalation_years integer,
+  staggered_escalation    jsonb,                                 -- year-wise staggered schedule, mirrors sites (20260811)
   cam_charges             numeric(14,2),
   security_deposit        numeric(14,2),
   brokerage               numeric(14,2),

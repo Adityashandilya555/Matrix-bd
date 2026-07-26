@@ -1008,6 +1008,9 @@ class LaunchApproval(Base):
     escalation_pct: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
     escalation_date: Mapped[Optional[date]] = mapped_column(Date)
     expected_escalation_years: Mapped[Optional[int]] = mapped_column(Integer)
+    # Staggered year-wise escalation schedule staged for the launch loop, mirroring
+    # sites.staggered_escalation. none_as_null=True (same JSON-null trap as sites).
+    staggered_escalation: Mapped[Optional[dict]] = mapped_column(JSONB(none_as_null=True))
     cam_charges: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
     security_deposit: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
     brokerage: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
