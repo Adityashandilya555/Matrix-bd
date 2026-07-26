@@ -253,7 +253,15 @@ function SiteOverviewTab({ site, editedFields = [] }) {
   const escalationValue = site.rentType === 'staggered' && staggeredSchedule.length
     ? staggeredSchedule
         .filter((e) => hasValue(e?.percent))
-        .map((e, i) => `Yr${e.year ?? i + 1} ${formatPercent(e.percent)}`)
+        .map((e, i) => {
+          const yr = `Yr${e.year ?? i + 1} ${formatPercent(e.percent)}`;
+          // Per-year rev-share split (FEATURE_RENT_V2), shown only when present.
+          const split = [
+            hasValue(e?.dine_in_pct) ? `D ${formatPercent(e.dine_in_pct)}` : null,
+            hasValue(e?.delivery_pct) ? `Del ${formatPercent(e.delivery_pct)}` : null,
+          ].filter(Boolean).join('/');
+          return split ? `${yr} (${split})` : yr;
+        })
         .join(' · ') || 'NA'
     : hasValue(site.escalation)
       ? `${formatPercent(site.escalation)}${hasValue(site.escalationYears) ? ` every ${site.escalationYears} yr` : ' / yr'}`
@@ -281,6 +289,8 @@ function SiteOverviewTab({ site, editedFields = [] }) {
           <Field label="Tenure" value={formatNumber(site.tenure, ' months')} mono/>
           <Field label="Escalation" value={escalationValue} mono/>
           <Field label="Revenue share" value={formatPercent(site.revshare, ' of sales')} mono/>
+          {hasValue(site.revshareDinein) && <Field label="Dine-in share" value={formatPercent(site.revshareDinein, ' of sales')} mono/>}
+          {hasValue(site.revshareDelivery) && <Field label="Delivery share" value={formatPercent(site.revshareDelivery, ' of sales')} mono/>}
           <Field label="Security deposit" value={formatINR(site.deposit)} mono/>
           <Field label="Rent-free days" value={formatNumber(site.rentFree, ' days')} mono/>
           <Field label="Est. monthly sales" value={formatINR(site.estSales, '/mo')} mono/>

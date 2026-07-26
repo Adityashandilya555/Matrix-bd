@@ -184,6 +184,13 @@ def _apply_rent_edits(row: models.LaunchApproval, body: LaunchRentFieldsRequest)
         if field not in data:
             continue
         new_val = data[field]
+        if field == "staggered_escalation":
+            # JSONB list of {year, percent, ...}: drop null optional keys so a
+            # {year, percent} row persists exactly, then compare/store by content.
+            new_val = [
+                {k: v for k, v in item.items() if v is not None}
+                for item in (new_val or [])
+            ] or None
         old_val = getattr(row, field)
         if _norm(old_val) == _norm(new_val):
             continue
@@ -306,6 +313,9 @@ async def _build_response(
         expected_rent=_num(row.expected_rent),
         fixed_rent_amt=_num(row.fixed_rent_amt),
         rev_share_pct=_num(row.rev_share_pct),
+        revshare_dinein_pct=_num(row.revshare_dinein_pct),
+        revshare_delivery_pct=_num(row.revshare_delivery_pct),
+        staggered_escalation=row.staggered_escalation,
         escalation_pct=_num(row.escalation_pct),
         escalation_date=row.escalation_date,
         expected_escalation_years=row.expected_escalation_years,
@@ -369,6 +379,9 @@ async def svc_create_launch_approval(
         escalation_pct=_num(site.expected_escalation_pct),
         expected_escalation_years=site.expected_escalation_years,
         rev_share_pct=_num(site.expected_revshare_pct),
+        revshare_dinein_pct=_num(site.revshare_dinein_pct),
+        revshare_delivery_pct=_num(site.revshare_delivery_pct),
+        staggered_escalation=site.staggered_escalation,
     )
     if detail:
         row.fixed_rent_amt = _num(detail.fixed_rent_amt)
@@ -674,6 +687,12 @@ def _commit_rent_to_canonical(site: models.Site, detail: models.SiteDetail, row:
     site.expected_escalation_pct = row.escalation_pct
     site.expected_escalation_years = row.expected_escalation_years
     site.expected_revshare_pct = row.rev_share_pct
+    # Revenue-share split (FEATURE_RENT_V2) now flows through the launch loop (D4):
+    # write the agreed launch-stage Dine-in / Delivery split back to the canonical
+    # sites columns, so a renegotiated launch updates them like every other rent field.
+    site.revshare_dinein_pct = row.revshare_dinein_pct
+    site.revshare_delivery_pct = row.revshare_delivery_pct
+    site.staggered_escalation = row.staggered_escalation
     site.rent_set_at = now
     # site_details — detailed rent terms
     detail.rent_type = row.rent_type

@@ -53,6 +53,9 @@ def _fake_site():
         expected_escalation_pct=5,
         expected_escalation_years=3,
         expected_revshare_pct=None,
+        revshare_dinein_pct=None,
+        revshare_delivery_pct=None,
+        staggered_escalation=None,
     )
 
 

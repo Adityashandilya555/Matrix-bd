@@ -61,6 +61,7 @@ class NsoPropertySnapshot(BaseModel):
     expected_revshare_pct: Optional[float] = None
     expected_escalation_pct: Optional[float] = None
     expected_escalation_years: Optional[int] = None
+    staggered_escalation: Optional[list] = None
     score: Optional[float] = None
     estimated_monthly_sales: Optional[float] = None
     carpet_area_sqft: Optional[float] = None

@@ -63,7 +63,7 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
   const [savedFlash, setSavedFlash] = React.useState(false);
   const [err, setErr] = React.useState(null);
 
-  const RENT_KEYS = ['rent_type', 'expected_rent', 'rev_share_pct', 'escalation_pct', 'expected_escalation_years', 'rent_free_days', 'lock_in_months', 'tenure_months'];
+  const RENT_KEYS = ['rent_type', 'expected_rent', 'rev_share_pct', 'revshare_dinein_pct', 'revshare_delivery_pct', 'escalation_pct', 'expected_escalation_years', 'staggered_escalation', 'rent_free_days', 'lock_in_months', 'tenure_months'];
 
   const hydrate = React.useCallback((d) => {
     setData(d);
@@ -86,7 +86,16 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
   const handleSaveRent = async () => {
     setSaving(true); setErr(null); setSavedFlash(false);
     try {
-      hydrate(await saveLaunchRentFields(siteId, form));
+      // Drop incomplete staggered rows (a blank "Add year") so the backend's
+      // StaggeredEscalationItem (year>0, percent required) doesn't 422; send an
+      // empty/absent schedule as null when the rent isn't staggered.
+      const payload = { ...form };
+      payload.staggered_escalation = form.rent_type === 'staggered' && Array.isArray(form.staggered_escalation)
+        ? form.staggered_escalation
+            .filter((e) => e && e.year != null && e.year !== '' && e.percent != null && e.percent !== '')
+            .map((e) => ({ year: Number(e.year), percent: Number(e.percent) }))
+        : null;
+      hydrate(await saveLaunchRentFields(siteId, payload));
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2200);
     } catch (e) {
@@ -123,6 +132,11 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
     if (d.rent_type === 'fixed') return `Fixed · ${inr(d.expected_rent)}/mo · ${pct(d.escalation_pct)} every ${d.expected_escalation_years || '—'} yr`;
     if (d.rent_type === 'revshare') return `Revenue share · ${pct(d.rev_share_pct)} of sales`;
     if (d.rent_type === 'mg_revshare') return `MG ${inr(d.expected_rent)}/mo + ${pct(d.rev_share_pct)} above MG`;
+    if (d.rent_type === 'staggered') {
+      const sched = Array.isArray(d.staggered_escalation) ? d.staggered_escalation : [];
+      const years = sched.filter((e) => e && e.percent != null).map((e, i) => `Yr${e.year ?? i + 1} ${pct(e.percent)}`).join(' · ');
+      return `Staggered · base ${inr(d.expected_rent)}/mo${years ? ' · ' + years : ''}`;
+    }
     return d.rent_type;
   };
 

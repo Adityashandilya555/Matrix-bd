@@ -414,6 +414,41 @@ export default function FinancialClosureReviewPage() {
         )}
       </SectionCard>
 
+      {/* Rent terms — read-only summary (year-wise for staggered), so Financial
+          Closure sees the agreed rent that the launch loop committed. */}
+      {state?.rentType && (
+        <SectionCard title="Rent terms">
+          <FieldRow label="Rent type">
+            <span style={{ fontSize: 13 }}>
+              {({ fixed: 'Fixed + escalation', revshare: 'Revenue share', mg_revshare: 'MG + Revenue share', staggered: 'Staggered Rent with Escalation' }[state.rentType]) || state.rentType}
+            </span>
+          </FieldRow>
+          <FieldRow label={state.rentType === 'staggered' ? 'Base rent' : 'Rent / MG'}>
+            <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 13 }}>{state.expectedRent == null ? '—' : formatINR(state.expectedRent)}</span>
+          </FieldRow>
+          {state.expectedRevsharePct != null && (
+            <FieldRow label="Revenue share"><span style={{ fontSize: 13 }}>{state.expectedRevsharePct}% of sales</span></FieldRow>
+          )}
+          {state.revshareDineinPct != null && (
+            <FieldRow label="Dine-in share"><span style={{ fontSize: 13 }}>{state.revshareDineinPct}% of sales</span></FieldRow>
+          )}
+          {state.revshareDeliveryPct != null && (
+            <FieldRow label="Delivery share"><span style={{ fontSize: 13 }}>{state.revshareDeliveryPct}% of sales</span></FieldRow>
+          )}
+          {state.rentType === 'staggered' ? (
+            <FieldRow label="Escalation schedule">
+              <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 13 }}>
+                {(Array.isArray(state.staggeredEscalation) ? state.staggeredEscalation : []).filter((e) => e && e.percent != null).map((e, i) => `Yr${e.year ?? i + 1} ${e.percent}%`).join(' · ') || '—'}
+              </span>
+            </FieldRow>
+          ) : state.expectedEscalationPct != null ? (
+            <FieldRow label="Escalation">
+              <span style={{ fontSize: 13 }}>{state.expectedEscalationPct}%{state.expectedEscalationYears ? ` every ${state.expectedEscalationYears} yr` : ''}</span>
+            </FieldRow>
+          ) : null}
+        </SectionCard>
+      )}
+
       {/* Closed → explicit completion banner so the finished state is obvious. */}
       {isClosed && (
         <div className="zm-glass" style={{

@@ -125,6 +125,7 @@ async def _property_snapshot(
             details.escalation_pct if details.escalation_pct is not None else site.expected_escalation_pct
         ),
         expected_escalation_years=site.expected_escalation_years,
+        staggered_escalation=site.staggered_escalation,
         score=_num(details.score),
         estimated_monthly_sales=_num(details.estimated_monthly_sales),
         carpet_area_sqft=_num(details.carpet_area_sqft),

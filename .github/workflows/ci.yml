@@ -32,13 +32,18 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel
           pip install -e ".[dev]"
-          # PINNED. An unpinned linter means a new upstream release can turn
-          # every PR (and main) red overnight without a line of app code
-          # changing — ruff 0.16.0 did exactly that, enabling UP045/UP017/I001
-          # by default and reporting 1116 pre-existing findings on main.
-          # Adopting those rules is a deliberate repo-wide change, not
-          # something a release should force. Bump this on purpose.
-          pip install ruff==0.15.22
+          # Pin ruff. An unpinned `pip install ruff` pulled a newer release whose
+          # expanded default rule set (UP045/UP017/UP006/B008/SIM102/…) fails the
+          # WHOLE repo — 979 Optional[X] hits alone, all in files this PR never
+          # touched. Pinned to the last known-good version so CI is reproducible;
+          # bump this deliberately, paired with a repo-wide `ruff check --fix`.
+          pip install "ruff==0.15.16"
+          # Pin ruff below 0.16: that release graduated UP045/UP017/I001 (and
+          # more) into the default rule set, which floods the existing backend
+          # with 1100+ findings unrelated to any code change and turns every PR
+          # red. The 0.15.x line matches the repo's dev toolchain; adopt 0.16
+          # deliberately (with its autofixes applied) in a dedicated PR later.
+          pip install "ruff>=0.15.16,<0.16"
       - name: Ruff lint (defaults + C901 complexity gate, max-complexity 15)
         run: ruff check app
       - name: Ruff docstring gate (#241 Phase 1)
