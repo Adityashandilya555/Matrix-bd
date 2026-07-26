@@ -52,7 +52,7 @@ async def _assign_ca_code(
     """Claim a CA / Commercial Code for this site.
 
     A code belongs to exactly one site per workspace. The real guarantee is the
-    partial unique index ``uq_sites_tenant_ca_code`` (20260810) — this lookup
+    partial unique index ``uq_sites_tenant_ca_code`` (20260813) — this lookup
     exists so the common case gets a message naming the site that already holds
     the code, instead of a bare constraint error. The caller already holds the
     row lock from ``fetch_site_for_update_or_404``.

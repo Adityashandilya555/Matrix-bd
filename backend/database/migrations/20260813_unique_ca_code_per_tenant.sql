@@ -1,4 +1,4 @@
--- 20260810 — One CA / Commercial Code per site, per workspace.
+-- 20260813 — One CA / Commercial Code per site, per workspace.
 --
 -- sites.ca_code shipped as a plain nullable text column with no constraint, and
 -- neither writer (svc_save_finance_draft / svc_finance_request_approval) checked

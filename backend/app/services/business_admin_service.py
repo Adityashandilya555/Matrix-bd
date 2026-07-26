@@ -640,7 +640,7 @@ async def delete_site(
     path — this one is not recoverable, which is why the UI gates it behind two
     confirmations.
 
-    Every child table cascades from sites(id) (20260811), so the single DELETE
+    Every child table cascades from sites(id) (20260814), so the single DELETE
     tears down details, files, audit trail, delegations, legal / design / project
     / NSO / launch rows and budgets atomically. The record of the deletion itself
     is written with ``site_id=None`` — a row carrying site_id would be cascaded

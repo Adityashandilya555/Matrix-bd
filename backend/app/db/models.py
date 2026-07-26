@@ -272,7 +272,7 @@ class AuditLog(Base):
 
 
 class ReversibleAction(Base):
-    """Before-value snapshot for a whitelisted undoable action (20260806).
+    """Before-value snapshot for a whitelisted undoable action (20260812).
 
     The audit log cannot serve as the source of truth for an inverse: the
     design module records no before-state on any of its audit rows. So the

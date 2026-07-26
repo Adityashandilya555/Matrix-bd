@@ -1,6 +1,6 @@
 """A CA / Commercial Code belongs to exactly one site per workspace.
 
-Before 20260810 nothing stopped two sites carrying the same code. Because
+Before 20260813 nothing stopped two sites carrying the same code. Because
 ``site.ca_code or site.code`` becomes the display identifier once finance is
 filled in, the duplicates then showed up as the same row in every downstream
 queue — Legal, Design, Project Excellence, Project, NSO and Launch.
@@ -25,7 +25,7 @@ from app.services import finance_service as fs
 
 _MIGRATION = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "database", "migrations", "20260810_unique_ca_code_per_tenant.sql",
+    "database", "migrations", "20260813_unique_ca_code_per_tenant.sql",
 )
 
 
@@ -226,6 +226,6 @@ async def test_index_exists_on_a_provisioned_database():
         pytest.skip(f"no database available: {exc}")
 
     assert found == 1, (
-        "uq_sites_tenant_ca_code is missing — migration 20260810 did not apply. "
+        "uq_sites_tenant_ca_code is missing — migration 20260813 did not apply. "
         "Check the startup log for duplicate CA codes blocking it."
     )

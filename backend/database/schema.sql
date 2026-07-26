@@ -163,7 +163,7 @@ CREATE INDEX idx_sites_tenant_id_status ON public.sites(tenant_id, status);
 CREATE INDEX idx_sites_assigned_to ON public.sites(assigned_to);
 CREATE INDEX idx_sites_supervisor_id ON public.sites(supervisor_id);
 CREATE INDEX idx_sites_submitted_by ON public.sites(submitted_by);
--- A CA / Commercial Code belongs to exactly one site per workspace (20260810).
+-- A CA / Commercial Code belongs to exactly one site per workspace (20260813).
 -- Functional on upper() so a legacy mixed-case row still collides with its twin.
 CREATE UNIQUE INDEX uq_sites_tenant_ca_code ON public.sites(tenant_id, upper(ca_code))
   WHERE ca_code IS NOT NULL AND ca_code <> '';
@@ -256,7 +256,7 @@ CREATE INDEX idx_audit_logs_site_id_created_at ON public.audit_logs(site_id, cre
 CREATE INDEX idx_audit_logs_tenant_id_created_at ON public.audit_logs(tenant_id, created_at);
 
 -- ── reversible_actions ───────────────────────────────────────────────────────
--- Before-value snapshots for the whitelisted undoable actions (20260806).
+-- Before-value snapshots for the whitelisted undoable actions (20260812).
 -- The audit log cannot serve this purpose — design records no before-state —
 -- so the prior values are captured here at action time, the same shape that
 -- makes archive/revive work. A row existing IS the whitelist check.

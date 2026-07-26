@@ -1,4 +1,4 @@
--- 20260811 — Make a site deletable in one statement.
+-- 20260814 — Make a site deletable in one statement.
 --
 -- The business admin can now permanently delete a site (duplicate rows created
 -- by two people entering the same location, mostly). 16 of the 21 tables that
