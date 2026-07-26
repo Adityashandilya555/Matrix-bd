@@ -47,6 +47,7 @@ function propertySnapshotFromServer(row = {}) {
     expectedRevsharePct: row.expected_revshare_pct,
     expectedEscalationPct: row.expected_escalation_pct,
     expectedEscalationYears: row.expected_escalation_years,
+    staggeredEscalation: row.staggered_escalation,
     score: row.score,
     estimatedMonthlySales: row.estimated_monthly_sales,
     carpetAreaSqft: row.carpet_area_sqft,

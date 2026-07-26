@@ -55,6 +55,7 @@ def _fake_site():
         expected_revshare_pct=None,
         revshare_dinein_pct=None,
         revshare_delivery_pct=None,
+        staggered_escalation=None,
     )
 
 

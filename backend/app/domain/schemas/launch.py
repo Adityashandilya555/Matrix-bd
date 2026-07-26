@@ -25,11 +25,11 @@ site_details / sites rent columns are untouched.
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel
 
-from app.domain.schemas.site import RentType
+from app.domain.schemas.site import RentType, StaggeredEscalationItem
 
 
 # ── The editable rent set ───────────────────────────────────────────────────────
@@ -45,6 +45,7 @@ RENT_EDITABLE_FIELDS: tuple[str, ...] = (
     "escalation_pct",
     "escalation_date",
     "expected_escalation_years",
+    "staggered_escalation",
     "rent_free_days",
     "lock_in_months",
     "tenure_months",
@@ -61,6 +62,7 @@ RENT_FIELD_LABELS: dict[str, str] = {
     "escalation_pct": "Escalation %",
     "escalation_date": "Escalation date",
     "expected_escalation_years": "Escalation cadence (yrs)",
+    "staggered_escalation": "Escalation schedule",
     "rent_free_days": "Rent-free days",
     "lock_in_months": "Lock-in (months)",
     "tenure_months": "Tenure (months)",
@@ -80,6 +82,7 @@ class LaunchRentFieldsRequest(BaseModel):
     escalation_pct: Optional[float] = None
     escalation_date: Optional[date] = None
     expected_escalation_years: Optional[int] = None
+    staggered_escalation: Optional[List[StaggeredEscalationItem]] = None
     rent_free_days: Optional[int] = None
     lock_in_months: Optional[int] = None
     tenure_months: Optional[int] = None
@@ -171,6 +174,7 @@ class LaunchApprovalResponse(BaseModel):
     escalation_pct: Optional[float] = None
     escalation_date: Optional[date] = None
     expected_escalation_years: Optional[int] = None
+    staggered_escalation: Optional[list] = None
     rent_free_days: Optional[int] = None
     lock_in_months: Optional[int] = None
     tenure_months: Optional[int] = None

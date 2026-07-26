@@ -68,6 +68,16 @@ class FCStateResponse(BaseModel):
     total_indoor_area_sqft: Optional[float] = None
     total_area_sqft: Optional[float] = None
     covers: Optional[int] = None
+    # Canonical rent terms (read-only) — surfaced so Financial Closure can show the
+    # agreed rent, including the year-wise staggered escalation schedule.
+    rent_type: Optional[str] = None
+    expected_rent: Optional[float] = None
+    expected_revshare_pct: Optional[float] = None
+    revshare_dinein_pct: Optional[float] = None
+    revshare_delivery_pct: Optional[float] = None
+    expected_escalation_pct: Optional[float] = None
+    expected_escalation_years: Optional[int] = None
+    staggered_escalation: Optional[list] = None
     lines: list[FCBudgetLineOut] = Field(default_factory=list)
     supervisor_comments: Optional[str] = None
     admin_comments: Optional[str] = None

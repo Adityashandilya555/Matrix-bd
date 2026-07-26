@@ -142,6 +142,14 @@ function PropertySnapshotPanel({ snapshot = {} }) {
           value={maskPercent(snapshot.expectedEscalationPct)}
           mono
         />
+        {snapshot.rentType === 'staggered' && Array.isArray(snapshot.staggeredEscalation) && snapshot.staggeredEscalation.length > 0 && (
+          <SnapshotItem
+            label="Escalation schedule"
+            value={snapshot.staggeredEscalation.filter((e) => e && e.percent != null).map((e, i) => `Yr${e.year ?? i + 1} ${maskPercent(e.percent)}`).join(' · ') || '—'}
+            mono
+            wide
+          />
+        )}
         <SnapshotItem label="Score" value={snapshotValue(snapshot.score)} mono />
         <SnapshotItem label="Est. sales" value={maskMoney(snapshot.estimatedMonthlySales)} mono />
         <SnapshotItem label="Carpet area" value={snapshotValue(snapshot.carpetAreaSqft, ' sqft')} mono />
