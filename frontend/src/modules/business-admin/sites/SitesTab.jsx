@@ -44,7 +44,7 @@ function ReviveDialog({ site, onCancel, onConfirm, busy }) {
 // the data is gone for good. Both are dismissible; only the second one calls the
 // API. Same overlay/surface treatment as ReviveDialog so the portal reads as one
 // piece, with the danger palette reserved for the final step.
-function DeleteSiteDialog({ site, step, onCancel, onAdvance, onConfirm, busy }) {
+function DeleteSiteDialog({ site, step, onCancel, onAdvance, onConfirm, busy, error }) {
   if (!site) return null;
   const isFinal = step === 2;
   const label = `${site.siteName}${site.siteCode ? ` (${site.siteCode})` : ''}`;
@@ -68,6 +68,13 @@ function DeleteSiteDialog({ site, step, onCancel, onAdvance, onConfirm, busy }) 
           </div>
           <button onClick={onCancel} disabled={busy} aria-label="Close" className="zm-icon-btn" style={{ background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)', borderRadius: 8, width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--zm-fg-2)', cursor: busy ? 'not-allowed' : 'pointer' }}><Icon.x size={14}/></button>
         </div>
+        {error && (
+          <div role="alert" style={{ padding: '10px 12px', borderRadius: 8, background: cmSolid(T.danger, 8),
+            border: `1px solid ${cm(T.danger, 30)}`, color: T.danger,
+            fontFamily: 'var(--zm-font-body)', fontSize: 12.5, lineHeight: 1.5 }}>
+            {error}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onCancel} disabled={busy} className="zm-btn"
             style={{ height: 36, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: busy ? 'not-allowed' : 'pointer' }}>
@@ -518,6 +525,10 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
   const [reviving, setReviving] = React.useState(null);
   // { site, step } — step 1 is "are you sure", step 2 is the point of no return.
   const [deleting, setDeleting] = React.useState(null);
+  // Surfaced INSIDE the dialog. A toast alone is wrong here: the modal stays
+  // open on failure, so a toast that fades leaves it looking hung with no
+  // stated reason — which is exactly how this read as 'stuck'.
+  const [deleteError, setDeleteError] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
   const { showToast } = usePageContext() || {};
 
@@ -555,14 +566,23 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
 
   const onDeleteConfirm = async (site) => {
     setBusy(true);
+    setDeleteError(null);
     try {
       await deleteSite(site.siteId);
       setDeleting(null);
       showToast?.(`Deleted · ${site.siteName} and all its data are gone`);
       onRetry?.(true); // reload sites
     } catch (err) {
-      // The backend is specific about refusals; pass its text through.
-      showToast?.(err?.detail || err?.message || 'Could not delete site', 'danger');
+      // The backend is specific about refusals; pass its text through. A 404
+      // means the API has not been redeployed with this endpoint yet — worth
+      // saying plainly rather than leaving the admin to guess.
+      const detail = err?.detail || err?.message || 'Could not delete site';
+      setDeleteError(
+        err?.status === 404
+          ? `${detail} — the delete endpoint is not live on the server yet.`
+          : detail,
+      );
+      showToast?.(detail, 'danger');
     } finally {
       setBusy(false);
     }
@@ -683,8 +703,9 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
           site={deleting.site}
           step={deleting.step}
           busy={busy}
-          onCancel={() => { if (!busy) setDeleting(null); }}
-          onAdvance={() => setDeleting((d) => ({ ...d, step: 2 }))}
+          error={deleteError}
+          onCancel={() => { if (!busy) { setDeleting(null); setDeleteError(null); } }}
+          onAdvance={() => { setDeleteError(null); setDeleting((d) => ({ ...d, step: 2 })); }}
           onConfirm={onDeleteConfirm}
         />
       )}
