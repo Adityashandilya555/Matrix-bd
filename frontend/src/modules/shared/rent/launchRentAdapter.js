@@ -1,28 +1,33 @@
 // skipcq: JS-0833
-/**
- * launchRentAdapter — the form-boundary translation that lets RentTermsFormV2
- * (canonical snake_case, FEATURE_RENT_V2) drive the two launch-review EDIT
- * surfaces (LaunchReviewModal, LaunchApprovalTab), whose form state and the
- * PATCH /launch-approvals/{id}/rent-fields body speak the launch_approvals
- * staging keys.
- *
- * The two surfaces are near-duplicates (identical RENT_KEYS / hydrate / save),
- * so the shared hydrate + payload builders live here once. Keeping `form` in
- * launch keys end-to-end means rentSummary() (which reads the server record, not
- * `form`) and the save endpoint need no changes.
- *
- * The ONLY key that differs between the two contracts is the escalation percent:
- *
- *     launch / backend  escalation_pct  <->  RentTermsFormV2  expected_escalation_pct
- *
- * Everything else — rent_type, expected_rent, rev_share_pct, the dine-in/delivery
- * split, staggered_escalation, expected_escalation_years, rent_free_days,
- * lock_in_months, tenure_months — is already the same name on both sides.
- *
- * This is the third consumer of the established "rentV2Value + RENT_V2_TO_*" idiom
- * (App.jsx, AddDetailsPage.jsx); it lives in one module here because the two
- * launch files are duplicates.
- */
+// launchRentAdapter — the form-boundary translation that lets RentTermsFormV2
+// (canonical snake_case, FEATURE_RENT_V2) drive the two launch-review EDIT
+// surfaces (LaunchReviewModal, LaunchApprovalTab), whose form state and the
+// PATCH /launch-approvals/{id}/rent-fields body speak the launch_approvals
+// staging keys.
+//
+// The two surfaces are near-duplicates (identical RENT_KEYS / hydrate / save),
+// so the shared hydrate + payload builders live here once. Keeping `form` in
+// launch keys end-to-end means rentSummary() (which reads the server record, not
+// `form`) and the save endpoint need no changes.
+//
+// The ONLY key that differs between the two contracts is the escalation percent:
+//
+//     launch / backend  escalation_pct  <->  RentTermsFormV2  expected_escalation_pct
+//
+// Everything else — rent_type, expected_rent, rev_share_pct, the dine-in/delivery
+// split, staggered_escalation, expected_escalation_years, rent_free_days,
+// lock_in_months, tenure_months — is already the same name on both sides.
+//
+// This is the third consumer of the established "rentV2Value + RENT_V2_TO_*" idiom
+// (App.jsx, AddDetailsPage.jsx); it lives in one module here because the two
+// launch files are duplicates.
+//
+// COMMENT STYLE: line comments only, no JSDoc blocks. DeepSource's JavaScript
+// analyzer parses a newly-added file containing a JSDoc block as a script rather
+// than a module and reports JS-0833 at its first import/export — and because that
+// is a PARSE failure, skipcq cannot suppress it (see .deepsource.toml). Every new
+// frontend module that passes the analyzer (lib/mime.js, ImageLightbox.jsx,
+// LOIDialog.jsx) has this exact shape: the marker on line 1, then // comments.
 
 // The launch-approvals rent staging keys the surfaces hydrate + submit. A subset
 // of the backend RENT_EDITABLE_FIELDS (13): fixed_rent_amt / escalation_date are
@@ -39,11 +44,9 @@ export const LAUNCH_RENT_KEYS = [
 const LAUNCH_TO_V2 = { escalation_pct: 'expected_escalation_pct' };
 const V2_TO_LAUNCH = { expected_escalation_pct: 'escalation_pct' };
 
-/**
- * Launch form state → the value RentTermsFormV2 reads. Renames escalation_pct to
- * expected_escalation_pct and DELETES the old key, so a stray read of the wrong
- * name renders blank (loud) rather than half-working (silent).
- */
+// Launch form state -> the value RentTermsFormV2 reads. Renames escalation_pct to
+// expected_escalation_pct and DELETES the old key, so a stray read of the wrong
+// name renders blank (loud) rather than half-working (silent).
 export function toV2Value(form) {
   const out = { ...(form || {}) };
   for (const [launchKey, v2Key] of Object.entries(LAUNCH_TO_V2)) {
@@ -55,14 +58,12 @@ export function toV2Value(form) {
   return out;
 }
 
-/**
- * A key RentTermsFormV2 emits → the launch form / payload key. Unlike App.jsx's
- * map (which silently drops anything unmapped), an unknown key PASSES THROUGH and
- * logs — the silent drop is the exact bug this work fixes. The backend's
- * extra="forbid" then turns a genuinely-unknown key into a loud 422 instead of a
- * discarded 200-OK no-op. The key-set lock test asserts nothing V2 emits is
- * unknown, so this console.error is a canary that only fires on a future rename.
- */
+// A key RentTermsFormV2 emits -> the launch form / payload key. Unlike App.jsx's
+// map (which silently drops anything unmapped), an unknown key PASSES THROUGH and
+// logs — the silent drop is the exact bug this work fixes. The backend's
+// extra="forbid" then turns a genuinely-unknown key into a loud 422 instead of a
+// discarded 200-OK no-op. The key-set lock test asserts nothing V2 emits is
+// unknown, so this console.error is a canary that only fires on a future rename.
 export function fromV2Key(key) {
   if (key in V2_TO_LAUNCH) return V2_TO_LAUNCH[key];
   if (!LAUNCH_RENT_KEYS.includes(key)) {
@@ -73,22 +74,21 @@ export function fromV2Key(key) {
   return key;
 }
 
-/** Shared hydrate body: pick just the rent keys off the server record. */
+// Shared hydrate body: pick just the rent keys off the server record.
 export function pickLaunchRentFields(d) {
   const f = {};
   LAUNCH_RENT_KEYS.forEach((k) => { f[k] = d?.[k] ?? null; });
   return f;
 }
 
-/**
- * Shared payload builder for saveLaunchRentFields. It:
- *  - drops incomplete staggered rows (a blank "Add year") so the backend's
- *    StaggeredEscalationItem (year>0, percent required) doesn't 422;
- *  - PRESERVES the per-year dine-in/delivery split (V1's builder stripped every
- *    row to {year, percent}, silently discarding the split V2 collects);
- *  - sends an absent/empty schedule as null when the rent isn't staggered;
- *  - clears a stale single rev-share % when the type is no longer rev-share.
- */
+// Shared payload builder for saveLaunchRentFields. It:
+//  - drops incomplete staggered rows (a blank "Add year") so the backend's
+//    StaggeredEscalationItem (year>0, percent required) doesn't 422;
+//  - PRESERVES the per-year dine-in/delivery split (V1's builder stripped every
+//    row to {year, percent}, silently discarding the split V2 collects);
+//  - sends an absent/empty schedule as null when the rent isn't staggered;
+//  - clears values the user can no longer see, so the final confirm cannot write
+//    them onto the canonical site (the two blocks at the end).
 export function buildLaunchRentPayload(form) {
   const payload = { ...(form || {}) };
   payload.staggered_escalation =

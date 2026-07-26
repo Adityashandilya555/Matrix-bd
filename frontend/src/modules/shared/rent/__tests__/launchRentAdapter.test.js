@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 // launchRentAdapter — the form-boundary translation between RentTermsFormV2's
 // canonical snake_case contract and the launch_approvals staging keys the two
 // launch-edit surfaces hydrate + submit. These lock the round-trip, the per-year
@@ -9,7 +10,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   LAUNCH_RENT_KEYS, toV2Value, fromV2Key, pickLaunchRentFields, buildLaunchRentPayload,
-} from '../launchRentAdapter.jsx';
+} from '../launchRentAdapter.js';
 
 describe('launchRentAdapter — key translation', () => {
   it('renames escalation_pct -> expected_escalation_pct for the form, deleting the old key', () => {
