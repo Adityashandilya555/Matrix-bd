@@ -1,9 +1,16 @@
 import React from 'react';
 import Icon from '../shared/primitives/Icon.jsx';
 import RentTermsForm, { ZM_TOKENS } from '../shared/rent/RentTermsForm.jsx';
+import RentTermsFormV2 from '../shared/rent/RentTermsFormV2.jsx';
+import { toV2Value, fromV2Key, pickLaunchRentFields, buildLaunchRentPayload } from '../shared/rent/launchRentAdapter.js';
 import {
   getLaunchApproval, saveLaunchRentFields, execReview, supervisorReview,
 } from '../../services/api/launchApprovalApi.js';
+
+// Configurable rent-type UI (FEATURE_RENT_V2). Inlined per the USE_MOCK
+// convention (see App.jsx). Flag OFF → the old four-card RentTermsForm renders
+// unchanged, which is the rollback.
+const FEATURE_RENT_V2 = import.meta.env.VITE_FEATURE_RENT_V2 === 'true';
 
 // LaunchReviewModal — the BD-side review surface for the post-NSO validation loop.
 //
@@ -63,13 +70,9 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
   const [savedFlash, setSavedFlash] = React.useState(false);
   const [err, setErr] = React.useState(null);
 
-  const RENT_KEYS = ['rent_type', 'expected_rent', 'rev_share_pct', 'revshare_dinein_pct', 'revshare_delivery_pct', 'escalation_pct', 'expected_escalation_years', 'staggered_escalation', 'rent_free_days', 'lock_in_months', 'tenure_months'];
-
   const hydrate = React.useCallback((d) => {
     setData(d);
-    const f = {};
-    RENT_KEYS.forEach((k) => { f[k] = d[k] ?? null; });
-    setForm(f);
+    setForm(pickLaunchRentFields(d));
   }, []);
 
   React.useEffect(() => {
@@ -82,20 +85,14 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
   }, [siteId, hydrate]);
 
   const handleRentChange = (key, val) => setForm((f) => ({ ...f, [key]: val }));
+  // RentTermsFormV2 speaks the canonical snake_case contract; translate its keys
+  // back to the launch staging keys the form state + PATCH body use.
+  const handleRentV2Change = (key, val) => handleRentChange(fromV2Key(key), val);
 
   const handleSaveRent = async () => {
     setSaving(true); setErr(null); setSavedFlash(false);
     try {
-      // Drop incomplete staggered rows (a blank "Add year") so the backend's
-      // StaggeredEscalationItem (year>0, percent required) doesn't 422; send an
-      // empty/absent schedule as null when the rent isn't staggered.
-      const payload = { ...form };
-      payload.staggered_escalation = form.rent_type === 'staggered' && Array.isArray(form.staggered_escalation)
-        ? form.staggered_escalation
-            .filter((e) => e && e.year != null && e.year !== '' && e.percent != null && e.percent !== '')
-            .map((e) => ({ year: Number(e.year), percent: Number(e.percent) }))
-        : null;
-      hydrate(await saveLaunchRentFields(siteId, payload));
+      hydrate(await saveLaunchRentFields(siteId, buildLaunchRentPayload(form)));
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2200);
     } catch (e) {
@@ -197,7 +194,12 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
                   <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>Current</span>
                   <div style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 600, color: 'var(--zm-fg)', marginTop: 2 }}>{rentSummary()}</div>
                 </div>
-                <RentTermsForm value={form} onChange={handleRentChange} readOnly={!isSupervisor} tokens={ZM_TOKENS} />
+                {FEATURE_RENT_V2 ? (
+                  <RentTermsFormV2 value={toV2Value(form)} onChange={handleRentV2Change}
+                    readOnly={!isSupervisor} tokens={ZM_TOKENS} showRentLinkedTerms legacyMode="edit" />
+                ) : (
+                  <RentTermsForm value={form} onChange={handleRentChange} readOnly={!isSupervisor} tokens={ZM_TOKENS} />
+                )}
                 {isSupervisor && (
                   <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
                     <button onClick={handleSaveRent} disabled={saving} className="zm-btn" style={{ height: 34, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: saving ? 'wait' : 'pointer' }}>
