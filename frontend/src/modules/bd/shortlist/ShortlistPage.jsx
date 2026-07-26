@@ -5,7 +5,7 @@ import { usePageContext } from '../../../App.jsx';
 import { can } from '../../../rbac/permissions.js';
 import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Icon from '../../shared/primitives/Icon.jsx';
-import StatusPill from '../../shared/primitives/StatusPill.jsx';
+import StatusPill, { StageDot } from '../../shared/primitives/StatusPill.jsx';
 import AddDetailsPage from '../../loi/details/AddDetailsPage.jsx';
 import * as siteService from '../../../services/api/siteService.js';
 import { listMyTeam } from '../../../services/api/adapters/httpAdapter.js';
@@ -378,31 +378,33 @@ function ShortlistCard({ item, role, onView, onAddDetails, onApprove, onDelegate
   const hasSupEdits = supEdits.length > 0;
   return (
     <div data-site-id={item.code} style={{
-      background: hasSupEdits ? 'rgba(217,119,6,0.05)' : 'var(--zm-surface)',
+      background: 'var(--zm-surface)',
       border: '1px solid ' + (hasSupEdits ? 'rgba(217,119,6,0.45)' : 'var(--zm-line)'),
-      borderRadius: 12, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, boxShadow: 'var(--zm-shadow-1)',
+      borderRadius: 14, overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: 'var(--zm-shadow-1)',
     }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-        <div style={{ width: 64, height: 64, borderRadius: 10, flex: '0 0 64px', background: `linear-gradient(135deg, hsl(${item.hue} 30% 80%), hsl(${item.hue+30} 30% 60%))` }}/>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11, color: 'var(--zm-fg-3)' }}>{item.code}</span>
-            {reviewable ? <StatusPill stage="inReview"/> : <StatusPill stage="shortlist"/>}
-            {hasSupEdits && (
-              <span title="A supervisor edited this site's details" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999, background: 'rgba(217,119,6,0.12)', border: '1px solid rgba(217,119,6,0.40)', color: '#B45309', fontFamily: 'var(--zm-font-body)', fontSize: 10.5, fontWeight: 700 }}>
-                <EyeIcon size={11}/> Supervisor edited {supEdits.length}
-              </span>
-            )}
+      {/* Header band — identity · status · score on a tonal strip. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '13px 18px', background: hasSupEdits ? 'rgba(217,119,6,0.06)' : 'var(--zm-surface-2)', borderBottom: '1px solid ' + (hasSupEdits ? 'rgba(217,119,6,0.30)' : 'var(--zm-line)') }}>
+        <StageDot stage={reviewable ? 'inReview' : 'shortlist'} size={9}/>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h3 style={{ margin: 0, fontFamily: 'var(--zm-font-display)', fontWeight: 650, fontSize: 16.5, letterSpacing: '-0.01em', color: 'var(--zm-fg)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</h3>
+          <span style={{ display: 'block', marginTop: 1, fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <span style={{ fontFamily: 'var(--zm-font-mono)', color: 'var(--zm-fg-4)' }}>{item.code}</span> · {item.city} · Visit {item.visitDate} · by {item.createdBy}
           </span>
-          <h3 style={{ margin: 0, fontFamily: 'var(--zm-font-display)', fontWeight: 600, fontSize: 17, color: 'var(--zm-fg)' }}>{item.name}</h3>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg-3)' }}>{item.city} · Visit {item.visitDate} · Created by {item.createdBy}</span>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-          <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>Score</span>
-          <span style={{ fontFamily: 'var(--zm-font-mono)', fontWeight: 600, fontSize: 22, color: item.score >= 4 ? 'var(--zm-success)' : 'var(--zm-fg)' }}>{item.score || '—'}</span>
+        {hasSupEdits && (
+          <span title="A supervisor edited this site's details" style={{ flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999, background: 'rgba(217,119,6,0.12)', border: '1px solid rgba(217,119,6,0.40)', color: '#B45309', fontFamily: 'var(--zm-font-body)', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
+            <EyeIcon size={11}/> Supervisor edited {supEdits.length}
+          </span>
+        )}
+        {reviewable ? <StatusPill stage="inReview"/> : <StatusPill stage="shortlist"/>}
+        <div style={{ flex: '0 0 auto', textAlign: 'right', paddingLeft: 2 }}>
+          <div style={{ fontFamily: 'var(--zm-font-display)', fontWeight: 750, fontSize: 19, lineHeight: 1, color: item.score >= 4 ? 'var(--zm-success)' : 'var(--zm-fg)' }}>{item.score || '—'}</div>
+          <div style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-fg-4)', marginTop: 2 }}>Score</div>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0, padding: '10px 0', borderTop: '1px solid var(--zm-line-faint)', borderBottom: '1px solid var(--zm-line-faint)' }}>
+      {/* Body — metrics + actions on the clean surface. */}
+      <div style={{ padding: '15px 18px 16px', display: 'flex', flexDirection: 'column', gap: 15 }}>
+      <div style={{ display: 'flex', gap: 30, rowGap: 12, flexWrap: 'wrap' }}>
         {[['Est. sales', item.estSales ? `₹${(Number(item.estSales) / 100000).toFixed(1)} L/mo` : '—'], ['Carpet', item.carpet ? `${item.carpet} sqft` : '—'], ['Total op', item.totalOpCost ? `₹${Math.round(Number(item.totalOpCost) / 1000)} k/mo` : '—'], ['Rent type', item.rentType === 'fixed' ? 'Fixed + esc.' : item.rentType === 'revshare' ? 'Rev share' : item.rentType === 'mg_revshare' ? 'MG + rev share' : '—']].map(([k, v]) => (
           <div key={k} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 10.5, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>{k}</span><span style={{ fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 14, fontWeight: 600, color: 'var(--zm-fg)' }}>{v}</span></div>
         ))}
@@ -438,6 +440,7 @@ function ShortlistCard({ item, role, onView, onAddDetails, onApprove, onDelegate
         ) : (
           <span style={{ padding: '6px 10px', borderRadius: 7, background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-fg-3)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="alert" size={12}/> Add 17 fields then Send for review</span>
         )}
+      </div>
       </div>
     </div>
   );
