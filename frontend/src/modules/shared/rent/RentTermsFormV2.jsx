@@ -73,7 +73,16 @@ function Field({ t, label, children }) {
   );
 }
 
-export default function RentTermsFormV2({ value = {}, onChange, readOnly = false, tokens = ZM_TOKENS, showCadence = true }) {
+export default function RentTermsFormV2({
+  value = {}, onChange, readOnly = false, tokens = ZM_TOKENS, showCadence = true,
+  // Launch-review surfaces only. Both default off so App.jsx (creation) and
+  // AddDetailsPage (detail filing) stay byte-identical in behaviour.
+  //   showRentLinkedTerms — render the always-on Rent-free days / Lock-in /
+  //     Tenure trio V1 shows for every rent type (the launch loop edits them).
+  //   legacyMode='edit'   — edit a real revshare / mg_revshare row in place
+  //     (Convert still offered) instead of the read-only 'convert'-only summary.
+  showRentLinkedTerms = false, legacyMode = 'convert',
+}) {
   const t = tokens;
   const v = value || {};
   const set = (k) => (val) => onChange?.(k, val);
@@ -147,6 +156,43 @@ export default function RentTermsFormV2({ value = {}, onChange, readOnly = false
     >{label}</button>
   );
 
+  // ── Field fragments shared across the fixed / staggered / legacy-edit paths ──
+  // Factored out so the legacy-EDIT branch renders the SAME REV SHARE toggle,
+  // Dine-in/Delivery split and cadence — R-A: V1 rendered the split for every
+  // rent type (RentTermsForm.jsx, gated only on the flag), so a V2 legacy edit
+  // must not silently drop it.
+  const revShareToggle = (
+    <label className="rt-switch" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: readOnly ? 'default' : 'pointer', fontFamily: t.fontBody, fontWeight: 600, fontSize: 12.5, color: t.fg, userSelect: 'none' }}>
+      <input
+        type="checkbox" checked={revShareOn} disabled={readOnly} onChange={toggleRevShare}
+        style={{ width: 34, height: 20, appearance: 'none', WebkitAppearance: 'none', cursor: readOnly ? 'default' : 'pointer', borderRadius: 999, position: 'relative', background: revShareOn ? t.accent : t.lineStrong, transition: 'background .15s', flex: '0 0 34px' }}
+      />
+      REV SHARE — add Dine-in % / Delivery % split
+    </label>
+  );
+  const flatSplitPair = revShareOn ? (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <Field t={t} label="Dine-in share"><NumBox t={t} value={v.revshare_dinein_pct} onChange={set('revshare_dinein_pct')} suffix="% of sales" max={100} placeholder="e.g. 8" readOnly={readOnly} /></Field>
+      <Field t={t} label="Delivery share"><NumBox t={t} value={v.revshare_delivery_pct} onChange={set('revshare_delivery_pct')} suffix="% of sales" max={100} placeholder="e.g. 5" readOnly={readOnly} /></Field>
+    </div>
+  ) : null;
+  const cadenceField = showCadence ? (
+    <Field t={t} label="Escalation cadence">
+      <div style={{ display: 'flex', gap: 6 }}>
+        {CADENCE.map((opt) => {
+          const selected = String(v.expected_escalation_years) === String(opt.years);
+          return (
+            <button
+              type="button" key={opt.years} disabled={readOnly}
+              onClick={() => !readOnly && onChange?.('expected_escalation_years', opt.years)}
+              style={{ flex: 1, height: 38, borderRadius: 6, border: `1px solid ${selected ? t.accent : t.line}`, background: selected ? t.accentSoft : t.bg, color: selected ? t.accent : t.fg, fontFamily: t.fontBody, fontWeight: 600, fontSize: 13, cursor: readOnly ? 'default' : 'pointer', opacity: readOnly && !selected ? 0.6 : 1 }}
+            >{opt.label}</button>
+          );
+        })}
+      </div>
+    </Field>
+  ) : null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {isLegacy ? (
@@ -154,21 +200,53 @@ export default function RentTermsFormV2({ value = {}, onChange, readOnly = false
           <span style={{ fontFamily: t.fontBody, fontWeight: 600, fontSize: 12.5, color: t.fg }}>
             Legacy rent type: {rentType === 'revshare' ? 'Revenue share' : 'MG + Revenue share'}
           </span>
-          <span style={{ fontFamily: t.fontMono, fontSize: 12, color: t.fgMuted }}>
-            {rentType === 'mg_revshare' && _has(v.expected_rent) ? `MG ₹${v.expected_rent} · ` : ''}
-            Revenue share {_has(v.rev_share_pct) ? `${v.rev_share_pct}%` : '—'}
-          </span>
-          {!readOnly && (
-            <>
-              <span style={{ fontFamily: t.fontBody, fontSize: 11, color: t.fgFaint }}>
-                This form configures flat / staggered rent. Convert to migrate — the revenue-share terms are replaced and the change is logged.
-              </span>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {seg(false, 'Convert to flat', chooseFlat)}
-                {seg(false, 'Convert to staggered', chooseStaggered)}
-              </div>
-            </>
-          )}
+          {legacyMode === 'edit' ? (
+            // Editable in place (launch loop): real revshare / mg_revshare rows are
+            // renegotiated here, not forced through a destructive Convert. Convert
+            // stays available below for migrating to the flat / staggered model.
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {rentType === 'revshare' && (
+                <Field t={t} label="Revenue share"><NumBox t={t} value={v.rev_share_pct} onChange={set('rev_share_pct')} suffix="% of sales" max={100} placeholder="e.g. 12.5" readOnly={readOnly} /></Field>
+              )}
+              {rentType === 'mg_revshare' && (<>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <Field t={t} label="Minimum guarantee"><NumBox t={t} value={v.expected_rent} onChange={set('expected_rent')} prefix="₹" suffix="/mo" placeholder="80000" readOnly={readOnly} /></Field>
+                  <Field t={t} label="Revenue share"><NumBox t={t} value={v.rev_share_pct} onChange={set('rev_share_pct')} suffix="% above MG" max={100} placeholder="e.g. 12.5" readOnly={readOnly} /></Field>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <Field t={t} label="Escalation"><NumBox t={t} value={v.expected_escalation_pct} onChange={set('expected_escalation_pct')} suffix="%" max={100} placeholder="e.g. 4.5" readOnly={readOnly} /></Field>
+                  {cadenceField}
+                </div>
+              </>)}
+              {revShareToggle}
+              {flatSplitPair}
+              {!readOnly && (<>
+                <span style={{ fontFamily: t.fontBody, fontSize: 11, color: t.fgFaint }}>
+                  Or convert to the flat / staggered model — the revenue-share terms are replaced and the change is logged.
+                </span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {seg(false, 'Convert to flat', chooseFlat)}
+                  {seg(false, 'Convert to staggered', chooseStaggered)}
+                </div>
+              </>)}
+            </div>
+          ) : (<>
+            <span style={{ fontFamily: t.fontMono, fontSize: 12, color: t.fgMuted }}>
+              {rentType === 'mg_revshare' && _has(v.expected_rent) ? `MG ₹${v.expected_rent} · ` : ''}
+              Revenue share {_has(v.rev_share_pct) ? `${v.rev_share_pct}%` : '—'}
+            </span>
+            {!readOnly && (
+              <>
+                <span style={{ fontFamily: t.fontBody, fontSize: 11, color: t.fgFaint }}>
+                  This form configures flat / staggered rent. Convert to migrate — the revenue-share terms are replaced and the change is logged.
+                </span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {seg(false, 'Convert to flat', chooseFlat)}
+                  {seg(false, 'Convert to staggered', chooseStaggered)}
+                </div>
+              </>
+            )}
+          </>)}
         </div>
       ) : (<>
       {/* Is the rent staggered? */}
@@ -183,15 +261,7 @@ export default function RentTermsFormV2({ value = {}, onChange, readOnly = false
         </div>
       </div>
 
-      {rentType && (
-        <label className="rt-switch" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: readOnly ? 'default' : 'pointer', fontFamily: t.fontBody, fontWeight: 600, fontSize: 12.5, color: t.fg, userSelect: 'none' }}>
-          <input
-            type="checkbox" checked={revShareOn} disabled={readOnly} onChange={toggleRevShare}
-            style={{ width: 34, height: 20, appearance: 'none', WebkitAppearance: 'none', cursor: readOnly ? 'default' : 'pointer', borderRadius: 999, position: 'relative', background: revShareOn ? t.accent : t.lineStrong, transition: 'background .15s', flex: '0 0 34px' }}
-          />
-          REV SHARE — add Dine-in % / Delivery % split
-        </label>
-      )}
+      {rentType && revShareToggle}
 
       {/* No → flat rent */}
       {rentType === 'fixed' && (
@@ -200,28 +270,8 @@ export default function RentTermsFormV2({ value = {}, onChange, readOnly = false
             <Field t={t} label="Rent (monthly)"><NumBox t={t} value={v.expected_rent} onChange={set('expected_rent')} prefix="₹" suffix="/mo" placeholder="120000" readOnly={readOnly} /></Field>
             <Field t={t} label="Escalation"><NumBox t={t} value={v.expected_escalation_pct} onChange={set('expected_escalation_pct')} suffix="%" max={100} placeholder="e.g. 4.5" readOnly={readOnly} /></Field>
           </div>
-          {showCadence && (
-            <Field t={t} label="Escalation cadence">
-              <div style={{ display: 'flex', gap: 6 }}>
-                {CADENCE.map((opt) => {
-                  const selected = String(v.expected_escalation_years) === String(opt.years);
-                  return (
-                    <button
-                      type="button" key={opt.years} disabled={readOnly}
-                      onClick={() => !readOnly && onChange?.('expected_escalation_years', opt.years)}
-                      style={{ flex: 1, height: 38, borderRadius: 6, border: `1px solid ${selected ? t.accent : t.line}`, background: selected ? t.accentSoft : t.bg, color: selected ? t.accent : t.fg, fontFamily: t.fontBody, fontWeight: 600, fontSize: 13, cursor: readOnly ? 'default' : 'pointer', opacity: readOnly && !selected ? 0.6 : 1 }}
-                    >{opt.label}</button>
-                  );
-                })}
-              </div>
-            </Field>
-          )}
-          {revShareOn && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <Field t={t} label="Dine-in share"><NumBox t={t} value={v.revshare_dinein_pct} onChange={set('revshare_dinein_pct')} suffix="% of sales" max={100} placeholder="e.g. 8" readOnly={readOnly} /></Field>
-              <Field t={t} label="Delivery share"><NumBox t={t} value={v.revshare_delivery_pct} onChange={set('revshare_delivery_pct')} suffix="% of sales" max={100} placeholder="e.g. 5" readOnly={readOnly} /></Field>
-            </div>
-          )}
+          {cadenceField}
+          {flatSplitPair}
         </div>
       )}
 
@@ -257,6 +307,16 @@ export default function RentTermsFormV2({ value = {}, onChange, readOnly = false
         </div>
       )}
       </>)}
+
+      {/* Always-on rent-linked terms (launch loop). Outside the legacy/non-legacy
+          ternary so they render for every rent type, exactly as V1 did. */}
+      {showRentLinkedTerms && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+          <Field t={t} label="Rent-free days"><NumBox t={t} value={v.rent_free_days} onChange={set('rent_free_days')} suffix="days" placeholder="optional" readOnly={readOnly} /></Field>
+          <Field t={t} label="Lock-in"><NumBox t={t} value={v.lock_in_months} onChange={set('lock_in_months')} suffix="months" placeholder="optional" readOnly={readOnly} /></Field>
+          <Field t={t} label="Tenure"><NumBox t={t} value={v.tenure_months} onChange={set('tenure_months')} suffix="months" placeholder="optional" readOnly={readOnly} /></Field>
+        </div>
+      )}
     </div>
   );
 }

@@ -27,7 +27,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.domain.schemas.site import RentType, StaggeredEscalationItem
 
@@ -73,6 +73,14 @@ RENT_FIELD_LABELS: dict[str, str] = {
 
 class LaunchRentFieldsRequest(BaseModel):
     """Partial update of the rent-only staging fields (admin / supervisor)."""
+    # extra="forbid": an unknown key — e.g. a future V2 form field not yet threaded
+    # through, or the pre-fix `expected_escalation_pct` rename — becomes a 422 that
+    # names the field, not a silent 200-OK no-op that discards the edit while
+    # reporting success. Both callers send a subset of RENT_EDITABLE_FIELDS, so the
+    # blast radius is nil. NOT applied to StaggeredEscalationItem, which is shared
+    # with CreateDraftRequest and deliberately tolerates a superset.
+    model_config = ConfigDict(extra="forbid")
+
     rent_type: Optional[RentType] = None
     expected_rent: Optional[float] = None
     fixed_rent_amt: Optional[float] = None

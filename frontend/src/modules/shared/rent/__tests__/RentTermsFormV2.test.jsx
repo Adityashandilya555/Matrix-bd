@@ -66,4 +66,41 @@ describe('RentTermsFormV2', () => {
     fireEvent.click(screen.getByText('Convert to staggered'));
     expect(onChange).toHaveBeenCalledWith('rent_type', 'staggered');
   });
+
+  // ── Launch-review props (showRentLinkedTerms / legacyMode) ────────────────
+  it('renders the Rent-free / Lock-in / Tenure trio only when showRentLinkedTerms is set', () => {
+    const { rerender } = render(<RentTermsFormV2 value={{ rent_type: 'fixed' }} onChange={vi.fn()} />);
+    expect(screen.queryByText('Rent-free days')).toBeNull(); // locks create/detail unaffected
+    rerender(<RentTermsFormV2 value={{ rent_type: 'fixed' }} onChange={vi.fn()} showRentLinkedTerms />);
+    expect(screen.getByText('Rent-free days')).toBeTruthy();
+    expect(screen.getByText('Lock-in')).toBeTruthy();
+    expect(screen.getByText('Tenure')).toBeTruthy();
+  });
+
+  it('emits a rent-linked term edit and renders the trio outside the legacy ternary', () => {
+    const onChange = vi.fn();
+    // rent_type: 'revshare' proves the trio renders for a legacy type too.
+    render(<RentTermsFormV2 value={{ rent_type: 'revshare', rent_free_days: 30 }} onChange={onChange} showRentLinkedTerms legacyMode="edit" />);
+    expect(screen.getByText('Rent-free days')).toBeTruthy();
+    fireEvent.change(screen.getByDisplayValue('30'), { target: { value: '45' } });
+    expect(onChange).toHaveBeenCalledWith('rent_free_days', 45);
+  });
+
+  it('legacyMode="edit" edits mg_revshare in place — MG, cadence, REV SHARE toggle, and Convert', () => {
+    const onChange = vi.fn();
+    render(<RentTermsFormV2 value={{ rent_type: 'mg_revshare', expected_rent: 90000, rev_share_pct: 12, expected_escalation_pct: 4 }} onChange={onChange} legacyMode="edit" />);
+    // Editable MG box (not a read-only summary span).
+    fireEvent.change(screen.getByDisplayValue('90000'), { target: { value: '95000' } });
+    expect(onChange).toHaveBeenCalledWith('expected_rent', 95000);
+    expect(screen.getByText('Escalation cadence')).toBeTruthy();      // cadence kept (V1 parity)
+    expect(screen.getByRole('checkbox')).toBeTruthy();                // R-A: split reachable
+    expect(screen.getByText('Convert to staggered')).toBeTruthy();    // Convert still offered
+  });
+
+  it('legacyMode="edit" edits the revshare percent in place', () => {
+    const onChange = vi.fn();
+    render(<RentTermsFormV2 value={{ rent_type: 'revshare', rev_share_pct: 12 }} onChange={onChange} legacyMode="edit" />);
+    fireEvent.change(screen.getByDisplayValue('12'), { target: { value: '15' } });
+    expect(onChange).toHaveBeenCalledWith('rev_share_pct', 15);
+  });
 });
