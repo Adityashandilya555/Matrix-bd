@@ -137,4 +137,31 @@ describe('the delete itself', () => {
     expect(onRetry).not.toHaveBeenCalled();
     expect(screen.getByText('Blue Tokai Summit')).toBeInTheDocument();
   });
+
+  it('shows the reason INSIDE the dialog, not only as a toast', async () => {
+    // The dialog stays open on failure by design (so you can retry), which made
+    // a toast-only error read as "the button did nothing" once the toast faded.
+    deleteSite.mockRejectedValue({ detail: 'Site not found' });
+    const user = userEvent.setup();
+    await openFirstDialog(user);
+    await user.click(screen.getByRole('button', { name: 'Yes' }));
+    await user.click(screen.getByRole('button', { name: /delete permanently/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Site not found');
+    // ...and it must still be dismissable — "stuck" was the actual complaint.
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('button', { name: /delete permanently/i })).toBeNull();
+  });
+
+  it('names a 404 as a not-yet-deployed endpoint', async () => {
+    // The frontend ships ahead of the API often enough that a bare "Not Found"
+    // sends people hunting through their own data instead of the deploy.
+    deleteSite.mockRejectedValue({ status: 404, detail: 'Not Found' });
+    const user = userEvent.setup();
+    await openFirstDialog(user);
+    await user.click(screen.getByRole('button', { name: 'Yes' }));
+    await user.click(screen.getByRole('button', { name: /delete permanently/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/not live on the server yet/i);
+  });
 });
