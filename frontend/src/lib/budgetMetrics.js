@@ -3,8 +3,19 @@
 // derived, read-only ratios shown alongside the 11-line site budget
 // (Project Excellence, Project, Business Admin approval, Financial Closure).
 
-// Indices (1-based) whose sum feeds the "Civil, Interior & MEP" metric.
-export const CIVIL_MEP_IDX = [2, 3, 4, 5, 8];
+// Indices (1-based) whose sum feeds the "Civil, Interior & MEP" (fitout) metric:
+// HVAC (2) + Civil & Interiors (4). Matches the Budget J.P. Nagar sheet's
+// "Per sqft fitout" row.
+//
+// This used to be [2, 3, 4, 5, 8], which also swept in Furniture/Light (3),
+// Kitchen Equipment (5) and Utilities (8). None of those are fitout, and the
+// extra ₹45.4L inflated the J.P. Nagar figure to ₹6,196/sqft against the sheet's
+// ₹2,632. Furniture belongs to the separate FITOUT_FURNITURE_IDX metric below.
+export const CIVIL_MEP_IDX = [2, 4];
+
+// Fitout + Furniture/Light: the above + Furniture, Light & Planters (3). Matches
+// the sheet's "Per sqft fitout + Furniture/Light" row.
+export const FITOUT_FURNITURE_IDX = [2, 3, 4];
 
 export function sumByIdx(items, idxList, amountKey = 'amount') {
   const list = items || [];
@@ -49,19 +60,25 @@ export function formatRatio(numerator, divisor) {
   return formatINR(ratio);
 }
 
-// The 3 derived metrics shared across Project Excellence, Project, Business
+// The 4 derived metrics shared across Project Excellence, Project, Business
 // Admin approval, and Financial Closure. Returns both the formatted display
 // string and the raw numeric ratio (for callers that need to diff two
 // snapshots, e.g. Financial Closure's GFC-vs-actual comparison).
+//
+// Not yet wired in — the four surfaces each inline sumByIdx + formatRatio. Kept
+// in lockstep with them so it stays correct for whoever does wire it up.
 export function computeDerivedMetrics({ items, totalIndoorAreaSqft, totalAreaSqft, covers, amountKey = 'amount' }) {
   const budgetTotal = computeBudgetTotal(items, amountKey);
   const civilMepSum = sumByIdx(items, CIVIL_MEP_IDX, amountKey);
+  const fitoutFurnitureSum = sumByIdx(items, FITOUT_FURNITURE_IDX, amountKey);
   return {
     budgetTotal,
     civilMepPerSqft: formatRatio(civilMepSum, totalIndoorAreaSqft),
+    fitoutFurniturePerSqft: formatRatio(fitoutFurnitureSum, totalIndoorAreaSqft),
     capexPerSqft: formatRatio(budgetTotal, totalAreaSqft),
     capexPerCover: formatRatio(budgetTotal, covers),
     civilMepPerSqftRaw: computeRatio(civilMepSum, totalIndoorAreaSqft),
+    fitoutFurniturePerSqftRaw: computeRatio(fitoutFurnitureSum, totalIndoorAreaSqft),
     capexPerSqftRaw: computeRatio(budgetTotal, totalAreaSqft),
     capexPerCoverRaw: computeRatio(budgetTotal, covers),
   };
