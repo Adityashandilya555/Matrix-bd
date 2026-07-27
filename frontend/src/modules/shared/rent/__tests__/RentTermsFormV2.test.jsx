@@ -4,6 +4,9 @@
 // optional REV SHARE dine-in/delivery split. Emits the canonical snake_case keys.
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import RentTermsFormV2 from '../RentTermsFormV2.jsx';
 
 describe('RentTermsFormV2', () => {
@@ -26,7 +29,7 @@ describe('RentTermsFormV2', () => {
   it('REV SHARE toggle reveals the flat split and emits dine-in %', () => {
     const onChange = vi.fn();
     render(<RentTermsFormV2 value={{ rent_type: 'fixed', expected_rent: 120000 }} onChange={onChange} />);
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('switch'));
     fireEvent.change(screen.getByPlaceholderText('e.g. 8'), { target: { value: '9' } });
     expect(onChange).toHaveBeenCalledWith('revshare_dinein_pct', 9);
   });
@@ -35,7 +38,7 @@ describe('RentTermsFormV2', () => {
     const onChange = vi.fn();
     // Pre-seeded split => the switch starts on; one click turns it off.
     render(<RentTermsFormV2 value={{ rent_type: 'fixed', revshare_dinein_pct: 9, revshare_delivery_pct: 4 }} onChange={onChange} />);
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('switch'));
     expect(onChange).toHaveBeenCalledWith('revshare_dinein_pct', null);
     expect(onChange).toHaveBeenCalledWith('revshare_delivery_pct', null);
   });
@@ -54,7 +57,7 @@ describe('RentTermsFormV2', () => {
 
   it('renders REV SHARE OFF when the split values are empty strings (#5)', () => {
     render(<RentTermsFormV2 value={{ rent_type: 'fixed', revshare_dinein_pct: '', revshare_delivery_pct: '' }} onChange={vi.fn()} />);
-    expect(screen.getByRole('checkbox').checked).toBe(false);
+    expect(screen.getByRole('switch')).not.toBeChecked();
   });
 
   it('shows a legacy branch + convert action for revshare/mg_revshare (#7)', () => {
@@ -93,7 +96,7 @@ describe('RentTermsFormV2', () => {
     fireEvent.change(screen.getByDisplayValue('90000'), { target: { value: '95000' } });
     expect(onChange).toHaveBeenCalledWith('expected_rent', 95000);
     expect(screen.getByText('Escalation cadence')).toBeTruthy();      // cadence kept (V1 parity)
-    expect(screen.getByRole('checkbox')).toBeTruthy();                // R-A: split reachable
+    expect(screen.getByRole('switch')).toBeTruthy();                // R-A: split reachable
     expect(screen.getByText('Convert to staggered')).toBeTruthy();    // Convert still offered
   });
 
@@ -102,5 +105,89 @@ describe('RentTermsFormV2', () => {
     render(<RentTermsFormV2 value={{ rent_type: 'revshare', rev_share_pct: 12 }} onChange={onChange} legacyMode="edit" />);
     fireEvent.change(screen.getByDisplayValue('12'), { target: { value: '15' } });
     expect(onChange).toHaveBeenCalledWith('rev_share_pct', 15);
+  });
+});
+
+// The REV SHARE control shipped as a bare coloured pill: .rt-switch had no CSS
+// rules at all, so the knob it reserved space for never existed and the only
+// state signal was hue. These lock the parts of that fix that are observable in
+// jsdom — which, with vitest's css:false, means DOM structure and data-*, never
+// computed style.
+describe('RentTermsFormV2 — the REV SHARE switch', () => {
+  const renderToggle = (props = {}) =>
+    render(<RentTermsFormV2 value={{ rent_type: 'fixed' }} onChange={vi.fn()} {...props} />);
+
+  it('announces itself as a switch, not a checkbox', () => {
+    renderToggle();
+    expect(screen.getByRole('switch')).toBeTruthy();
+  });
+
+  it('has a thumb, and moves it rather than only recolouring', () => {
+    const { container } = renderToggle();
+    const track = container.querySelector('.rt-switch__track');
+    expect(container.querySelector('.rt-switch__thumb')).toBeTruthy();
+    expect(track.dataset.on).toBe('false');
+
+    fireEvent.click(screen.getByRole('switch'));
+    // revShareOn is internal state, so the flip is observable without a re-render
+    // from the parent. This is the assertion the old markup could not support at
+    // all: there was no thumb and no state attribute, only a background colour.
+    expect(track.dataset.on).toBe('true');
+  });
+
+  it('reflects the on state on the track', () => {
+    const { container } = renderToggle({ value: { rent_type: 'fixed', revshare_dinein_pct: 8 } });
+    expect(container.querySelector('.rt-switch__track').dataset.on).toBe('true');
+  });
+
+  it('marks the track disabled when the form is read-only', () => {
+    const { container } = renderToggle({ readOnly: true });
+    expect(container.querySelector('.rt-switch__track').dataset.disabled).toBe('true');
+    expect(screen.getByRole('switch')).toBeDisabled();
+  });
+
+  it('keeps the input focusable — never display:none / visibility:hidden', () => {
+    // Hiding it either of those ways would drop it from the a11y tree, taking
+    // getByRole and keyboard focus with it.
+    const { container } = renderToggle();
+    const input = container.querySelector('.rt-switch__input');
+    input.focus();
+    expect(document.activeElement).toBe(input);
+  });
+});
+
+describe('RentTermsFormV2 — switch styling lives in CSS, not inline', () => {
+  // vitest sets css:false, so the stylesheet is never evaluated in jsdom. Reading
+  // the source is the only way to assert on it — the same technique
+  // RentTermsForm.test.jsx already uses against colors_and_type.css.
+  const read = (rel) =>
+    readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), rel), 'utf8');
+
+  it('defines the switch in rent-terms.css', () => {
+    const css = read('../rent-terms.css');
+    expect(css).toMatch(/\.rt-switch__thumb\s*\{/);
+    expect(css).toMatch(/\.rt-switch__track\[data-on='true'\]/);
+  });
+
+  it('cancels the thumb transition under prefers-reduced-motion', () => {
+    const css = read('../rent-terms.css');
+    const block = css.slice(css.indexOf('@media (prefers-reduced-motion'));
+    expect(block).toContain('.rt-switch__thumb');
+    expect(block).toContain('.rt-switch__track');
+  });
+
+  it('keeps the transition OUT of the inline style', () => {
+    // This is the whole point of moving it: a CSS `transition: none` cannot
+    // override an inline one, so the reduced-motion block above would be inert.
+    expect(read('../RentTermsFormV2.jsx')).not.toMatch(/transition:\s*'background/);
+  });
+
+  it('never sets border-color on the switch', () => {
+    // The business-admin portal's .ac-interactive:hover uses
+    // `border-color: ... !important`, so a border must not carry state here.
+    const css = read('../rent-terms.css');
+    const block = css.slice(css.indexOf('.rt-switch__control'))
+      .replace(/\/\*[\s\S]*?\*\//g, '');   // prose may mention it; declarations may not
+    expect(block).not.toMatch(/border-color\s*:/);
   });
 });
