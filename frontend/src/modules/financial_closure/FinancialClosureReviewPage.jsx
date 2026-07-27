@@ -534,7 +534,7 @@ export default function FinancialClosureReviewPage() {
           paddingBottom: 8, borderBottom: '1px solid var(--zm-line)',
         }}>
           <div />
-          {['GFC', 'Closure actual', 'Variation'].map((h) => (
+          {['Budget', 'Closure actual', 'Variation'].map((h) => (
             <div key={h} style={{
               fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase',
               color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', textAlign: 'right',
@@ -653,7 +653,7 @@ export default function FinancialClosureReviewPage() {
             paddingBottom: 8, borderBottom: '1px solid var(--zm-line)',
           }}>
             <div />
-            {['GFC', 'Closure actual', 'Variation'].map((h) => (
+            {['Budget', 'Closure actual', 'Variation'].map((h) => (
               <div key={h} style={{
                 fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase',
                 color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', textAlign: 'right',

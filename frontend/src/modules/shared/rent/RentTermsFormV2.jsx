@@ -36,7 +36,7 @@ function Label({ t, children }) {
   return <label style={{ fontFamily: t.fontBody, fontWeight: 600, fontSize: 12, color: t.fg }}>{children}</label>;
 }
 
-function NumBox({ t, value, onChange, prefix, suffix, placeholder, readOnly, flex = 1, max }) {
+function NumBox({ t, value, onChange, prefix, suffix, placeholder, readOnly, flex = 1, max, big = false }) {
   // Hold raw keystrokes locally so a decimal like "4.5" isn't collapsed to "4"
   // mid-typing, while still emitting the coerced number immediately (no blur
   // race). Re-sync only when the external value truly diverges from what's shown
@@ -51,13 +51,13 @@ function NumBox({ t, value, onChange, prefix, suffix, placeholder, readOnly, fle
     onChange(s === '' ? null : Number(s));
   };
   return (
-    <div className="rt-field" style={{ flex, display: 'flex', alignItems: 'stretch', height: 38, border: `1px solid ${t.line}`, borderRadius: 6, background: readOnly ? t.surface2 : t.bg, overflow: 'hidden', minWidth: 0 }}>
+    <div className="rt-field" style={{ flex, display: 'flex', alignItems: 'stretch', height: big ? 46 : 38, border: `1px solid ${t.line}`, borderRadius: big ? 8 : 6, background: readOnly ? t.surface2 : t.bg, overflow: 'hidden', minWidth: 0 }}>
       {prefix && <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: t.fgFaint, fontFamily: t.fontMono, fontSize: 12, background: t.surface2, borderRight: `1px solid ${t.line}` }}>{prefix}</span>}
       <input
         type="number" min="0" max={max} step="any" inputMode="decimal"
         value={raw} placeholder={placeholder} readOnly={readOnly}
         onChange={handle}
-        style={{ flex: 1, border: 'none', outline: 'none', padding: '0 10px', background: 'transparent', fontFamily: t.fontMono, fontFeatureSettings: "'tnum' 1", fontSize: 13.5, color: readOnly ? t.fgMuted : t.fg, width: '100%', minWidth: 0 }}
+        style={{ flex: 1, border: 'none', outline: 'none', padding: big ? '0 14px' : '0 10px', background: 'transparent', fontFamily: t.fontMono, fontFeatureSettings: "'tnum' 1", fontSize: big ? 15 : 13.5, color: readOnly ? t.fgMuted : t.fg, width: '100%', minWidth: 0 }}
       />
       {suffix && <span style={{ padding: '0 10px', display: 'flex', alignItems: 'center', color: t.fgFaint, fontFamily: t.fontMono, fontSize: 12, background: t.surface2, borderLeft: `1px solid ${t.line}`, whiteSpace: 'nowrap' }}>{suffix}</span>}
     </div>
@@ -280,7 +280,7 @@ export default function RentTermsFormV2({
       {/* Yes → staggered */}
       {rentType === 'staggered' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Field t={t} label="Base rent"><NumBox t={t} value={v.expected_rent} onChange={set('expected_rent')} prefix="₹" suffix="/mo" placeholder="Base monthly rent" readOnly={readOnly} /></Field>
+          <Field t={t} label="Base rent"><NumBox t={t} value={v.expected_rent} onChange={set('expected_rent')} prefix="₹" suffix="/mo" placeholder="Base monthly rent" readOnly={readOnly} big /></Field>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Label t={t}>Escalation schedule{revShareOn ? ' · per-year rev share' : ''}</Label>

@@ -760,7 +760,7 @@ function ClosureBlock({ site, fetchDetail, fetchDocuments, fetchQAReports, onFin
         <div style={{ display: 'grid', gap: 4, marginBottom: 12 }}>
           <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, fontSize: 10, color: T.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em', paddingBottom: 4, borderBottom: `1px solid ${T.line}` }}>
             <span/>
-            {['GFC', 'Actual', 'Var'].map((h) => <span key={h} style={{ textAlign: 'right' }}>{h}</span>)}
+            {['Budget', 'Actual', 'Var'].map((h) => <span key={h} style={{ textAlign: 'right' }}>{h}</span>)}
           </div>
           {lines.map((it) => (
             <div key={it.idx} style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, fontSize: 12, alignItems: 'baseline' }}>

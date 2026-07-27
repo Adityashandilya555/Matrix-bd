@@ -2,6 +2,7 @@ import React from 'react';
 import Icon from '../shared/primitives/Icon.jsx';
 import RentTermsForm, { ZM_TOKENS } from '../shared/rent/RentTermsForm.jsx';
 import RentTermsFormV2 from '../shared/rent/RentTermsFormV2.jsx';
+import RentScheduleButton from '../shared/rent/RentScheduleDialog.jsx';
 import { toV2Value, fromV2Key, pickLaunchRentFields, buildLaunchRentPayload } from '../shared/rent/launchRentAdapter.js';
 import {
   getLaunchApproval, saveLaunchRentFields, execReview, supervisorReview,
@@ -192,7 +193,10 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
                 <SectionLabel>Rent terms {isSupervisor && <span style={{ color: 'var(--zm-accent)' }}>· editable</span>}</SectionLabel>
                 <div style={{ padding: '10px 14px', borderRadius: 10, background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', marginBottom: 14 }}>
                   <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>Current</span>
-                  <div style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 600, color: 'var(--zm-fg)', marginTop: 2 }}>{rentSummary()}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 2, flexWrap: 'wrap' }}>
+                    <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 600, color: 'var(--zm-fg)' }}>{rentSummary()}</span>
+                    {d?.rent_type === 'staggered' && <RentScheduleButton schedule={d.staggered_escalation} baseRent={d.expected_rent} tokens={ZM_TOKENS} />}
+                  </div>
                 </div>
                 {FEATURE_RENT_V2 ? (
                   <RentTermsFormV2 value={toV2Value(form)} onChange={handleRentV2Change}

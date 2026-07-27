@@ -55,7 +55,7 @@ export default function FinancialClosureQueuePage() {
   useSiteDataRefresh(reload, { sources: ['financial_closure', 'businessAdmin', 'project'] });
 
   const open = (row) => navigate(projectFinancialClosureSiteRoute(row.siteId));
-  const COLS = '120px minmax(220px, 1fr) 130px 150px 150px 150px 130px';
+  const COLS = '120px minmax(220px, 1fr) 130px 150px 150px 150px 160px';
 
   const statusCounts = STATUS_FILTERS.reduce((acc, f) => {
     acc[f.key] = items.filter((row) => row.financialClosureStatus === f.key).length;
@@ -124,7 +124,7 @@ export default function FinancialClosureQueuePage() {
             <span>Site</span>
             <span>City</span>
             <span>Closure status</span>
-            <span style={{ textAlign: 'right' }}>GFC total</span>
+            <span style={{ textAlign: 'right' }}>Budget total</span>
             <span style={{ textAlign: 'right' }}>Closure total</span>
             <span style={{ textAlign: 'right' }}>Variation</span>
           </div>
