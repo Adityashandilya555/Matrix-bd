@@ -11,12 +11,35 @@ import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 import { usePagedList } from '../../hooks/usePagedList.js';
 import { useFocusSite } from '../../hooks/useFocusSite.js';
 import { keyActivate } from '../../lib/a11y.js';
+import { formatINR, formatVariation, variationTone } from '../../lib/budgetMetrics.js';
+import { TABULAR } from '../business-admin/ui/kit.jsx';
 
+// sites.financial_closure_status — the workflow stage. Drives the filter pills.
 const STATUS_LABELS = {
   open: 'Open',
   allocated: 'Allocated',
   budgeting: 'Budgeting',
   closed: 'Closed',
+};
+
+// site_budgets.status — the closure budget row's own state. A DIFFERENT vocabulary,
+// and the CLOSURE STATUS column reads this one. The column used to be looked up in
+// STATUS_LABELS above, so every lookup missed and it fell through to the raw token
+// ("pending_supervisor"). The two are meant to differ; they just shared one map.
+const CLOSURE_BUDGET_LABELS = {
+  draft: 'Draft',
+  pending_supervisor: 'Supervisor',
+  pending_admin: 'Admin',
+  approved: 'Approved',
+  rejected: 'Rejected',
+};
+
+const CLOSURE_BUDGET_TONES = {
+  draft: 'var(--zm-fg-3)',
+  pending_supervisor: 'var(--zm-warning)',
+  pending_admin: 'var(--zm-warning)',
+  approved: 'var(--zm-success)',
+  rejected: 'var(--zm-danger)',
 };
 
 const STATUS_FILTERS = [
@@ -26,7 +49,11 @@ const STATUS_FILTERS = [
   { key: 'closed',    label: 'Closed',    color: 'var(--zm-success)' },
 ];
 
-const fmtMoney = (value) => (value == null ? '-' : Number(value).toLocaleString());
+// formatINR(null) is Rs0, not a dash — Number(null) is 0 and finite. On a financial
+// screen "no data" must not read as "zero rupees", so guard before formatting.
+// Matches FinancialClosureReviewPage, which already does exactly this.
+const fmtMoney = (value) => (value == null ? '—' : formatINR(value));
+const fmtVariation = (value) => (value == null ? '—' : formatVariation(value));
 
 function StatusPill({ value, tone = 'var(--zm-accent)' }) {
   return (
@@ -55,7 +82,14 @@ export default function FinancialClosureQueuePage() {
   useSiteDataRefresh(reload, { sources: ['financial_closure', 'businessAdmin', 'project'] });
 
   const open = (row) => navigate(projectFinancialClosureSiteRoute(row.siteId));
-  const COLS = '120px minmax(220px, 1fr) 130px 150px 150px 150px 160px';
+  // 890px of tracks + 6 gaps x 12 + 32 padding = 994, which fits a 1280 viewport
+  // beside the 232px sidebar. The old set totalled 1184 and overflowed anything
+  // under ~1480. MIN_TABLE_W must be applied to the header AND the rows: the
+  // header is a column-flex item inside the horizontal scroller, so without it it
+  // stretches to the VISIBLE width, compresses its tracks below their minimums and
+  // misaligns against rows that don't.
+  const COLS = '110px minmax(180px, 1fr) 110px 120px 120px 120px 130px';
+  const MIN_TABLE_W = 890 + 6 * 12 + 32;
 
   const statusCounts = STATUS_FILTERS.reduce((acc, f) => {
     acc[f.key] = items.filter((row) => row.financialClosureStatus === f.key).length;
@@ -113,9 +147,17 @@ export default function FinancialClosureQueuePage() {
       </div>
 
       {status === 'ready' && visibleItems.length > 0 && (
-        <div className="zm-glass" style={{ borderRadius: 12, overflow: 'hidden', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div className="zm-glass" style={{
+          // overflowX on the CARD, not the body: the header row is a sibling of the
+          // scroller, so with the scroll on the body the header was clipped by
+          // overflow:hidden and desynced from the columns on horizontal scroll.
+          // Longhand after the shorthand => x:auto, y:hidden. Matches ProjectQueuePage.
+          borderRadius: 12, overflow: 'hidden', overflowX: 'auto',
+          flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
+        }}>
           <div style={{
             display: 'grid', gridTemplateColumns: COLS, gap: 12, padding: '12px 16px',
+            minWidth: MIN_TABLE_W,
             background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)',
             fontFamily: 'var(--zm-font-body)', fontWeight: 800, fontSize: 10.5,
             letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)',
@@ -129,12 +171,13 @@ export default function FinancialClosureQueuePage() {
             <span style={{ textAlign: 'right' }}>Variation</span>
           </div>
 
-          <div style={{ overflowY: 'auto', overflowX: 'auto', flex: 1, minHeight: 0 }}>
+          <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
             {visibleItems.map((row) => {
-              const variation = row.variationTotal == null ? null : Number(row.variationTotal);
-            const variationTone = variation == null || variation === 0
-              ? 'var(--zm-fg-2)'
-              : variation > 0 ? 'var(--zm-danger)' : 'var(--zm-success)';
+              // Was a local `const variationTone`, which shadowed the import of the
+              // same name and made the shared helper unreachable.
+              const varTone = row.variationTotal == null
+                ? 'var(--zm-fg-3)'
+                : variationTone(row.variationTotal);
             return (
               <div
                 key={row.siteId}
@@ -145,7 +188,7 @@ export default function FinancialClosureQueuePage() {
                 onClick={() => open(row)}
                 onKeyDown={keyActivate(() => open(row))}
                 style={{
-                  display: 'grid', gridTemplateColumns: COLS, gap: 12,
+                  display: 'grid', gridTemplateColumns: COLS, gap: 12, minWidth: MIN_TABLE_W,
                   padding: '14px 16px', borderBottom: '1px solid var(--zm-line-faint)',
                   cursor: 'pointer', alignItems: 'center',
                 }}
@@ -164,15 +207,18 @@ export default function FinancialClosureQueuePage() {
                   )}
                 </span>
                 <span style={{ color: 'var(--zm-fg-2)' }}>{row.city}</span>
-                <StatusPill value={STATUS_LABELS[row.closureStatus] || row.closureStatus}/>
-                <span style={{ textAlign: 'right', fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>
+                <StatusPill
+                  value={CLOSURE_BUDGET_LABELS[row.closureStatus] || row.closureStatus}
+                  tone={CLOSURE_BUDGET_TONES[row.closureStatus] || 'var(--zm-accent)'}
+                />
+                <span style={{ textAlign: 'right', fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, color: 'var(--zm-fg-2)', ...TABULAR }}>
                   {fmtMoney(row.gfcBudgetTotal)}
                 </span>
-                <span style={{ textAlign: 'right', fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>
+                <span style={{ textAlign: 'right', fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, color: 'var(--zm-fg-2)', ...TABULAR }}>
                   {fmtMoney(row.closureBudgetTotal)}
                 </span>
-                <span style={{ textAlign: 'right', fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, fontWeight: 800, color: variationTone }}>
-                  {fmtMoney(row.variationTotal)}
+                <span style={{ textAlign: 'right', fontFamily: 'var(--zm-font-mono)', fontSize: 12.5, fontWeight: 800, color: varTone, ...TABULAR }}>
+                  {fmtVariation(row.variationTotal)}
                 </span>
               </div>
             );
