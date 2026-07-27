@@ -17,7 +17,7 @@ import {
 } from '../../services/api/projectExcellenceApi.js';
 import { ROUTES } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
-import { CIVIL_MEP_IDX, formatRatio, sumByIdx } from '../../lib/budgetMetrics.js';
+import { CIVIL_MEP_IDX, FITOUT_FURNITURE_IDX, formatRatio, sumByIdx } from '../../lib/budgetMetrics.js';
 
 const DEFAULT_BUDGET = [
   'Professional Fees',
@@ -314,6 +314,7 @@ export default function ProjectExcellenceReviewPage() {
 
   const budgetTotal = budgetItems.reduce((s, item) => s + (Number(item.amount) || 0), 0);
   const civilMepSum = sumByIdx(budgetItems, CIVIL_MEP_IDX);
+  const fitoutFurnitureSum = sumByIdx(budgetItems, FITOUT_FURNITURE_IDX);
   const canEditBudget = !isBusinessAdmin && state?.budgetStatus && ['draft', 'rejected'].includes(state.budgetStatus);
   const canSupervisorReview = isSupervisor && state?.budgetStatus === 'pending_supervisor';
   const canAdminReview = isBusinessAdmin && state?.budgetStatus === 'pending_admin';
@@ -457,6 +458,10 @@ export default function ProjectExcellenceReviewPage() {
           <MetricField
             label="Civil, Interior & MEP Cost per sqft"
             value={formatRatio(civilMepSum, areaFields.total_indoor_area_sqft)}
+          />
+          <MetricField
+            label="Fitout + Furniture/Light per sqft"
+            value={formatRatio(fitoutFurnitureSum, areaFields.total_indoor_area_sqft)}
           />
           <MetricField
             label="CAPEX Cost per sqft"

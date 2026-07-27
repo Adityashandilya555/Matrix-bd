@@ -22,7 +22,7 @@ import {
 } from '../../services/api/projectApi.js';
 import { ROUTES } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
-import { CIVIL_MEP_IDX, formatRatio, sumByIdx } from '../../lib/budgetMetrics.js';
+import { CIVIL_MEP_IDX, FITOUT_FURNITURE_IDX, formatRatio, sumByIdx } from '../../lib/budgetMetrics.js';
 
 const DEFAULT_BUDGET = [
   'Professional Fees',
@@ -287,6 +287,7 @@ export default function ProjectReviewPage() {
   const review = state.review;
   const budgetTotal = budget.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
   const civilMepSum = sumByIdx(budget, CIVIL_MEP_IDX);
+  const fitoutFurnitureSum = sumByIdx(budget, FITOUT_FURNITURE_IDX);
   // Payload shared by every save/submit path so the area / cover inputs always
   // travel with the budget items.
   const budgetPayload = {
@@ -478,6 +479,10 @@ export default function ProjectReviewPage() {
               <MetricField
                 label="Civil, Interior & MEP Cost per sqft"
                 value={formatRatio(civilMepSum, areaInputs.total_indoor_area_sqft)}
+              />
+              <MetricField
+                label="Fitout + Furniture/Light per sqft"
+                value={formatRatio(fitoutFurnitureSum, areaInputs.total_indoor_area_sqft)}
               />
               <MetricField
                 label="CAPEX Cost per sqft"
