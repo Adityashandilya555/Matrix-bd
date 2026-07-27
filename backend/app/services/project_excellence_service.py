@@ -31,7 +31,7 @@ from app.domain.schemas.project_excellence import (
     SavePEBudgetRequest,
 )
 from app.services import budget_service, project_service
-from app.services._common import count_rows, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_name
+from app.services._common import count_rows, display_code, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_name
 from app.services.audit_service import write_audit_event
 from app.services._common import actor_is_business_admin
 from app.services.delegation_service import svc_is_delegated
@@ -155,7 +155,7 @@ def _queue_item(
 ) -> PEQueueItem:
     return PEQueueItem(
         site_id=str(site.id),
-        site_code=site.ca_code or site.code or "",
+        site_code=display_code(site),
         site_name=site.name,
         city=site.city,
         project_status=site.project_status or "pending",
@@ -173,7 +173,7 @@ async def _build_response(
     delegate = await _active_pe_delegate(session, site_id=site.id)
     return PEStateResponse(
         site_id=str(site.id),
-        site_code=site.ca_code or site.code or "",
+        site_code=display_code(site),
         site_name=site.name,
         city=site.city,
         tenant_id=str(site.tenant_id),

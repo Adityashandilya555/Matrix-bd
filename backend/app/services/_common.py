@@ -50,6 +50,26 @@ def make_site_code(city: str) -> str:
     return f"BT-{prefix}-{suffix}"
 
 
+def display_code(site) -> str:
+    """The one code a user should ever see for a site.
+
+    A site carries two. `code` is minted once at draft creation by
+    make_site_code() above; `ca_code` is the commercial code Finance enters by
+    hand later, and supersedes it everywhere once present.
+
+    That resolution used to be spelled out at ~30 call sites and had already been
+    retrofitted module-by-module in three separate commits — which is exactly how
+    Launch ended up showing BT-BEG-XFDF for a site every other module called 201.
+    Route new response-shaping code through here.
+
+    Duck-typed rather than a Site property on purpose: the service tests build
+    their sites as SimpleNamespace stand-ins, and a model-bound property would
+    force every one of those fixtures (and every future one) to remember a field
+    that is pure derivation.
+    """
+    return getattr(site, "ca_code", None) or getattr(site, "code", None) or ""
+
+
 # ── Scoped fetch ───────────────────────────────────────────────────────────
 
 async def fetch_site_or_404(

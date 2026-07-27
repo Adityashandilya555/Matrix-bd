@@ -56,7 +56,7 @@ from app.domain.schemas.design import (
     SubmitDeliverableRequest,
 )
 from app.services.storage_service import signed_url as storage_signed_url
-from app.services._common import actor_can_supervise, actor_is_business_admin, count_rows, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_name, fetch_user_names
+from app.services._common import actor_can_supervise, actor_is_business_admin, count_rows, display_code, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_is_delegated
 from app.services import budget_service
@@ -211,7 +211,7 @@ async def _build_design_response(
     ]
     return DesignReviewResponse(
         site_id=str(site.id),
-        site_code=site.ca_code or site.code or "",
+        site_code=display_code(site),
         site_name=site.name,
         city=site.city,
         submitted_by_name=submitted_by_name,
@@ -321,7 +321,7 @@ async def svc_design_queue(
         submitted_by_name = names.get(site.submitted_by, "")
         items.append(DesignQueueItem(
             site_id=str(site.id),
-            site_code=site.ca_code or site.code or "",
+            site_code=display_code(site),
             site_name=site.name,
             city=site.city,
             design_status=site.design_status or "pending",
@@ -410,7 +410,7 @@ async def svc_design_history(
         submitted_by_name = names.get(site.submitted_by)
         items.append(DesignHistoryItem(
             site_id=str(site.id),
-            site_code=site.ca_code or site.code or "",
+            site_code=display_code(site),
             site_name=site.name,
             city=site.city,
             submitted_by_name=submitted_by_name,
@@ -1604,7 +1604,7 @@ async def svc_design_gfc_queue(
         submitted_by_name = names.get(site.submitted_by)
         items.append(DesignGfcQueueItem(
             site_id=str(site.id),
-            site_code=site.ca_code or site.code or "",
+            site_code=display_code(site),
             site_name=site.name,
             city=site.city,
             boq_estimated_amount=(
