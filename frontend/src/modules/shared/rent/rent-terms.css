@@ -44,9 +44,74 @@
   box-shadow: var(--zm-ring-focus);
 }
 
+/* REV SHARE switch.
+ *
+ * The control used to be a bare <input> with an inline background and
+ * `position: relative` anchoring a thumb that was never written — .rt-switch had
+ * no rules at all. With appearance:none stripping the native tick, the result was
+ * a flat pill whose only state signal was hue: a WCAG 1.4.1 failure, and the old
+ * off-track (--zm-line-strong, #CBD5E1) sat at 1.35:1 on white besides.
+ *
+ * State is now carried by thumb POSITION as well as colour, and the geometry
+ * lives here rather than inline so the reduced-motion block below can actually
+ * cancel it — a CSS `transition: none` cannot override an inline transition.
+ */
+.rt-switch__control {
+  position: relative;
+  flex: 0 0 34px;
+  height: 20px;
+}
+/* opacity, never display:none/visibility:hidden — those drop the input from the
+   accessibility tree, taking getByRole and keyboard focus with it. */
+.rt-switch__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+.rt-switch__track {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--zm-r-pill);
+  transition: background-color var(--zm-dur-1) var(--zm-ease),
+              box-shadow var(--zm-dur-1) var(--zm-ease);
+}
+.rt-switch__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--zm-r-pill);
+  background: var(--zm-accent-on);
+  box-shadow: var(--zm-shadow-1);
+  transition: transform var(--zm-dur-1) var(--zm-ease);
+}
+/* 34 track − 2 left − 2 right − 16 thumb */
+.rt-switch__track[data-on='true'] .rt-switch__thumb {
+  transform: translateX(14px);
+}
+/* Elevation only on hover — never border-color, per the note at the top. */
+.rt-switch:hover .rt-switch__input:not(:disabled) + .rt-switch__track {
+  box-shadow: var(--zm-shadow-2);
+}
+/* The global *:focus-visible ring lands on the transparent input where nobody can
+   see it; forward it to the track the user is actually looking at. */
+.rt-switch__input:focus-visible + .rt-switch__track {
+  box-shadow: var(--zm-ring-focus);
+}
+.rt-switch__track[data-disabled='true'] {
+  opacity: .6;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .rt-option,
-  .rt-field {
+  .rt-field,
+  .rt-switch__track,
+  .rt-switch__thumb {
     transition: none;
   }
   .rt-option:hover:not(:disabled),
