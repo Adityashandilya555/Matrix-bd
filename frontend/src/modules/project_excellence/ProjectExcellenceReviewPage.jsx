@@ -377,7 +377,7 @@ export default function ProjectExcellenceReviewPage() {
               }}>Allocated · {allocation.delegateName || allocation.delegateEmail}</span>
               <button type="button" disabled={saving} onClick={onRevoke} style={{
                 height: 32, padding: '0 14px', border: 'none', borderRadius: 7,
-                background: 'var(--zm-danger)', color: '#fff', fontFamily: 'var(--zm-font-body)',
+                background: 'var(--zm-danger)', color: 'var(--zm-accent-on)', fontFamily: 'var(--zm-font-body)',
                 fontSize: 12, fontWeight: 800, cursor: 'pointer', opacity: saving ? 0.6 : 1,
               }}>Revoke</button>
             </div>
@@ -404,7 +404,7 @@ export default function ProjectExcellenceReviewPage() {
                 onClick={handleAllocate}
                 style={{
                   height: 36, padding: '0 16px', borderRadius: 7, border: 'none',
-                  background: 'var(--zm-accent)', color: '#fff', cursor: 'pointer',
+                  background: 'var(--zm-accent)', color: 'var(--zm-accent-on)', cursor: 'pointer',
                   fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700,
                   opacity: !allocExec || saving ? 0.5 : 1,
                 }}
@@ -540,7 +540,7 @@ export default function ProjectExcellenceReviewPage() {
               onClick={() => handleSaveBudget('submit')}
               style={{
                 height: 36, padding: '0 18px', borderRadius: 7, border: 'none',
-                background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)',
+                background: 'var(--zm-accent)', color: 'var(--zm-accent-on)', fontFamily: 'var(--zm-font-body)',
                 fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
                 opacity: saving ? 0.55 : 1,
               }}
@@ -571,7 +571,7 @@ export default function ProjectExcellenceReviewPage() {
                 type="button"
                 disabled={saving}
                 onClick={() => handleSupervisorReview('approve')}
-                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-success)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-success)', color: 'var(--zm-accent-on)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
               >
                 Approve
               </button>
@@ -579,7 +579,7 @@ export default function ProjectExcellenceReviewPage() {
                 type="button"
                 disabled={saving || !reviewComments.trim()}
                 onClick={() => handleSupervisorReview('reject')}
-                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-danger)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: !reviewComments.trim() ? 0.5 : 1 }}
+                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-danger)', color: 'var(--zm-accent-on)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: !reviewComments.trim() ? 0.5 : 1 }}
               >
                 Reject
               </button>
@@ -608,7 +608,7 @@ export default function ProjectExcellenceReviewPage() {
                 type="button"
                 disabled={saving}
                 onClick={() => handleAdminReview('approve')}
-                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-success)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-success)', color: 'var(--zm-accent-on)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
               >
                 Approve
               </button>
@@ -616,7 +616,7 @@ export default function ProjectExcellenceReviewPage() {
                 type="button"
                 disabled={saving || !reviewComments.trim()}
                 onClick={() => handleAdminReview('reject')}
-                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-danger)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: !reviewComments.trim() ? 0.5 : 1 }}
+                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-danger)', color: 'var(--zm-accent-on)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: !reviewComments.trim() ? 0.5 : 1 }}
               >
                 Reject
               </button>

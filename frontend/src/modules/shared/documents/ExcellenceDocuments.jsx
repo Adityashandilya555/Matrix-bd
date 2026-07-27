@@ -314,7 +314,7 @@ const ExcellenceDocuments = React.forwardRef(function ExcellenceDocuments({
               className="zm-btn-primary"
               style={{
                 height: 32, padding: '0 12px', border: 'none', borderRadius: 7,
-                background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)',
+                background: 'var(--zm-accent)', color: 'var(--zm-accent-on)', fontFamily: 'var(--zm-font-body)',
                 fontSize: 12, fontWeight: 700, cursor: uploading ? 'wait' : 'pointer',
                 opacity: uploading ? 0.65 : 1, display: 'inline-flex', alignItems: 'center', gap: 6,
                 boxShadow: 'var(--zm-shadow-1)',
@@ -331,7 +331,7 @@ const ExcellenceDocuments = React.forwardRef(function ExcellenceDocuments({
                 height: 32, padding: '0 12px', borderRadius: 7,
                 border: hasDoc ? '1px solid var(--zm-line)' : 'none',
                 background: hasDoc ? 'var(--zm-surface)' : 'var(--zm-accent)',
-                color: hasDoc ? 'var(--zm-fg)' : '#fff',
+                color: hasDoc ? 'var(--zm-fg)' : 'var(--zm-accent-on)',
                 fontFamily: 'var(--zm-font-body)',
                 fontSize: 12, fontWeight: 700, cursor: 'pointer',
                 display: 'inline-flex', alignItems: 'center', gap: 6,

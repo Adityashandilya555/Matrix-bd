@@ -121,7 +121,7 @@ function DdrVerdictOverrideModal({ issueCount, onPositive, onNegative, onCancel,
             <button onClick={onCancel} disabled={busy} className="zm-btn" style={{ height: 40, padding: '0 16px', borderRadius: 10, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>Cancel</button>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <button onClick={submitNegative} disabled={busy} className="zm-btn" style={{ height: 40, padding: '0 16px', borderRadius: 10, border: '1px solid rgba(185,28,28,0.28)', background: 'rgba(185,28,28,0.08)', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 800, cursor: busy ? 'wait' : 'pointer' }}>Finalise negative</button>
-              <button onClick={onPositive} disabled={busy} className="zm-btn-primary" style={{ height: 40, padding: '0 18px', borderRadius: 10, border: 'none', background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 800, cursor: busy ? 'wait' : 'pointer', boxShadow: 'var(--zm-shadow-1)' }}>Continue as positive</button>
+              <button onClick={onPositive} disabled={busy} className="zm-btn-primary" style={{ height: 40, padding: '0 18px', borderRadius: 10, border: 'none', background: 'var(--zm-accent)', color: 'var(--zm-accent-on)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 800, cursor: busy ? 'wait' : 'pointer', boxShadow: 'var(--zm-shadow-1)' }}>Continue as positive</button>
             </div>
           </div>
         </div>
@@ -505,7 +505,7 @@ export default function DdrPage() {
         className="zm-btn-primary"
         style={{
           height: 34, padding: '0 14px', borderRadius: 7, border: 'none',
-          background: 'var(--zm-accent)', color: '#fff',
+          background: 'var(--zm-accent)', color: 'var(--zm-accent-on)',
           fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 800, cursor: 'pointer',
           whiteSpace: 'nowrap',
         }}
@@ -562,7 +562,7 @@ export default function DdrPage() {
             className="zm-btn-primary"
             style={{
               height: 34, padding: '0 14px', borderRadius: 7, border: 'none',
-              background: 'var(--zm-accent)', color: '#fff',
+              background: 'var(--zm-accent)', color: 'var(--zm-accent-on)',
               fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 800,
               cursor: !selectedExec || delegating ? 'not-allowed' : 'pointer',
               opacity: !selectedExec || delegating ? 0.5 : 1,
@@ -646,7 +646,7 @@ export default function DdrPage() {
         className="zm-btn-primary"
         style={{
           height: 34, padding: '0 14px', borderRadius: 7, border: 'none',
-          background: 'var(--zm-accent)', color: '#fff',
+          background: 'var(--zm-accent)', color: 'var(--zm-accent-on)',
           fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 800, cursor: 'pointer',
         }}
       >
@@ -698,7 +698,7 @@ export default function DdrPage() {
         <span style={{
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           width: 22, height: 22, borderRadius: 999,
-          background: 'var(--zm-accent)', color: '#fff', fontWeight: 900,
+          background: 'var(--zm-accent)', color: 'var(--zm-accent-on)', fontWeight: 900,
           fontSize: 13,
         }}>i</span>
         <span>

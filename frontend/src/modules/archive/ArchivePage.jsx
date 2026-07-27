@@ -46,7 +46,7 @@ function ReviveDialog({ site, onCancel, onConfirm, busy }) {
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onCancel} disabled={busy} className="zm-btn" style={{ height: 36, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: busy ? 'not-allowed' : 'pointer' }}>Cancel</button>
-          <button onClick={() => onConfirm(site, note.trim())} disabled={busy} className="zm-btn-primary" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer' }}>{busy ? 'Reviving…' : 'Revive site'}</button>
+          <button onClick={() => onConfirm(site, note.trim())} disabled={busy} className="zm-btn-primary" style={{ height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: 'var(--zm-accent)', color: 'var(--zm-accent-on)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer' }}>{busy ? 'Reviving…' : 'Revive site'}</button>
         </div>
       </div>
     </div>
@@ -198,7 +198,7 @@ export default function ArchivePage({ onOpenSite: onOpenSiteProp, showToast: sho
                 <button onClick={() => onOpenSite?.(a)} className="zm-btn zm-row-cta" style={{ height: 28, padding: '0 10px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', justifySelf: 'end', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><EyeIcon size={12}/> View</button>
                 {canRevive && (
                   !isRejectedRow(a)
-                    ? <button onClick={() => setReviving(a)} className="zm-btn-primary" style={{ height: 28, padding: '0 10px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', justifySelf: 'end', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="refresh" size={12}/> Revive</button>
+                    ? <button onClick={() => setReviving(a)} className="zm-btn-primary" style={{ height: 28, padding: '0 10px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: 'var(--zm-accent-on)', justifySelf: 'end', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="refresh" size={12}/> Revive</button>
                     : <span />
                 )}
               </div>

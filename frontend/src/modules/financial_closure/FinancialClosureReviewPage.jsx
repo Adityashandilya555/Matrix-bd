@@ -503,7 +503,7 @@ export default function FinancialClosureReviewPage() {
               onClick={handleAllocate}
               style={{
                 height: 36, padding: '0 16px', borderRadius: 7, border: 'none',
-                background: 'var(--zm-accent)', color: '#fff', cursor: 'pointer',
+                background: 'var(--zm-accent)', color: 'var(--zm-accent-on)', cursor: 'pointer',
                 fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700,
                 opacity: !allocExec || saving ? 0.5 : 1,
               }}
@@ -708,7 +708,7 @@ export default function FinancialClosureReviewPage() {
               onClick={() => handleSaveBudget('submit')}
               style={{
                 height: 36, padding: '0 18px', borderRadius: 7, border: 'none',
-                background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)',
+                background: 'var(--zm-accent)', color: 'var(--zm-accent-on)', fontFamily: 'var(--zm-font-body)',
                 fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
                 opacity: saving ? 0.55 : 1,
               }}
@@ -739,7 +739,7 @@ export default function FinancialClosureReviewPage() {
                 type="button"
                 disabled={saving}
                 onClick={() => handleSupervisorReview('approve')}
-                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-success)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.55 : 1 }}
+                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-success)', color: 'var(--zm-accent-on)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.55 : 1 }}
               >
                 {saving ? 'Submitting…' : 'Approve'}
               </button>
@@ -747,7 +747,7 @@ export default function FinancialClosureReviewPage() {
                 type="button"
                 disabled={saving || !reviewComments.trim()}
                 onClick={() => handleSupervisorReview('reject')}
-                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-danger)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: !reviewComments.trim() ? 0.5 : 1 }}
+                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-danger)', color: 'var(--zm-accent-on)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: !reviewComments.trim() ? 0.5 : 1 }}
               >
                 Reject
               </button>
@@ -776,7 +776,7 @@ export default function FinancialClosureReviewPage() {
                 type="button"
                 disabled={saving}
                 onClick={() => handleFinalize('approve')}
-                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-success)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.55 : 1 }}
+                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-success)', color: 'var(--zm-accent-on)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.55 : 1 }}
               >
                 {saving ? 'Finalizing…' : 'Financial Closure'}
               </button>
@@ -784,7 +784,7 @@ export default function FinancialClosureReviewPage() {
                 type="button"
                 disabled={saving || !reviewComments.trim()}
                 onClick={() => handleFinalize('reject')}
-                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-danger)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: !reviewComments.trim() ? 0.5 : 1 }}
+                style={{ height: 36, padding: '0 18px', borderRadius: 7, border: 'none', background: 'var(--zm-danger)', color: 'var(--zm-accent-on)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: !reviewComments.trim() ? 0.5 : 1 }}
               >
                 Reject
               </button>

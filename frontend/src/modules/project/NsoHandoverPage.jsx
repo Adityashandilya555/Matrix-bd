@@ -214,7 +214,7 @@ export default function NsoHandoverPage() {
                   <div style={{ justifySelf: 'end', marginRight: 16, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                     <button type="button" disabled={pushing || !!pushingId || !bothPushed} onClick={() => handlePush(row)} style={{
                       height: 32, padding: '0 14px', border: 'none', borderRadius: 7,
-                      background: 'var(--zm-accent)', color: '#fff', fontFamily: 'var(--zm-font-body)',
+                      background: 'var(--zm-accent)', color: 'var(--zm-accent-on)', fontFamily: 'var(--zm-font-body)',
                       fontSize: 12, fontWeight: 800,
                       cursor: (pushing || !!pushingId || !bothPushed) ? 'not-allowed' : 'pointer',
                       opacity: (!bothPushed || (!!pushingId && !pushing)) ? 0.5 : 1,
@@ -265,7 +265,7 @@ export default function NsoHandoverPage() {
                         {r.downloadUrl ? (
                           <a href={r.downloadUrl} target="_blank" rel="noopener noreferrer" style={{
                             display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10, height: 32, padding: '0 14px',
-                            borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', textDecoration: 'none',
+                            borderRadius: 7, background: 'var(--zm-accent)', color: 'var(--zm-accent-on)', textDecoration: 'none',
                             fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 800,
                           }}>Open PDF<Icon name="arrow" size={12}/></a>
                         ) : (

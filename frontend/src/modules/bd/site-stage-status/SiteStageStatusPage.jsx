@@ -261,7 +261,7 @@ export default function SiteStageStatusPage() {
         style={{
           alignSelf: 'flex-start', height: 34, padding: '0 16px',
           border: '1px solid var(--zm-accent)', borderRadius: 8,
-          background: 'var(--zm-accent)', color: '#fff',
+          background: 'var(--zm-accent)', color: 'var(--zm-accent-on)',
           fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 800,
           cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7,
         }}
