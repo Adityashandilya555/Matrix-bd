@@ -18,6 +18,7 @@ import { ROUTES } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 import {
   CIVIL_MEP_IDX,
+  FITOUT_FURNITURE_IDX,
   computeRatio,
   formatINR,
   formatRatio,
@@ -324,6 +325,8 @@ export default function FinancialClosureReviewPage() {
   const covers = state?.covers;
   const civilMepGfcSum = sumByIdx(lines, CIVIL_MEP_IDX, 'gfcAmount');
   const civilMepClosureSum = sumByIdx(lines, CIVIL_MEP_IDX, 'closureAmount');
+  const fitoutFurnitureGfcSum = sumByIdx(lines, FITOUT_FURNITURE_IDX, 'gfcAmount');
+  const fitoutFurnitureClosureSum = sumByIdx(lines, FITOUT_FURNITURE_IDX, 'closureAmount');
   const derivedMetrics = [
     {
       label: 'Civil, Interior & MEP per sqft',
@@ -334,6 +337,16 @@ export default function FinancialClosureReviewPage() {
         computeRatio(civilMepGfcSum, totalIndoorAreaSqft),
       ),
       variationValue: (computeRatio(civilMepClosureSum, totalIndoorAreaSqft) ?? 0) - (computeRatio(civilMepGfcSum, totalIndoorAreaSqft) ?? 0),
+    },
+    {
+      label: 'Fitout + Furniture/Light per sqft',
+      gfc: formatRatio(fitoutFurnitureGfcSum, totalIndoorAreaSqft),
+      closure: formatRatio(fitoutFurnitureClosureSum, totalIndoorAreaSqft),
+      variation: formatRatioVariation(
+        computeRatio(fitoutFurnitureClosureSum, totalIndoorAreaSqft),
+        computeRatio(fitoutFurnitureGfcSum, totalIndoorAreaSqft),
+      ),
+      variationValue: (computeRatio(fitoutFurnitureClosureSum, totalIndoorAreaSqft) ?? 0) - (computeRatio(fitoutFurnitureGfcSum, totalIndoorAreaSqft) ?? 0),
     },
     {
       label: 'CAPEX per sqft',

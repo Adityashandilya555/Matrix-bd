@@ -1,7 +1,7 @@
 // skipcq: JS-0833
 import React from 'react';
 import { T, Icon, Card, Button, StatusPill, Skeleton, inr, TABULAR } from '../ui/kit.jsx';
-import { CIVIL_MEP_IDX, formatRatio, sumByIdx } from '../../../lib/budgetMetrics.js';
+import { CIVIL_MEP_IDX, FITOUT_FURNITURE_IDX, formatRatio, sumByIdx } from '../../../lib/budgetMetrics.js';
 
 // Everything pending on a single site, grouped by approval type, actionable in
 // one place. Rendered inside the Approval Center drawer. Each block owns its own
@@ -515,6 +515,7 @@ function BudgetBlock({ site, fetchDetail, fetchDocuments, onDecide }) {
     ? detail.budgetTotal
     : items.reduce((s, it) => s + (Number(it.amount) || 0), 0);
   const civilMepSum = sumByIdx(items, CIVIL_MEP_IDX);
+  const fitoutFurnitureSum = sumByIdx(items, FITOUT_FURNITURE_IDX);
   const dim = (v, suffix = '') => (v != null ? `${v}${suffix}` : '—');
   return (
     <>
@@ -585,6 +586,7 @@ function BudgetBlock({ site, fetchDetail, fetchDocuments, onDecide }) {
       {/* Derived, read-only metrics. */}
       <div style={{ display: 'grid', gap: 6, marginBottom: 12 }}>
         {metricRow('Civil, Interior & MEP / sqft', formatRatio(civilMepSum, detail.totalIndoorAreaSqft))}
+        {metricRow('Fitout + Furniture/Light / sqft', formatRatio(fitoutFurnitureSum, detail.totalIndoorAreaSqft))}
         {metricRow('CAPEX / sqft', formatRatio(total, detail.totalAreaSqft))}
         {metricRow('CAPEX / cover', formatRatio(total, detail.covers))}
       </div>
