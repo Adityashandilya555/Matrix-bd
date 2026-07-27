@@ -217,7 +217,7 @@ export default function App() {
             setShowNew(false);
             showToast(
               role === 'supervisor'
-                ? `Pipeline created · ${form.name}. Delegate it to an executive from Shortlisted sites.`
+                ? 'Pipeline created'
                 : `Pipeline submitted · ${form.name}. Supervisor notified.`,
             );
           }}
