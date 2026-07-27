@@ -65,7 +65,7 @@ function ReviewRow({ item, onReview }) {
       </span>
       <span>
         <button onClick={() => onReview(item)}
-          style={{ height: 32, padding: '0 16px', borderRadius: 8, border: '1px solid var(--zm-accent)', background: 'var(--zm-accent)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+          style={{ height: 32, padding: '0 16px', borderRadius: 8, border: '1px solid var(--zm-accent)', background: 'var(--zm-accent)', color: 'var(--zm-accent-on)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
           Review
         </button>
       </span>
@@ -158,7 +158,7 @@ export default function LaunchPage() {
                 cursor: 'pointer', marginBottom: '-1px', position: 'relative' }}>
               {label}
               {count > 0 && (
-                <span style={{ marginLeft: 6, background: key !== 'launched' ? 'var(--zm-accent)' : 'var(--zm-success)', color: '#fff', borderRadius: 20, padding: '1px 7px', fontSize: 10.5, fontWeight: 700 }}>
+                <span style={{ marginLeft: 6, background: key !== 'launched' ? 'var(--zm-accent)' : 'var(--zm-success)', color: 'var(--zm-accent-on)', borderRadius: 20, padding: '1px 7px', fontSize: 10.5, fontWeight: 700 }}>
                   {count}
                 </span>
               )}

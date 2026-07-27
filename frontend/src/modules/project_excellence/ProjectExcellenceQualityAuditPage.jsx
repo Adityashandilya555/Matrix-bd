@@ -129,7 +129,7 @@ function ReportSlot({ kind, label, uploadedAt, pushedAt, fileUrl, fileName, canM
           </button>
           <button type="button" disabled={busy || !uploaded || pushed || !canPush} onClick={() => onPush(kind)} style={{
             height: 32, padding: '0 14px', borderRadius: 7, border: 'none',
-            background: pushed ? 'var(--zm-success)' : 'var(--zm-accent)', color: '#fff',
+            background: pushed ? 'var(--zm-success)' : 'var(--zm-accent)', color: 'var(--zm-accent-on)',
             fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 800,
             cursor: (busy || !uploaded || pushed || !canPush) ? 'not-allowed' : 'pointer',
             opacity: (busy && pushing) || (!uploaded || pushed || !canPush) ? 0.5 : 1,
@@ -396,7 +396,7 @@ export default function ProjectExcellenceQualityAuditPage() {
                 {allocation ? (
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 12.5, color: 'var(--zm-fg)' }}>Delegated to <strong>{allocation.delegateName || allocation.delegateEmail}</strong></span>
-                    <button type="button" disabled={busy} onClick={onRevoke} style={{ height: 30, padding: '0 12px', border: 'none', borderRadius: 7, background: 'var(--zm-danger)', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>Revoke</button>
+                    <button type="button" disabled={busy} onClick={onRevoke} style={{ height: 30, padding: '0 12px', border: 'none', borderRadius: 7, background: 'var(--zm-danger)', color: 'var(--zm-accent-on)', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>Revoke</button>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -405,7 +405,7 @@ export default function ProjectExcellenceQualityAuditPage() {
                       <option value="__self__">Delegate to self (me)</option>
                       {team.map((m) => <option key={m.id} value={m.id}>{m.name || m.email}</option>)}
                     </select>
-                    <button type="button" disabled={busy || !chosenExec || (chosenExec === '__self__' && !myUserId)} onClick={onAllocate} style={{ height: 34, padding: '0 14px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer', opacity: (!chosenExec) ? 0.5 : 1 }}>Delegate</button>
+                    <button type="button" disabled={busy || !chosenExec || (chosenExec === '__self__' && !myUserId)} onClick={onAllocate} style={{ height: 34, padding: '0 14px', border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: 'var(--zm-accent-on)', fontSize: 12, fontWeight: 800, cursor: 'pointer', opacity: (!chosenExec) ? 0.5 : 1 }}>Delegate</button>
                   </div>
                 )}
               </div>

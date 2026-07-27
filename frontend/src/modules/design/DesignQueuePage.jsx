@@ -234,7 +234,7 @@ export default function DesignQueuePage() {
                 onClick={(e) => { e.stopPropagation(); open(row); }}
                 style={{
                   justifySelf: 'end', marginRight: 16, height: 32, padding: '0 14px',
-                  border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: '#fff',
+                  border: 'none', borderRadius: 7, background: 'var(--zm-accent)', color: 'var(--zm-accent-on)',
                   fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 800,
                   cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
                 }}

@@ -171,7 +171,7 @@ export default function FinancePanel({ data, role, onClose, onUpdate, mode = 'mo
     border: primary ? 'none' : '1px solid var(--zm-line)',
     borderRadius: 7,
     background: primary ? 'var(--zm-accent)' : 'var(--zm-surface)',
-    color: primary ? '#fff' : 'var(--zm-fg)',
+    color: primary ? 'var(--zm-accent-on)' : 'var(--zm-fg)',
     fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 700,
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.5 : 1,

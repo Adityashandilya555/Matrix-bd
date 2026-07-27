@@ -149,7 +149,7 @@ function ActionButton({ children, onClick, disabled, variant = 'primary' }) {
         borderRadius: 8,
         border: primary ? 'none' : '1px solid var(--zm-line)',
         background: primary ? 'var(--zm-accent)' : 'var(--zm-surface)',
-        color: primary ? '#fff' : 'var(--zm-fg)',
+        color: primary ? 'var(--zm-accent-on)' : 'var(--zm-fg)',
         fontFamily: 'var(--zm-font-body)',
         fontSize: 12,
         fontWeight: 850,
@@ -363,7 +363,7 @@ export default function ProjectReviewPage() {
                       }}>Allocated · {allocation.delegateName || allocation.delegateEmail}</span>
                       <button type="button" disabled={busy} onClick={onRevoke} style={{
                         height: 32, padding: '0 14px', border: 'none', borderRadius: 7,
-                        background: 'var(--zm-danger)', color: '#fff', fontFamily: 'var(--zm-font-body)',
+                        background: 'var(--zm-danger)', color: 'var(--zm-accent-on)', fontFamily: 'var(--zm-font-body)',
                         fontSize: 12, fontWeight: 800, cursor: 'pointer', opacity: busy ? 0.6 : 1,
                       }}>Revoke</button>
                     </div>
@@ -574,7 +574,7 @@ function presetPill(active) {
     borderRadius: 8,
     border: `1px solid ${active ? 'var(--zm-accent)' : 'var(--zm-line)'}`,
     background: active ? 'var(--zm-accent)' : 'var(--zm-surface)',
-    color: active ? '#fff' : 'var(--zm-fg)',
+    color: active ? 'var(--zm-accent-on)' : 'var(--zm-fg)',
     fontFamily: 'var(--zm-font-body)',
     fontWeight: 800,
     fontSize: 12,

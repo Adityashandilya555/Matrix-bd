@@ -28,7 +28,7 @@ function StatusPill({ value }) {
 const btnStyle = (bg, textCol) => ({
   height: 32, padding: '0 14px', border: bg === 'transparent' ? '1px solid var(--zm-line)' : 'none', 
   borderRadius: 7, background: bg === 'transparent' ? 'var(--zm-surface)' : bg, 
-  color: textCol || (bg === 'transparent' ? 'var(--zm-fg)' : '#fff'),
+  color: textCol || (bg === 'transparent' ? 'var(--zm-fg)' : 'var(--zm-accent-on)'),
   cursor: 'pointer', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 500,
 });
 
@@ -243,7 +243,7 @@ export default function ChangeRequestsPage() {
                   disabled={busy === cr.id}
                   style={{
                     height: 32, padding: '0 14px', border: 'none', borderRadius: 7,
-                    background: 'var(--zm-success)', color: '#fff',
+                    background: 'var(--zm-success)', color: 'var(--zm-accent-on)',
                     fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 800,
                     cursor: busy === cr.id ? 'not-allowed' : 'pointer',
                   }}
