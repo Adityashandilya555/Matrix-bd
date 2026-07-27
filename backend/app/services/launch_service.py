@@ -49,7 +49,7 @@ from app.domain.schemas.launch import (
     LaunchReviewRequest,
     SiteDetailsSnapshot,
 )
-from app.services._common import count_rows, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_names
+from app.services._common import count_rows, display_code, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.licensing_status import stage_two_canonical_status
 
@@ -303,7 +303,7 @@ async def _build_response(
 
     return LaunchApprovalResponse(
         site_id=str(site.id),
-        site_code=site.code,
+        site_code=display_code(site),
         site_name=site.name,
         city=site.city,
         tenant_id=str(row.tenant_id),

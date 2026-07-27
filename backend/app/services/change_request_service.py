@@ -27,7 +27,7 @@ from app.domain.schemas.legal_change_request import (
     ReviewChangeRequestRequest,
 )
 from app.domain.state_machine import SiteStatus, assert_transition
-from app.services._common import assert_executive_owns_site, fetch_site_for_update_or_404, fetch_user_name
+from app.services._common import assert_executive_owns_site, display_code, fetch_site_for_update_or_404, fetch_user_name
 from app.services.audit_service import write_audit_event
 from app.services.notification_service import (
     enqueue as notify_enqueue,
@@ -221,7 +221,7 @@ async def svc_create_change_request(
 
     return _to_response(
         cr,
-        site_code=site.code or "",
+        site_code=display_code(site),
         site_name=site.name,
         requested_by_name=requested_by_name,
         reviewed_by_name=None,
@@ -438,7 +438,7 @@ async def svc_approve_change_request(
 
     return _to_response(
         cr,
-        site_code=site.code or "",
+        site_code=display_code(site),
         site_name=site.name,
         requested_by_name=requested_by_name,
         reviewed_by_name=reviewed_by_name,
@@ -507,7 +507,7 @@ async def svc_reject_change_request(
 
     return _to_response(
         cr,
-        site_code=site.code or "",
+        site_code=display_code(site),
         site_name=site.name,
         requested_by_name=requested_by_name,
         reviewed_by_name=reviewed_by_name,
@@ -563,7 +563,7 @@ async def _list_with_status(
         site = sites_by_id.get(cr.site_id)
         items.append(_to_response(
             cr,
-            site_code=site.code if site else "",
+            site_code=display_code(site) if site else "",
             site_name=site.name if site else "",
             requested_by_name=names.get(cr.requested_by),
             reviewed_by_name=names.get(cr.reviewed_by),

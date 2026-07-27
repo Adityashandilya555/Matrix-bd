@@ -43,7 +43,7 @@ from app.domain.schemas.legal import (
     SaveVerificationRequest,
 )
 from app.domain.state_machine import SiteStatus, assert_transition
-from app.services._common import count_rows, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_name, fetch_user_names
+from app.services._common import count_rows, display_code, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.notification_service import (
     enqueue as notify_enqueue,
@@ -158,7 +158,7 @@ async def _build_review_response(
     submitted_by_name = await fetch_user_name(session, site.submitted_by)
     return LegalReviewResponse(
         site_id=str(site.id),
-        site_code=site.ca_code or site.code or "",
+        site_code=display_code(site),
         site_name=site.name,
         city=site.city,
         submitted_by_name=submitted_by_name,
@@ -356,7 +356,7 @@ async def svc_legal_queue(
         submitted_by_name = names.get(site.submitted_by, "")
         items.append(LegalQueueItem(
             site_id=str(site.id),
-            site_code=site.ca_code or site.code or "",
+            site_code=display_code(site),
             site_name=site.name,
             city=site.city,
             legal_dd_status=site.legal_dd_status or "pending",
@@ -406,7 +406,7 @@ async def svc_legal_rejected_sites(
         submitted_by_name = names.get(site.submitted_by)
         items.append(LegalRejectedSiteItem(
             site_id=str(site.id),
-            site_code=site.code or "",
+            site_code=display_code(site),
             site_name=site.name,
             city=site.city,
             submitted_by_name=submitted_by_name,
@@ -445,7 +445,7 @@ def _legal_history_item(site, dd, submitted_by_name) -> LegalHistoryItem:
     """One history row; the Finance-minted CA code supersedes the placeholder."""
     return LegalHistoryItem(
         site_id=str(site.id),
-        site_code=site.ca_code or site.code or "",
+        site_code=display_code(site),
         site_name=site.name,
         city=site.city,
         submitted_by_name=submitted_by_name,

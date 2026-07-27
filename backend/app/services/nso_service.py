@@ -31,7 +31,7 @@ from app.domain.schemas.nso import (
     NsoStateResponse,
     NsoTriggerState,
 )
-from app.services._common import count_rows, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_name, is_unique_violation
+from app.services._common import count_rows, display_code, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_name, is_unique_violation
 from app.services.audit_service import write_audit_event
 from app.services.launch_service import svc_create_launch_approval
 from app.services.licensing_status import (
@@ -107,7 +107,7 @@ async def _property_snapshot(
     details = await _fetch_site_detail(session, site_id=site.id) or _NO_SITE_DETAIL
     return NsoPropertySnapshot(
         site_name=site.name,
-        site_code=site.ca_code or site.code or "",
+        site_code=display_code(site),
         city=site.city,
         visit_date=site.visit_date,
         model=site.model,
@@ -398,7 +398,7 @@ async def _queue_item(
             next_action = "Final approval"
     return NsoQueueItem(
         site_id=str(site.id),
-        site_code=site.ca_code or site.code or "",
+        site_code=display_code(site),
         site_name=site.name,
         city=site.city,
         finance_status=site.finance_status or "pending",
@@ -424,7 +424,7 @@ async def _state_response(
     legal_snapshot = _legal_licensing_snapshot(site, licensing)
     return NsoStateResponse(
         site_id=str(site.id),
-        site_code=site.ca_code or site.code or "",
+        site_code=display_code(site),
         site_name=site.name,
         city=site.city,
         tenant_id=str(site.tenant_id),
