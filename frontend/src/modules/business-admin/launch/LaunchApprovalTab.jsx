@@ -8,7 +8,7 @@
  *   2. pending_admin_final  — see every rent change from draft → now and BOTH
  *      the executive's and supervisor's verdicts (highlighted); make final rent
  *      edits if needed; "Confirm" ⇒ commits the agreed terms to the DB.
- *   then ready_to_launch → "🚀 Launch Site".
+ *   then ready_to_launch → "Launch Site".
  *
  * Between the two touches the record sits with the executive then the
  * supervisor; the admin sees it read-only ("With executive / supervisor").
@@ -21,6 +21,7 @@ import {
 } from '../ui/kit.jsx';
 import RentTermsForm, { AC_TOKENS } from '../../shared/rent/RentTermsForm.jsx';
 import RentTermsFormV2 from '../../shared/rent/RentTermsFormV2.jsx';
+import RentScheduleButton from '../../shared/rent/RentScheduleDialog.jsx';
 import { toV2Value, fromV2Key, pickLaunchRentFields, buildLaunchRentPayload } from '../../shared/rent/launchRentAdapter.js';
 import { usePageContext } from '../../../App.jsx';
 import {
@@ -41,7 +42,7 @@ const STATUS_LABELS = {
   under_supervisor_review: { label: 'With Supervisor',       color: '#9B8AF2' },
   pending_admin_final:     { label: 'Final Admin Confirm',   color: '#E0B33C' },
   ready_to_launch:         { label: 'Ready to Launch',       color: '#58E0A4' },
-  launched:                { label: 'LAUNCHED 🚀',           color: '#58E0A4' },
+  launched:                { label: 'LAUNCHED',              color: '#58E0A4' },
 };
 
 const RENT_TYPE_LABEL = { fixed: 'Fixed + escalation', revshare: 'Revenue share', mg_revshare: 'MG + Revenue share', staggered: 'Staggered Rent with Escalation' };
@@ -353,7 +354,10 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
 
             <div style={{ padding: '10px 14px', borderRadius: 10, background: T.successSoft, border: `1px solid ${T.line}`, marginBottom: canEdit && rentMode === 'edit' ? 14 : 0 }}>
               <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.textFaint }}>Current</span>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: T.text, marginTop: 2 }}>{rentSummary()}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 2, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: T.text }}>{rentSummary()}</span>
+                {d?.rent_type === 'staggered' && <RentScheduleButton schedule={d.staggered_escalation} baseRent={d.expected_rent} tokens={AC_TOKENS} />}
+              </div>
             </div>
 
             {canEdit && rentMode === 'edit' && (
@@ -433,7 +437,7 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
 
           {status === 'launched' && (
             <div style={{ padding: '12px 16px', borderRadius: 10, background: T.successSoft, border: `1px solid ${T.success}`, color: T.successText, fontWeight: 700, fontSize: 14, textAlign: 'center' }}>
-              🚀 Site launched on {fmtDate(d.launched_at)}
+              Site launched on {fmtDate(d.launched_at)}
             </div>
           )}
         </div>
@@ -509,14 +513,27 @@ export default function LaunchApprovalTab() {
         refreshing={queue.refreshing}
       />
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18, marginTop: 14 }}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18, marginTop: 14 }}>
         {STATUS_TABS.map(({ key, label }) => {
           const count = key === 'all' ? queue.items.length : queue.items.filter((i) => i.status === key).length;
           const active = statusFilter === key;
           return (
             <button key={key} onClick={() => setStatusFilter(key)}
-              style={{ padding: '5px 14px', borderRadius: 20, border: `1px solid ${active ? T.accent : T.line}`, background: active ? `${T.accent}22` : 'transparent', color: active ? T.accent : T.textMuted, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-              {label}{count > 0 ? ` (${count})` : ''}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 7, height: 32, padding: '0 12px',
+                borderRadius: 8, border: `1px solid ${active ? T.accent : T.line}`,
+                background: active ? `${T.accent}1F` : T.surface,
+                color: active ? T.accent : T.textMuted,
+                fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                transition: 'background .12s, border-color .12s, color .12s',
+              }}>
+              {label}
+              <span style={{
+                minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 11, fontWeight: 700, fontFeatureSettings: "'tnum' 1",
+                background: active ? `${T.accent}33` : T.chip, color: active ? T.accent : T.textFaint,
+              }}>{count}</span>
             </button>
           );
         })}

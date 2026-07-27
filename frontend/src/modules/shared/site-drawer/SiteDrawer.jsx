@@ -7,6 +7,7 @@ import { getSiteDocuments } from '../../../services/api/siteService.js';
 import { SiteStatus } from '../../../lib/stateMachine.js';
 import { safeHref } from '../../../lib/safeHref.js';
 import ImageLightbox from '../media/ImageLightbox.jsx';
+import RentScheduleButton from '../rent/RentScheduleDialog.jsx';
 import { useSession } from '../../../state/SessionContext.jsx';
 import { useSites } from '../../../state/SitesContext.jsx';
 
@@ -266,6 +267,14 @@ function SiteOverviewTab({ site, editedFields = [] }) {
     : hasValue(site.escalation)
       ? `${formatPercent(site.escalation)}${hasValue(site.escalationYears) ? ` every ${site.escalationYears} yr` : ' / yr'}`
       : 'NA';
+  // For a staggered schedule, the full per-year list (with the optional rev-share
+  // split) is too much for one cell — show a one-line gist and defer the detail to
+  // a "View schedule" dialog (RentScheduleButton).
+  const staggeredRows = staggeredSchedule.filter((e) => hasValue(e?.percent));
+  const isStaggeredSchedule = site.rentType === 'staggered' && staggeredRows.length > 0;
+  const staggeredShort = isStaggeredSchedule
+    ? `Yr${staggeredRows[0].year ?? 1} ${formatPercent(staggeredRows[0].percent)}${staggeredRows.length > 1 ? ` · +${staggeredRows.length - 1} yr${staggeredRows.length - 1 > 1 ? 's' : ''}` : ''}`
+    : '';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -287,7 +296,14 @@ function SiteOverviewTab({ site, editedFields = [] }) {
           <Field label="Total op cost" value={formatINR(site.opCost, '/mo')} mono/>
           <Field label="Lock-in" value={formatNumber(site.lockin, ' months')} mono/>
           <Field label="Tenure" value={formatNumber(site.tenure, ' months')} mono/>
-          <Field label="Escalation" value={escalationValue} mono/>
+          <Field label="Escalation" mono value={
+            isStaggeredSchedule ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {staggeredShort}
+                <RentScheduleButton schedule={staggeredSchedule} baseRent={site.rent} />
+              </span>
+            ) : escalationValue
+          }/>
           <Field label="Revenue share" value={formatPercent(site.revshare, ' of sales')} mono/>
           {hasValue(site.revshareDinein) && <Field label="Dine-in share" value={formatPercent(site.revshareDinein, ' of sales')} mono/>}
           {hasValue(site.revshareDelivery) && <Field label="Delivery share" value={formatPercent(site.revshareDelivery, ' of sales')} mono/>}
