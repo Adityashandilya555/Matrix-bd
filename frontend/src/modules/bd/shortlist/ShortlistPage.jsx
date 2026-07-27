@@ -5,7 +5,7 @@ import { usePageContext } from '../../../App.jsx';
 import { can } from '../../../rbac/permissions.js';
 import PageHeader, { HeaderTag } from '../../shared/page-header/PageHeader.jsx';
 import Icon from '../../shared/primitives/Icon.jsx';
-import StatusPill, { StageDot } from '../../shared/primitives/StatusPill.jsx';
+import StatusPill from '../../shared/primitives/StatusPill.jsx';
 import AddDetailsPage from '../../loi/details/AddDetailsPage.jsx';
 import * as siteService from '../../../services/api/siteService.js';
 import { listMyTeam } from '../../../services/api/adapters/httpAdapter.js';
@@ -378,33 +378,36 @@ function ShortlistCard({ item, role, onView, onAddDetails, onApprove, onDelegate
   const hasSupEdits = supEdits.length > 0;
   return (
     <div data-site-id={item.code} style={{
-      background: 'var(--zm-surface)',
+      background: hasSupEdits ? 'rgba(217,119,6,0.05)' : 'var(--zm-surface)',
       border: '1px solid ' + (hasSupEdits ? 'rgba(217,119,6,0.45)' : 'var(--zm-line)'),
-      borderRadius: 14, overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: 'var(--zm-shadow-1)',
+      borderRadius: 14, padding: '18px 20px', display: 'flex', flexDirection: 'column', boxShadow: 'var(--zm-shadow-1)',
     }}>
-      {/* Header band — identity · status · score on a tonal strip. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '13px 18px', background: hasSupEdits ? 'rgba(217,119,6,0.06)' : 'var(--zm-surface-2)', borderBottom: '1px solid ' + (hasSupEdits ? 'rgba(217,119,6,0.30)' : 'var(--zm-line)') }}>
-        <StageDot stage={reviewable ? 'inReview' : 'shortlist'} size={9}/>
+      {/* Identity row — map-pin · name/status/meta · score */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <span aria-hidden="true" style={{ flex: '0 0 46px', width: 46, height: 46, borderRadius: '50%', background: 'var(--zm-accent-soft)', border: '1px solid var(--zm-accent-line)', color: 'var(--zm-accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name="pin" size={22}/>
+        </span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <h3 style={{ margin: 0, fontFamily: 'var(--zm-font-display)', fontWeight: 650, fontSize: 16.5, letterSpacing: '-0.01em', color: 'var(--zm-fg)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</h3>
-          <span style={{ display: 'block', marginTop: 1, fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            <span style={{ fontFamily: 'var(--zm-font-mono)', color: 'var(--zm-fg-4)' }}>{item.code}</span> · {item.city} · Visit {item.visitDate} · by {item.createdBy}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+            <h3 style={{ margin: 0, fontFamily: 'var(--zm-font-display)', fontWeight: 650, fontSize: 17, letterSpacing: '-0.01em', color: 'var(--zm-fg)' }}>{item.name}</h3>
+            {reviewable ? <StatusPill stage="inReview"/> : <StatusPill stage="shortlist"/>}
+            {hasSupEdits && (
+              <span title="A supervisor edited this site's details" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999, background: 'rgba(217,119,6,0.12)', border: '1px solid rgba(217,119,6,0.40)', color: '#B45309', fontFamily: 'var(--zm-font-body)', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                <EyeIcon size={11}/> Supervisor edited {supEdits.length}
+              </span>
+            )}
+          </span>
+          <span style={{ display: 'block', marginTop: 3, fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <span style={{ fontFamily: 'var(--zm-font-mono)', color: 'var(--zm-fg-4)' }}>{item.code}</span> · {item.city} · Visit {item.visitDate}
           </span>
         </div>
-        {hasSupEdits && (
-          <span title="A supervisor edited this site's details" style={{ flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999, background: 'rgba(217,119,6,0.12)', border: '1px solid rgba(217,119,6,0.40)', color: '#B45309', fontFamily: 'var(--zm-font-body)', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
-            <EyeIcon size={11}/> Supervisor edited {supEdits.length}
-          </span>
-        )}
-        {reviewable ? <StatusPill stage="inReview"/> : <StatusPill stage="shortlist"/>}
-        <div style={{ flex: '0 0 auto', textAlign: 'right', paddingLeft: 2 }}>
-          <div style={{ fontFamily: 'var(--zm-font-display)', fontWeight: 750, fontSize: 19, lineHeight: 1, color: item.score >= 4 ? 'var(--zm-success)' : 'var(--zm-fg)' }}>{item.score || '—'}</div>
+        <div style={{ flex: '0 0 auto', textAlign: 'right', paddingLeft: 8 }}>
+          <div style={{ fontFamily: 'var(--zm-font-display)', fontWeight: 750, fontSize: 20, lineHeight: 1, color: item.score >= 4 ? 'var(--zm-success)' : 'var(--zm-fg)' }}>{item.score || '—'}</div>
           <div style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 700, fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--zm-fg-4)', marginTop: 2 }}>Score</div>
         </div>
       </div>
-      {/* Body — metrics + actions on the clean surface. */}
-      <div style={{ padding: '15px 18px 16px', display: 'flex', flexDirection: 'column', gap: 15 }}>
-      <div style={{ display: 'flex', gap: 30, rowGap: 12, flexWrap: 'wrap' }}>
+      {/* Metrics — bordered top and bottom */}
+      <div style={{ display: 'flex', gap: 30, rowGap: 12, flexWrap: 'wrap', margin: '15px 0', padding: '14px 0', borderTop: '1px solid var(--zm-line-faint)', borderBottom: '1px solid var(--zm-line-faint)' }}>
         {[['Est. sales', item.estSales ? `₹${(Number(item.estSales) / 100000).toFixed(1)} L/mo` : '—'], ['Carpet', item.carpet ? `${item.carpet} sqft` : '—'], ['Total op', item.totalOpCost ? `₹${Math.round(Number(item.totalOpCost) / 1000)} k/mo` : '—'], ['Rent type', item.rentType === 'fixed' ? 'Fixed + esc.' : item.rentType === 'revshare' ? 'Rev share' : item.rentType === 'mg_revshare' ? 'MG + rev share' : '—']].map(([k, v]) => (
           <div key={k} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 10.5, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>{k}</span><span style={{ fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 14, fontWeight: 600, color: 'var(--zm-fg)' }}>{v}</span></div>
         ))}
@@ -440,7 +443,6 @@ function ShortlistCard({ item, role, onView, onAddDetails, onApprove, onDelegate
         ) : (
           <span style={{ padding: '6px 10px', borderRadius: 7, background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-fg-3)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="alert" size={12}/> Add 17 fields then Send for review</span>
         )}
-      </div>
       </div>
     </div>
   );
