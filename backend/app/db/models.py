@@ -80,15 +80,11 @@ class Site(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="draft_submitted")
     name: Mapped[str] = mapped_column(Text, nullable=False)
     city: Mapped[str] = mapped_column(Text, nullable=False)
-    address: Mapped[Optional[str]] = mapped_column(Text)
     visit_date: Mapped[Optional[date]] = mapped_column(Date)
-    notes: Mapped[Optional[str]] = mapped_column(Text)
 
     # Pipeline-stage fields (some exist; expected_rent + rent_type + rent_set_at are added)
     model: Mapped[Optional[str]] = mapped_column(Text)  # free text — store_model enum dropped (202606141)
     spoc_name: Mapped[Optional[str]] = mapped_column(Text)
-    spoc_email: Mapped[Optional[str]] = mapped_column(Text)
-    spoc_phone: Mapped[Optional[str]] = mapped_column(Text)
     google_maps_pin: Mapped[Optional[str]] = mapped_column(Text)
     google_maps_url: Mapped[Optional[str]] = mapped_column(Text)
     expected_rent: Mapped[Optional[float]] = mapped_column(Numeric(12, 2))
@@ -371,8 +367,6 @@ class SiteFile(Base):
     mime_type: Mapped[Optional[str]] = mapped_column(Text)
     is_primary: Mapped[Optional[bool]] = mapped_column(Boolean, server_default="false")
     source: Mapped[str] = mapped_column(Text, nullable=False, server_default="manual_upload")
-    onedrive_item_id: Mapped[Optional[str]] = mapped_column(Text)
-    onedrive_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (
