@@ -20,7 +20,7 @@ from app.domain.schemas.bd_status import (
     DdFailedSiteItem,
 )
 from app.domain.state_machine import SiteStatus
-from app.services._common import apply_role_scope, fetch_site_or_404, fetch_user_name, fetch_user_names
+from app.services._common import apply_role_scope, display_code, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.change_request_service import svc_list_for_site
 from app.services.legal_service import (
     _batch_dd_by_site,
@@ -53,7 +53,7 @@ async def svc_bd_site_status(
 
     return BdSiteStatusResponse(
         site_id=str(site.id),
-        site_code=site.code or "",
+        site_code=display_code(site),
         site_name=site.name,
         city=site.city,
         site_status=site.status,
@@ -100,7 +100,7 @@ async def svc_bd_dd_failed_queue(
         submitted_by_name = names.get(site.submitted_by)
         items.append(DdFailedSiteItem(
             site_id=str(site.id),
-            site_code=site.code or "",
+            site_code=display_code(site),
             site_name=site.name,
             city=site.city,
             submitted_by_name=submitted_by_name,

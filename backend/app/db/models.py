@@ -167,7 +167,8 @@ class Site(Base):
     financial_closure_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
 
     # Finance / CA code flow (managed from the Site Tracker Finance tab).
-    # Once ca_code is set it replaces site.code as the display identifier.
+    # Once ca_code is set it replaces site.code as the display identifier —
+    # resolve it through _common.display_code() rather than by hand.
     kyc_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     ca_code: Mapped[Optional[str]] = mapped_column(Text)
     finance_amount: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))

@@ -37,6 +37,7 @@ from app.domain.schemas.project import (
 )
 from app.services import budget_service
 from app.services._common import (
+    display_code,
     actor_is_business_admin,
     count_rows,
     fetch_site_for_update_or_404,
@@ -182,7 +183,7 @@ async def _queue_item(
     qa = _qa_queue_fields(prefetched, review)
     return ProjectQueueItem(
         site_id=str(site.id),
-        site_code=site.ca_code or site.code or "",
+        site_code=display_code(site),
         site_name=site.name,
         city=site.city,
         design_status=site.design_status or "pending",
@@ -264,7 +265,7 @@ async def _build_response(
     budget, budget_lines = await _gfc_budget_lines(session, site_id=site.id, tenant_id=site.tenant_id)
     return ProjectStateResponse(
         site_id=str(site.id),
-        site_code=site.ca_code or site.code or "",
+        site_code=display_code(site),
         site_name=site.name,
         city=site.city,
         tenant_id=str(site.tenant_id),
@@ -463,7 +464,7 @@ async def svc_project_history(
     for site, review in rows:
         items.append(ProjectHistoryItem(
             site_id=str(site.id),
-            site_code=site.ca_code or site.code or "",
+            site_code=display_code(site),
             site_name=site.name,
             city=site.city,
             submitted_by_name=names.get(site.submitted_by),
