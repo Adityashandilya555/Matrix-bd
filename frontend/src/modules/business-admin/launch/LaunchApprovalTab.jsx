@@ -20,6 +20,8 @@ import {
   TABULAR, Drawer, inr,
 } from '../ui/kit.jsx';
 import RentTermsForm, { AC_TOKENS } from '../../shared/rent/RentTermsForm.jsx';
+import RentTermsFormV2 from '../../shared/rent/RentTermsFormV2.jsx';
+import { toV2Value, fromV2Key, pickLaunchRentFields, buildLaunchRentPayload } from '../../shared/rent/launchRentAdapter.js';
 import { usePageContext } from '../../../App.jsx';
 import {
   getLaunchQueue, getLaunchApproval, saveLaunchRentFields,
@@ -27,6 +29,10 @@ import {
 } from '../../../services/api/launchApprovalApi.js';
 import { sendForFinancialClosure } from '../../../services/api/financialClosureApi.js';
 import { keyActivate } from '../../../lib/a11y.js';
+
+// Configurable rent-type UI (FEATURE_RENT_V2). Inlined per the USE_MOCK
+// convention (see App.jsx). Flag OFF → the old four-card RentTermsForm (rollback).
+const FEATURE_RENT_V2 = import.meta.env.VITE_FEATURE_RENT_V2 === 'true';
 
 // ── Status display map ─────────────────────────────────────────────────────────
 const STATUS_LABELS = {
@@ -167,13 +173,9 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   const [savedFlash, setSavedFlash] = React.useState(false);
   const [err, setErr] = React.useState(null);
 
-  const RENT_KEYS = ['rent_type', 'expected_rent', 'rev_share_pct', 'revshare_dinein_pct', 'revshare_delivery_pct', 'escalation_pct', 'expected_escalation_years', 'staggered_escalation', 'rent_free_days', 'lock_in_months', 'tenure_months'];
-
   const hydrate = React.useCallback((d) => {
     setData(d);
-    const f = {};
-    RENT_KEYS.forEach((k) => { f[k] = d[k] ?? null; });
-    setForm(f);
+    setForm(pickLaunchRentFields(d));
   }, []);
 
   const load = React.useCallback(async () => {
@@ -197,20 +199,14 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   const canEdit = status === 'pending_admin_review' || status === 'pending_admin_final';
   const isFinal = status === 'pending_admin_final';
   const handleRentChange = (key, val) => setForm((f) => ({ ...f, [key]: val }));
+  // RentTermsFormV2 speaks the canonical snake_case contract; translate its keys
+  // back to the launch staging keys the form state + PATCH body use.
+  const handleRentV2Change = (key, val) => handleRentChange(fromV2Key(key), val);
 
   const handleSaveRent = async () => {
     setSaving(true); setErr(null); setSavedFlash(false);
     try {
-      // Drop incomplete staggered rows (a blank "Add year") so the backend's
-      // StaggeredEscalationItem (year>0, percent required) doesn't 422; send an
-      // empty/absent schedule as null when the rent isn't staggered.
-      const payload = { ...form };
-      payload.staggered_escalation = form.rent_type === 'staggered' && Array.isArray(form.staggered_escalation)
-        ? form.staggered_escalation
-            .filter((e) => e && e.year != null && e.year !== '' && e.percent != null && e.percent !== '')
-            .map((e) => ({ year: Number(e.year), percent: Number(e.percent) }))
-        : null;
-      hydrate(await saveLaunchRentFields(siteId, payload));
+      hydrate(await saveLaunchRentFields(siteId, buildLaunchRentPayload(form)));
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2200);
     } catch (e) {
@@ -362,7 +358,12 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
 
             {canEdit && rentMode === 'edit' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <RentTermsForm value={form} onChange={handleRentChange} tokens={AC_TOKENS} />
+                {FEATURE_RENT_V2 ? (
+                  <RentTermsFormV2 value={toV2Value(form)} onChange={handleRentV2Change}
+                    tokens={AC_TOKENS} showRentLinkedTerms legacyMode="edit" />
+                ) : (
+                  <RentTermsForm value={form} onChange={handleRentChange} tokens={AC_TOKENS} />
+                )}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: T.textFaint }}>Comment on rent (optional)</div>
                   {/* ac-input supplies the focus ring and placeholder colour

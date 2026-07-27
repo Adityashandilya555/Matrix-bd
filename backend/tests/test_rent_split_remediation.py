@@ -82,3 +82,52 @@ def test_apply_rent_edits_normalizes_staggered_schedule():
     ))
     assert row.staggered_escalation == [{"year": 1, "percent": 5}, {"year": 2, "percent": 6}]
     assert any(c["field"] == "staggered_escalation" for c in changes)
+
+
+# ── Bringing RentTermsFormV2 to the launch Edit tab ──────────────────────────
+
+def test_launch_rent_fields_request_matches_editable_set():
+    # The request schema and the editable-field tuple must stay in lockstep, or
+    # extra="forbid" would 422 a field the loop is actually allowed to edit.
+    from app.domain.schemas.launch import LaunchRentFieldsRequest, RENT_EDITABLE_FIELDS
+    assert set(LaunchRentFieldsRequest.model_fields) == set(RENT_EDITABLE_FIELDS)
+
+
+def test_launch_rent_fields_request_forbids_unknown_key():
+    # The bug this fixes: RentTermsFormV2 emits expected_escalation_pct, which the
+    # request used to silently ignore (200 OK, edit discarded). extra="forbid"
+    # turns that key mismatch into a loud 422 instead.
+    import pytest
+    from pydantic import ValidationError
+    from app.domain.schemas.launch import LaunchRentFieldsRequest
+    with pytest.raises(ValidationError):
+        LaunchRentFieldsRequest(expected_escalation_pct=5)
+
+
+def test_apply_rent_edits_preserves_per_year_split():
+    # The launch save must carry the per-year dine-in / delivery split, not strip
+    # every row to {year, percent} the way the old launch builder did.
+    from app.domain.schemas.launch import LaunchRentFieldsRequest
+    from app.services.launch_service import _apply_rent_edits
+    row = SimpleNamespace(staggered_escalation=None)
+    _apply_rent_edits(row, LaunchRentFieldsRequest(
+        staggered_escalation=[{"year": 1, "percent": 5, "dine_in_pct": 8, "delivery_pct": 4}],
+    ))
+    assert row.staggered_escalation == [{"year": 1, "percent": 5, "dine_in_pct": 8, "delivery_pct": 4}]
+
+
+def test_commit_preserves_split_into_canonical_site():
+    # The agreed launch-stage split + schedule must land on the canonical sites row.
+    from app.services.launch_service import _commit_rent_to_canonical
+    row = SimpleNamespace(
+        rent_type="staggered", expected_rent=100000.0, escalation_pct=None,
+        expected_escalation_years=None, rev_share_pct=None,
+        revshare_dinein_pct=8, revshare_delivery_pct=4, fixed_rent_amt=None,
+        escalation_date=None, rent_free_days=None, lock_in_months=None, tenure_months=None,
+        staggered_escalation=[{"year": 1, "percent": 5, "dine_in_pct": 8, "delivery_pct": 4}],
+    )
+    site, detail = SimpleNamespace(), SimpleNamespace()
+    _commit_rent_to_canonical(site, detail, row)
+    assert site.staggered_escalation == [{"year": 1, "percent": 5, "dine_in_pct": 8, "delivery_pct": 4}]
+    assert site.revshare_dinein_pct == 8
+    assert site.revshare_delivery_pct == 4
