@@ -20,6 +20,7 @@ from app.domain.schemas.site_stage_status import (
     StageTimelineEntry,
 )
 from app.services._common import (
+    display_code,
     assert_executive_owns_site,
     fetch_site_or_404,
     fetch_user_names,
@@ -405,7 +406,7 @@ async def build_stage_status_response(
 
     return SiteStageStatusResponse(
         site_id=str(site.id),
-        site_code=site.ca_code or site.code or "",
+        site_code=display_code(site),
         site_name=site.name,
         city=site.city,
         headline=_headline(site, **{k: ctx[k] for k in ("project", "nso", "launch", "design_status")}),

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import models
 from app.domain.schemas.site_tracker import SiteTrackerResponse
-from app.services._common import assert_executive_owns_site, fetch_site_or_404, fetch_user_name
+from app.services._common import assert_executive_owns_site, display_code, fetch_site_or_404, fetch_user_name
 from app.services.legal_service import (
     _agreement_to_response,
     _dd_to_response,
@@ -82,7 +82,7 @@ async def build_tracker_response(
 
     return SiteTrackerResponse(
         site_id=str(site.id),
-        site_code=site.code or "",
+        site_code=display_code(site),
         site_name=site.name,
         city=site.city,
         site_status=site.status,

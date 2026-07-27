@@ -27,7 +27,7 @@ from app.db import models
 from app.db.session import transaction
 from app.domain.schemas.business_admin import Module
 from app.services import storage_service
-from app.services._common import fetch_site_for_update_or_404, fetch_user_names
+from app.services._common import display_code, fetch_site_for_update_or_404, fetch_user_names
 from app.services.audit_service import write_audit_event
 # The predicate for "this deliverable's file_url is an object key we wrote, not a
 # legacy free-text link" already exists next door — purging exactly the set the
@@ -363,7 +363,7 @@ async def list_finance_approvals(
             finance_amount = None
         items.append({
             "site_id": str(site.id),
-            "site_code": site.ca_code or site.code or f"SITE-{str(site.id)[:8].upper()}",
+            "site_code": display_code(site) or f"SITE-{str(site.id)[:8].upper()}",
             "site_name": site.name or "Unnamed site",
             "city": site.city or "Unknown city",
             "site_status": site.status or "pending",
@@ -653,7 +653,7 @@ async def delete_site(
         # Row-locked + tenant-scoped: an admin cannot delete another workspace's
         # site, and a concurrent workflow write can't interleave with the delete.
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
-        label = site.ca_code or site.code or str(site.id)
+        label = display_code(site) or str(site.id)
 
         # Collect the storage keys BEFORE the rows go away. Design deliverables
         # only carry an object key when the path is one we wrote (legacy free-text

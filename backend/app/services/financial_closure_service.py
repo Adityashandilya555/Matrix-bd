@@ -32,7 +32,7 @@ from app.domain.schemas.financial_closure import (
     SaveFCBudgetRequest,
 )
 from app.services import budget_service
-from app.services._common import actor_is_business_admin, count_rows, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_name, fetch_user_names
+from app.services._common import actor_is_business_admin, count_rows, display_code, fetch_site_for_update_or_404, fetch_site_or_404, fetch_user_name, fetch_user_names
 from app.services.audit_service import write_audit_event
 from app.services.delegation_service import svc_is_delegated
 
@@ -211,7 +211,7 @@ async def _build_fc_state(
     delegate = await _active_fc_delegate(session, site_id=site.id)
     return FCStateResponse(
         site_id=str(site.id),
-        site_code=site.ca_code or site.code or "",
+        site_code=display_code(site),
         site_name=site.name,
         city=site.city,
         tenant_id=str(site.tenant_id),
@@ -341,7 +341,7 @@ async def svc_fc_queue(  # skipcq: PY-R1000
             delegate = delegates_by_site.get(site.id)
             items.append(FCQueueItem(
                 site_id=str(site.id),
-                site_code=site.ca_code or site.code or "",
+                site_code=display_code(site),
                 site_name=site.name,
                 city=site.city,
                 closure_status=(closure.status if closure else "draft"),
@@ -577,7 +577,7 @@ async def svc_fc_admin_queue(
         )
         delegate = delegates_by_site.get(site.id)
         items.append(FCQueueItem(
-            site_id=str(site.id), site_code=site.ca_code or site.code or "",
+            site_id=str(site.id), site_code=display_code(site),
             site_name=site.name, city=site.city,
             closure_status=closure.status,
             financial_closure_status=site.financial_closure_status or "pending",
