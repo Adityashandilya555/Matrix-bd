@@ -161,12 +161,36 @@ export default function RentTermsFormV2({
   // Dine-in/Delivery split and cadence — R-A: V1 rendered the split for every
   // rent type (RentTermsForm.jsx, gated only on the flag), so a V2 legacy edit
   // must not silently drop it.
+  // A native checkbox kept underneath (role="switch" only renames it for screen
+  // readers) so the surrounding <label> still works as a click target and Space
+  // still toggles — a <button> is not a labelable element and would need an
+  // aria-labelledby restructure plus its own key handling to match this.
+  //
+  // The track/thumb geometry and motion live in rent-terms.css; only the two
+  // themed colours stay inline, because that is what the `tokens` prop is for.
+  // data-on / data-disabled are load-bearing, not decorative: vitest runs with
+  // css:false, so jsdom never evaluates the stylesheet and thumb position would
+  // otherwise be untestable.
   const revShareToggle = (
-    <label className="rt-switch" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: readOnly ? 'default' : 'pointer', fontFamily: t.fontBody, fontWeight: 600, fontSize: 12.5, color: t.fg, userSelect: 'none' }}>
-      <input
-        type="checkbox" checked={revShareOn} disabled={readOnly} onChange={toggleRevShare}
-        style={{ width: 34, height: 20, appearance: 'none', WebkitAppearance: 'none', cursor: readOnly ? 'default' : 'pointer', borderRadius: 999, position: 'relative', background: revShareOn ? t.accent : t.lineStrong, transition: 'background .15s', flex: '0 0 34px' }}
-      />
+    <label className="rt-switch" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: readOnly ? 'default' : 'pointer', fontFamily: t.fontBody, fontWeight: 600, fontSize: 12.5, color: readOnly ? t.fgMuted : t.fg, userSelect: 'none' }}>
+      <span className="rt-switch__control">
+        <input
+          type="checkbox" role="switch" className="rt-switch__input"
+          checked={revShareOn} disabled={readOnly} onChange={toggleRevShare}
+        />
+        <span
+          className="rt-switch__track" aria-hidden="true"
+          data-on={String(revShareOn)} data-disabled={String(!!readOnly)}
+          // fgFaint, not lineStrong: the old off-track was 1.35:1 on white, so the
+          // white thumb had no edge. fgFaint clears 4.5:1 against the thumb in both
+          // themes, and both track colours clear 3:1 on their surface — which is why
+          // no border is needed, and why the portal's !important hover rule on
+          // border-color can't reach this.
+          style={{ background: revShareOn ? t.accent : t.fgFaint }}
+        >
+          <span className="rt-switch__thumb" />
+        </span>
+      </span>
       REV SHARE — add Dine-in % / Delivery % split
     </label>
   );
