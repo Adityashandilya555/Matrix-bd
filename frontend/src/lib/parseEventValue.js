@@ -18,7 +18,15 @@
 // quotes, which would corrupt any value containing an apostrophe, so it is gated
 // on the string actually looking like one of these objects rather than applied
 // hopefully to anything that failed JSON.parse.
-const LEGACY_SHAPE = /^\s*\[\s*\{\s*'(?:year|percent|mg|dine_in_pct|delivery_pct)'\s*:/;
+//
+// Expressed with string ops rather than a regex on purpose: DeepSource's JS
+// parser mis-tokenises a regex literal that contains a quote character, treating
+// the leading slash as division and the quote as an unterminated string, which
+// fails the whole file with JS-0833.
+const Q = String.fromCharCode(39);
+const LEGACY_KEYS = ['year', 'percent', 'mg', 'dine_in_pct', 'delivery_pct'];
+const looksLegacy = (text) =>
+  text.startsWith('[') && LEGACY_KEYS.some((k) => text.includes(`{${Q}${k}${Q}:`));
 
 export function parseEventValue(raw) {
   if (raw == null) return null;
@@ -32,14 +40,14 @@ export function parseEventValue(raw) {
     // Not JSON — fall through to the legacy repr path below.
   }
 
-  if (!LEGACY_SHAPE.test(text)) return null;
+  if (!looksLegacy(text)) return null;
   try {
     // Python repr of these rows contains only single-quoted bare keys and
     // numbers — no nested strings — so swapping the quote character is safe
     // here in a way it would not be in general. None/True/False are mapped
     // because a legacy row could carry an explicit null.
     const json = text
-      .replace(/'/g, '"')
+      .split(Q).join('"')
       .replace(/\bNone\b/g, 'null')
       .replace(/\bTrue\b/g, 'true')
       .replace(/\bFalse\b/g, 'false');
