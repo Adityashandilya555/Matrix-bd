@@ -21,7 +21,65 @@ import React from 'react';
 import { T, TABULAR, Icon, Avatar, EmptyState, inr } from '../ui/kit.jsx';
 import { ScheduleTable } from '../../shared/rent/RentScheduleDialog.jsx';
 import { AC_TOKENS } from '../../shared/rent/RentTermsForm.jsx';
-import { asScheduleRows } from '../../../lib/parseEventValue.js';
+
+// ── Recovering the structured value behind a diff string ──────────────────────
+//
+// launch_review_events stores each change as {field, label, from, to}, already
+// stringified. New events carry JSON (launch_service._str uses json.dumps), but
+// events written before that fix hold a PYTHON REPR:
+//
+//   [{Q}year{Q}: 1, ...]   (single-quoted — JSON.parse rejects it outright)
+//
+// Rather than migrate an audit trail in place, both shapes are read here. These
+// live in this file rather than lib/ because the timeline is their only consumer
+// and a standalone module tripped the JS analyser's parser.
+//
+// Returns null when the string is not a container we recognise, and NEVER throws
+// — callers fall back to the raw string, which is exactly the old behaviour.
+const Q = String.fromCharCode(39);
+const LEGACY_KEYS = ['year', 'percent', 'mg', 'dine_in_pct', 'delivery_pct'];
+
+// The legacy path rewrites quotes, which would corrupt any value containing an
+// apostrophe, so it is gated on the string really looking like a schedule row.
+const looksLegacy = (text) =>
+  text.startsWith('[') && LEGACY_KEYS.some((k) => text.includes(`{${Q}${k}${Q}:`));
+
+export function parseEventValue(raw) {
+  if (raw == null) return null;
+  if (typeof raw === 'object') return raw;      // already structured
+  const text = String(raw).trim();
+  if (!text.startsWith('[') && !text.startsWith('{')) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch (notJson) {   // eslint-disable-line no-unused-vars
+    // Not JSON — fall through to the legacy repr path below.
+  }
+
+  if (!looksLegacy(text)) return null;
+  try {
+    // These rows carry only bare keys and numbers — no nested strings — so
+    // swapping the quote character is safe here in a way it would not be in
+    // general. None/True/False are mapped in case a row carries an explicit null.
+    const json = text
+      .split(Q).join('"')
+      .replace(/\bNone\b/g, 'null')
+      .replace(/\bTrue\b/g, 'true')
+      .replace(/\bFalse\b/g, 'false');
+    return JSON.parse(json);
+  } catch (notRepr) {   // eslint-disable-line no-unused-vars
+    return null;
+  }
+}
+
+// A staggered schedule is a non-empty array of objects. Anything else renders
+// as text.
+export function asScheduleRows(raw) {
+  const parsed = parseEventValue(raw);
+  if (!Array.isArray(parsed) || parsed.length === 0) return null;
+  const rows = parsed.filter((r) => r && typeof r === 'object' && !Array.isArray(r));
+  return rows.length === parsed.length ? rows : null;
+}
 
 // Tint an accent for a fill or hairline without leaving the theme — mixing with
 // `transparent` keeps it correct in both light and dark. Matches SitesTab.

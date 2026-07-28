@@ -5,7 +5,7 @@
 // and neither may throw — the fallback is showing the raw string, which is
 // exactly what the timeline did before.
 import { describe, it, expect } from 'vitest';
-import { parseEventValue, asScheduleRows } from '../parseEventValue.js';
+import { parseEventValue, asScheduleRows } from '../RentTimeline.jsx';
 
 const LEGACY = "[{'year': 1, 'percent': 12.0, 'dine_in_pct': 2.0, 'delivery_pct': 3.0}, {'year': 2, 'percent': 4.0}]";
 const MODERN = '[{"year": 1, "percent": 12.0}, {"year": 2, "percent": 4.0}]';
