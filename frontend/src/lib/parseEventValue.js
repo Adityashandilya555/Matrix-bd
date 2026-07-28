@@ -36,7 +36,7 @@ export function parseEventValue(raw) {
 
   try {
     return JSON.parse(text);
-  } catch {
+  } catch (notJson) {   // eslint-disable-line no-unused-vars
     // Not JSON — fall through to the legacy repr path below.
   }
 
@@ -52,7 +52,7 @@ export function parseEventValue(raw) {
       .replace(/\bTrue\b/g, 'true')
       .replace(/\bFalse\b/g, 'false');
     return JSON.parse(json);
-  } catch {
+  } catch (notRepr) {   // eslint-disable-line no-unused-vars
     return null;
   }
 }
