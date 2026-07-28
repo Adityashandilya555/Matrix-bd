@@ -20,6 +20,70 @@ const hasVal = (x) => x != null && x !== '';
 const fmtPct = (x) => (hasVal(x) ? `${Number(x)}%` : '—');
 const fmtInr = (x) => (hasVal(x) ? `₹${Number(x).toLocaleString('en-IN')}` : '—');
 
+/**
+ * ScheduleTable — the Year / Escalation / Dine-in / Delivery grid, on its own.
+ *
+ * Extracted from the dialog so the rent-change timeline can render an escalation
+ * schedule as a real table instead of the raw string it used to print. The split
+ * columns still appear only when the rows actually carry a rev-share split.
+ *
+ * `compact` is the timeline variant: tighter type and padding, and `marks` lets
+ * the caller flag a row as added or removed so a schedule that went from three
+ * years to two says so, rather than leaving the reader to diff it by eye.
+ */
+export function ScheduleTable({ rows, tokens, compact = false, marks = {} }) {
+  const t = tokens;
+  const hasSplit = rows.some((e) => hasVal(e.dine_in_pct) || hasVal(e.delivery_pct));
+  const th = {
+    fontFamily: t.fontBody, fontWeight: 700, fontSize: compact ? 9.5 : 10,
+    letterSpacing: '0.08em', textTransform: 'uppercase', color: t.fgFaint,
+    padding: compact ? '0 0 6px' : '0 0 10px', textAlign: 'right', whiteSpace: 'nowrap',
+  };
+  const td = {
+    fontFamily: t.fontMono, fontFeatureSettings: "'tnum' 1", fontSize: compact ? 11.5 : 13,
+    color: t.fg, padding: compact ? '5px 0' : '10px 0', textAlign: 'right',
+    borderTop: `1px solid ${t.line}`,
+  };
+  const MARK = { added: t.accent, removed: t.danger };
+
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <thead>
+        <tr>
+          <th style={{ ...th, textAlign: 'left' }}>Year</th>
+          <th style={th}>Escalation</th>
+          {hasSplit && <th style={th}>Dine-in</th>}
+          {hasSplit && <th style={th}>Delivery</th>}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((e, i) => {
+          const mark = marks[e.year ?? i + 1];
+          const tint = mark ? MARK[mark] : null;
+          const cell = tint
+            ? { ...td, color: tint, textDecoration: mark === 'removed' ? 'line-through' : 'none' }
+            : td;
+          return (
+            <tr key={e.year ?? i}>
+              <td style={{ ...cell, textAlign: 'left', color: tint || t.fgMuted, fontFamily: t.fontBody, fontSize: compact ? 11.5 : 13 }}>
+                Year {e.year ?? i + 1}
+                {mark && (
+                  <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    {mark}
+                  </span>
+                )}
+              </td>
+              <td style={cell}>{fmtPct(e.percent)}</td>
+              {hasSplit && <td style={cell}>{fmtPct(e.dine_in_pct)}</td>}
+              {hasSplit && <td style={cell}>{fmtPct(e.delivery_pct)}</td>}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
 function ScheduleDialog({ rows, baseRent, tokens, onClose }) {
   const t = tokens;
   const hasSplit = rows.some((e) => hasVal(e.dine_in_pct) || hasVal(e.delivery_pct));
@@ -30,9 +94,6 @@ function ScheduleDialog({ rows, baseRent, tokens, onClose }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-
-  const th = { fontFamily: t.fontBody, fontWeight: 700, fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: t.fgFaint, padding: '0 0 10px', textAlign: 'right', whiteSpace: 'nowrap' };
-  const td = { fontFamily: t.fontMono, fontFeatureSettings: "'tnum' 1", fontSize: 13, color: t.fg, padding: '10px 0', textAlign: 'right', borderTop: `1px solid ${t.line}` };
 
   return (
     // Backdrop click closes; keyboard users close with Escape (handled above) or
@@ -67,26 +128,7 @@ function ScheduleDialog({ rows, baseRent, tokens, onClose }) {
         </header>
 
         <div style={{ padding: '10px 20px 18px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ ...th, textAlign: 'left' }}>Year</th>
-                <th style={th}>Escalation</th>
-                {hasSplit && <th style={th}>Dine-in</th>}
-                {hasSplit && <th style={th}>Delivery</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((e, i) => (
-                <tr key={e.year ?? i}>
-                  <td style={{ ...td, textAlign: 'left', color: t.fgMuted, fontFamily: t.fontBody, fontSize: 13 }}>Year {e.year ?? i + 1}</td>
-                  <td style={td}>{fmtPct(e.percent)}</td>
-                  {hasSplit && <td style={td}>{fmtPct(e.dine_in_pct)}</td>}
-                  {hasSplit && <td style={td}>{fmtPct(e.delivery_pct)}</td>}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ScheduleTable rows={rows} tokens={t} />
         </div>
       </div>
     </div>
