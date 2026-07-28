@@ -94,31 +94,39 @@ def test_modules_still_agree_when_no_ca_code_exists():
 def test_no_service_assigns_site_code_from_the_raw_code_column():
     """`site_code=site.code` is the exact shape of the Launch bug.
 
-    The one permitted exception is launch_service's queue item, which emits a
-    separate ca_code field alongside for the frontend to resolve.
+    The one permitted shape is a response that also emits `ca_code` alongside,
+    so the frontend can still resolve the pair (launch_service's queue item).
+
+    The allowance is matched by CONTEXT, not by line number: an earlier version
+    of this guard pinned `launch_service.py:464` and broke the moment anything
+    was inserted above it, which teaches the next person to bump the number
+    rather than look at the code.
     """
     offenders = []
     for name, src in _service_sources():
         for match in re.finditer(r"site_code=site\.code\b", src):
+            window = src[match.start() : match.start() + 200]
+            if "ca_code=site.ca_code" in window:
+                continue  # companion field present — the frontend resolves it
             line = src[: match.start()].count("\n") + 1
             offenders.append(f"{name}:{line}")
 
-    allowed = {"launch_service.py:464"}
-    assert set(offenders) <= allowed, (
-        "site_code assigned from the raw `code` column — use "
-        f"_common.display_code(site): {sorted(set(offenders) - allowed)}"
+    assert offenders == [], (
+        "site_code assigned from the raw `code` column with no ca_code alongside "
+        f"— use _common.display_code(site): {offenders}"
     )
 
 
-def test_launch_queue_exception_still_ships_ca_code_alongside():
-    """The allowance above is only safe while the companion field exists."""
+def test_the_launch_queue_allowance_is_actually_exercised():
+    """Guards that quietly stop matching anything are worse than no guard.
+
+    If the queue item is ever routed through display_code() (fine, and arguably
+    better) this fails, prompting whoever does it to delete the allowance rather
+    than leave a dead branch behind.
+    """
     src = (_SERVICES / "launch_service.py").read_text(encoding="utf-8")
     idx = src.index("site_code=site.code,")
-    assert "ca_code=site.ca_code" in src[idx : idx + 200], (
-        "launch_service's queue item no longer emits ca_code beside site_code, "
-        "so the frontend can no longer resolve it — route it through "
-        "display_code() and drop the allowance in the guard above."
-    )
+    assert "ca_code=site.ca_code" in src[idx : idx + 200]
 
 
 def test_the_hand_rolled_fallback_is_gone():

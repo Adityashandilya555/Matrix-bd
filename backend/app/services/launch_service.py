@@ -23,6 +23,7 @@ Called from:
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -81,10 +82,42 @@ def _num(v) -> Optional[float]:
     return float(v) if v is not None else None
 
 
+def _numeric_deep(v):
+    """Recursively coerce every number in a container to float.
+
+    bool is checked first because it is an int subclass and float(True) is 1.0 —
+    without the guard a True would compare equal to a 1.
+    """
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, dict):
+        return {k: _numeric_deep(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_numeric_deep(x) for x in v]
+    if isinstance(v, (int, float, Decimal)):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return str(v)
+    return v
+
+
 def _norm(v):
-    """Normalise a value for change detection (Decimal/float/date → comparable)."""
+    """Normalise a value for change detection (Decimal/float/date → comparable).
+
+    Containers are compared as normalised DATA, not as str(). The old str() form
+    reported two false changes on staggered_escalation:
+
+      * Pydantic coerces a JSON int to float on the way in (percent 12 -> 12.0)
+        while the stored jsonb round-trips it back as an int, so `str` differed
+        on a save that changed nothing — a phantom "Edited rent" in the timeline.
+      * Postgres jsonb reorders object keys on storage, so key order alone could
+        register as an edit. sort_keys below closes that.
+    """
     if v is None:
         return None
+    if isinstance(v, (list, dict)):
+        return json.dumps(_numeric_deep(v), sort_keys=True, default=str)
     if isinstance(v, (int, float, Decimal)):
         try:
             return float(v)
@@ -94,12 +127,23 @@ def _norm(v):
 
 
 def _str(v) -> Optional[str]:
-    """Stringify for the rent-change timeline — integral floats lose the `.0`
-    so the admin's history reads `120000`, not `120000.0` (but `4.5` stays `4.5`)."""
+    """Stringify for the rent-change timeline.
+
+    Integral floats lose the `.0`, so the admin's history reads `120000`, not
+    `120000.0` (but `4.5` stays `4.5`).
+
+    Containers are serialised as JSON, NOT str(). str() on a list of dicts is
+    Python's repr — single-quoted — so the escalation schedule reached the UI as
+    `[{'year': 1, 'percent': 12.0}]` and rendered verbatim: unreadable, and
+    unparseable by the frontend precisely because JSON.parse rejects the quotes.
+    Emitting JSON lets the timeline render a real schedule table instead.
+    """
     if v is None:
         return None
     if isinstance(v, float) and v.is_integer():
         return str(int(v))
+    if isinstance(v, (list, dict)):
+        return json.dumps(_numeric_deep(v), default=str)
     return str(v)
 
 

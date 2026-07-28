@@ -7,6 +7,7 @@ the guard fires, so they stay robust.
 """
 from __future__ import annotations
 
+import json
 import uuid
 
 import pytest
@@ -78,6 +79,68 @@ def test_apply_rent_edits_noop_returns_empty():
         status="pending_admin_review", rent_type="revshare", rev_share_pct=12.0,
     )
     assert L._apply_rent_edits(row, LaunchRentFieldsRequest(rev_share_pct=12)) == []
+
+
+# ── the escalation schedule: structure in, structure out ──────────────────────────
+#
+# Two defects met on this field. _str() fell through to str(), which on a list of
+# dicts is Python's repr — single-quoted — so the timeline rendered
+# `[{'year': 1, 'percent': 12.0}]` verbatim and no frontend parser could recover
+# it. And _norm() compared containers the same way, so Pydantic's int->float
+# coercion logged a phantom "Edited rent" on a save that changed nothing.
+
+def _sched_row(schedule):
+    return models.LaunchApproval(
+        id=uuid.uuid4(), site_id=uuid.uuid4(), tenant_id=uuid.uuid4(),
+        status="pending_admin_review", rent_type="staggered", staggered_escalation=schedule,
+    )
+
+
+def test_schedule_diff_is_json_not_python_repr():
+    """The frontend renders a table by parsing this; repr's quotes break that."""
+    row = _sched_row([{"year": 1, "percent": 5}])
+    changes = L._apply_rent_edits(
+        row, LaunchRentFieldsRequest(staggered_escalation=[{"year": 1, "percent": 9}]),
+    )
+    to = changes[0]["to"]
+    assert "'" not in to, f"Python repr leaked into the timeline: {to}"
+    assert json.loads(to) == [{"year": 1, "percent": 9.0}]
+
+
+def test_resaving_the_same_schedule_is_not_an_edit():
+    """The phantom edit: jsonb stores percent as int 12, Pydantic hands back 12.0."""
+    row = _sched_row([{"year": 1, "percent": 12, "dine_in_pct": 2, "delivery_pct": 3}])
+    body = LaunchRentFieldsRequest(
+        staggered_escalation=[{"year": 1, "percent": 12, "dine_in_pct": 2, "delivery_pct": 3}],
+    )
+    assert L._apply_rent_edits(row, body) == []
+
+
+def test_key_order_alone_is_not_an_edit():
+    """Postgres jsonb reorders object keys on storage; that is not a rent change."""
+    row = _sched_row([{"percent": 5, "year": 1}])
+    body = LaunchRentFieldsRequest(staggered_escalation=[{"year": 1, "percent": 5}])
+    assert L._apply_rent_edits(row, body) == []
+
+
+def test_a_real_schedule_change_is_still_detected():
+    """The guard above must not swallow the edit in the reported screenshot —
+    a three-year schedule dropping to two."""
+    row = _sched_row([{"year": 1, "percent": 12}, {"year": 2, "percent": 4}, {"year": 3, "percent": 7}])
+    body = LaunchRentFieldsRequest(
+        staggered_escalation=[{"year": 1, "percent": 12}, {"year": 2, "percent": 4}],
+    )
+    changes = L._apply_rent_edits(row, body)
+    assert [c["field"] for c in changes] == ["staggered_escalation"]
+    assert len(json.loads(changes[0]["from"])) == 3
+    assert len(json.loads(changes[0]["to"])) == 2
+
+
+def test_scalar_stringification_is_unchanged():
+    """Integral floats still lose the .0; real decimals keep it."""
+    assert L._str(120000.0) == "120000"
+    assert L._str(4.5) == "4.5"
+    assert L._str(None) is None
 
 
 # ── final commit field mapping ─────────────────────────────────────────────────────

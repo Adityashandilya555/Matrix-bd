@@ -22,6 +22,7 @@ import {
 import RentTermsForm, { AC_TOKENS } from '../../shared/rent/RentTermsForm.jsx';
 import RentTermsFormV2 from '../../shared/rent/RentTermsFormV2.jsx';
 import RentScheduleButton from '../../shared/rent/RentScheduleDialog.jsx';
+import RentTimeline from './RentTimeline.jsx';
 import { toV2Value, fromV2Key, pickLaunchRentFields, buildLaunchRentPayload } from '../../shared/rent/launchRentAdapter.js';
 import { usePageContext } from '../../../App.jsx';
 import {
@@ -112,51 +113,6 @@ function VerdictCard({ title, verdict, by, at, comment }) {
       </div>
       {comment && <div style={{ fontSize: 12.5, color: T.text, lineHeight: 1.5, background: T.bg, borderRadius: 8, padding: '8px 10px' }}>“{comment}”</div>}
       {(by || at) && <div style={{ marginTop: 6, fontSize: 11, color: T.textFaint }}>{[by, at ? fmtDate(at) : null].filter(Boolean).join(' · ')}</div>}
-    </div>
-  );
-}
-
-// Recorded timeline — baseline → edits → verdicts → confirm → launch.
-function Timeline({ events }) {
-  if (!events?.length) return <div style={{ fontSize: 12.5, color: T.textFaint }}>No activity yet.</div>;
-  const actionColor = (a) => (a === 'approved' || a === 'committed' || a === 'launched' || a === 'confirmed') ? T.success : a === 'rejected' ? T.danger : a === 'edited' ? T.accent : T.textMuted;
-  const actionLabel = {
-    baseline: 'Draft baseline', edited: 'Edited rent', sent_for_review: 'Sent for review',
-    approved: 'Approved', rejected: 'Rejected', confirmed: 'Final confirm', committed: 'Committed to DB', launched: 'Launched',
-  };
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-      {events.map((e, i) => {
-        const color = actionColor(e.action);
-        return (
-          <div key={e.id} style={{ display: 'flex', gap: 12, paddingBottom: i === events.length - 1 ? 0 : 14 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <span style={{ width: 9, height: 9, borderRadius: 999, background: color, flexShrink: 0, marginTop: 4 }} />
-              {i !== events.length - 1 && <span style={{ flex: 1, width: 1.5, background: T.line, marginTop: 2 }} />}
-            </div>
-            <div style={{ flex: 1, minWidth: 0, paddingBottom: 2 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color }}>{actionLabel[e.action] || e.action}</span>
-                <span style={{ fontSize: 11.5, color: T.textMuted }}>{e.actor_name || 'system'}{e.actor_role ? ` · ${e.actor_role}` : ''}</span>
-                <span style={{ flex: 1 }} />
-                <span style={{ fontSize: 11, color: T.textFaint, ...TABULAR }}>{e.created_at ? new Date(e.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</span>
-              </div>
-              {e.comment && <div style={{ marginTop: 4, fontSize: 12.5, color: T.text, lineHeight: 1.45 }}>“{e.comment}”</div>}
-              {Array.isArray(e.changes) && e.changes.length > 0 && (
-                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  {e.changes.map((c, j) => (
-                    <div key={`${c.field ?? c.label ?? j}-${j}`} style={{ fontSize: 11.5, color: T.textMuted, ...TABULAR }}>
-                      <span style={{ color: T.textFaint }}>{c.label || c.field}:</span>{' '}
-                      <span style={{ textDecoration: c.from != null ? 'line-through' : 'none', color: T.textFaint }}>{c.from ?? '—'}</span>
-                      {' → '}<span style={{ color: T.text, fontWeight: 600 }}>{c.to ?? '—'}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -432,7 +388,7 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
           {/* ── Validation timeline ───────────────────────────────────────── */}
           <div>
             <SubHead>Rent change history &amp; activity</SubHead>
-            <Card style={{ padding: 16 }}><Timeline events={d.events} /></Card>
+            <Card style={{ padding: 16 }}><RentTimeline events={d.events} /></Card>
           </div>
 
           {status === 'launched' && (
