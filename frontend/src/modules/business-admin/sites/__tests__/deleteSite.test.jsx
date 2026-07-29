@@ -52,6 +52,72 @@ beforeEach(() => {
   showToast.mockReset();
 });
 
+// The confirmation dialog must render at <body>, not inside the list.
+//
+// It is `position: fixed` and centred, which reads as viewport-centred — but a
+// fixed element is positioned against its nearest ancestor that establishes a
+// containing block, and TeamDashboard wraps every tab in `.ac-fade-in`. That
+// class animates `transform` with fill-mode `both`, so the computed value
+// settles at the identity matrix rather than `none`, and an identity matrix
+// still creates a containing block. Measured in a browser with 100 rows, the
+// dialog landed 3405px above the viewport — entirely off-screen, exactly as
+// reported ("the popup for the 90th site appears around site 50").
+//
+// jsdom does no layout, so position cannot be asserted here. What CAN be
+// asserted is the structural property the fix rests on: the dialog is not a
+// descendant of the component's own tree.
+describe('delete confirmation is portalled out of the list', () => {
+  // Exact name, as openFirstDialog does — the card is itself role="button" and
+  // its name-from-content also contains "Delete site".
+  const openDialog = async (user) => {
+    await user.click(await screen.findByRole('button', { name: 'Delete site Blue Tokai Summit' }));
+    return screen.getByRole('alertdialog');
+  };
+
+  it('renders the dialog outside the SitesTab container', async () => {
+    const user = userEvent.setup();
+    const { container } = renderTab();
+    const dialog = await openDialog(user);
+
+    expect(container.contains(dialog)).toBe(false);
+    expect(document.body.contains(dialog)).toBe(true);
+  });
+
+  it('mounts it under .ac-portal-root, so tokens and theme still resolve', async () => {
+    // Outside .ac-root the --zm-* custom properties do not cascade, which is why
+    // the portal re-establishes the wrapper rather than appending bare to body.
+    const user = userEvent.setup();
+    renderTab();
+    const dialog = await openDialog(user);
+
+    const root = dialog.closest('.ac-portal-root');
+    expect(root).not.toBeNull();
+    expect(root.classList.contains('ac-root')).toBe(true);
+    expect(root.getAttribute('data-theme')).toBeTruthy();
+  });
+
+  it('keeps the scrim clickable — .ac-portal-root is pointer-events:none', async () => {
+    const user = userEvent.setup();
+    renderTab();
+    const dialog = await openDialog(user);
+
+    const scrim = dialog.parentElement;
+    expect(scrim.style.pointerEvents).toBe('auto');
+  });
+
+  it('removes the portal again when the dialog closes', async () => {
+    const user = userEvent.setup();
+    renderTab();
+    await openDialog(user);
+    // Step 1 dismisses with 'No'; 'Cancel' is the step-2 label.
+    await user.click(screen.getByRole('button', { name: 'No' }));
+
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(document.querySelectorAll('.ac-portal-root')).toHaveLength(0);
+  });
+});
+
+
 describe('two-step confirmation', () => {
   it('asks first, and deletes nothing while it is asking', async () => {
     const user = userEvent.setup();

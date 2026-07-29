@@ -1,5 +1,5 @@
 import React from 'react';
-import { T, Icon, Card, Drawer, Skeleton, EmptyState, ErrorState, Avatar, TABULAR } from '../ui/kit.jsx';
+import { T, Icon, Card, Drawer, ModalPortal, Skeleton, EmptyState, ErrorState, Avatar, TABULAR } from '../ui/kit.jsx';
 import { MODULE_META, moduleForAction, labelForEntry, dotColor } from './historyMeta.js';
 import { humanizeAuditDetail } from '../../../services/api/audit.js';
 import { getAdminSiteDocuments, getReversibleActions, undoReversibleAction, deleteSite } from '../../../services/api/businessAdminApi.js';
@@ -15,7 +15,14 @@ function ReviveDialog({ site, onCancel, onConfirm, busy }) {
   const noteId = React.useId();
   if (!site) return null;
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <ModalPortal>
+    {/* Portalled to <body>: the tab wrapper (.ac-fade-in) keeps a filling
+        animation on `transform`, whose computed value settles at the identity
+        matrix — still a containing block for position:fixed. Rendered inline,
+        this scrim centred on the whole LIST, so with 100 sites the dialog for
+        the 90th landed thousands of pixels above the viewport.
+        pointerEvents is explicit: .ac-portal-root is pointer-events:none. */}
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)', zIndex: 110, pointerEvents: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 14, width: 520, padding: 26, boxShadow: 'var(--zm-shadow-pop)', display: 'flex', flexDirection: 'column', gap: 18 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <div style={{ flex: 1 }}>
@@ -35,6 +42,7 @@ function ReviveDialog({ site, onCancel, onConfirm, busy }) {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }
 
@@ -49,7 +57,14 @@ function DeleteSiteDialog({ site, step, onCancel, onAdvance, onConfirm, busy, er
   const isFinal = step === 2;
   const label = `${site.siteName}${site.siteCode ? ` (${site.siteCode})` : ''}`;
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)', zIndex: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <ModalPortal>
+    {/* Portalled to <body>: the tab wrapper (.ac-fade-in) keeps a filling
+        animation on `transform`, whose computed value settles at the identity
+        matrix — still a containing block for position:fixed. Rendered inline,
+        this scrim centred on the whole LIST, so with 100 sites the dialog for
+        the 90th landed thousands of pixels above the viewport.
+        pointerEvents is explicit: .ac-portal-root is pointer-events:none. */}
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.46)', backdropFilter: 'blur(6px)', zIndex: 120, pointerEvents: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div role="alertdialog" aria-modal="true" aria-label={isFinal ? 'Final delete confirmation' : 'Delete site confirmation'}
         style={{ background: 'var(--zm-surface)', border: `1px solid ${isFinal ? cm(T.danger, 45) : 'var(--zm-line)'}`, borderRadius: 14, width: 520, maxWidth: 'calc(100vw - 32px)', padding: 26, boxShadow: 'var(--zm-shadow-pop)', display: 'flex', flexDirection: 'column', gap: 18 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -87,6 +102,7 @@ function DeleteSiteDialog({ site, step, onCancel, onAdvance, onConfirm, busy, er
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }
 
