@@ -513,8 +513,49 @@ function getPortalTheme() {
   return document.querySelector('.ac-root[data-theme]')?.getAttribute('data-theme') || 'dark';
 }
 
-export function Drawer({ open, onClose, title, subtitle, headerRight, children, footer }) {
+/**
+ * ModalPortal — render an overlay at <body>, outside the app tree.
+ *
+ * This is not a z-index convenience, it is a correctness requirement. An
+ * ancestor carrying a transform, filter or backdrop-filter becomes the
+ * containing block for `position: fixed` descendants, so a "fixed, centred"
+ * dialog silently centres on THAT ELEMENT instead of the viewport.
+ *
+ * The portal's tab wrapper (TeamDashboard's `.ac-fade-in`) does exactly that:
+ * its keyframes end at `transform: none`, but `animation-fill-mode: both` keeps
+ * the animation applied, and the computed value settles at the identity matrix
+ * — which still creates a containing block. Measured with 100 sites in the
+ * list, a fixed dialog landed 3405px above the viewport, entirely off-screen.
+ *
+ * Escaping to <body> makes an overlay immune to that, whatever ancestors it
+ * later acquires. The `.ac-root` wrapper re-establishes the CSS custom
+ * properties and the theme, which do not reach outside the app subtree; the
+ * observer keeps the theme in sync while the overlay is open.
+ *
+ * NOTE: `.ac-portal-root` is `pointer-events: none` so it never blocks the page
+ * while empty — children must set `pointer-events: auto` (`.ac-overlay` does).
+ */
+export function ModalPortal({ children }) {
   const [portalTheme, setPortalTheme] = React.useState(getPortalTheme);
+
+  React.useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const root = document.querySelector('.ac-root[data-theme]');
+    setPortalTheme(getPortalTheme());
+    if (!root) return undefined;
+    const observer = new MutationObserver(() => setPortalTheme(getPortalTheme()));
+    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  }, []);
+
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div className="ac-root ac-portal-root" data-theme={portalTheme}>{children}</div>,
+    document.body,
+  );
+}
+
+export function Drawer({ open, onClose, title, subtitle, headerRight, children, footer }) {
   const titleId = React.useId();
   const drawerRef = React.useRef(null);
 
@@ -535,19 +576,9 @@ export function Drawer({ open, onClose, title, subtitle, headerRight, children, 
     return () => { window.removeEventListener('keydown', onKey); cancelAnimationFrame(frame); };
   }, [open, onClose]);
 
-  React.useEffect(() => {
-    if (!open || typeof document === 'undefined') return undefined;
-    const root = document.querySelector('.ac-root[data-theme]');
-    setPortalTheme(getPortalTheme());
-    if (!root) return undefined;
-    const observer = new MutationObserver(() => setPortalTheme(getPortalTheme()));
-    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
-    return () => observer.disconnect();
-  }, [open]);
-
   if (!open) return null;
-  const drawer = (
-    <div className="ac-root ac-portal-root" data-theme={portalTheme}>
+  return (
+    <ModalPortal>
       {/* Presentational modal scrim — mousedown on the scrim itself dismisses
           the dialog; the dialog (role="dialog") owns keyboard focus and its
           header carries a real Close button, so the scrim isn't a focus target. */}
@@ -566,9 +597,8 @@ export function Drawer({ open, onClose, title, subtitle, headerRight, children, 
         {footer && <div className="ac-drawer-footer" style={{ padding: '14px 22px', borderTop: `1px solid ${T.line}`, background: T.chip }}>{footer}</div>}
       </div>
       </div>
-    </div>
+    </ModalPortal>
   );
-  return createPortal(drawer, document.body);
 }
 
 // ── Disclosure (expand/collapse row) ─────────────────────────────────────────
