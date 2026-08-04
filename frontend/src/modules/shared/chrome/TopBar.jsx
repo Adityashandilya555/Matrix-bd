@@ -7,11 +7,13 @@ import { requestExecutiveAccess } from '../../../services/api/authService.js';
 
 // Render body preserved exactly from Chrome.jsx TopBar component.
 export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, sidebarCollapsed = false, onToggleSidebar }) {
-  const { signOut, session, effectiveModule, switchAs } = useSession();
+  const { signOut, session, effectiveModule, switchAs, isReadOnly } = useSession();
   // BD-only action — legal and payment supervisors don't open pipeline drafts.
   // "New pipeline" creates a BD site draft — only the BD surface (or mock/no-module) shows it.
   // effectiveModule reflects any admin role simulation, falling back to the JWT module claim.
-  const showNewPipeline = !effectiveModule || effectiveModule === 'bd';
+  // Hidden outright for a read-only session: it is the one write control in the
+  // chrome, so it would follow an observer onto every page it visits.
+  const showNewPipeline = !isReadOnly && (!effectiveModule || effectiveModule === 'bd');
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 

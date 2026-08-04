@@ -64,7 +64,7 @@ function KpiTile({ label, count, active, tone, onClick }) {
 export default function NsoHandoverPage() {
   const navigate = useNavigate();
   const { showToast } = usePageContext();
-  const { role } = useSession();
+  const { role, isReadOnly } = useSession();
   const isSupervisor = role === 'supervisor';
   const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null });
   const [filter, setFilter] = React.useState(null);
@@ -114,7 +114,9 @@ export default function NsoHandoverPage() {
       .then((d) => setReports({ status: 'ready', data: d, error: null }))
       .catch((err) => setReports({ status: 'error', data: null, error: err?.detail || err?.message || 'Failed to load reports' }));
     // Opening clears the unread (yellow) flag; refresh the queue so it updates.
-    markQAReportsViewed(siteId).then(() => load()).catch(() => {});
+    // Skipped for a read-only session: this is a POST fired by the act of
+    // reading, and an observer's view must not clear anyone else's flag.
+    if (!isReadOnly) markQAReportsViewed(siteId).then(() => load()).catch(() => {});
   };
 
   const COLS = '110px minmax(190px, 1fr) 120px minmax(230px, 1.1fr) 170px';

@@ -5,6 +5,7 @@ import { useSites } from './state/SitesContext.jsx';
 import { listPendingUsers } from './services/api/adapters/httpAdapter.js';
 import TopBar from './modules/shared/chrome/TopBar.jsx';
 import Sidebar from './modules/shared/chrome/Sidebar.jsx';
+import ReadOnlyBanner from './modules/shared/chrome/ReadOnlyBanner.jsx';
 import SiteDrawer from './modules/shared/site-drawer/SiteDrawer.jsx';
 import { buildDrawerSite } from './lib/buildDrawerSite.js';
 import { safeHref } from './lib/safeHref.js';
@@ -28,10 +29,18 @@ const FEATURE_RENT_V2 = import.meta.env.VITE_FEATURE_RENT_V2 === 'true';
 // All view-specific logic lives in the page components.
 
 export default function App() {
-  const { user, role, setRole, dark, toggleDark, authReady, isBusinessAdmin, adminOverride, switchAs } = useSession();
+  const { user, role, setRole, dark, toggleDark, authReady, isBusinessAdmin, isReadOnly, adminOverride, switchAs } = useSession();
   const { drafts, shortlist, staging, archive, createDraft, error: sitesError, refresh } = useSites();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Drop the module override and go back to the observer portal. RequireAuth
+  // would bounce there on its own once `role` falls back to 'observer', but
+  // navigating explicitly means the button doesn't depend on that to work.
+  const leaveModule = useCallback(() => {
+    switchAs(null, null);
+    navigate('/observer');
+  }, [switchAs, navigate]);
 
   const [openSite, setOpenSite] = useState(null);
   const [showNew, setShowNew] = useState(false);
@@ -156,6 +165,9 @@ export default function App() {
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
       />
+      {/* Renders itself away for every role but the observer. Sits outside the
+          scrolling column so it cannot be scrolled past. */}
+      <ReadOnlyBanner onLeave={leaveModule} />
       <div style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
         <Sidebar counts={counts} role={role} onRole={setRole} collapsed={sidebarCollapsed}/>
 

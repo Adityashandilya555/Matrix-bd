@@ -35,6 +35,16 @@ _DEMO_USER = {
 _READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
+# Roles an observer may present as while reading a module. Deliberately NOT
+# business_admin: services/_common.py's actor_is_business_admin() accepts either
+# `real_role` OR `role`, so admitting it here would let an observer satisfy an
+# admin-tier check on any read path. Supervisor and executive are the two the
+# Workspace Access panel offers, and neither is an escalation — an observer
+# already reads everything through the guard bypasses; this only decides which
+# shape a module page renders in.
+_OBSERVER_OVERRIDE_ROLES = frozenset({Role.SUPERVISOR.value, Role.EXECUTIVE.value})
+
+
 def _assert_may_write(claims: dict, request: Request) -> None:
     """Refuse any state-changing request from a read-only `observer`.
 
@@ -147,6 +157,21 @@ async def get_current_user(
     claims["has_pending_executive_request"] = row.get("has_pending_executive_request", False)
     if db_role == "business_admin":
         if x_override_role:
+            claims["role"] = x_override_role
+        if x_override_module:
+            claims["module"] = x_override_module
+    elif db_role == Role.OBSERVER.value:
+        # Read-only module switching. The observer already reads every module
+        # through the guard bypasses in rbac/guards.py; the override exists so a
+        # module page renders in the shape its own supervisor (or executive)
+        # sees, rather than in whatever shape an unrecognised role falls through
+        # to. Setting `module` is what scopes the module queries at all — an
+        # observer's token carries no module claim of its own.
+        #
+        # Safe because _assert_may_write runs AFTER this and keys on `real_role`,
+        # which the header cannot touch. An observer presenting as a supervisor
+        # still cannot write.
+        if x_override_role in _OBSERVER_OVERRIDE_ROLES:
             claims["role"] = x_override_role
         if x_override_module:
             claims["module"] = x_override_module

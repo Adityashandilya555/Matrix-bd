@@ -26,6 +26,7 @@ import Sidebar from './ui/Sidebar.jsx';
 import { useQueue } from './ui/useQueue.js';
 import DepartmentsTab from './departments/DepartmentsTab.jsx';
 import SitesTab, { classifyCounts } from './sites/SitesTab.jsx';
+import WorkspaceSwitcherPanel from './WorkspaceSwitcherPanel.jsx';
 import { PageContext } from '../../App.jsx';
 
 export const OBSERVER_FETCHERS = {
@@ -172,28 +173,16 @@ export default function ObserverDashboard({ onLogout, fetchers = OBSERVER_FETCHE
               <DepartmentsTab org={org} pendingSupervisors={emptyQueue}
                 executiveRequests={emptyQueue} handlers={handlers} readOnly />
             )}
-            {tab === 'workspace' && <ObserverWorkspaceNotice />}
+            {/* The same panel the admin uses, with its own copy. Entering does
+                a full page load, not a client-side navigate: activateOverride()
+                writes the module-level store, but SessionContext reads it into
+                React state only at mount, so a soft navigation would arrive at
+                the workspace with role still 'observer' — and RequireAuth would
+                bounce it straight back here. */}
+            {tab === 'workspace' && <WorkspaceSwitcherPanel variant="observer" />}
           </div>
         </div>
       </main>
-    </div>
-  );
-}
-
-// Placeholder until PR 4 wires read-only module switching. Says what the tab is
-// for rather than rendering an empty panel.
-function ObserverWorkspaceNotice() {
-  return (
-    <div style={{
-      padding: '30px 24px', textAlign: 'center', borderRadius: 14,
-      border: `1px dashed ${T.lineStrong}`, background: T.surface,
-    }}>
-      <Icon.external size={22} />
-      <div style={{ marginTop: 10, fontSize: 14, fontWeight: 650, color: T.text }}>Module views</div>
-      <div style={{ marginTop: 4, fontSize: 12.5, color: T.textFaint, maxWidth: 460, margin: '4px auto 0', lineHeight: 1.5 }}>
-        Opening a module read-only from here is coming next. Until then, every site
-        and its full history are on the Sites tab.
-      </div>
     </div>
   );
 }

@@ -498,7 +498,7 @@ function SitePaymentsTab({ site }) {
 
 export default function SiteDrawer({ site, onClose }) {
   const [tab, setTab] = useState('overview');
-  const { role, user, session } = useSession();
+  const { role, user, session, isReadOnly } = useSession();
   const { markSiteViewed } = useSites();
   // Snapshot the supervisor-edited fields at open time so the eye highlights
   // persist for this viewing session even after the yellow flag clears in the
@@ -507,6 +507,11 @@ export default function SiteDrawer({ site, onClose }) {
 
   useEffect(() => {
     if (!site || !editedFields.length) return;
+    // This is a POST fired by the act of reading, so a read-only session must
+    // not reach it. Today the ownership test below already excludes an observer
+    // (it can neither submit nor be assigned a site); this states the rule
+    // directly so a future change to who "owns" a site can't reintroduce it.
+    if (isReadOnly) return;
     // Clear the flag only for the site's own executive re-reading it — that is
     // what "until the executive views it" means. A supervisor viewing keeps it
     // lit. "exec" is the mock alias for the 'executive' role; anyone who is not a

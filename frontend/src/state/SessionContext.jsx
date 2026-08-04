@@ -32,6 +32,11 @@ const INITIAL_SESSION = {
 
 const SessionContext = createContext(null);
 
+// The roles an observer may view a module as. Mirrors _OBSERVER_OVERRIDE_ROLES
+// in backend/app/core/deps.py — the backend ignores anything else, so offering
+// more here would just produce a switch that silently does nothing.
+export const OBSERVER_VIEW_ROLES = [ROLE.SUPERVISOR, ROLE.EXECUTIVE];
+
 // Only a genuine auth rejection (401/403) means the token is stale and should
 // be dropped. A timeout / network blip / 5xx surfaces as ApiError status 0 or
 // >=500 — those must NOT log the user out (a Railway cold start would sign
@@ -78,14 +83,31 @@ export function SessionProvider({ children }) {
 
   // isBusinessAdmin: true when the true underlying JWT role is business_admin (regardless of override).
   const isBusinessAdmin = session.realRole === 'business_admin';
+  // isObserver: the workspace-wide read-only role. Like isBusinessAdmin this
+  // reads realRole, so it stays true while the observer is viewing a module as
+  // that module's supervisor.
+  const isObserver = session.realRole === ROLE.OBSERVER;
   // isDualRoleSupervisor: true when the user is a supervisor with executive access.
   const isDualRoleSupervisor = session.realRole === 'supervisor' && session.hasExecutiveAccess;
   // effectiveModule: the module being simulated, or the real session module.
-  const effectiveModule = ((isBusinessAdmin || isDualRoleSupervisor) && adminOverride?.module) || session.module;
+  const effectiveModule = ((isBusinessAdmin || isObserver || isDualRoleSupervisor) && adminOverride?.module) || session.module;
   // role: the display/canonical string used by existing components. For business_admin
   // with an active override this returns the simulated role so RequireAuth and all UI
   // adapt automatically. realRole always returns the true JWT role.
+  //
+  // An observer gets the same treatment for the same reason — RequireAuth reads
+  // this, so an observer with no override stays 'observer' and is bounced to
+  // /observer, while one that has entered a module reads as that module's
+  // supervisor and is let through. Its override role is allowlisted to the two
+  // OBSERVER_VIEW_ROLES, matching app/core/deps.py: presenting as a
+  // business_admin would satisfy admin-tier service checks.
+  //
+  // Note the fallback is realRole, NOT session.role. whoami is a GET, so it
+  // carries the override header and echoes the SIMULATED role back — falling
+  // back to it would leave `role` stuck at 'supervisor' after the override is
+  // dropped, and RequireAuth would keep an observer in a shell it just left.
   const role = isBusinessAdmin ? (adminOverride?.role || session.role)
+             : isObserver ? (OBSERVER_VIEW_ROLES.includes(adminOverride?.role) ? adminOverride.role : session.realRole)
              : isDualRoleSupervisor ? (['supervisor', 'executive'].includes(adminOverride?.role) ? adminOverride.role : session.role)
              : session.role;
 
@@ -94,12 +116,19 @@ export function SessionProvider({ children }) {
     setSession(prev => ({ ...prev, role: newRole }));
   }, []);
 
-  // switchAs: lets business_admin simulate a different role+module, 
+  // switchAs: lets business_admin simulate a different role+module,
+  // lets an observer open a module read-only,
   // or lets a dual-role supervisor switch between supervisor/executive in their module. Pass null to reset.
   const switchAs = useCallback((overrideRole, overrideModule) => {
     const isDualRoleSupervisor = session.realRole === 'supervisor' && session.hasExecutiveAccess;
-    if (session.realRole !== 'business_admin' && !isDualRoleSupervisor) return;
-    
+    const isObserver = session.realRole === ROLE.OBSERVER;
+    if (session.realRole !== 'business_admin' && !isObserver && !isDualRoleSupervisor) return;
+    // An observer may only view as a supervisor or an executive. Anything else
+    // is dropped rather than stored, so the panel can never persist an override
+    // the backend will ignore — which would read as "in a module" here while
+    // every request still arrived as a plain observer.
+    if (isObserver && overrideRole && !OBSERVER_VIEW_ROLES.includes(overrideRole)) return;
+
     // Supervisors can only switch their role, not their module
     const nextModule = isDualRoleSupervisor ? session.module : overrideModule;
     const next = overrideRole ? { role: overrideRole, module: nextModule } : null;
@@ -231,8 +260,18 @@ export function SessionProvider({ children }) {
   const value = useMemo(() => ({
     user,
     role,
-    realRole: session.role,
+    // The DB role, un-rewritable by an override. This used to read
+    // `session.role`, which is the OVERRIDDEN role (whoami echoes back whatever
+    // X-Override-Role asked for) — so `realRole` reported the simulation, the
+    // one thing it exists to see past. No caller depended on the old value.
+    realRole: session.realRole,
     isBusinessAdmin,
+    isObserver,
+    // isReadOnly: this session may not write anything, anywhere. Kept separate
+    // from `role` on purpose — `role` decides which SHAPE a page renders in
+    // (an observer views a module as its supervisor), and this decides whether
+    // that page offers to change anything.
+    isReadOnly: isObserver,
     effectiveModule,
     adminOverride,
     switchAs,
@@ -247,7 +286,7 @@ export function SessionProvider({ children }) {
     isMockMode: USE_MOCK,
     signOut,
     sessionExpired,
-  }), [user, role, isBusinessAdmin, effectiveModule, adminOverride, switchAs, setRole, session, authReady, permissions, dark, toggleDark, canFn, signOut, sessionExpired]);
+  }), [user, role, isBusinessAdmin, isObserver, effectiveModule, adminOverride, switchAs, setRole, session, authReady, permissions, dark, toggleDark, canFn, signOut, sessionExpired]);
 
   return (
     <SessionContext.Provider value={value}>
