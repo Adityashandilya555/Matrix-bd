@@ -18,6 +18,7 @@ import {
 import {
   rotateDeptCode, listPendingSupervisors, approveSupervisor, rejectSupervisor, removeOrgUser,
   getObserverCode, rotateObserverCode, listPendingObservers, approveObserver, rejectObserver,
+  listObservers, revokeObserver,
 } from '../../services/api/adapters/httpAdapter.js';
 
 import { T, Icon, IconButton, StatTile, TABULAR, getInitialTheme, persistTheme } from './ui/kit.jsx';
@@ -34,7 +35,8 @@ import WorkspaceSwitcherPanel from './WorkspaceSwitcherPanel.jsx';
 export const REAL_FETCHERS = {
   // Observer — workspace-wide read-only role
   getObserverCode, rotateObserverCode,
-  listObservers: listPendingObservers, approveObserver, rejectObserver,
+  listPendingObservers, approveObserver, rejectObserver,
+  listActiveObservers: listObservers, revokeObserver,
   listDeliverables:  getDesignAdminQueue,
   reviewDeliverable: adminReviewDeliverable,
   listGfc:           getDesignGfcQueue,
@@ -108,7 +110,11 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   const [supervisors, loadSupervisors] = useQueue(fetchers.listSupervisors);
   const [executiveRequests, loadExecutiveRequests] = useQueue(fetchers.listExecutiveReqs);
   const [org, loadOrg] = useQueue(fetchers.listOrg);
-  const [observerPending, loadObservers] = useQueue(fetchers.listObservers);
+  const [observerPending, loadObservers] = useQueue(fetchers.listPendingObservers);
+  // The roster of APPROVED observers. Its own queue, not a filter over the
+  // pending one — the two come from different endpoints and only overlap in
+  // that neither shows an observer once the other does.
+  const [observerRoster, loadObserverRoster] = useQueue(fetchers.listActiveObservers);
   // The code is a single value rather than a queue, and is only read here.
   const [observerCode, setObserverCode] = React.useState(null);
   const [observerRotating, setObserverRotating] = React.useState(false);
@@ -218,7 +224,11 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     },
     onApproveObserver: async (u) => {
       setObserverBusyId(u.id);
-      try { await fetchers.approveObserver(u.id); await loadObservers(true); }
+      try {
+        await fetchers.approveObserver(u.id);
+        // Both lists: the person leaves the queue and joins the roster.
+        await Promise.all([loadObservers(true), loadObserverRoster(true)]);
+      }
       finally { setObserverBusyId(null); }
     },
     onRejectObserver: async (u) => {
@@ -226,7 +236,12 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
       try { await fetchers.rejectObserver(u.id); await loadObservers(true); }
       finally { setObserverBusyId(null); }
     },
-    reloadObservers: loadObservers,
+    onRevokeObserver: async (u) => {
+      setObserverBusyId(u.id);
+      try { await fetchers.revokeObserver(u.id); await loadObserverRoster(true); }
+      finally { setObserverBusyId(null); }
+    },
+    reloadObservers: (silent) => Promise.all([loadObservers(silent), loadObserverRoster(silent)]),
     reloadPendingSupervisors: loadSupervisors,
     reloadExecutiveRequests: loadExecutiveRequests,
     reloadOrg: loadOrg,
@@ -327,7 +342,8 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
             )}
             {tab === 'departments' && (
               <DepartmentsTab org={org} pendingSupervisors={supervisors} executiveRequests={executiveRequests}
-              observers={{ code: observerCode, pending: observerPending, rotating: observerRotating, busyId: observerBusyId }}
+              observers={{ code: observerCode, pending: observerPending, roster: observerRoster,
+                rotating: observerRotating, busyId: observerBusyId }}
               handlers={handlers} />
             )}
             {tab === 'sites' && (

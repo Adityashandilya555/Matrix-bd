@@ -10,6 +10,7 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { clearAuthToken } from '../../services/api/authToken.js';
+import { deactivateOverride } from '../../services/api/adminOverride.js';
 import { useAuthToken } from '../../state/useAuthToken.js';
 import { decodeJwtPayload } from './jwt.js';
 import { ObserverDashboardWithContext } from './ObserverDashboard.jsx';
@@ -20,7 +21,13 @@ export default function ObserverPortalPage() {
   // portal rendering against a dead token while every call 401s. (#129)
   const token = useAuthToken();
   const role = decodeJwtPayload(token).role;
-  const logout = React.useCallback(() => { clearAuthToken(); }, []);
+  // Drop the module override too. It lives in sessionStorage, so without this
+  // the next sign-in IN THIS TAB carries it — the observer would be dropped
+  // straight back into a module instead of landing on the portal.
+  const logout = React.useCallback(() => {
+    deactivateOverride();
+    clearAuthToken();
+  }, []);
 
   if (!token || role !== 'observer') {
     // Same contract as /business-admin: no standalone login here. Deep-linking

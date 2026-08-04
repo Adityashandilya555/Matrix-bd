@@ -204,6 +204,63 @@ async def approve_observer(
         )
 
 
+async def list_active_observers(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+) -> list[dict]:
+    """The observers who currently hold read access to the whole workspace.
+
+    Without this the role is invisible after approval: the pending queue empties
+    and nothing else lists an observer, because it holds no module membership so
+    it never appears in the org tree. An account that can read everything and
+    that nobody can see is the wrong shape.
+    """
+    rows = (await session.execute(
+        text("""
+            SELECT id, email, name, created_at
+              FROM users
+             WHERE tenant_id = :tid
+               AND role = 'observer'
+               AND is_active = true
+             ORDER BY email
+        """),
+        {"tid": tenant_id},
+    )).mappings().all()
+    return [
+        {"id": str(r["id"]), "email": r["email"], "name": r["name"],
+         "created_at": r["created_at"]}
+        for r in rows
+    ]
+
+
+async def revoke_observer(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+    user_id: str | UUID,
+) -> None:
+    """Withdraw an active observer's access.
+
+    Deletes the row rather than flipping is_active, for two reasons. An inactive
+    observer would reappear in the PENDING queue — that query is
+    ``role = 'observer' AND is_active = false`` — so revoking would silently
+    re-offer the account for approval. And an observer never acts: the
+    stage_events.actor_role CHECK excludes the role, so unlike a supervisor
+    there is no audit trail hanging off the row to preserve. Same delete
+    reject_observer already does, on the other end of the lifecycle.
+    """
+    async with transaction(session):
+        await session.execute(
+            text("""
+                DELETE FROM users
+                 WHERE id = CAST(:uid AS uuid)
+                   AND tenant_id = :tid
+                   AND role = 'observer'
+                   AND is_active = true
+            """),
+            {"uid": user_id, "tid": tenant_id},
+        )
+
+
 async def reject_observer(
     session: AsyncSession,
     tenant_id: str | UUID,
@@ -865,17 +922,29 @@ _ORG_MODULES: tuple[str, ...] = ("bd", "legal", "design", "project", "nso", "pro
 _SUPERVISOR_ONLY_MODULES: frozenset[str] = frozenset({"nso"})
 
 
-async def list_org(session: AsyncSession, tenant_id: str | UUID) -> dict:
+async def list_org(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+    *,
+    include_codes: bool = True,
+) -> dict:
     """Per-department code + the active supervisors and the executives reporting
     to each (from user_module_memberships.supervisor_id). Executives with no (or
-    an unknown) supervisor land in `unassigned_executives`."""
+    an unknown) supervisor land in `unassigned_executives`.
+
+    ``include_codes=False`` returns the same directory with every join code
+    blanked. The observer portal renders this exact payload, and a join code is
+    a credential: an observer cannot write, but a department code lets it
+    onboard a supervisor who can. The department tree itself is fine for it to
+    see — only the codes come out.
+    """
     codes = {
         r["module"]: r["code"]
         for r in (await session.execute(
             text("SELECT module, code FROM module_codes WHERE tenant_id = :tid"),
             {"tid": tenant_id},
         )).mappings().all()
-    }
+    } if include_codes else {}
 
     rows = (await session.execute(
         text("""

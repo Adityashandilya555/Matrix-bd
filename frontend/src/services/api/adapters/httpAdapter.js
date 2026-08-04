@@ -701,6 +701,21 @@ export async function rejectObserver(userId) {
   return post(`/business-admin/pending-observers/${userId}/reject`);
 }
 
+// Who currently holds workspace-wide read access. Separate from the pending
+// queue on purpose: after approval an observer appears in no other list, since
+// it holds no module membership and so never enters the org tree.
+export async function listObservers() {
+  const data = await get('/business-admin/observers');
+  const items = data?.items || data || [];
+  return items.map(u => ({ id: u.id, email: u.email, name: u.name, createdAt: u.created_at }));
+}
+
+// Withdraws access outright — the backend deletes the row rather than
+// deactivating it, so a revoked observer does not reappear in the pending queue.
+export async function revokeObserver(userId) {
+  return post(`/business-admin/observers/${userId}/revoke`);
+}
+
 // Deactivate an org user (supervisor/executive) — revokes their access.
 export async function removeOrgUser(userId) {
   return post(`/business-admin/org/${userId}/remove`);

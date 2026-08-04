@@ -92,6 +92,49 @@ describe('ObserverAccessSection — the pending queue', () => {
   });
 });
 
+describe('ObserverAccessSection — the current observers', () => {
+  const ACTIVE = { id: 'u9', email: 'ravi@example.com', name: 'Ravi' };
+
+  it('lists who currently holds workspace-wide read access', () => {
+    // Without this the role is invisible after approval: the pending queue
+    // empties and an observer holds no module membership, so it appears in no
+    // other list in the product.
+    renderSection({ observers: ready([ACTIVE]) });
+    expect(screen.getByText('ravi@example.com')).toBeInTheDocument();
+    expect(screen.getByText(/current observers · 1/i)).toBeInTheDocument();
+  });
+
+  it('says what that access actually is', () => {
+    renderSection({ observers: ready([ACTIVE]) });
+    expect(screen.getByText(/read-only across the whole workspace/i)).toBeInTheDocument();
+  });
+
+  it('revokes the specific person', async () => {
+    const onRevoke = vi.fn();
+    const user = userEvent.setup();
+    renderSection({ observers: ready([ACTIVE]), onRevoke });
+    await user.click(screen.getByRole('button', { name: /revoke/i }));
+    expect(onRevoke).toHaveBeenCalledWith(ACTIVE);
+  });
+
+  it('shows no roster heading at all when nobody holds access', () => {
+    // An empty "Current observers · 0" is noise on the common path.
+    renderSection({ observers: ready([]) });
+    expect(screen.queryByText(/current observers/i)).toBeNull();
+  });
+
+  it('omits Revoke when no handler is passed, rather than drawing a dead button', () => {
+    renderSection({ observers: ready([ACTIVE]), onRevoke: undefined });
+    expect(screen.queryByRole('button', { name: /revoke/i })).toBeNull();
+  });
+
+  it('still renders when the roster prop is missing entirely', () => {
+    // DepartmentsTab is shared with the observer portal, which passes none.
+    renderSection({ observers: undefined });
+    expect(screen.getByText(/workspace observer code/i)).toBeInTheDocument();
+  });
+});
+
 describe('ObserverAccessSection — an observer has no module', () => {
   it('never mentions a module, supervisor or executive', () => {
     // The distinguishing property of the role. If this section ever grows a

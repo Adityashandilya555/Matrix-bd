@@ -41,6 +41,15 @@ class PendingObserverOut(BaseModel):
     created_at: datetime
 
 
+class ActiveObserverOut(BaseModel):
+    """An observer who currently holds workspace-wide read access."""
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    email: EmailStr
+    name: Optional[str] = None
+    created_at: datetime
+
+
 class PendingSupervisorOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str

@@ -84,11 +84,13 @@ export default function DepartmentsTab({ org, pendingSupervisors, executiveReque
         <ObserverAccessSection
           code={observers?.code ?? null}
           pending={observers?.pending ?? { status: 'loading', items: [] }}
+          observers={observers?.roster}
           rotating={observers?.rotating}
           busyId={observers?.busyId}
           onRotate={handlers.onRotateObserverCode}
           onApprove={handlers.onApproveObserver}
           onReject={handlers.onRejectObserver}
+          onRevoke={handlers.onRevokeObserver}
           onRetry={() => handlers.reloadObservers(false)} />
       </section>
       )}

@@ -35,6 +35,31 @@ def require_role(*roles: Role) -> Callable:
     return guard
 
 
+def require_real_role(*roles: Role) -> Callable:
+    """Like require_role, but with NO workspace-wide bypass and no override.
+
+    For the handful of GET routes that return a CREDENTIAL rather than data —
+    the department join codes and the observer code. Those are the one thing an
+    observer must not read: it cannot write, but a join code lets it onboard a
+    supervisor who can, which turns "view only" into "can cause writes by
+    proxy". Reading everything is the grant; handing out the keys is not.
+
+    Keys on ``real_role``, so neither READ_ALL_ROLES nor an X-Override-Role
+    header reaches it — a business admin simulating a supervisor is still the
+    business admin here, which is the behaviour the code panel needs.
+    """
+    async def guard(current_user: dict = Depends(get_current_user)) -> dict:
+        real_role = current_user.get("real_role") or current_user.get("role")
+        if real_role not in [r.value for r in roles]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Role '{real_role}' not allowed. Required: {[r.value for r in roles]}",
+            )
+        return current_user
+
+    return guard
+
+
 def require_module(module_name: str) -> Callable:
     """Dependency factory: raises 403 if the caller's JWT module claim does not
     match *module_name*.

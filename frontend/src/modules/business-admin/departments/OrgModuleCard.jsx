@@ -106,9 +106,21 @@ export default function OrgModuleCard({ mod, onRotate, onRemove, loading }) {
               : ' · supervisor-only'}
           </div>
         </div>
-        <code style={{ fontFamily: T.mono, fontSize: 14, fontWeight: 700, letterSpacing: '0.06em', padding: '8px 12px',
-          borderRadius: T.radiusSm, background: T.surfaceInset, border: `1px solid ${T.line}`,
-          color: mod.code ? T.text : T.textFaint }}>{loading ? '…' : (mod.code || 'No code yet')}</code>
+        {/* Only when there is a code to show. The backend blanks it for anyone
+            whose real role is not the business admin (a join code is a
+            credential — it onboards a supervisor who can write), so for an
+            observer this would otherwise render a permanent, misleading
+            "No code yet" next to every department. */}
+        {mod.code && (
+          <code style={{ fontFamily: T.mono, fontSize: 14, fontWeight: 700, letterSpacing: '0.06em', padding: '8px 12px',
+            borderRadius: T.radiusSm, background: T.surfaceInset, border: `1px solid ${T.line}`,
+            color: T.text }}>{loading ? '…' : mod.code}</code>
+        )}
+        {!mod.code && !loading && onRotate && (
+          <code style={{ fontFamily: T.mono, fontSize: 14, fontWeight: 700, letterSpacing: '0.06em', padding: '8px 12px',
+            borderRadius: T.radiusSm, background: T.surfaceInset, border: `1px solid ${T.line}`,
+            color: T.textFaint }}>No code yet</code>
+        )}
         {/* Gated on the callback, matching how onRemove already behaves below.
             Without this the observer portal — which passes onRotate={undefined}
             to hide it — still renders a live-looking Rotate that throws on

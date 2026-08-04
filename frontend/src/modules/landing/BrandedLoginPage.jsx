@@ -8,18 +8,17 @@ import {
   requestPasswordReset,
   completePasswordReset,
   getWorkspaceBranding,
-  signupAsSupervisor,
-  signupAsExecutive,
   PendingApprovalError,
   InvalidCredentialsError,
 } from '../../services/api/supabaseAuth.js';
+import { JOIN_MODE_KEYS, joinMode as joinModeConfig } from './joinModes.js';
 import blueTokaiLogo from '../../assets/brands/blue-tokai.png';
 import gotTeaLogo from '../../assets/brands/got-tea.png';
 import suchaliLogo from '../../assets/brands/suchali.png';
 import './branded-auth.css';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const CODE_RE = /^[A-Za-z0-9-]{4,32}$/;
+const CODE_RE = /^[A-Za-z0-9_-]{4,32}$/;
 
 // Brands showcased on the workspace-access panel ("Powering operations for").
 const BRAND_LOGOS = [
@@ -220,9 +219,10 @@ function LoginPanel({ code, onAuthed }) {
   );
 }
 
-// ── Join (same supervisor / executive self-signup as before) ─────────────────
+// ── Join: supervisor / executive / read-only observer self-signup ───────────
 function JoinPanel() {
   const [joinMode, setJoinMode] = React.useState('supervisor');
+  const cfg = joinModeConfig(joinMode);
   const [email, setEmail] = React.useState('');
   const [jcode, setJcode] = React.useState('');
   const [busy, setBusy] = React.useState(false);
@@ -236,11 +236,8 @@ function JoinPanel() {
     if (!CODE_RE.test(c)) { setMsg({ tone: 'error', text: 'Enter the code your team gave you.' }); return; }
     setBusy(true); setMsg(null);
     try {
-      if (joinMode === 'supervisor') await signupAsSupervisor(em, c);
-      else await signupAsExecutive(em, c);
-      setMsg({ tone: 'success', text: joinMode === 'supervisor'
-        ? 'Request submitted — your business admin will review it.'
-        : 'Request submitted — your supervisor will review it.' });
+      await cfg.signup(em, c);
+      setMsg({ tone: 'success', text: cfg.submitted });
       setEmail(''); setJcode('');
     } catch (err) {
       if (err?.isPending) setMsg({ tone: 'info', text: err.message });
@@ -251,8 +248,10 @@ function JoinPanel() {
   return (
     <form className="bl-form" onSubmit={submit}>
       <div className="bl-seg" role="tablist">
-        <button type="button" data-active={joinMode === 'supervisor'} onClick={() => setJoinMode('supervisor')}>Supervisor</button>
-        <button type="button" data-active={joinMode === 'executive'} onClick={() => setJoinMode('executive')}>Executive</button>
+        {JOIN_MODE_KEYS.map((key) => (
+          <button key={key} type="button" data-active={joinMode === key}
+            onClick={() => setJoinMode(key)}>{joinModeConfig(key).short}</button>
+        ))}
       </div>
 
       <label className="bl-label" htmlFor="bl-jemail">Work email</label>
@@ -260,10 +259,10 @@ function JoinPanel() {
         onChange={(e) => { setEmail(e.target.value); if (msg) setMsg(null); }}
         placeholder="you@company.com" autoComplete="username" />
 
-      <label className="bl-label" htmlFor="bl-jcode">{joinMode === 'supervisor' ? 'Department code' : 'Supervisor code'}</label>
+      <label className="bl-label" htmlFor="bl-jcode">{cfg.codeLabel}</label>
       <input id="bl-jcode" className="bl-input" value={jcode}
         onChange={(e) => { setJcode(e.target.value); if (msg) setMsg(null); }}
-        placeholder={joinMode === 'supervisor' ? 'From your business admin' : 'From your supervisor'}
+        placeholder={cfg.hint}
         autoComplete="off" spellCheck={false} />
 
       <Banner msg={msg} />

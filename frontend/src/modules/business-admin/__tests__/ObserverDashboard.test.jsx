@@ -128,6 +128,23 @@ describe('ObserverDashboard — Departments is a directory, not a control panel'
     expect(screen.queryByRole('button', { name: /rotate/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /remove/i })).toBeNull();
   });
+
+  it('shows no department join code, and no placeholder standing in for one', async () => {
+    // A join code is a credential: it onboards a supervisor who CAN write, so
+    // an observer holding one has a way to cause writes by proxy. The backend
+    // blanks it for anyone whose real role is not the business admin — this
+    // asserts the portal then shows nothing rather than a permanent, wrong
+    // "No code yet" beside every department.
+    const user = await userEvent.setup();
+    listOrg.mockResolvedValue([
+      { module: 'bd', code: null, supervisors: [], unassignedExecutives: [], executivesEnabled: true },
+    ]);
+    const { container } = await renderPortal();
+    await user.click(screen.getByRole('button', { name: /departments/i }));
+
+    expect(container.querySelector('code')).toBeNull();
+    expect(screen.queryByText(/no code yet/i)).toBeNull();
+  });
 });
 
 describe('ObserverDashboard — the shell', () => {

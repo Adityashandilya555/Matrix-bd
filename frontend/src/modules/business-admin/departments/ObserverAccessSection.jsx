@@ -74,12 +74,52 @@ function PendingRow({ user, onApprove, onReject, busyId }) {
   );
 }
 
+// Someone who currently holds workspace-wide read access.
+//
+// Without this list the role is invisible the moment it is approved: the
+// pending queue empties, and an observer holds no module membership so it never
+// appears in the org tree either. An account that can read every site, budget
+// and document in the workspace, that nobody can see or turn off, is the wrong
+// shape — so the roster and Revoke are part of the feature, not an extra.
+function ObserverRow({ user, onRevoke, busyId }) {
+  const busy = busyId === user.id;
+  return (
+    <Card style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <Avatar name={user.email} size={30} />
+      <div style={{ flex: 1, minWidth: 180 }}>
+        <div style={{ fontSize: 13, fontWeight: 650, color: T.text }}>{user.email}</div>
+        <div style={{ marginTop: 2, fontSize: 11.5, color: T.textFaint }}>
+          Read-only across the whole workspace
+        </div>
+      </div>
+      {onRevoke && (
+        <Button variant="danger" size="sm" loading={busy}
+          onClick={() => onRevoke(user)}>Revoke</Button>
+      )}
+    </Card>
+  );
+}
+
 export default function ObserverAccessSection({
-  code, pending, rotating, busyId, onRotate, onApprove, onReject, onRetry,
+  code, pending, observers, rotating, busyId,
+  onRotate, onApprove, onReject, onRevoke, onRetry,
 }) {
+  const roster = observers || { status: 'ready', items: [] };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <CodeRow code={code} onRotate={onRotate} rotating={rotating} />
+
+      {roster.status === 'ready' && roster.items?.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.12em',
+            textTransform: 'uppercase', color: T.textFaint }}>
+            Current observers · {roster.items.length}
+          </div>
+          {roster.items.map((u) => (
+            <ObserverRow key={u.id} user={u} onRevoke={onRevoke} busyId={busyId} />
+          ))}
+        </div>
+      )}
 
       {pending.status === 'error' && <ErrorState message={pending.error} onRetry={onRetry} />}
 

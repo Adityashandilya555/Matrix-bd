@@ -132,7 +132,14 @@ async def list_pending_users(
 ) -> dict:
     stmt = (
         select(models.User)
-        .where(models.User.tenant_id == tenant_id, models.User.is_active.is_(False))
+        .where(
+            models.User.tenant_id == tenant_id,
+            models.User.is_active.is_(False),
+            # Pending observers belong to the business admin's Observer access
+            # section, not this queue. assign-role refuses them anyway; leaving
+            # them listed would just be a row nobody here can action.
+            models.User.role != Role.OBSERVER.value,
+        )
         .order_by(models.User.email)
         .limit(limit)
         .offset(offset)
@@ -181,6 +188,16 @@ async def assign_role(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="User already has an assigned role.",
+        )
+    # A pending observer is the business admin's to approve, and only from the
+    # Observer access section. Without this a module supervisor could take an
+    # observer signup out of the shared pending queue and activate it as an
+    # executive in their own module — turning a read-only invite into a writing
+    # account, which is an escalation relative to the code that was redeemed.
+    if user_row["role"] == Role.OBSERVER.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Observer access is approved by the business admin, not here.",
         )
 
     # 2. Activate the user row; clear the pending-signup marker from notes.
