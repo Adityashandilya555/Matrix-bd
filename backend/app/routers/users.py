@@ -249,7 +249,7 @@ async def request_executive_access(
     # exception for it. The inline check still stands: it tests real_role, which
     # the X-Override-Role header cannot rewrite, whereas require_role sees the
     # post-override role.
-    _auth: Annotated[dict, Depends(require_role(Role.SUPERVISOR))] = None,
+    _auth: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
 ) -> None:
     """Creates a pending request for the Business Admin to approve executive access."""
     if current_user.get("real_role") != "supervisor":

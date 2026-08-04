@@ -35,6 +35,32 @@ _DEMO_USER = {
 _READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
+def _assert_may_write(claims: dict, request: Request) -> None:
+    """Refuse any state-changing request from a read-only `observer`.
+
+    Enforced here because every one of the 106 tenant-scoped mutating routes
+    reaches get_current_user (via require_role, require_module, CurrentUser or
+    TenantId), so this is the only place the rule has to exist. The 16 routes
+    that do NOT reach it are pre-session auth or platform-admin-key tenancy
+    endpoints — not observer surface. tests/test_observer_readonly.py enumerates
+    and asserts exactly that.
+
+    Keyed on real_role, never role: role is rewritten by the X-Override-Role
+    header, so an observer viewing a module "as supervisor" would otherwise lift
+    its own restriction.
+
+    NOTE for anyone moving this call — it must stay AFTER the db.rollback() in
+    get_current_user. The is_active SELECT autobegins a transaction, and raising
+    before it is released leaves it open; that is the #103 regression where every
+    write was silently rolled back into a savepoint.
+    """
+    if claims.get("real_role") == Role.OBSERVER.value and request.method not in _READ_METHODS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Observer access is read-only.",
+        )
+
+
 async def get_current_user(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -138,30 +164,7 @@ async def get_current_user(
     # opens a real, committing transaction. Rolling back a read discards nothing.
     await db.rollback()
 
-    # ── Observer: read-only, enforced once for the whole API ──────────────────
-    # Every one of the 106 tenant-scoped mutating routes reaches this dependency
-    # (via require_role, require_module, CurrentUser or TenantId), so this is the
-    # only place the rule has to exist. The 16 routes that do NOT reach it are
-    # pre-session auth or platform-admin-key tenancy endpoints — not observer
-    # surface. tests/test_observer_readonly.py enumerates and asserts that.
-    #
-    # Keyed on real_role, never role: role is rewritten by the X-Override-Role
-    # header below, so an observer viewing a module "as supervisor" would
-    # otherwise lift its own restriction.
-    #
-    # Placed AFTER the rollback above on purpose. The is_active SELECT autobegan
-    # a transaction; raising before it is released leaves it open (see the long
-    # comment above — that is the #103 regression where every write was silently
-    # rolled back). GET is unaffected either way, but the ordering is load-bearing
-    # for anyone who later moves this check.
-    if (
-        claims.get("real_role") == Role.OBSERVER.value
-        and request.method not in _READ_METHODS
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Observer access is read-only.",
-        )
+    _assert_may_write(claims, request)
 
     return claims
 

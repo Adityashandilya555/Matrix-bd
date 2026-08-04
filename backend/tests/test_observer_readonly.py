@@ -116,11 +116,9 @@ def test_the_deny_keys_on_real_role_not_role():
     An observer viewing a module "as supervisor" would otherwise lift its own
     restriction by setting a header.
     """
-    src = inspect.getsource(deps.get_current_user)
-    idx = src.index("Observer access is read-only")
-    window = src[max(0, idx - 700):idx]
-    assert 'claims.get("real_role")' in window
-    assert 'claims.get("role") == Role.OBSERVER' not in window
+    src = inspect.getsource(deps._assert_may_write)
+    assert 'claims.get("real_role")' in src
+    assert 'claims.get("role")' not in src
 
 
 def test_the_deny_sits_after_the_rollback():
@@ -131,7 +129,7 @@ def test_the_deny_sits_after_the_rollback():
     silently rolled back into a savepoint.
     """
     src = inspect.getsource(deps.get_current_user)
-    assert src.index("await db.rollback()") < src.index("Observer access is read-only")
+    assert src.index("await db.rollback()") < src.index("_assert_may_write(")
 
 
 # ── the enumeration guard ─────────────────────────────────────────────────────
