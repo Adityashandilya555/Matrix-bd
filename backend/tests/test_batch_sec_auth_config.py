@@ -241,11 +241,16 @@ async def test_reset_confirm_issues_token_and_stores_hash(make_session, fake_res
 # get_current_user takes the Request so it can refuse non-GET methods for the
 # read-only `observer` role. Neither test below is about that rule, so a plain GET
 # keeps them exercising what they were written for.
-class _FakeRequest:
+#
+# Named for its method rather than _FakeRequest: this module already defines a
+# _FakeRequest further down for the rate-limit tests, which needs client/headers/
+# scope instead. Two module-level classes of the same name is a redefinition, and
+# whichever is declared last silently wins for anything below it.
+class _GetRequest:
     method = "GET"
 
 
-_GET = _FakeRequest()
+_GET = _GetRequest()
 
 
 async def test_deactivated_user_token_is_rejected(make_session, fake_result):
