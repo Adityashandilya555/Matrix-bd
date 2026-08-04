@@ -135,65 +135,92 @@ def test_the_deny_sits_after_the_rollback():
 
 
 # ── the enumeration guard ─────────────────────────────────────────────────────
+#
+# Inspect the ROUTER objects, not app.main.app.routes. The assembled app's route
+# list is mutated by other tests (test_batch_sec_auth_config adds and removes a
+# route), which makes app-level assertions order-dependent — green locally, red
+# in CI. test_qa_report_view_routes.py carries the same warning; this test learned
+# it the hard way.
+#
+# Matching is by qualified NAME rather than object identity, so a module imported
+# under two paths cannot make a guarded route look unguarded.
 
 # Mutating routes that legitimately never reach get_current_user. Every one is
 # either pre-session (you cannot be authenticated yet) or authenticated by the
-# separate X-Platform-Admin-Key authority. A 17th appearing here is a review
-# question, not a rubber stamp.
+# separate X-Platform-Admin-Key authority. Paths are router-relative — the
+# app-level /api prefix comes from settings and is not hardcoded here.
 _NO_SESSION_ALLOWLIST = {
-    "/api/auth/login",
-    "/api/auth/login/check",
-    "/api/auth/logout",
-    "/api/auth/password-reset/complete",
-    "/api/auth/password-reset/request",
-    "/api/auth/password-setup",
-    "/api/auth/refresh",
-    "/api/auth/signup/executive",
-    "/api/auth/signup/supervisor",
-    "/api/tenancy/admin/login",
-    "/api/tenancy/join",
-    "/api/tenancy/password-reset-requests/{request_id}/confirm",
-    "/api/tenancy/request-workspace",
-    "/api/tenancy/requests/{request_id}/approve",
-    "/api/tenancy/requests/{request_id}/reject",
-    "/api/tenancy/tenants/{tenant_id}/branding",
+    "/auth/login",
+    "/auth/login/check",
+    "/auth/logout",
+    "/auth/password-reset/complete",
+    "/auth/password-reset/request",
+    "/auth/password-setup",
+    "/auth/refresh",
+    "/auth/signup/executive",
+    "/auth/signup/supervisor",
+    "/tenancy/admin/login",
+    "/tenancy/join",
+    "/tenancy/password-reset-requests/{request_id}/confirm",
+    "/tenancy/request-workspace",
+    "/tenancy/requests/{request_id}/approve",
+    "/tenancy/requests/{request_id}/reject",
+    "/tenancy/tenants/{tenant_id}/branding",
 }
 
 _MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
+_CHOKEPOINT = "get_current_user"
 
 
-def _reaches(dependant, target, seen=None) -> bool:
-    """Walk the RESOLVED dependency graph rather than the source text.
+def _routers():
+    """Every router main.py mounts, imported directly."""
+    from app.routers import (
+        audit, auth, bd, business_admin, delegations, design, financial_closure,
+        launch_approval, legal, loi, notifications, nso, project,
+        project_excellence, sites, staging, supervisor_codes, tenancy, users,
+    )
+    return (
+        audit, auth, bd, business_admin, delegations, design, financial_closure,
+        launch_approval, legal, loi, notifications, nso, project,
+        project_excellence, sites, staging, supervisor_codes, tenancy, users,
+    )
 
-    Stronger than inspect.getsource: it follows aliases (BusinessAdmin, EditorUser,
-    …) and nested dependencies to whatever actually runs.
-    """
-    seen = seen or set()
+
+def _dep_names(dependant, seen=None):
+    """Every dependency callable's qualified name, walked recursively."""
+    seen = set() if seen is None else seen
     if id(dependant) in seen:
-        return False
+        return
     seen.add(id(dependant))
-    if dependant.call is target:
-        return True
-    return any(_reaches(d, target, seen) for d in dependant.dependencies)
+    call = getattr(dependant, "call", None)
+    if call is not None:
+        yield getattr(call, "__qualname__", getattr(call, "__name__", ""))
+    for d in dependant.dependencies:
+        yield from _dep_names(d, seen)
 
 
 def _mutating_routes():
-    from app.main import app
-    for route in app.routes:
-        methods = getattr(route, "methods", set()) & _MUTATING
-        if methods and hasattr(route, "dependant"):
-            yield route
+    for mod in _routers():
+        for route in mod.router.routes:
+            if getattr(route, "methods", set()) & _MUTATING and hasattr(route, "dependant"):
+                yield route
+
+
+def test_the_route_inventory_is_not_empty():
+    """A silently empty walk would make every assertion below vacuous — which is
+    exactly how the first version of this test passed while proving nothing."""
+    routes = list(_mutating_routes())
+    assert len(routes) > 100, f"only found {len(routes)} mutating routes"
 
 
 def test_every_mutating_route_reaches_the_chokepoint():
-    """The deny only covers routes that pass through get_current_user.
+    """The write-deny only covers routes that pass through get_current_user.
 
-    A new endpoint that authenticates some other way would be invisible to it —
-    this is the test that says so out loud.
+    A new endpoint authenticating some other way would be invisible to it.
     """
     escaped = sorted(
         r.path for r in _mutating_routes()
-        if not _reaches(r.dependant, deps.get_current_user)
+        if _CHOKEPOINT not in set(_dep_names(r.dependant))
         and r.path not in _NO_SESSION_ALLOWLIST
     )
     assert escaped == [], (
@@ -203,42 +230,22 @@ def test_every_mutating_route_reaches_the_chokepoint():
 
 
 def test_the_allowlist_has_not_rotted():
-    """Every allowlisted path must still exist and still bypass the chokepoint.
-
-    Without this, a renamed route would leave a dead entry silently widening the
-    exception set.
-    """
+    """Every allowlisted path must still exist and still bypass the chokepoint,
+    so a renamed route cannot leave a dead entry quietly widening the exceptions."""
     bypassing = {
         r.path for r in _mutating_routes()
-        if not _reaches(r.dependant, deps.get_current_user)
+        if _CHOKEPOINT not in set(_dep_names(r.dependant))
     }
     stale = sorted(_NO_SESSION_ALLOWLIST - bypassing)
     assert stale == [], f"allowlisted paths that no longer bypass the chokepoint: {stale}"
 
 
 def test_every_mutating_route_carries_a_role_guard_or_is_public():
-    """Defence in depth behind the chokepoint.
-
-    The deny protects observers specifically; this asserts the ordinary role
-    boundary is declared on the route rather than left to a handler body.
-    """
-    unguarded = []
-    for route in _mutating_routes():
-        if route.path in _NO_SESSION_ALLOWLIST:
-            continue
-        names = {
-            getattr(d.call, "__qualname__", "") for d in _walk(route.dependant)
-        }
-        if not any(n.startswith("require_role") for n in names):
-            unguarded.append(route.path)
+    """Defence in depth behind the chokepoint: the ordinary role boundary should
+    be declared on the route, not left to an inline check in a handler body."""
+    unguarded = sorted(
+        r.path for r in _mutating_routes()
+        if r.path not in _NO_SESSION_ALLOWLIST
+        and not any(n.startswith("require_role") for n in _dep_names(r.dependant))
+    )
     assert unguarded == [], f"mutating route(s) with no require_role dependency: {unguarded}"
-
-
-def _walk(dependant, seen=None):
-    seen = seen or set()
-    if id(dependant) in seen:
-        return
-    seen.add(id(dependant))
-    yield dependant
-    for d in dependant.dependencies:
-        yield from _walk(d, seen)
