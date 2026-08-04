@@ -238,6 +238,16 @@ async def test_reset_confirm_issues_token_and_stores_hash(make_session, fake_res
 
 # ── #103 — per-request is_active / role recheck ─────────────────────────────
 
+# get_current_user takes the Request so it can refuse non-GET methods for the
+# read-only `observer` role. Neither test below is about that rule, so a plain GET
+# keeps them exercising what they were written for.
+class _FakeRequest:
+    method = "GET"
+
+
+_GET = _FakeRequest()
+
+
 async def test_deactivated_user_token_is_rejected(make_session, fake_result):
     from app.core.deps import get_current_user
     from app.core.security import issue_token
@@ -250,7 +260,7 @@ async def test_deactivated_user_token_is_rejected(make_session, fake_result):
         fake_result(mappings_rows=[{"role": "executive", "is_active": False}]),
     )
     with pytest.raises(HTTPException) as exc:
-        await get_current_user(authorization=f"Bearer {token}", db=sess)
+        await get_current_user(_GET, authorization=f"Bearer {token}", db=sess)
     assert exc.value.status_code == 401
 
 
@@ -265,7 +275,7 @@ async def test_demoted_user_gets_db_role_not_stale_claim(make_session, fake_resu
     sess = make_session(
         fake_result(mappings_rows=[{"role": "executive", "is_active": True}]),
     )
-    user = await get_current_user(authorization=f"Bearer {token}", db=sess)
+    user = await get_current_user(_GET, authorization=f"Bearer {token}", db=sess)
     assert user["role"] == "executive"  # DB wins over the stale claim
 
 

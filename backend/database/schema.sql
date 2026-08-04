@@ -66,7 +66,7 @@ CREATE TABLE public.users (
   email         text NOT NULL,
   name          text NOT NULL,
   role          text NOT NULL DEFAULT 'executive'::text
-                  CHECK (role IN ('business_admin','supervisor','executive')),
+                  CHECK (role IN ('business_admin','observer','supervisor','executive')),
   is_active     boolean NOT NULL DEFAULT true,
   assigned_city text,
   notes         text,

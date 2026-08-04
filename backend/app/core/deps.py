@@ -4,12 +4,13 @@ from __future__ import annotations
 import logging
 from typing import Annotated, Optional
 
-from fastapi import Depends, Header
+from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import AuthError, decode_token
+from app.rbac.roles import Role
 from app.db.session import get_db
 
 
@@ -29,7 +30,13 @@ _DEMO_USER = {
 }
 
 
+# HTTP methods an observer may use. OPTIONS is included so CORS preflight is
+# never refused; HEAD because it is a GET without a body.
+_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
 async def get_current_user(
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     authorization: Annotated[Optional[str], Header()] = None,
     x_override_role: Annotated[Optional[str], Header(alias="X-Override-Role")] = None,
@@ -130,6 +137,32 @@ async def get_current_user(
     # per-request check, #103). Release the read-only txn here so the write path
     # opens a real, committing transaction. Rolling back a read discards nothing.
     await db.rollback()
+
+    # ── Observer: read-only, enforced once for the whole API ──────────────────
+    # Every one of the 106 tenant-scoped mutating routes reaches this dependency
+    # (via require_role, require_module, CurrentUser or TenantId), so this is the
+    # only place the rule has to exist. The 16 routes that do NOT reach it are
+    # pre-session auth or platform-admin-key tenancy endpoints — not observer
+    # surface. tests/test_observer_readonly.py enumerates and asserts that.
+    #
+    # Keyed on real_role, never role: role is rewritten by the X-Override-Role
+    # header below, so an observer viewing a module "as supervisor" would
+    # otherwise lift its own restriction.
+    #
+    # Placed AFTER the rollback above on purpose. The is_active SELECT autobegan
+    # a transaction; raising before it is released leaves it open (see the long
+    # comment above — that is the #103 regression where every write was silently
+    # rolled back). GET is unaffected either way, but the ordering is load-bearing
+    # for anyone who later moves this check.
+    if (
+        claims.get("real_role") == Role.OBSERVER.value
+        and request.method not in _READ_METHODS
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Observer access is read-only.",
+        )
+
     return claims
 
 

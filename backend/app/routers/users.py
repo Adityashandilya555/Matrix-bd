@@ -243,6 +243,13 @@ async def request_executive_access(
     db: DbDep,
     current_user: CurrentUser,
     tenant_id: TenantId,
+    # This was the only mutating route in the API with no role dependency — its
+    # inline real_role check below was the sole guard. Declared here too so the
+    # route-enumeration test in tests/test_observer_readonly.py needs no
+    # exception for it. The inline check still stands: it tests real_role, which
+    # the X-Override-Role header cannot rewrite, whereas require_role sees the
+    # post-override role.
+    _auth: Annotated[dict, Depends(require_role(Role.SUPERVISOR))] = None,
 ) -> None:
     """Creates a pending request for the Business Admin to approve executive access."""
     if current_user.get("real_role") != "supervisor":
