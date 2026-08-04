@@ -22,6 +22,7 @@ import {
 
 import { T, Icon, IconButton, StatTile, TABULAR, getInitialTheme, persistTheme } from './ui/kit.jsx';
 import Sidebar from './ui/Sidebar.jsx';
+import { useQueue } from './ui/useQueue.js';
 import ApprovalCenter from './approval/ApprovalCenter.jsx';
 import DepartmentsTab from './departments/DepartmentsTab.jsx';
 import SitesTab, { classifyCounts } from './sites/SitesTab.jsx';
@@ -64,31 +65,6 @@ export const REAL_FETCHERS = {
   listSites:         getAllSites,
   fetchSiteHistory:  getSiteHistory,
 };
-
-const errMsg = (e) => e?.detail || e?.message || 'Failed to load';
-
-function useQueue(fetcher) {
-  const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null, refreshing: false });
-  const load = React.useCallback(async (silent = false) => {
-    setState((s) => (silent ? { ...s, refreshing: true } : { status: 'loading', items: [], total: 0, error: null, refreshing: false }));
-    try {
-      const d = await fetcher();
-      const items = Array.isArray(d) ? d : (d?.items || []);
-      const total = typeof d?.total === 'number' ? d.total : items.length;
-      setState({ status: 'ready', items, total, error: null, refreshing: false });
-    } catch (e) {
-      if (silent && e?.code === 'TIMEOUT') {
-        setState((s) => ({ ...s, refreshing: false }));
-        return;
-      }
-      setState((s) => (silent && s.items.length
-        ? { ...s, error: errMsg(e), refreshing: false }
-        : { status: 'error', items: [], total: 0, error: errMsg(e), refreshing: false }));
-    }
-  }, [fetcher]);
-  React.useEffect(() => { load(false); }, [load]);
-  return [state, load];
-}
 
 const TABS = [
   { key: 'approvals',   label: 'Approval Center',  icon: Icon.check },

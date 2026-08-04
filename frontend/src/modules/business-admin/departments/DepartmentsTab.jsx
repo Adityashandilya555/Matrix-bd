@@ -8,13 +8,18 @@ import ObserverAccessSection from './ObserverAccessSection.jsx';
 // Department codes + org in one place: who's awaiting approval, then each
 // department's invite code with the supervisors and executives under them.
 
-export default function DepartmentsTab({ org, pendingSupervisors, executiveRequests, observers, handlers }) {
+// readOnly: the observer portal shows the org directory — which modules exist,
+// which supervisors run them, which executives report to whom — and nothing
+// that acts on it. The approval queues are dropped entirely rather than shown
+// empty, since an empty 'Awaiting approval' implies this role could clear it.
+export default function DepartmentsTab({ org, pendingSupervisors, executiveRequests, observers, handlers, readOnly = false }) {
   const pendingCount = pendingSupervisors.items?.length || 0;
   const execReqCount = executiveRequests.items?.length || 0;
   const modules = org.items || [];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 34 }}>
+      {!readOnly && (
       <section>
         <SectionHeader icon={Icon.users} title="Awaiting approval" count={pendingCount} tone="warn"
           description="People who signed up with a department code and need approval before they can access their module."
@@ -25,7 +30,9 @@ export default function DepartmentsTab({ org, pendingSupervisors, executiveReque
           onReject={handlers.onRejectSupervisor}
           onRetry={() => handlers.reloadPendingSupervisors(false)} />
       </section>
+      )}
 
+      {!readOnly && (
       <section>
         <SectionHeader icon={Icon.doc} title="Executive Access Requests" count={execReqCount} tone="warn"
           description="Supervisors requesting dual-role access to also act as executives in their module."
@@ -36,10 +43,13 @@ export default function DepartmentsTab({ org, pendingSupervisors, executiveReque
           onReject={handlers.onRejectExecutiveReq}
           onRetry={() => handlers.reloadExecutiveRequests(false)} />
       </section>
+      )}
 
       <section>
         <SectionHeader icon={Icon.key} title="Departments"
-          description="Each department's invite code, and the supervisors with the executives reporting to them. Rotate a code to revoke the old one."
+          description={readOnly
+            ? "Each department, the supervisors running it, and the executives reporting to them."
+            : "Each department's invite code, and the supervisors with the executives reporting to them. Rotate a code to revoke the old one."}
           onRefresh={() => handlers.reloadOrg(true)} refreshing={org.refreshing} />
 
         {org.status === 'error' && <ErrorState message={org.error} onRetry={() => handlers.reloadOrg(false)} />}
@@ -53,7 +63,11 @@ export default function DepartmentsTab({ org, pendingSupervisors, executiveReque
         {org.status === 'ready' && (
           <div className="ac-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {modules.map((mod) => (
-              <OrgModuleCard key={mod.module} mod={mod} onRotate={handlers.onRotate} onRemove={handlers.onRemoveUser} />
+              <OrgModuleCard key={mod.module} mod={mod}
+                // Omitted, not no-op'd: OrgModuleCard renders each affordance
+                // only when its callback exists, so undefined is what hides them.
+                onRotate={readOnly ? undefined : handlers.onRotate}
+                onRemove={readOnly ? undefined : handlers.onRemoveUser} />
             ))}
           </div>
         )}
@@ -61,6 +75,7 @@ export default function DepartmentsTab({ org, pendingSupervisors, executiveReque
 
       {/* Workspace-wide, so it sits after the departments rather than among them
           — an observer has no module, no supervisor and no executives. */}
+      {!readOnly && (
       <section>
         <SectionHeader icon={Icon.shield} title="Observer access"
           count={observers?.pending?.items?.length || 0} tone="warn"
@@ -76,6 +91,7 @@ export default function DepartmentsTab({ org, pendingSupervisors, executiveReque
           onReject={handlers.onRejectObserver}
           onRetry={() => handlers.reloadObservers(false)} />
       </section>
+      )}
     </div>
   );
 }

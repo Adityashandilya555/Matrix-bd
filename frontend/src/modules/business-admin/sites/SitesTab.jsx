@@ -338,7 +338,7 @@ function DocumentsSection({ siteId }) {
   );
 }
 
-function HistoryDrawer({ site, fetchHistory, onClose }) {
+function HistoryDrawer({ site, fetchHistory, onClose, readOnly = false }) {
   const [state, setState] = React.useState({ status: 'loading', items: [], error: null });
   const [mod, setMod] = React.useState('all');
   // audit_log_id -> reversible id, for the entries this admin may still undo.
@@ -500,7 +500,7 @@ function HistoryDrawer({ site, fetchHistory, onClose }) {
                               borderRadius: '4px 10px 10px 4px', background: T.surfaceInset, fontSize: 12,
                               lineHeight: 1.45, color: T.textMuted, wordBreak: 'break-word' }}>{detailNote}</div>
                           )}
-                          {undoable[e.id] && (
+                          {!readOnly && undoable[e.id] && (
                             <button
                               type="button"
                               disabled={undoing !== null}
@@ -528,7 +528,10 @@ function HistoryDrawer({ site, fetchHistory, onClose }) {
   );
 }
 
-export default function SitesTab({ data, fetchHistory, onRetry, filter: filterProp, onFilterChange }) {
+// readOnly: the observer portal renders this same tab — full rows, full
+// history — with the three write affordances hidden. The backend refuses
+// those calls regardless; this stops us showing a button that would 403.
+export default function SitesTab({ data, fetchHistory, onRetry, filter: filterProp, onFilterChange, readOnly = false }) {
   // Filter is controllable by the parent (so the "Completed sites" KPI tile can
   // deep-link to the Completed tab) but falls back to internal state when used
   // standalone. 'active' | 'launching' | 'completed' | 'rejected'.
@@ -672,7 +675,7 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
                     {s.city}{narrative ? ` · ${narrative}` : ''}
                   </span>
                   <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                    {filter === 'rejected' && (
+                    {!readOnly && filter === 'rejected' && (
                       <button onClick={(e) => { e.stopPropagation(); setReviving(s); }} className="zm-btn-danger"
                         style={{ height: 28, padding: '0 10px', border: 'none', borderRadius: 7, background: T.danger,
                           color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
@@ -684,6 +687,7 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
                         is one big click target for the history drawer, so this
                         must not read as the primary action — and must not open
                         the drawer on its way to the dialog. */}
+                    {!readOnly && (
                     <button type="button" title="Delete this site permanently"
                       /* Named per site: every row has a "Delete site" button, so
                          the bare label tells a screen-reader user nothing about
@@ -696,6 +700,7 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
                         fontSize: 11.5, fontWeight: 650, color: T.textMuted, cursor: 'pointer' }}>
                       <Icon.trash size={13} /> Delete site
                     </button>
+                    )}
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 11px',
                       borderRadius: 999, border: `1px solid ${isSiteRejected(s) ? cm(T.danger, 25) : T.line}`, background: isSiteRejected(s) ? cmSolid(T.danger, 8) : T.chip,
                       fontSize: 11.5, fontWeight: 650, color: T.textMuted }}>
@@ -712,7 +717,7 @@ export default function SitesTab({ data, fetchHistory, onRetry, filter: filterPr
         </div>
       )}
 
-      <HistoryDrawer site={openSite} fetchHistory={fetchHistory} onClose={() => setOpenSite(null)} />
+      <HistoryDrawer site={openSite} fetchHistory={fetchHistory} onClose={() => setOpenSite(null)} readOnly={readOnly} />
       {reviving && <ReviveDialog site={reviving} onCancel={() => setReviving(null)} onConfirm={onReviveConfirm} busy={busy}/>}
       {deleting && (
         <DeleteSiteDialog
