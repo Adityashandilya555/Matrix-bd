@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 // The persistent strip an observer carries through the workspace.
 //
 // It matters more than a banner usually would: the pages underneath render in

@@ -11,7 +11,8 @@ import {
   notifySessionExpired,
 } from '../services/api/authToken.js';
 import { signOut as supabaseSignOut } from '../services/api/supabaseAuth.js';
-import { getStoredOverride, activateOverride, deactivateOverride } from '../services/api/adminOverride.js';
+import { getStoredOverride, activateOverride, deactivateOverride, subscribeOverride } from '../services/api/adminOverride.js';
+import { setSessionRole } from '../services/api/readOnlyGuard.js';
 import { useInactivityLogout } from '../hooks/useInactivityLogout.js';
 
 // SessionContext — holds the current user session and role.
@@ -136,6 +137,20 @@ export function SessionProvider({ children }) {
     if (next) activateOverride(next);
     else deactivateOverride();
   }, [session.realRole, session.hasExecutiveAccess, session.module]);
+
+  // Track the override store rather than shadowing it. Workspace Access lives
+  // in the portal trees, which write to the store directly — without this, its
+  // Exit button stops the axios interceptor sending the override while this
+  // provider keeps reporting the simulated role, module and read-only banner
+  // until something forces a full remount.
+  useEffect(() => subscribeOverride(_setAdminOverride), []);
+
+  // Hand the axios write-guard the freshest role we have. It falls back to the
+  // JWT, which is minted at sign-in and lives for 24h — so an observer promoted
+  // mid-session would go on being refused client-side long after the backend
+  // had started allowing its writes. Resets to undefined on sign-out, since
+  // INITIAL_SESSION carries no realRole.
+  useEffect(() => { setSessionRole(session.realRole); }, [session.realRole]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';

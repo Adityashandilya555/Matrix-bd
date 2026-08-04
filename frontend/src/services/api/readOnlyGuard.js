@@ -27,6 +27,19 @@ const ALWAYS_ALLOWED = ['/auth/logout', '/auth/refresh', '/auth/whoami'];
 
 export const READ_ONLY_MESSAGE = 'Observer access is read-only.';
 
+// The role /auth/whoami last reported, which is re-read from the DB on every
+// request. The token is only a fallback: it is minted at sign-in and stays put
+// for 24h, so an observer PROMOTED mid-session would keep being refused here
+// long after the backend had started allowing its writes. SessionContext pushes
+// the fresh value in as soon as it hydrates; until then the token is the only
+// thing available, and erring toward read-only is the safe direction.
+let _sessionRole;
+
+// skipcq: JS-0833
+export function setSessionRole(role) {
+  _sessionRole = role || undefined;
+}
+
 export function isReadOnlyRole(role) {
   return role === 'observer';
 }
@@ -38,7 +51,7 @@ export function isReadOnlyRole(role) {
 export function assertRequestAllowed(config, ReadOnlyError) {
   const method = String(config?.method || 'get').toLowerCase();
   if (READ_METHODS.has(method)) return config;
-  if (!isReadOnlyRole(getAuthTokenRole())) return config;
+  if (!isReadOnlyRole(_sessionRole ?? getAuthTokenRole())) return config;
 
   const url = String(config?.url || '');
   if (ALWAYS_ALLOWED.some((path) => url.endsWith(path))) return config;

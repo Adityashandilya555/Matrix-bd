@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 // The client-side write-deny that both axios instances share.
 //
 // It is NOT the security boundary — app/core/deps.py refuses the request even
@@ -12,7 +13,7 @@ vi.mock('../authToken.js', () => ({
   getAuthToken: () => 'token',
 }));
 
-const { assertRequestAllowed, isReadOnlyRole, READ_ONLY_MESSAGE } =
+const { assertRequestAllowed, isReadOnlyRole, setSessionRole, READ_ONLY_MESSAGE } =
   await import('../readOnlyGuard.js');
 
 class TestError extends Error {
@@ -26,7 +27,10 @@ class TestError extends Error {
 
 const check = (config) => assertRequestAllowed(config, TestError);
 
-beforeEach(() => { tokenRole.mockReset().mockReturnValue('observer'); });
+beforeEach(() => {
+  tokenRole.mockReset().mockReturnValue('observer');
+  setSessionRole(undefined);
+});
 
 describe('readOnlyGuard — an observer', () => {
   it.each(['post', 'patch', 'put', 'delete'])('is refused a %s', (method) => {
@@ -93,5 +97,37 @@ describe('readOnlyGuard — it reads the credential, not the override', () => {
 describe('readOnlyGuard — defaults', () => {
   it('treats a config with no method as a GET, the way axios does', () => {
     expect(check({ url: '/sites' })).toBeTruthy();
+  });
+});
+
+describe('readOnlyGuard — the session role wins over the token', () => {
+  it('stops blocking once an observer has actually been promoted', () => {
+    // The token is minted at sign-in and lives 24h, so it still says observer.
+    // The backend re-reads the DB role every request and would allow this
+    // write — refusing it here would be the client inventing a restriction the
+    // server had already lifted.
+    tokenRole.mockReturnValue('observer');
+    setSessionRole('supervisor');
+    expect(check({ method: 'post', url: '/sites' })).toBeTruthy();
+  });
+
+  it('starts blocking a demoted session before its token catches up', () => {
+    tokenRole.mockReturnValue('supervisor');
+    setSessionRole('observer');
+    expect(() => check({ method: 'post', url: '/sites' })).toThrow(READ_ONLY_MESSAGE);
+  });
+
+  it('falls back to the token before the session has hydrated', () => {
+    // The window between app mount and the first /auth/whoami. Erring toward
+    // read-only is the safe direction to be wrong in.
+    tokenRole.mockReturnValue('observer');
+    expect(() => check({ method: 'post', url: '/sites' })).toThrow(READ_ONLY_MESSAGE);
+  });
+
+  it('falls back again on sign-out, when the session resets to no role', () => {
+    setSessionRole('observer');
+    setSessionRole(undefined);
+    tokenRole.mockReturnValue(null);
+    expect(check({ method: 'post', url: '/sites' })).toBeTruthy();
   });
 });

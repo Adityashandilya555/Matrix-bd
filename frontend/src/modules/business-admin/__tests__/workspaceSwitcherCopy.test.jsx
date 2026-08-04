@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 // One panel, two audiences. The admin's copy says the backend "will bypass its
 // normal role and module guards" — true for a business admin, and both wrong
 // and alarming for an observer, whose every write is refused no matter which

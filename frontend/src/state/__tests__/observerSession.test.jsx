@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 // What the session reports for an observer, with and without a module override.
 //
 // This is the piece that decides whether an observer is in the workspace shell
@@ -10,6 +11,10 @@ import { MemoryRouter } from 'react-router-dom';
 
 const whoami = vi.fn();
 let stored = null;
+// The real store's listener set, so the provider genuinely subscribes rather
+// than being handed a mock that always no-ops.
+const listeners = new Set();
+const notify = () => { for (const fn of listeners) fn(stored); };
 
 vi.mock('../../services/api/authService.js', () => ({
   DEFAULT_SESSION: { name: 'Riya', email: 'riya@example.com', role: 'supervisor' },
@@ -19,8 +24,9 @@ vi.mock('../../services/api/authService.js', () => ({
 vi.mock('../../services/api/supabaseAuth.js', () => ({ signOut: vi.fn() }));
 vi.mock('../../services/api/adminOverride.js', () => ({
   getStoredOverride: () => stored,
-  activateOverride: (o) => { stored = o; },
-  deactivateOverride: () => { stored = null; },
+  activateOverride: (o) => { stored = o; notify(); },
+  deactivateOverride: () => { stored = null; notify(); },
+  subscribeOverride: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
 }));
 vi.mock('../../hooks/useInactivityLogout.js', () => ({ useInactivityLogout: () => {} }));
 vi.mock('../../services/api/authToken.js', () => ({
@@ -32,6 +38,7 @@ vi.mock('../../services/api/authToken.js', () => ({
 }));
 
 const { SessionProvider, useSession, OBSERVER_VIEW_ROLES } = await import('../SessionContext.jsx');
+const { activateOverride, deactivateOverride } = await import('../../services/api/adminOverride.js');
 
 let api = null;
 
@@ -62,6 +69,7 @@ const val = (key) => screen.getByTestId(key).textContent;
 beforeEach(() => {
   stored = null;
   api = null;
+  listeners.clear();
   whoami.mockReset().mockResolvedValue(claims());
 });
 
@@ -141,6 +149,30 @@ describe('the observer view-role allowlist', () => {
     await mount();
     act(() => { api.switchAs(null, null); });
     expect(stored).toBeNull();
+  });
+});
+
+describe('the provider tracks the override store, it does not shadow it', () => {
+  // Workspace Access lives in the portal trees and writes to the store
+  // directly. Without a subscription its Exit button stops the axios
+  // interceptor sending the override while this provider goes on reporting the
+  // simulated role, module and read-only banner.
+  it('picks up an override activated from outside React', async () => {
+    await mount();
+    expect(val('role')).toBe('observer');
+    act(() => { activateOverride({ role: 'supervisor', module: 'design' }); });
+    expect(val('role')).toBe('supervisor');
+    expect(val('module')).toBe('design');
+  });
+
+  it('drops it again when the store is deactivated from outside React', async () => {
+    stored = { role: 'supervisor', module: 'design' };
+    whoami.mockResolvedValue(claims({ role: 'supervisor' }));
+    await mount();
+    expect(val('role')).toBe('supervisor');
+    act(() => { deactivateOverride(); });
+    expect(val('role')).toBe('observer');
+    expect(val('module')).toBe('null');
   });
 });
 

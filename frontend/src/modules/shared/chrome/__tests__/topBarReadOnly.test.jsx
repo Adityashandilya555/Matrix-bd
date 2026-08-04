@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 // "New pipeline" is the one write control in the app chrome, so unlike a
 // per-page button it follows the user onto every screen. An observer must not
 // carry it around.
