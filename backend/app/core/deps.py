@@ -71,6 +71,49 @@ def _assert_may_write(claims: dict, request: Request) -> None:
         )
 
 
+def _apply_workspace_override(
+    claims: dict,
+    *,
+    db_role: str,
+    has_executive_access: bool,
+    override_role: Optional[str],
+    override_module: Optional[str],
+) -> None:
+    """Rewrite the EFFECTIVE role/module from the X-Override-* headers.
+
+    Three callers may drive another role, each for a different reason:
+
+    * ``business_admin`` — workspace access, unrestricted, the original feature.
+    * ``observer`` — read-only module switching. It already reads every module
+      through the guard bypasses in rbac/guards.py, so this exists only so a
+      module page renders in the shape its own supervisor (or executive) sees,
+      rather than whatever shape an unrecognised role falls through to. Setting
+      ``module`` is what scopes the module queries at all — an observer's token
+      carries no module claim of its own. Its role is allowlisted, never
+      business_admin (see _OBSERVER_OVERRIDE_ROLES).
+    * a dual-role ``supervisor`` — may drop to executive inside its own module.
+
+    Only ``role`` and ``module`` move here. ``real_role`` is set by the caller
+    before this runs and is never touched, which is what keeps _assert_may_write
+    (and services/_common.py's actor_is_business_admin) honest.
+
+    Extracted from get_current_user because that function is on every single
+    request and this chain pushed it past the complexity gate (PY-R1000).
+    """
+    if db_role == "business_admin":
+        if override_role:
+            claims["role"] = override_role
+        if override_module:
+            claims["module"] = override_module
+    elif db_role == Role.OBSERVER.value:
+        if override_role in _OBSERVER_OVERRIDE_ROLES:
+            claims["role"] = override_role
+        if override_module:
+            claims["module"] = override_module
+    elif db_role == "supervisor" and has_executive_access and override_role == "executive":
+        claims["role"] = "executive"
+
+
 async def get_current_user(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -148,36 +191,18 @@ async def get_current_user(
     if not row or not row["is_active"]:
         raise AuthError("Account is inactive or no longer exists. Sign in again.")
 
-    # Check if the database role is business_admin or if supervisor has executive access.
-    # If so, allow headers to override the effective role/module returned to downstream endpoints.
     db_role = row["role"]
     claims["role"] = db_role
     claims["real_role"] = db_role
     claims["has_executive_access"] = row.get("has_executive_access", False)
     claims["has_pending_executive_request"] = row.get("has_pending_executive_request", False)
-    if db_role == "business_admin":
-        if x_override_role:
-            claims["role"] = x_override_role
-        if x_override_module:
-            claims["module"] = x_override_module
-    elif db_role == Role.OBSERVER.value:
-        # Read-only module switching. The observer already reads every module
-        # through the guard bypasses in rbac/guards.py; the override exists so a
-        # module page renders in the shape its own supervisor (or executive)
-        # sees, rather than in whatever shape an unrecognised role falls through
-        # to. Setting `module` is what scopes the module queries at all — an
-        # observer's token carries no module claim of its own.
-        #
-        # Safe because _assert_may_write runs AFTER this and keys on `real_role`,
-        # which the header cannot touch. An observer presenting as a supervisor
-        # still cannot write.
-        if x_override_role in _OBSERVER_OVERRIDE_ROLES:
-            claims["role"] = x_override_role
-        if x_override_module:
-            claims["module"] = x_override_module
-    elif db_role == "supervisor" and row.get("has_executive_access"):
-        if x_override_role == "executive":
-            claims["role"] = "executive"
+    _apply_workspace_override(
+        claims,
+        db_role=db_role,
+        has_executive_access=bool(row.get("has_executive_access")),
+        override_role=x_override_role,
+        override_module=x_override_module,
+    )
 
     # The is_active SELECT above AUTO-BEGAN a transaction on the request-scoped
     # session (SQLAlchemy 2.0 autobegin). If left open, the service-layer
