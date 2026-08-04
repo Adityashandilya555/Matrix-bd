@@ -14,6 +14,8 @@ from pydantic import BaseModel
 
 from app.core.deps import DbDep, TenantId
 from app.domain.schemas.business_admin import (
+    ObserverCodeOut,
+    PendingObserverOut,
     ApproveSupervisorIn,
     AdminSitesResponse,
     DeptCodeRotateOut,
@@ -50,6 +52,62 @@ async def rotate_dept_code(
     tenant_id: TenantId,
 ) -> dict:
     return await svc.rotate_dept_code(db, tenant_id, module, current_user["sub"])
+
+
+# ── Observer: code + pending queue ────────────────────────────────────────────
+
+
+@router.get("/observer-code", response_model=ObserverCodeOut)
+async def get_observer_code(
+    db: DbDep,
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> dict:
+    return {"code": await svc.get_observer_code(db, tenant_id)}
+
+
+@router.post("/observer-code/rotate", response_model=ObserverCodeOut)
+async def rotate_observer_code(
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> dict:
+    return await svc.rotate_observer_code(db, tenant_id, current_user["sub"])
+
+
+@router.get("/pending-observers", response_model=list[PendingObserverOut])
+async def list_pending_observers(
+    db: DbDep,
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> list[dict]:
+    return await svc.list_pending_observers(db, tenant_id)
+
+
+@router.post(
+    "/pending-observers/{user_id}/approve",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def approve_observer(
+    user_id: str,
+    db: DbDep,
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> None:
+    await svc.approve_observer(db, tenant_id, user_id)
+
+
+@router.post(
+    "/pending-observers/{user_id}/reject",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def reject_observer(
+    user_id: str,
+    db: DbDep,
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> None:
+    await svc.reject_observer(db, tenant_id, user_id)
 
 
 @router.get("/pending-supervisors", response_model=list[PendingSupervisorOut])

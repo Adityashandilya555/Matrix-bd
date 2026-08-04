@@ -107,6 +107,12 @@ export function signupAsSupervisor(email, deptCode) {
   return postSignup('/auth/signup/supervisor', { email, dept_code: deptCode });
 }
 
+// Read-only observer. One workspace-level code rather than a department one,
+// and the business admin approves — same 202-means-pending contract as above.
+export function signupAsObserver(email, code) {
+  return postSignup('/auth/signup/observer', { email, code });
+}
+
 export function signupAsExecutive(email, supervisorCode) {
   return postSignup('/auth/signup/executive', { email, supervisor_code: supervisorCode });
 }

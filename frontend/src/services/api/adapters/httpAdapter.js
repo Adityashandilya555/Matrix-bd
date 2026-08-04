@@ -666,6 +666,35 @@ export async function rejectSupervisor(userId) {
   return post(`/business-admin/pending-supervisors/${userId}/reject`);
 }
 
+// ── Observer: workspace-wide read-only role ───────────────────────────────────
+// No module anywhere in these — an observer belongs to the workspace, not a
+// department, which is the whole difference from the supervisor calls above.
+
+export async function getObserverCode() {
+  const d = await get('/business-admin/observer-code');
+  return d?.code ?? null;   // null when the workspace has never minted one
+}
+
+// Rotating revokes the previous code, so anyone holding it can no longer sign up.
+export async function rotateObserverCode() {
+  const d = await post('/business-admin/observer-code/rotate');
+  return d.code;
+}
+
+export async function listPendingObservers() {
+  const data = await get('/business-admin/pending-observers');
+  const items = data?.items || data || [];
+  return items.map(u => ({ id: u.id, email: u.email, createdAt: u.created_at }));
+}
+
+export async function approveObserver(userId) {
+  return post(`/business-admin/pending-observers/${userId}/approve`);
+}
+
+export async function rejectObserver(userId) {
+  return post(`/business-admin/pending-observers/${userId}/reject`);
+}
+
 // Deactivate an org user (supervisor/executive) — revokes their access.
 export async function removeOrgUser(userId) {
   return post(`/business-admin/org/${userId}/remove`);

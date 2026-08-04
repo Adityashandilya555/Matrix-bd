@@ -24,6 +24,23 @@ class DeptCodeRotateOut(BaseModel):
     code: str
 
 
+# ── Observer: workspace-wide read-only role ───────────────────────────────────
+# No `module` field on any of these — an observer is workspace-wide, which is the
+# whole difference from the supervisor shapes above.
+
+
+class ObserverCodeOut(BaseModel):
+    """The live workspace observer code, or null when none has been minted."""
+    code: Optional[str] = None
+
+
+class PendingObserverOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    email: EmailStr
+    created_at: datetime
+
+
 class PendingSupervisorOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str

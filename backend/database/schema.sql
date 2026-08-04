@@ -421,6 +421,29 @@ CREATE TABLE public.module_codes (
   CONSTRAINT module_codes_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
 );
 
+-- ── observer_codes ────────────────────────────────────────────────────────────
+-- Workspace-level invite code for the read-only `observer` role. Separate from
+-- module_codes on purpose: an observer is workspace-wide and holds no module
+-- membership, so it has no module column to fill.
+CREATE TABLE public.observer_codes (
+  id         uuid NOT NULL DEFAULT uuid_generate_v4(),
+  tenant_id  uuid NOT NULL,
+  code       text NOT NULL UNIQUE,
+  created_by uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  rotated_at timestamp with time zone,
+  revoked_at timestamp with time zone,
+  CONSTRAINT observer_codes_pkey PRIMARY KEY (id),
+  CONSTRAINT observer_codes_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
+  CONSTRAINT observer_codes_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
+);
+-- Exactly one live code per workspace, enforced here rather than by the rotation
+-- code remembering to revoke first. Partial, so revoked rows remain as history.
+CREATE UNIQUE INDEX uq_observer_codes_live_per_tenant
+  ON public.observer_codes (tenant_id) WHERE revoked_at IS NULL;
+CREATE INDEX idx_observer_codes_code
+  ON public.observer_codes (code) WHERE revoked_at IS NULL;
+
 -- ── supervisor_invite_codes ───────────────────────────────────────────────────
 CREATE TABLE public.supervisor_invite_codes (
   id            uuid NOT NULL DEFAULT uuid_generate_v4(),

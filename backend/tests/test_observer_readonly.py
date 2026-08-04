@@ -156,6 +156,10 @@ _NO_SESSION_ALLOWLIST = {
     "/auth/password-setup",
     "/auth/refresh",
     "/auth/signup/executive",
+    # Pre-session by nature: the person signing up has no account yet, so there
+    # is nobody to authenticate. Guarded instead by the same rate limit as the
+    # other two signups and by requiring a live workspace observer code.
+    "/auth/signup/observer",
     "/auth/signup/supervisor",
     "/tenancy/admin/login",
     "/tenancy/join",

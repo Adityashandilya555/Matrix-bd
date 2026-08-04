@@ -3,11 +3,12 @@ import { Icon, SectionHeader, ErrorState, Skeleton } from '../ui/kit.jsx';
 import PendingSupervisorsList from '../PendingSupervisorsList.jsx';
 import ExecutiveRequestsList from '../ExecutiveRequestsList.jsx';
 import OrgModuleCard from './OrgModuleCard.jsx';
+import ObserverAccessSection from './ObserverAccessSection.jsx';
 
 // Department codes + org in one place: who's awaiting approval, then each
 // department's invite code with the supervisors and executives under them.
 
-export default function DepartmentsTab({ org, pendingSupervisors, executiveRequests, handlers }) {
+export default function DepartmentsTab({ org, pendingSupervisors, executiveRequests, observers, handlers }) {
   const pendingCount = pendingSupervisors.items?.length || 0;
   const execReqCount = executiveRequests.items?.length || 0;
   const modules = org.items || [];
@@ -56,6 +57,24 @@ export default function DepartmentsTab({ org, pendingSupervisors, executiveReque
             ))}
           </div>
         )}
+      </section>
+
+      {/* Workspace-wide, so it sits after the departments rather than among them
+          — an observer has no module, no supervisor and no executives. */}
+      <section>
+        <SectionHeader icon={Icon.shield} title="Observer access"
+          count={observers?.pending?.items?.length || 0} tone="warn"
+          description="Read-only access to the whole workspace: every site and its history, and every module in view-only. Observers approve nothing and change nothing."
+          onRefresh={() => handlers.reloadObservers(true)} refreshing={observers?.pending?.refreshing} />
+        <ObserverAccessSection
+          code={observers?.code ?? null}
+          pending={observers?.pending ?? { status: 'loading', items: [] }}
+          rotating={observers?.rotating}
+          busyId={observers?.busyId}
+          onRotate={handlers.onRotateObserverCode}
+          onApprove={handlers.onApproveObserver}
+          onReject={handlers.onRejectObserver}
+          onRetry={() => handlers.reloadObservers(false)} />
       </section>
     </div>
   );

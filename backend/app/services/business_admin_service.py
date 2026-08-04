@@ -99,6 +99,131 @@ async def rotate_dept_code(
     return {"module": row["module"], "code": row["code"]}
 
 
+# ── Observer: workspace-level code, pending queue, approve/reject ─────────────
+#
+# Mirrors the supervisor flow above, with one deliberate divergence: approving an
+# observer writes NO user_module_memberships row. An observer is workspace-wide,
+# and role_in_module is CHECK-constrained to supervisor/executive precisely so
+# that a copy-paste of approve_supervisor() below would fail loudly rather than
+# quietly filing an observer as a supervisor of some module.
+
+
+async def get_observer_code(session: AsyncSession, tenant_id: str | UUID) -> Optional[str]:
+    """The workspace's live observer code, or None if one was never minted."""
+    row = (await session.execute(
+        text("""
+            SELECT code FROM observer_codes
+             WHERE tenant_id = :tid AND revoked_at IS NULL
+        """),
+        {"tid": tenant_id},
+    )).mappings().first()
+    return row["code"] if row else None
+
+
+async def rotate_observer_code(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+    created_by: str | UUID,
+) -> dict:
+    """Revoke the live code and mint a new one, so the old one stops working.
+
+    Revoke-then-insert rather than UPDATE ... SET code: the revoked row stays as
+    history of who held which code and when. The partial unique index on
+    (tenant_id) WHERE revoked_at IS NULL is what guarantees only one is live, so
+    a caller that forgets to revoke gets a constraint error, not two live codes.
+    """
+    async with transaction(session):
+        await session.execute(
+            text("""
+                UPDATE observer_codes
+                   SET revoked_at = now()
+                 WHERE tenant_id = :tid AND revoked_at IS NULL
+            """),
+            {"tid": tenant_id},
+        )
+        row = (await session.execute(
+            text("""
+                INSERT INTO observer_codes (tenant_id, code, created_by)
+                VALUES (:tid, :code, :uid)
+                RETURNING code
+            """),
+            {"tid": tenant_id, "code": _new_dept_code(), "uid": created_by},
+        )).mappings().one()
+    return {"code": row["code"]}
+
+
+async def list_pending_observers(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+) -> list[dict]:
+    """Inactive observer rows awaiting approval."""
+    rows = (await session.execute(
+        text("""
+            SELECT id, email, created_at
+              FROM users
+             WHERE tenant_id = :tid
+               AND role = 'observer'
+               AND is_active = false
+             ORDER BY created_at
+        """),
+        {"tid": tenant_id},
+    )).mappings().all()
+    return [
+        {"id": str(r["id"]), "email": r["email"], "created_at": r["created_at"]}
+        for r in rows
+    ]
+
+
+async def approve_observer(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+    user_id: str | UUID,
+) -> None:
+    """Activate a pending observer. Idempotent on re-submit.
+
+    Deliberately does NOT touch user_module_memberships — see the note at the top
+    of this section. The only state change is users.is_active.
+    """
+    async with transaction(session):
+        target = (await session.execute(
+            text("""
+                SELECT is_active FROM users
+                 WHERE id = CAST(:uid AS uuid) AND tenant_id = :tid AND role = 'observer'
+            """),
+            {"uid": user_id, "tid": tenant_id},
+        )).mappings().first()
+        if not target or target["is_active"]:
+            return
+        await session.execute(
+            text("""
+                UPDATE users
+                   SET is_active = true, notes = NULL
+                 WHERE id = CAST(:uid AS uuid) AND tenant_id = :tid AND role = 'observer'
+            """),
+            {"uid": user_id, "tid": tenant_id},
+        )
+
+
+async def reject_observer(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+    user_id: str | UUID,
+) -> None:
+    """Delete a pending observer row. Only ever removes an INACTIVE one, so a
+    mis-click cannot delete an approved account."""
+    async with transaction(session):
+        await session.execute(
+            text("""
+                DELETE FROM users
+                 WHERE id = CAST(:uid AS uuid)
+                   AND tenant_id = :tid
+                   AND role = 'observer'
+                   AND is_active = false
+            """),
+            {"uid": user_id, "tid": tenant_id},
+        )
+
+
 async def list_pending_supervisors(
     session: AsyncSession,
     tenant_id: str | UUID,
