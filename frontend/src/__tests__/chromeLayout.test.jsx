@@ -75,12 +75,14 @@ describe('the read-only strip in the app chrome', () => {
     expect(main.contains(banner)).toBe(false);
   });
 
-  it('comes before <main> in the column, not after it', () => {
+  it('comes immediately before <main> in the column, not after it', () => {
+    // Adjacent, so nothing can be slipped between the strip and the page it
+    // describes. Avoids the `Node` global, which this eslint config does not
+    // declare — the earlier compareDocumentPosition version was a lint error.
     mount();
     const banner = screen.getByTestId('read-only-banner');
     const main = document.querySelector('main.zm-app-main');
-    expect(banner.compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING)
-      .toBeTruthy();
+    expect(banner.nextElementSibling).toBe(main);
   });
 
   it('leaves the sidebar reaching the TopBar for everyone else', () => {
