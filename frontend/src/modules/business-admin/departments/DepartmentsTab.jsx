@@ -38,8 +38,15 @@ function mergePending(supervisors, observers) {
   // But a partial list must never read as a complete one: that is how someone
   // concludes nobody is waiting and closes the tab. So the rows show AND the
   // gap is stated, rather than one or the other.
+  // Skeletons only when there is genuinely nothing to show. One side loading
+  // while the other holds rows is not the initial load — it is a foreground
+  // retry, and those are triggered from BOTH sections: Retry inside Observer
+  // access at the foot of the tab calls loadObservers(false), which would
+  // otherwise blank the Awaiting approval list at the head of it. A click in
+  // one section must not empty another.
+  const anyLoading = supervisors?.status === 'loading' || observers?.status === 'loading';
   const status = (supFailed && obsFailed) ? 'error'
-    : (supervisors?.status === 'loading' || observers?.status === 'loading') ? 'loading'
+    : (anyLoading && items.length === 0) ? 'loading'
       : 'ready';
 
   const partialError = (status === 'ready' && (supFailed || obsFailed))
@@ -51,7 +58,11 @@ function mergePending(supervisors, observers) {
     items,
     error: supervisors?.error || observers?.error || null,
     partialError,
-    refreshing: Boolean(supervisors?.refreshing || observers?.refreshing),
+    // A side still loading behind visible rows reads as a refresh, because
+    // that is what it looks like from here — the spinner is how the header
+    // says "there may be more coming" without taking the rows away.
+    refreshing: Boolean(supervisors?.refreshing || observers?.refreshing
+      || (anyLoading && status === 'ready')),
   };
 }
 

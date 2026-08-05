@@ -1,5 +1,6 @@
 import React from 'react';
 import { T, Icon, Card, Button, Skeleton, EmptyState, ErrorState, TABULAR } from './ui/kit.jsx';
+import { WORKSPACE_MODULES } from '../shared/workspaceModules.js';
 
 // Presentational. The shell owns fetching and passes:
 //   data = { status, items, error }   — items: [{ id, email, module, createdAt }]
@@ -13,13 +14,20 @@ import { T, Icon, Card, Button, Skeleton, EmptyState, ErrorState, TABULAR } from
 // dispatches approve/reject on `kind`, so the two APIs stay separate while the
 // queue is one.
 //
-// Payment + Recce omitted — Recce is part of Design, Payment isn't dept-onboarded.
+// Derived from the shared module list rather than hand-written. The hand-written
+// version had drifted: it was missing `nso` and `project_excellence`, both of
+// which are real dept-onboarded modules, so a supervisor pending for either
+// appeared under All and could not be reached by any tab. Building the tabs from
+// the same list the rest of the app uses is what stops that recurring.
+//
+// Payment + Recce are absent from that list too — Recce is part of Design, and
+// Payment was retired as a module (202606132).
 const FILTERS = [
-  { key: 'all',      label: 'All' },
-  { key: 'bd',       label: 'BD' },
-  { key: 'legal',    label: 'Legal' },
-  { key: 'design',   label: 'Design' },
-  { key: 'project',  label: 'Project' },
+  { key: 'all', label: 'All' },
+  ...WORKSPACE_MODULES.map((m) => ({ key: m.value, label: m.label })),
+  // Not a module: an observer is workspace-wide. It shares the queue because
+  // it shares the question ("who is waiting?"), and rides the module-keyed
+  // filter by carrying module: 'observer'.
   { key: 'observer', label: 'Observer' },
 ];
 

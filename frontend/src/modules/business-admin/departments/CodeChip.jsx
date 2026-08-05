@@ -22,6 +22,21 @@ const box = {
 export default function CodeChip({ code, loading, emptyLabel = 'No code yet' }) {
   const [revealed, setRevealed] = React.useState(false);
 
+  // Re-mask whenever the code CHANGES. Rotating swaps the `code` prop on a
+  // component that stays mounted, so without this the reveal carries across and
+  // the brand new credential prints in plaintext with nobody having asked for
+  // it — the one moment the masking most needs to hold.
+  //
+  // React's adjust-state-during-render pattern rather than an effect: an effect
+  // would paint the new code once before clearing it, which is precisely the
+  // frame we are trying not to show. Keyed on the change, not on `revealed
+  // === code`, so a code cycling back to an earlier value stays masked too.
+  const [prevCode, setPrevCode] = React.useState(code);
+  if (code !== prevCode) {
+    setPrevCode(code);
+    setRevealed(false);
+  }
+
   if (loading) return <code style={{ ...box, color: T.textFaint }}>…</code>;
   if (!code) return <code style={{ ...box, color: T.textFaint }}>{emptyLabel}</code>;
 

@@ -200,3 +200,62 @@ describe('the observer portal renders this tab read-only', () => {
     expect(screen.getByRole('heading', { name: /departments/i })).toBeInTheDocument();
   });
 });
+
+describe('Awaiting approval — every real module has a tab', () => {
+  // The hand-written filter list had drifted: nso and project_excellence are
+  // both dept-onboarded (business_admin_service._VALID_MODULES, and the Module
+  // literal), so a supervisor pending for either landed in All with no tab that
+  // could reach them. The tabs are now derived from the shared module list.
+  it.each(['bd', 'legal', 'design', 'project', 'project_excellence', 'nso'])(
+    'offers a tab for %s', (mod) => {
+      renderTab({ pendingSupervisors: ready([{ ...SUP, module: mod }]) });
+      const tabs = within(queue()).getAllByRole('tab').map((t) => t.textContent.toLowerCase());
+      // Labels are prose ("Project Excellence"), so match on the words.
+      const wanted = mod.replace('_', ' ');
+      expect(tabs.some((t) => t.includes(wanted))).toBe(true);
+    },
+  );
+
+  it('reaches a pending NSO supervisor through its own tab', () => {
+    renderTab({
+      pendingSupervisors: ready([{ ...SUP, id: 'n1', email: 'nso@example.com', module: 'nso' }]),
+      observers: { code: null, pending: ready([]), roster: ready([]) },
+    });
+    expect(within(queue()).getByText('nso@example.com')).toBeInTheDocument();
+  });
+});
+
+describe('Awaiting approval — a foreground load elsewhere on the page', () => {
+  it('does not blank rows that are already on screen', () => {
+    // Retry inside the Observer access section at the FOOT of the tab calls
+    // loadObservers(false), which flips that queue to 'loading'. Skeletons here
+    // would empty the list at the HEAD of the tab: a click in one section
+    // wiping another.
+    renderTab({
+      observers: { code: null, roster: ready([]), pending: { status: 'loading', items: [] } },
+    });
+    expect(within(queue()).getByText('sup@example.com')).toBeInTheDocument();
+  });
+
+  it('still shows the loading state on the genuine initial load', () => {
+    // When there is nothing to preserve, loading is loading — and must not
+    // fall through to "No one awaiting approval", which would say the queue is
+    // empty before it has been read.
+    renderTab({
+      pendingSupervisors: { status: 'loading', items: [] },
+      observers: { code: null, roster: ready([]), pending: { status: 'loading', items: [] } },
+    });
+    expect(within(queue()).queryByText(/no one awaiting approval/i)).toBeNull();
+  });
+
+  it('does not claim the queue is empty while one side is still loading', () => {
+    // The mirror of the case above: supervisors came back empty, observers are
+    // still in flight. "No one awaiting approval" here is a claim we cannot
+    // support yet.
+    renderTab({
+      pendingSupervisors: ready([]),
+      observers: { code: null, roster: ready([]), pending: { status: 'loading', items: [] } },
+    });
+    expect(within(queue()).queryByText(/no one awaiting approval/i)).toBeNull();
+  });
+});

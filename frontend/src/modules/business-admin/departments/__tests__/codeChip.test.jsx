@@ -67,3 +67,47 @@ describe('the observer code', () => {
     expect(screen.getByText('OBSCODE99')).toBeInTheDocument();
   });
 });
+
+describe('rotating a code', () => {
+  // The reveal is per-code, not a boolean. Rotating swaps the `code` prop on a
+  // component that stays mounted, so a boolean would carry the reveal across
+  // and print the brand new credential in plaintext with nobody asking — the
+  // one moment the masking most needs to hold.
+  const withCode = (code) => (
+    <OrgModuleCard mod={{ ...MOD, code }} onRotate={vi.fn()} onRemove={vi.fn()} />
+  );
+
+  it('re-masks when the code changes under a revealed chip', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(withCode('OLDCODE111'));
+    await user.click(screen.getByRole('button', { name: 'Reveal' }));
+    expect(screen.getByText('OLDCODE111')).toBeInTheDocument();
+
+    rerender(withCode('NEWCODE222'));
+    expect(screen.queryByText('NEWCODE222')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Reveal' })).toBeInTheDocument();
+  });
+
+  it('can reveal the new code on a fresh, deliberate click', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(withCode('OLDCODE111'));
+    await user.click(screen.getByRole('button', { name: 'Reveal' }));
+    rerender(withCode('NEWCODE222'));
+
+    await user.click(screen.getByRole('button', { name: 'Reveal' }));
+    expect(screen.getByText('NEWCODE222')).toBeInTheDocument();
+  });
+
+  it('does not re-reveal if an earlier code cycles back', async () => {
+    // Can't realistically happen — rotation mints a random code and revokes the
+    // old one. It is here to pin the MECHANISM: re-masking must key on the code
+    // changing, not on `revealed === code`. The value-equality version passes
+    // the two tests above and fails this one.
+    const user = userEvent.setup();
+    const { rerender } = render(withCode('OLDCODE111'));
+    await user.click(screen.getByRole('button', { name: 'Reveal' }));
+    rerender(withCode('NEWCODE222'));
+    rerender(withCode('OLDCODE111'));
+    expect(screen.queryByText('OLDCODE111')).toBeNull();
+  });
+});
