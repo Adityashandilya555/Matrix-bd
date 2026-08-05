@@ -59,6 +59,45 @@ def test_do_block_survives_a_dollar_dollar_comment():
     assert stmts[1].rstrip().endswith("$$;")
 
 
+def test_inline_comment_after_code_with_dollar_dollar():
+    """`ALTER ...; -- mentions $$` must still terminate the statement, and the
+    `$$` in the trailing comment must not flip the quote-state."""
+    sql = (
+        "ALTER TABLE public.t DROP COLUMN IF EXISTS a; -- mentions $$ here\n"
+        "ALTER TABLE public.t DROP COLUMN IF EXISTS b;\n"
+    )
+    stmts = _parse_sql_statements(sql)
+    assert len(stmts) == 2
+    assert "DROP COLUMN IF EXISTS a;" in stmts[0]
+    assert "DROP COLUMN IF EXISTS b;" in stmts[1]
+
+
+def test_trailing_comment_after_do_block_close():
+    """`END $$; -- note` must close the DO block as one statement, not swallow
+    the next statement."""
+    sql = (
+        "DO $$\n"
+        "BEGIN\n"
+        "    RAISE NOTICE 'x';\n"
+        "END $$; -- close the block\n"
+        "ALTER TABLE public.t ADD COLUMN c int;\n"
+    )
+    stmts = _parse_sql_statements(sql)
+    assert len(stmts) == 2
+    assert stmts[0].count("RAISE NOTICE 'x';") == 1
+    assert "ADD COLUMN c int;" in stmts[1]
+
+
+def test_double_dash_inside_string_literal_is_not_a_comment():
+    """A `--` (and a `$$`) inside a single-quoted string must not be treated as
+    a comment or a delimiter."""
+    sql = "INSERT INTO public.t (v) VALUES ('a--b $$ c');\nSELECT 1;\n"
+    stmts = _parse_sql_statements(sql)
+    assert len(stmts) == 2
+    assert stmts[0].endswith("VALUES ('a--b $$ c');")
+    assert stmts[1] == "SELECT 1;"
+
+
 def test_real_20260815_drops_all_six_columns():
     stmts = _parse_sql_statements(_read("20260815_drop_dead_bd_columns.sql"))
     drops = [s for s in stmts if "DROP COLUMN IF EXISTS" in s]
