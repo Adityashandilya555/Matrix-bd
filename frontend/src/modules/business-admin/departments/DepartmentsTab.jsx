@@ -4,6 +4,7 @@ import PendingSupervisorsList from '../PendingSupervisorsList.jsx';
 import ExecutiveRequestsList from '../ExecutiveRequestsList.jsx';
 import OrgModuleCard from './OrgModuleCard.jsx';
 import ObserverAccessSection from './ObserverAccessSection.jsx';
+import { mergePending } from './pendingQueue.js';
 
 // Department codes + org in one place: who's awaiting approval, then each
 // department's invite code with the supervisors and executives under them.
@@ -13,22 +14,30 @@ import ObserverAccessSection from './ObserverAccessSection.jsx';
 // that acts on it. The approval queues are dropped entirely rather than shown
 // empty, since an empty 'Awaiting approval' implies this role could clear it.
 export default function DepartmentsTab({ org, pendingSupervisors, executiveRequests, observers, handlers, readOnly = false }) {
-  const pendingCount = pendingSupervisors.items?.length || 0;
+  const pending = React.useMemo(
+    () => mergePending(pendingSupervisors, observers?.pending),
+    [pendingSupervisors, observers?.pending],
+  );
   const execReqCount = executiveRequests.items?.length || 0;
   const modules = org.items || [];
+
+  const reloadPending = (silent) => Promise.all([
+    handlers.reloadPendingSupervisors(silent),
+    handlers.reloadObservers?.(silent),
+  ]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 34 }}>
       {!readOnly && (
       <section>
-        <SectionHeader icon={Icon.users} title="Awaiting approval" count={pendingCount} tone="warn"
-          description="People who signed up with a department code and need approval before they can access their module."
-          onRefresh={() => handlers.reloadPendingSupervisors(true)} refreshing={pendingSupervisors.refreshing} />
+        <SectionHeader icon={Icon.users} title="Awaiting approval" count={pending.items.length} tone="warn"
+          description="People who signed up with a department or observer code and need approval before they can get in."
+          onRefresh={() => reloadPending(true)} refreshing={pending.refreshing} />
         <PendingSupervisorsList
-          data={pendingSupervisors}
-          onApprove={handlers.onApproveSupervisor}
-          onReject={handlers.onRejectSupervisor}
-          onRetry={() => handlers.reloadPendingSupervisors(false)} />
+          data={pending}
+          onApprove={handlers.onApprovePending}
+          onReject={handlers.onRejectPending}
+          onRetry={() => reloadPending(false)} />
       </section>
       )}
 
@@ -73,23 +82,22 @@ export default function DepartmentsTab({ org, pendingSupervisors, executiveReque
         )}
       </section>
 
-      {/* Workspace-wide, so it sits after the departments rather than among them
-          — an observer has no module, no supervisor and no executives. */}
+      {/* Its own section, not a seventh card in the list above: an observer
+          holds no module, and filing it under "Departments" would say it does.
+          The CARD is the same shape as a department's — same header row, code
+          chip and person rows — which is the consistency that was missing; the
+          separate heading is the distinction that is real. */}
       {!readOnly && (
       <section>
         <SectionHeader icon={Icon.shield} title="Observer access"
-          count={observers?.pending?.items?.length || 0} tone="warn"
           description="Read-only access to the whole workspace: every site and its history, and every module in view-only. Observers approve nothing and change nothing."
-          onRefresh={() => handlers.reloadObservers(true)} refreshing={observers?.pending?.refreshing} />
+          onRefresh={() => handlers.reloadObservers(true)} refreshing={observers?.roster?.refreshing} />
         <ObserverAccessSection
           code={observers?.code ?? null}
-          pending={observers?.pending ?? { status: 'loading', items: [] }}
           observers={observers?.roster}
           rotating={observers?.rotating}
           busyId={observers?.busyId}
           onRotate={handlers.onRotateObserverCode}
-          onApprove={handlers.onApproveObserver}
-          onReject={handlers.onRejectObserver}
           onRevoke={handlers.onRevokeObserver}
           onRetry={() => handlers.reloadObservers(false)} />
       </section>

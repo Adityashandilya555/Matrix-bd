@@ -26,6 +26,7 @@ import Sidebar from './ui/Sidebar.jsx';
 import { useQueue } from './ui/useQueue.js';
 import ApprovalCenter from './approval/ApprovalCenter.jsx';
 import DepartmentsTab from './departments/DepartmentsTab.jsx';
+import { mergePending } from './departments/pendingQueue.js';
 import SitesTab, { classifyCounts } from './sites/SitesTab.jsx';
 import LaunchApprovalTab from './launch/LaunchApprovalTab.jsx';
 import WorkspaceSwitcherPanel from './WorkspaceSwitcherPanel.jsx';
@@ -187,7 +188,14 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   // ── derived counts ──
   const designSites = approvalSites.filter((s) => (s.design.deliverables.length + (s.design.gfcPending ? 1 : 0)) > 0).length;
   const paymentSites = approvalSites.filter((s) => s.payment).length;
-  const supCount = supervisors.items.length;
+  // Supervisors AND observers. The Departments tab merges the two queues, but
+  // these three surfaces are how someone LEARNS there is anything to approve —
+  // the nav badge, the attention line and the Pending requests tile. Counting
+  // supervisors only meant a workspace whose sole pending request was an
+  // observer showed a zero badge and "You're all caught up", which is the same
+  // "sits unnoticed" problem the merge removed, one level up.
+  const pendingAccess = mergePending(supervisors, observerPending);
+  const pendingAccessCount = pendingAccess.items.length;
   const sitesCount = sites.total || sites.items.length;
   // Count completed sites with the SAME rule the Sites → Completed tab uses, so
   // the tile and the tab never disagree (they used different definitions before).
@@ -210,6 +218,18 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     fetchClosureQAReports: fetchers.fetchClosureQAReports,
     onClosureFinalize: async (siteId, payload) => { await fetchers.finalizeClosure(siteId, payload); await loadClosure(true); },
     // departments
+    //
+    // One queue, two roles. The Awaiting approval list holds pending supervisors
+    // AND pending observers, so these dispatch on `kind` — the endpoints are
+    // deliberately not interchangeable: approving a supervisor also writes a
+    // user_module_memberships row, and approving an observer must not (an
+    // observer is workspace-wide and holds no membership).
+    onApprovePending: (u) => (
+      u.kind === 'observer' ? handlers.onApproveObserver(u) : handlers.onApproveSupervisor(u)
+    ),
+    onRejectPending: (u) => (
+      u.kind === 'observer' ? handlers.onRejectObserver(u) : handlers.onRejectSupervisor(u)
+    ),
     onApproveSupervisor: async (u) => { await fetchers.approveSupervisor(u.id, u.module); await loadSupervisors(true); await loadOrg(true); },
     onRejectSupervisor: async (u) => { await fetchers.rejectSupervisor(u.id); await loadSupervisors(true); },
     onApproveExecutiveReq: async (reqId) => { await fetchers.approveExecutiveReq(reqId); await loadExecutiveRequests(true); await loadOrg(true); },
@@ -265,7 +285,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   const navItems = [
     { ...TABS[0], count: approvalSites.length },
     { ...TABS[1] }, // Launch Approvals — count fetched inside the tab
-    { ...TABS[2], count: supCount + executiveRequests.items.length },
+    { ...TABS[2], count: pendingAccessCount + executiveRequests.items.length },
     { ...TABS[3] },
     { ...TABS[4] }, // Workspace Access tab
   ];
@@ -307,9 +327,9 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
             : (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: T.successText }}>
                 <Icon.check size={16} /> You’re all caught up — nothing awaiting approval.</span>)}
 
-          {supCount > 0 && (
+          {pendingAccessCount > 0 && (
             <span style={{ marginLeft: 10, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-              · <Icon.users size={14} style={{ color: T.warnText }} /> <span style={{ color: T.warnText }}>{supCount} pending {supCount === 1 ? 'supervisor' : 'supervisors'}</span>
+              · <Icon.users size={14} style={{ color: T.warnText }} /> <span style={{ color: T.warnText }}>{pendingAccessCount} awaiting approval</span>
             </span>
           )}
           {executiveRequests.items.length > 0 && (
@@ -328,8 +348,8 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
             onClick={() => setTab('approvals')} />
           <StatTile icon={Icon.flag} label="Completed sites" count={completedSites} tone="mint"
             loading={sites.status === 'loading'} caption={completedSites ? 'project done' : 'none yet'} onClick={() => openSites('completed')} />
-          <StatTile icon={Icon.users} label="Pending requests" count={supCount} tone="blue"
-            loading={supervisors.status === 'loading'} caption="workspace access" onClick={() => setTab('departments')} />
+          <StatTile icon={Icon.users} label="Pending requests" count={pendingAccessCount} tone="blue"
+            loading={pendingAccess.status === 'loading'} caption="workspace access" onClick={() => setTab('departments')} />
         </div>
 
           {/* ── Panels ── */}

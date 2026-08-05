@@ -1,20 +1,12 @@
 // skipcq: JS-0833
 import React, { useState } from 'react';
 import { activateOverride, deactivateOverride, getStoredOverride } from '../../services/api/adminOverride.js';
+import { WORKSPACE_MODULES as MODULES, workspaceModule } from '../shared/workspaceModules.js';
 import { T, Icon } from './ui/kit.jsx';
 
 const ROLES = [
   { value: 'supervisor', label: 'Supervisor' },
   { value: 'executive', label: 'Executive' },
-];
-
-const MODULES = [
-  { value: 'bd',                  label: 'BD',                  route: '/' },
-  { value: 'legal',               label: 'Legal',               route: '/legal' },
-  { value: 'design',              label: 'Design',              route: '/design' },
-  { value: 'project_excellence',  label: 'Project Excellence',  route: '/project-excellence' },
-  { value: 'project',             label: 'Project',             route: '/project' },
-  { value: 'nso',                 label: 'NSO',                 route: '/nso' },
 ];
 
 const sel = {
@@ -56,7 +48,7 @@ export default function WorkspaceSwitcherPanel({ variant = 'business_admin' }) {
   const [active, setActive] = useState(existing);
 
   const handleEnter = () => {
-    const mod = MODULES.find(m => m.value === selectedModule);
+    const mod = workspaceModule(selectedModule);
     const override = { role: selectedRole, module: selectedModule };
     activateOverride(override);
     setActive(override);
