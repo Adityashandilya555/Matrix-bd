@@ -4,67 +4,10 @@ import PendingSupervisorsList from '../PendingSupervisorsList.jsx';
 import ExecutiveRequestsList from '../ExecutiveRequestsList.jsx';
 import OrgModuleCard from './OrgModuleCard.jsx';
 import ObserverAccessSection from './ObserverAccessSection.jsx';
+import { mergePending } from './pendingQueue.js';
 
 // Department codes + org in one place: who's awaiting approval, then each
 // department's invite code with the supervisors and executives under them.
-
-// One queue for everyone waiting to be let in.
-//
-// Pending observers shipped in a second queue further down the tab, inside the
-// Observer access section. Two queues meant a request could sit unnoticed under
-// a heading nobody scrolls to, and it split one question — "who is waiting?" —
-// across two places. They merge here rather than in the shell so each queue
-// keeps its own fetch, refresh and error state; only the rendering is joined.
-//
-// `kind` is what the shell dispatches approve/reject on: the two roles have
-// different endpoints (a supervisor approval also writes a module membership;
-// an observer approval must not). `module: 'observer'` makes the existing
-// filter tabs and counts work with no special-casing.
-function mergePending(supervisors, observers) {
-  const sup = (supervisors?.items || []).map((u) => ({ ...u, kind: 'supervisor' }));
-  const obs = (observers?.items || []).map((u) => ({ ...u, kind: 'observer', module: 'observer' }));
-  const items = [...sup, ...obs].sort(
-    (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0),
-  );
-
-  const supFailed = supervisors?.status === 'error';
-  const obsFailed = observers?.status === 'error';
-
-  // Only a total failure is an error. If ONE side is down the other's rows are
-  // still the best answer available, and blanking them would let an outage in
-  // the observer endpoint block supervisor approvals — an unrelated queue
-  // taking the whole section down with it.
-  //
-  // But a partial list must never read as a complete one: that is how someone
-  // concludes nobody is waiting and closes the tab. So the rows show AND the
-  // gap is stated, rather than one or the other.
-  // Skeletons only when there is genuinely nothing to show. One side loading
-  // while the other holds rows is not the initial load — it is a foreground
-  // retry, and those are triggered from BOTH sections: Retry inside Observer
-  // access at the foot of the tab calls loadObservers(false), which would
-  // otherwise blank the Awaiting approval list at the head of it. A click in
-  // one section must not empty another.
-  const anyLoading = supervisors?.status === 'loading' || observers?.status === 'loading';
-  const status = (supFailed && obsFailed) ? 'error'
-    : (anyLoading && items.length === 0) ? 'loading'
-      : 'ready';
-
-  const partialError = (status === 'ready' && (supFailed || obsFailed))
-    ? `${supFailed ? 'Pending supervisors' : 'Pending observers'} could not be loaded, so this list is incomplete.`
-    : null;
-
-  return {
-    status,
-    items,
-    error: supervisors?.error || observers?.error || null,
-    partialError,
-    // A side still loading behind visible rows reads as a refresh, because
-    // that is what it looks like from here — the spinner is how the header
-    // says "there may be more coming" without taking the rows away.
-    refreshing: Boolean(supervisors?.refreshing || observers?.refreshing
-      || (anyLoading && status === 'ready')),
-  };
-}
 
 // readOnly: the observer portal shows the org directory — which modules exist,
 // which supervisors run them, which executives report to whom — and nothing

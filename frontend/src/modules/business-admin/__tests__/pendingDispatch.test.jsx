@@ -108,3 +108,44 @@ describe('rejecting from the merged queue', () => {
     expect(fetchers.rejectObserver).not.toHaveBeenCalled();
   });
 });
+
+describe('the entry points that tell you there is anything to approve', () => {
+  // The merge made the Departments tab honest, but the nav badge, the attention
+  // line and the Pending requests tile are how someone LEARNS to go there. They
+  // counted supervisors only, so a workspace whose sole pending request was an
+  // observer showed a zero badge and "You're all caught up" — the same "sits
+  // unnoticed" problem the merge removed, one level up.
+  const tile = () => screen.getByText('Pending requests')
+    .closest('[role="button"]');
+
+  it('counts a lone pending observer in the Pending requests tile', async () => {
+    // The tile's caption is literally "workspace access", which is exactly what
+    // an observer holds — it is the tile that should have counted them.
+    await mount({ observers: [OBS] });
+    await waitFor(() => expect(within(tile()).getByText('1')).toBeInTheDocument());
+  });
+
+  it('does not claim you are all caught up while an observer waits', async () => {
+    await mount({ observers: [OBS] });
+    await waitFor(() => expect(screen.getByText(/1 awaiting approval/i)).toBeInTheDocument());
+  });
+
+  it('counts observers and supervisors together', async () => {
+    await mount({ supervisors: [SUP], observers: [OBS] });
+    await waitFor(() => expect(screen.getByText(/2 awaiting approval/i)).toBeInTheDocument());
+    await waitFor(() => expect(within(tile()).getByText('2')).toBeInTheDocument());
+  });
+
+  it('reports zero when genuinely nobody is waiting', async () => {
+    await mount();
+    await waitFor(() => expect(within(tile()).getByText('0')).toBeInTheDocument());
+    // The attention line appends a count only when there IS one.
+    expect(screen.queryByText(/\d+ awaiting approval/i)).toBeNull();
+  });
+
+  it('no longer labels the count "supervisors", since it may be neither', async () => {
+    await mount({ observers: [OBS] });
+    await waitFor(() => expect(screen.getByText(/1 awaiting approval/i)).toBeInTheDocument());
+    expect(screen.queryByText(/pending supervisor/i)).toBeNull();
+  });
+});
