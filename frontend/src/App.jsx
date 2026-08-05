@@ -165,21 +165,31 @@ export default function App() {
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
       />
-      {/* Renders itself away for every role but the observer. Sits outside the
-          scrolling column so it cannot be scrolled past. */}
-      <ReadOnlyBanner onLeave={leaveModule} />
       <div style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
         <Sidebar counts={counts} role={role} onRole={setRole} collapsed={sidebarCollapsed}/>
 
-        <main ref={mainRef} className="zm-app-main" style={{
-          flex: 1, overflowY: 'auto', padding: '24px 32px 64px',
-          backgroundColor: canvasBase(dark),
-          // Premium grid canvas: stage-light vignette (fixed) layered over a
-          // fine + coarse grid (scrolls with content) so the plane sits deeper
-          // and every card above it reads as raised. See lib/surfaces.js.
-          backgroundImage: stageVignette(dark) + ', ' + GRID_LAYERS,
-          backgroundAttachment: 'fixed, fixed, ' + GRID_ATTACH,
-        }}>
+        {/* The read-only strip belongs to the CONTENT column, not to the whole
+            window. Full-width it cut a horizontal band across the app and
+            pushed the sidebar's top edge down, so the nav panel no longer met
+            the TopBar — the sidebar read as a separate slab floating below a
+            stripe. Confining it here leaves the sidebar running unbroken from
+            the TopBar to the floor.
+
+            It is still a SIBLING of <main> rather than its first child, which
+            is what keeps the original property: it does not scroll away with
+            the page. */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+          <ReadOnlyBanner onLeave={leaveModule} />
+
+          <main ref={mainRef} className="zm-app-main" style={{
+            flex: 1, overflowY: 'auto', padding: '24px 32px 64px',
+            backgroundColor: canvasBase(dark),
+            // Premium grid canvas: stage-light vignette (fixed) layered over a
+            // fine + coarse grid (scrolls with content) so the plane sits deeper
+            // and every card above it reads as raised. See lib/surfaces.js.
+            backgroundImage: stageVignette(dark) + ', ' + GRID_LAYERS,
+            backgroundAttachment: 'fixed, fixed, ' + GRID_ATTACH,
+          }}>
           {/* Pages inject showToast and onOpenSite via context (see below) or props.
               AppRouter clones page elements with these props via a wrapper. */}
           {sitesError && sitesError !== dismissedSitesError && (
@@ -215,7 +225,8 @@ export default function App() {
               <Outlet key={role}/>
             </React.Suspense>
           </PageContext.Provider>
-        </main>
+          </main>
+        </div>
 
         {openSite && <SiteDrawer site={openSite} onClose={onCloseSite}/>}
       </div>

@@ -6,8 +6,14 @@
 // rendering in its supervisor's shape, buttons included, and this is the only
 // thing on screen that says why pressing one won't do anything.
 //
-// Deliberately part of the chrome, not the scrolling content: it sits between
-// the TopBar and the main column so it survives navigation and scroll.
+// Deliberately part of the chrome, not the scrolling content: it is a sibling
+// of <main> rather than a child, so it survives navigation and scroll.
+//
+// It spans the CONTENT column only, not the window. Full-width it cut a band
+// across the whole app and pushed the sidebar's top edge below the TopBar, so
+// the nav panel read as a slab floating under a stripe rather than one
+// continuous column. Its horizontal padding matches <main>'s, so the sentence
+// starts on the same line as the page title beneath it.
 //
 // It also carries the module switcher. Without one, changing module meant
 // leaving to the portal and re-entering through Workspace Access — three steps
@@ -48,8 +54,10 @@ export default function ReadOnlyBanner({ onLeave }) {
       role="status"
       data-testid="read-only-banner"
       style={{
-        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-        padding: '7px 20px', flexShrink: 0,
+        display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        // Matches <main>'s 32px gutter so the strip reads as the top of the
+        // page rather than a separate bar bolted above it.
+        padding: '8px 32px', flexShrink: 0,
         background: 'color-mix(in srgb, var(--zm-accent) 12%, var(--zm-surface))',
         borderBottom: '1px solid color-mix(in srgb, var(--zm-accent) 30%, transparent)',
         color: 'var(--zm-fg)', fontSize: 12.5, fontWeight: 600,
