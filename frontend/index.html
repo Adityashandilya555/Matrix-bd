@@ -74,20 +74,17 @@
       border: 1px solid var(--zm-glass-border);
       box-shadow: var(--zm-glass);
     }
-    button, input, select, textarea { font-family: inherit; }
+
+    button, input, select, textarea { font-family: inherit; color: inherit; }
     *:focus-visible { outline: none; box-shadow: var(--zm-ring-focus); }
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-thumb { background: var(--zm-line-strong); border-radius: 999px; }
     ::-webkit-scrollbar-track { background: transparent; }
 
-    /* Native date/time pickers render a black calendar glyph by default, which
-       is invisible on the dark surfaces. color-scheme:dark tells the browser to
-       paint the picker indicator (and popup) light. Scoped to any [data-theme=dark]
-       container so it covers every date field app-wide (app root, BA portal, …). */
-    [data-theme="dark"] input[type="date"],
-    [data-theme="dark"] input[type="datetime-local"],
-    [data-theme="dark"] input[type="month"],
-    [data-theme="dark"] input[type="time"] {
+
+    [data-theme="dark"] input,
+    [data-theme="dark"] select,
+    [data-theme="dark"] textarea {
       color-scheme: dark;
     }
 
