@@ -2,11 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import WorkspaceCodeDialog from './WorkspaceCodeDialog.jsx';
 import { useNavigate } from 'react-router-dom';
 import { PRODUCT_NAME } from '../../router/routes.js';
-import {
-  signInWithWorkspaceCode,
-  signupAsSupervisor,
-  signupAsExecutive,
-} from '../../services/api/supabaseAuth.js';
+import { signInWithWorkspaceCode } from '../../services/api/supabaseAuth.js';
+import { JOIN_MODE_KEYS, joinMode as joinModeConfig } from './joinModes.js';
 import { addWorkspaceCode } from '../../utils/workspaceStorage.js';
 import './ScaleLanding.css';
 
@@ -662,6 +659,7 @@ function decodeJwtPayload(token) {
 function AuthModal({ mode, onMode, onClose, prefillEmail, lockRegister = false }) {
   const navigate = useNavigate();
   const [joinMode, setJoinMode] = useState('supervisor');
+  const joinConfig = joinModeConfig(joinMode);
   const [status, setStatus] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -675,7 +673,7 @@ function AuthModal({ mode, onMode, onClose, prefillEmail, lockRegister = false }
   const isRegister = mode === 'register';
   const isJoin = mode === 'join';
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const CODE_RE = /^[A-Za-z0-9-]{4,32}$/;
+  const CODE_RE = /^[A-Za-z0-9_-]{4,32}$/;
   const statusTone = status?.tone || 'success';
 
   const showStatus = (message, tone = 'success') => setStatus({ message, tone });
@@ -754,11 +752,8 @@ function AuthModal({ mode, onMode, onClose, prefillEmail, lockRegister = false }
     if (!CODE_RE.test(code)) { showStatus('Code looks invalid. Ask your team for the exact value.', 'error'); return; }
     setBusy(true);
     try {
-      if (joinMode === 'supervisor') await signupAsSupervisor(email, code);
-      else await signupAsExecutive(email, code);
-      showStatus(joinMode === 'supervisor'
-        ? 'Request submitted. Business admin will review.'
-        : 'Request submitted. Your supervisor will review.');
+      await joinConfig.signup(email, code);
+      showStatus(joinConfig.submitted);
       form.reset();
     } catch (error) {
       if (error?.isPending) showStatus(error.message);
@@ -801,8 +796,10 @@ function AuthModal({ mode, onMode, onClose, prefillEmail, lockRegister = false }
 
         {isJoin && (
           <div className="scale-auth-join-mode" role="tablist" aria-label="Join as">
-            <button type="button" data-active={joinMode === 'supervisor'} onClick={() => setJoinMode('supervisor')}>As supervisor</button>
-            <button type="button" data-active={joinMode === 'executive'}  onClick={() => setJoinMode('executive')}>As executive</button>
+            {JOIN_MODE_KEYS.map((key) => (
+              <button key={key} type="button" data-active={joinMode === key}
+                onClick={() => setJoinMode(key)}>{joinModeConfig(key).tab}</button>
+            ))}
           </div>
         )}
 
@@ -838,11 +835,11 @@ function AuthModal({ mode, onMode, onClose, prefillEmail, lockRegister = false }
           </label>
         ) : (
           <label>
-            {isJoin ? (joinMode === 'supervisor' ? 'Department code' : 'Supervisor code') : 'Workspace code'}
+            {isJoin ? joinConfig.codeLabel : 'Workspace code'}
             <input
               name={isJoin ? 'code' : 'workspace_code'}
               type="text"
-              placeholder={isJoin ? (joinMode === 'supervisor' ? 'DEPT-AB12' : 'SUP-AB12') : 'BTOKAI-7X9F'}
+              placeholder={isJoin ? joinConfig.placeholder : 'BTOKAI-7X9F'}
               autoComplete="off"
               spellCheck="false"
               required

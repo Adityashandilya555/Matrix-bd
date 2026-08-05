@@ -28,7 +28,28 @@ const label = {
   color: T.textFaint, marginBottom: 5, display: 'block',
 };
 
-export default function WorkspaceSwitcherPanel() {
+// The panel is shared by the business admin and the observer, and the two need
+// different copy for the same controls. The admin's says the guards are bypassed
+// — true for them, and flatly wrong (and alarming) for an observer, whose every
+// write is refused at get_current_user no matter which role it enters as.
+const COPY = {
+  business_admin: {
+    blurb: 'Simulate a role in the main workspace. All API calls will carry your override context '
+         + 'and the backend will bypass its normal role and module guards — you always see all sites.',
+    enter: 'Enter Workspace',
+    activeLabel: 'Active simulation',
+  },
+  observer: {
+    blurb: 'Open a module in the main workspace, read-only. Choosing a role decides which view you '
+         + 'get — a supervisor sees the whole module, an executive sees an executive’s slice. '
+         + 'Neither can change anything: every edit, approval and deletion is refused for this account.',
+    enter: 'Open module',
+    activeLabel: 'Viewing',
+  },
+};
+
+export default function WorkspaceSwitcherPanel({ variant = 'business_admin' }) {
+  const copy = COPY[variant] || COPY.business_admin;
   const existing = getStoredOverride();
   const [selectedRole, setSelectedRole] = useState(existing?.role || 'supervisor');
   const [selectedModule, setSelectedModule] = useState(existing?.module || 'bd');
@@ -39,6 +60,10 @@ export default function WorkspaceSwitcherPanel() {
     const override = { role: selectedRole, module: selectedModule };
     activateOverride(override);
     setActive(override);
+    // A full page load, not a client-side navigate. activateOverride() above
+    // writes the module-level store that the axios interceptors read, but
+    // SessionContext copies it into React state only at mount — so a soft
+    // navigation would reach the workspace with the old role still in context.
     window.location.href = mod?.route || '/';
   };
 
@@ -52,8 +77,7 @@ export default function WorkspaceSwitcherPanel() {
       <div>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 720, color: T.text }}>Workspace Access</h2>
         <p style={{ margin: '5px 0 0', fontSize: 13, color: T.textMuted, lineHeight: 1.5 }}>
-          Simulate a role in the main workspace. All API calls will carry your override context
-          and the backend will bypass its normal role and module guards — you always see all sites.
+          {copy.blurb}
         </p>
       </div>
 
@@ -66,7 +90,7 @@ export default function WorkspaceSwitcherPanel() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ width: 8, height: 8, borderRadius: 999, background: T.accent, flexShrink: 0 }} />
             <span style={{ fontSize: 13, fontWeight: 600, color: T.accentText }}>
-              Active simulation: {active.role} · {active.module}
+              {copy.activeLabel}: {active.role} · {active.module}
             </span>
           </div>
           <button onClick={handleExit} style={{
@@ -105,7 +129,7 @@ export default function WorkspaceSwitcherPanel() {
         onMouseEnter={e => { e.currentTarget.style.background = '#2E7D32'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(27,94,32,0.4)'; }}
         onMouseLeave={e => { e.currentTarget.style.background = '#1B5E20'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(27,94,32,0.3)'; }}
       >
-        Enter Workspace
+        {copy.enter}
         <Icon.caret size={14} style={{ transform: 'rotate(-90deg)' }} />
       </button>
     </div>

@@ -17,10 +17,13 @@ import {
 } from '../../services/api/businessAdminApi.js';
 import {
   rotateDeptCode, listPendingSupervisors, approveSupervisor, rejectSupervisor, removeOrgUser,
+  getObserverCode, rotateObserverCode, listPendingObservers, approveObserver, rejectObserver,
+  listObservers, revokeObserver,
 } from '../../services/api/adapters/httpAdapter.js';
 
 import { T, Icon, IconButton, StatTile, TABULAR, getInitialTheme, persistTheme } from './ui/kit.jsx';
 import Sidebar from './ui/Sidebar.jsx';
+import { useQueue } from './ui/useQueue.js';
 import ApprovalCenter from './approval/ApprovalCenter.jsx';
 import DepartmentsTab from './departments/DepartmentsTab.jsx';
 import SitesTab, { classifyCounts } from './sites/SitesTab.jsx';
@@ -30,6 +33,10 @@ import WorkspaceSwitcherPanel from './WorkspaceSwitcherPanel.jsx';
 // Real API wiring. Injectable so the dev preview (and tests) can drive the whole
 // portal with mock data — see ./_preview/ApprovalCenterPreview.jsx.
 export const REAL_FETCHERS = {
+  // Observer — workspace-wide read-only role
+  getObserverCode, rotateObserverCode,
+  listPendingObservers, approveObserver, rejectObserver,
+  listActiveObservers: listObservers, revokeObserver,
   listDeliverables:  getDesignAdminQueue,
   reviewDeliverable: adminReviewDeliverable,
   listGfc:           getDesignGfcQueue,
@@ -60,31 +67,6 @@ export const REAL_FETCHERS = {
   listSites:         getAllSites,
   fetchSiteHistory:  getSiteHistory,
 };
-
-const errMsg = (e) => e?.detail || e?.message || 'Failed to load';
-
-function useQueue(fetcher) {
-  const [state, setState] = React.useState({ status: 'loading', items: [], total: 0, error: null, refreshing: false });
-  const load = React.useCallback(async (silent = false) => {
-    setState((s) => (silent ? { ...s, refreshing: true } : { status: 'loading', items: [], total: 0, error: null, refreshing: false }));
-    try {
-      const d = await fetcher();
-      const items = Array.isArray(d) ? d : (d?.items || []);
-      const total = typeof d?.total === 'number' ? d.total : items.length;
-      setState({ status: 'ready', items, total, error: null, refreshing: false });
-    } catch (e) {
-      if (silent && e?.code === 'TIMEOUT') {
-        setState((s) => ({ ...s, refreshing: false }));
-        return;
-      }
-      setState((s) => (silent && s.items.length
-        ? { ...s, error: errMsg(e), refreshing: false }
-        : { status: 'error', items: [], total: 0, error: errMsg(e), refreshing: false }));
-    }
-  }, [fetcher]);
-  React.useEffect(() => { load(false); }, [load]);
-  return [state, load];
-}
 
 const TABS = [
   { key: 'approvals',   label: 'Approval Center',  icon: Icon.check },
@@ -128,6 +110,21 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   const [supervisors, loadSupervisors] = useQueue(fetchers.listSupervisors);
   const [executiveRequests, loadExecutiveRequests] = useQueue(fetchers.listExecutiveReqs);
   const [org, loadOrg] = useQueue(fetchers.listOrg);
+  const [observerPending, loadObservers] = useQueue(fetchers.listPendingObservers);
+  // The roster of APPROVED observers. Its own queue, not a filter over the
+  // pending one — the two come from different endpoints and only overlap in
+  // that neither shows an observer once the other does.
+  const [observerRoster, loadObserverRoster] = useQueue(fetchers.listActiveObservers);
+  // The code is a single value rather than a queue, and is only read here.
+  const [observerCode, setObserverCode] = React.useState(null);
+  const [observerRotating, setObserverRotating] = React.useState(false);
+  const [observerBusyId, setObserverBusyId] = React.useState(null);
+
+  const loadObserverCode = React.useCallback(async () => {
+    if (!fetchers.getObserverCode) return;
+    try { setObserverCode(await fetchers.getObserverCode()); } catch { /* section still renders */ }
+  }, [fetchers]);
+  React.useEffect(() => { loadObserverCode(); }, [loadObserverCode]);
   // Sites
   const [sites, loadSites] = useQueue(fetchers.listSites);
 
@@ -219,6 +216,32 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     onRejectExecutiveReq: async (reqId) => { await fetchers.rejectExecutiveReq(reqId); await loadExecutiveRequests(true); },
     onRotate: async (moduleKey) => { await fetchers.rotateDeptCode(moduleKey); await loadOrg(true); },
     onRemoveUser: async (u) => { if (!fetchers.removeOrgUser) return; await fetchers.removeOrgUser(u.id); await loadOrg(true); },
+    // observer
+    onRotateObserverCode: async () => {
+      setObserverRotating(true);
+      try { setObserverCode(await fetchers.rotateObserverCode()); }
+      finally { setObserverRotating(false); }
+    },
+    onApproveObserver: async (u) => {
+      setObserverBusyId(u.id);
+      try {
+        await fetchers.approveObserver(u.id);
+        // Both lists: the person leaves the queue and joins the roster.
+        await Promise.all([loadObservers(true), loadObserverRoster(true)]);
+      }
+      finally { setObserverBusyId(null); }
+    },
+    onRejectObserver: async (u) => {
+      setObserverBusyId(u.id);
+      try { await fetchers.rejectObserver(u.id); await loadObservers(true); }
+      finally { setObserverBusyId(null); }
+    },
+    onRevokeObserver: async (u) => {
+      setObserverBusyId(u.id);
+      try { await fetchers.revokeObserver(u.id); await loadObserverRoster(true); }
+      finally { setObserverBusyId(null); }
+    },
+    reloadObservers: (silent) => Promise.all([loadObservers(silent), loadObserverRoster(silent)]),
     reloadPendingSupervisors: loadSupervisors,
     reloadExecutiveRequests: loadExecutiveRequests,
     reloadOrg: loadOrg,
@@ -318,7 +341,10 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
               <LaunchApprovalTab />
             )}
             {tab === 'departments' && (
-              <DepartmentsTab org={org} pendingSupervisors={supervisors} executiveRequests={executiveRequests} handlers={handlers} />
+              <DepartmentsTab org={org} pendingSupervisors={supervisors} executiveRequests={executiveRequests}
+              observers={{ code: observerCode, pending: observerPending, roster: observerRoster,
+                rotating: observerRotating, busyId: observerBusyId }}
+              handlers={handlers} />
             )}
             {tab === 'sites' && (
               <SitesTab data={sites} fetchHistory={fetchers.fetchSiteHistory} onRetry={loadSites}

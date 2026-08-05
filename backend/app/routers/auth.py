@@ -126,6 +126,11 @@ class SupervisorSignupIn(BaseModel):
     dept_code: str
 
 
+class ObserverSignupIn(BaseModel):
+    email: EmailStr
+    code: str
+
+
 class ExecutiveSignupIn(BaseModel):
     email:           EmailStr
     supervisor_code: str
@@ -477,6 +482,41 @@ async def signup_supervisor(
         email=payload.email,
         role="supervisor",
         notes=f"pending_module:{code_row['module']}",
+    )
+
+
+@router.post(
+    "/signup/observer",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(rate_limit(times=5, seconds=300))],
+    summary="Public: sign up as a read-only observer using the workspace code",
+    responses={
+        202: {"description": "Pending — business_admin must approve"},
+        404: {"description": "Invalid or revoked observer code"},
+        409: {"description": "Email already active in this workspace"},
+    },
+)
+async def signup_observer(
+    payload: ObserverSignupIn, db: DbDep,
+) -> SignupAcceptedOut:
+    """Same shape as the supervisor signup, minus the module.
+
+    Rate limited identically — this is an unauthenticated endpoint that reveals
+    whether a code is valid, so it needs the same brute-force ceiling.
+    """
+    code_row = await auth_repo.get_observer_code(db, payload.code)
+    if not code_row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="That observer code is not valid.",
+        )
+    # No pending_module marker: an observer belongs to the workspace, not a module.
+    return await _enqueue_signup(
+        db,
+        tenant_id=code_row["tenant_id"],
+        email=payload.email,
+        role="observer",
+        notes="pending_observer",
     )
 
 

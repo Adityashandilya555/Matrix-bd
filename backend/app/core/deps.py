@@ -4,12 +4,13 @@ from __future__ import annotations
 import logging
 from typing import Annotated, Optional
 
-from fastapi import Depends, Header
+from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import AuthError, decode_token
+from app.rbac.roles import Role
 from app.db.session import get_db
 
 
@@ -29,7 +30,92 @@ _DEMO_USER = {
 }
 
 
+# HTTP methods an observer may use. OPTIONS is included so CORS preflight is
+# never refused; HEAD because it is a GET without a body.
+_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+# Roles an observer may present as while reading a module. Deliberately NOT
+# business_admin: services/_common.py's actor_is_business_admin() accepts either
+# `real_role` OR `role`, so admitting it here would let an observer satisfy an
+# admin-tier check on any read path. Supervisor and executive are the two the
+# Workspace Access panel offers, and neither is an escalation — an observer
+# already reads everything through the guard bypasses; this only decides which
+# shape a module page renders in.
+_OBSERVER_OVERRIDE_ROLES = frozenset({Role.SUPERVISOR.value, Role.EXECUTIVE.value})
+
+
+def _assert_may_write(claims: dict, request: Request) -> None:
+    """Refuse any state-changing request from a read-only `observer`.
+
+    Enforced here because every one of the 106 tenant-scoped mutating routes
+    reaches get_current_user (via require_role, require_module, CurrentUser or
+    TenantId), so this is the only place the rule has to exist. The 16 routes
+    that do NOT reach it are pre-session auth or platform-admin-key tenancy
+    endpoints — not observer surface. tests/test_observer_readonly.py enumerates
+    and asserts exactly that.
+
+    Keyed on real_role, never role: role is rewritten by the X-Override-Role
+    header, so an observer viewing a module "as supervisor" would otherwise lift
+    its own restriction.
+
+    NOTE for anyone moving this call — it must stay AFTER the db.rollback() in
+    get_current_user. The is_active SELECT autobegins a transaction, and raising
+    before it is released leaves it open; that is the #103 regression where every
+    write was silently rolled back into a savepoint.
+    """
+    if claims.get("real_role") == Role.OBSERVER.value and request.method not in _READ_METHODS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Observer access is read-only.",
+        )
+
+
+def _apply_workspace_override(
+    claims: dict,
+    *,
+    db_role: str,
+    has_executive_access: bool,
+    override_role: Optional[str],
+    override_module: Optional[str],
+) -> None:
+    """Rewrite the EFFECTIVE role/module from the X-Override-* headers.
+
+    Three callers may drive another role, each for a different reason:
+
+    * ``business_admin`` — workspace access, unrestricted, the original feature.
+    * ``observer`` — read-only module switching. It already reads every module
+      through the guard bypasses in rbac/guards.py, so this exists only so a
+      module page renders in the shape its own supervisor (or executive) sees,
+      rather than whatever shape an unrecognised role falls through to. Setting
+      ``module`` is what scopes the module queries at all — an observer's token
+      carries no module claim of its own. Its role is allowlisted, never
+      business_admin (see _OBSERVER_OVERRIDE_ROLES).
+    * a dual-role ``supervisor`` — may drop to executive inside its own module.
+
+    Only ``role`` and ``module`` move here. ``real_role`` is set by the caller
+    before this runs and is never touched, which is what keeps _assert_may_write
+    (and services/_common.py's actor_is_business_admin) honest.
+
+    Extracted from get_current_user because that function is on every single
+    request and this chain pushed it past the complexity gate (PY-R1000).
+    """
+    if db_role == "business_admin":
+        if override_role:
+            claims["role"] = override_role
+        if override_module:
+            claims["module"] = override_module
+    elif db_role == Role.OBSERVER.value:
+        if override_role in _OBSERVER_OVERRIDE_ROLES:
+            claims["role"] = override_role
+        if override_module:
+            claims["module"] = override_module
+    elif db_role == "supervisor" and has_executive_access and override_role == "executive":
+        claims["role"] = "executive"
+
+
 async def get_current_user(
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     authorization: Annotated[Optional[str], Header()] = None,
     x_override_role: Annotated[Optional[str], Header(alias="X-Override-Role")] = None,
@@ -105,21 +191,18 @@ async def get_current_user(
     if not row or not row["is_active"]:
         raise AuthError("Account is inactive or no longer exists. Sign in again.")
 
-    # Check if the database role is business_admin or if supervisor has executive access.
-    # If so, allow headers to override the effective role/module returned to downstream endpoints.
     db_role = row["role"]
     claims["role"] = db_role
     claims["real_role"] = db_role
     claims["has_executive_access"] = row.get("has_executive_access", False)
     claims["has_pending_executive_request"] = row.get("has_pending_executive_request", False)
-    if db_role == "business_admin":
-        if x_override_role:
-            claims["role"] = x_override_role
-        if x_override_module:
-            claims["module"] = x_override_module
-    elif db_role == "supervisor" and row.get("has_executive_access"):
-        if x_override_role == "executive":
-            claims["role"] = "executive"
+    _apply_workspace_override(
+        claims,
+        db_role=db_role,
+        has_executive_access=bool(row.get("has_executive_access")),
+        override_role=x_override_role,
+        override_module=x_override_module,
+    )
 
     # The is_active SELECT above AUTO-BEGAN a transaction on the request-scoped
     # session (SQLAlchemy 2.0 autobegin). If left open, the service-layer
@@ -130,6 +213,9 @@ async def get_current_user(
     # per-request check, #103). Release the read-only txn here so the write path
     # opens a real, committing transaction. Rolling back a read discards nothing.
     await db.rollback()
+
+    _assert_may_write(claims, request)
+
     return claims
 
 

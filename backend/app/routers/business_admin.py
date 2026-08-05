@@ -14,6 +14,9 @@ from pydantic import BaseModel
 
 from app.core.deps import DbDep, TenantId
 from app.domain.schemas.business_admin import (
+    ObserverCodeOut,
+    ActiveObserverOut,
+    PendingObserverOut,
     ApproveSupervisorIn,
     AdminSitesResponse,
     DeptCodeRotateOut,
@@ -25,7 +28,7 @@ from app.domain.schemas.business_admin import (
     SiteDocumentsResponse,
     ExecutiveRequestOut,
 )
-from app.rbac.guards import require_role
+from app.rbac.guards import require_real_role, require_role
 from app.rbac.roles import Role
 from app.services import business_admin_documents_service as docs_svc
 from app.services import business_admin_service as svc
@@ -36,7 +39,10 @@ router = APIRouter(prefix="/business-admin", tags=["Business Admin"])
 @router.get("/dept-codes", response_model=list[ModuleCodeOut])
 async def list_dept_codes(
     db: DbDep,
-    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    # require_REAL_role: a department code is a credential. An observer bypasses
+    # every require_role, so with the ordinary guard it could read every join
+    # code and onboard a supervisor who can write.
+    _auth: Annotated[dict, Depends(require_real_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
 ) -> list[dict]:
     return await svc.list_dept_codes(db, tenant_id)
@@ -50,6 +56,91 @@ async def rotate_dept_code(
     tenant_id: TenantId,
 ) -> dict:
     return await svc.rotate_dept_code(db, tenant_id, module, current_user["sub"])
+
+
+# ── Observer: code + pending queue ────────────────────────────────────────────
+
+
+@router.get("/observer-code", response_model=ObserverCodeOut)
+async def get_observer_code(
+    db: DbDep,
+    # Same reason, and sharper: with the ordinary guard an observer could read
+    # the code that mints observers.
+    _auth: Annotated[dict, Depends(require_real_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> dict:
+    return {"code": await svc.get_observer_code(db, tenant_id)}
+
+
+@router.post("/observer-code/rotate", response_model=ObserverCodeOut)
+async def rotate_observer_code(
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> dict:
+    return await svc.rotate_observer_code(db, tenant_id, current_user["sub"])
+
+
+@router.get("/pending-observers", response_model=list[PendingObserverOut])
+async def list_pending_observers(
+    db: DbDep,
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> list[dict]:
+    return await svc.list_pending_observers(db, tenant_id)
+
+
+@router.post(
+    "/pending-observers/{user_id}/approve",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def approve_observer(
+    user_id: str,
+    db: DbDep,
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> None:
+    await svc.approve_observer(db, tenant_id, user_id)
+
+
+@router.post(
+    "/pending-observers/{user_id}/reject",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def reject_observer(
+    user_id: str,
+    db: DbDep,
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> None:
+    await svc.reject_observer(db, tenant_id, user_id)
+
+
+@router.get("/observers", response_model=list[ActiveObserverOut])
+async def list_active_observers(
+    db: DbDep,
+    # An observer bypasses require_role and would reach this. That is fine and
+    # arguably correct — the roster is directory data, not a credential — but
+    # the revoke below is a POST, so it is refused for them either way.
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> list[dict]:
+    """Who currently holds workspace-wide read access."""
+    return await svc.list_active_observers(db, tenant_id)
+
+
+@router.post(
+    "/observers/{user_id}/revoke",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def revoke_observer(
+    user_id: str,
+    db: DbDep,
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> None:
+    """Withdraw an active observer's access. Idempotent."""
+    await svc.revoke_observer(db, tenant_id, user_id)
 
 
 @router.get("/pending-supervisors", response_model=list[PendingSupervisorOut])
@@ -223,11 +314,20 @@ async def reject_finance(
 @router.get("/org", response_model=OrgResponse)
 async def get_org(
     db: DbDep,
-    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
 ) -> dict:
-    """Per-department code + active supervisors and the executives under them."""
-    return await svc.list_org(db, tenant_id)
+    """Per-department code + active supervisors and the executives under them.
+
+    An observer reaches this route (it bypasses require_role) and should — the
+    department directory is exactly what a workspace-wide viewer is for. The
+    join codes are not: they are credentials, so they are blanked for anyone
+    whose real role is not the business admin.
+    """
+    return await svc.list_org(
+        db, tenant_id,
+        include_codes=current_user.get("real_role") == Role.BUSINESS_ADMIN.value,
+    )
 
 
 @router.get("/sites/{site_id}/documents", response_model=SiteDocumentsResponse)

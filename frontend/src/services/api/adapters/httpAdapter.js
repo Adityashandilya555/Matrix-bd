@@ -19,6 +19,7 @@ import {
 } from '../authToken.js';
 import { notifySiteDataChanged } from '../siteEvents.js';
 import { getActiveOverride } from '../adminOverride.js';
+import { assertRequestAllowed } from '../readOnlyGuard.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
 const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
@@ -99,7 +100,7 @@ client.interceptors.request.use(async cfg => {
   const override = getActiveOverride();
   if (override?.role) cfg.headers['X-Override-Role'] = override.role;
   if (override?.module) cfg.headers['X-Override-Module'] = override.module;
-  return cfg;
+  return assertRequestAllowed(cfg, ApiError);
 });
 
 // ── Error wrapper ────────────────────────────────────────────────────────────
@@ -118,6 +119,11 @@ export class ApiError extends Error {
 client.interceptors.response.use(
   r => r,
   async err => {
+    // A request interceptor that rejects lands here too — axios runs request
+    // and response interceptors in one promise chain. Re-wrapping an already
+    // shaped ApiError would rewrite its status to 0 ("network error" in this
+    // codebase), so pass it straight through.
+    if (err instanceof ApiError) throw err;
     if (err.code === 'ECONNABORTED') {
       throw new ApiError({ status: 0, code: 'TIMEOUT', detail: 'Request timed out', cause: err });
     }
@@ -664,6 +670,50 @@ export async function approveSupervisor(userId, moduleKey) {
 
 export async function rejectSupervisor(userId) {
   return post(`/business-admin/pending-supervisors/${userId}/reject`);
+}
+
+// ── Observer: workspace-wide read-only role ───────────────────────────────────
+// No module anywhere in these — an observer belongs to the workspace, not a
+// department, which is the whole difference from the supervisor calls above.
+
+export async function getObserverCode() {
+  const d = await get('/business-admin/observer-code');
+  return d?.code ?? null;   // null when the workspace has never minted one
+}
+
+// Rotating revokes the previous code, so anyone holding it can no longer sign up.
+export async function rotateObserverCode() {
+  const d = await post('/business-admin/observer-code/rotate');
+  return d.code;
+}
+
+export async function listPendingObservers() {
+  const data = await get('/business-admin/pending-observers');
+  const items = data?.items || data || [];
+  return items.map(u => ({ id: u.id, email: u.email, createdAt: u.created_at }));
+}
+
+export async function approveObserver(userId) {
+  return post(`/business-admin/pending-observers/${userId}/approve`);
+}
+
+export async function rejectObserver(userId) {
+  return post(`/business-admin/pending-observers/${userId}/reject`);
+}
+
+// Who currently holds workspace-wide read access. Separate from the pending
+// queue on purpose: after approval an observer appears in no other list, since
+// it holds no module membership and so never enters the org tree.
+export async function listObservers() {
+  const data = await get('/business-admin/observers');
+  const items = data?.items || data || [];
+  return items.map(u => ({ id: u.id, email: u.email, name: u.name, createdAt: u.created_at }));
+}
+
+// Withdraws access outright — the backend deletes the row rather than
+// deactivating it, so a revoked observer does not reappear in the pending queue.
+export async function revokeObserver(userId) {
+  return post(`/business-admin/observers/${userId}/revoke`);
 }
 
 // Deactivate an org user (supervisor/executive) — revokes their access.

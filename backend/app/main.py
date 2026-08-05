@@ -546,7 +546,20 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
-for router_module in (auth, bd, legal, design, project, project_excellence, financial_closure, nso, launch_approval, loi, staging, sites, audit, notifications, tenancy, users, delegations, business_admin, supervisor_codes):
+# Named rather than inline so it is the ONE list of mounted routers. The
+# observer write-deny is enforced at a single chokepoint (get_current_user), and
+# tests/test_observer_readonly.py proves every mutating route reaches it by
+# walking this tuple. When that test kept its own hand-copied copy, a router
+# mounted here but not added there would have been walked by nothing — the test
+# would have stayed green while an unguarded mutating route shipped. Importing
+# this makes that failure impossible instead of merely unlikely.
+ROUTERS = (
+    auth, bd, legal, design, project, project_excellence, financial_closure, nso,
+    launch_approval, loi, staging, sites, audit, notifications, tenancy, users,
+    delegations, business_admin, supervisor_codes,
+)
+
+for router_module in ROUTERS:
     app.include_router(router_module.router, prefix=settings.api_prefix)
 
 

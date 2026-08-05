@@ -99,6 +99,188 @@ async def rotate_dept_code(
     return {"module": row["module"], "code": row["code"]}
 
 
+# ── Observer: workspace-level code, pending queue, approve/reject ─────────────
+#
+# Mirrors the supervisor flow above, with one deliberate divergence: approving an
+# observer writes NO user_module_memberships row. An observer is workspace-wide,
+# and role_in_module is CHECK-constrained to supervisor/executive precisely so
+# that a copy-paste of approve_supervisor() below would fail loudly rather than
+# quietly filing an observer as a supervisor of some module.
+
+
+async def get_observer_code(session: AsyncSession, tenant_id: str | UUID) -> Optional[str]:
+    """The workspace's live observer code, or None if one was never minted."""
+    row = (await session.execute(
+        text("""
+            SELECT code FROM observer_codes
+             WHERE tenant_id = :tid AND revoked_at IS NULL
+        """),
+        {"tid": tenant_id},
+    )).mappings().first()
+    return row["code"] if row else None
+
+
+async def rotate_observer_code(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+    created_by: str | UUID,
+) -> dict:
+    """Revoke the live code and mint a new one, so the old one stops working.
+
+    Revoke-then-insert rather than UPDATE ... SET code: the revoked row stays as
+    history of who held which code and when. The partial unique index on
+    (tenant_id) WHERE revoked_at IS NULL is what guarantees only one is live, so
+    a caller that forgets to revoke gets a constraint error, not two live codes.
+    """
+    async with transaction(session):
+        await session.execute(
+            text("""
+                UPDATE observer_codes
+                   SET revoked_at = now()
+                 WHERE tenant_id = :tid AND revoked_at IS NULL
+            """),
+            {"tid": tenant_id},
+        )
+        row = (await session.execute(
+            text("""
+                INSERT INTO observer_codes (tenant_id, code, created_by)
+                VALUES (:tid, :code, :uid)
+                RETURNING code
+            """),
+            {"tid": tenant_id, "code": _new_dept_code(), "uid": created_by},
+        )).mappings().one()
+    return {"code": row["code"]}
+
+
+async def list_pending_observers(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+) -> list[dict]:
+    """Inactive observer rows awaiting approval."""
+    rows = (await session.execute(
+        text("""
+            SELECT id, email, created_at
+              FROM users
+             WHERE tenant_id = :tid
+               AND role = 'observer'
+               AND is_active = false
+             ORDER BY created_at
+        """),
+        {"tid": tenant_id},
+    )).mappings().all()
+    return [
+        {"id": str(r["id"]), "email": r["email"], "created_at": r["created_at"]}
+        for r in rows
+    ]
+
+
+async def approve_observer(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+    user_id: str | UUID,
+) -> None:
+    """Activate a pending observer. Idempotent on re-submit.
+
+    Deliberately does NOT touch user_module_memberships — see the note at the top
+    of this section. The only state change is users.is_active.
+    """
+    async with transaction(session):
+        target = (await session.execute(
+            text("""
+                SELECT is_active FROM users
+                 WHERE id = CAST(:uid AS uuid) AND tenant_id = :tid AND role = 'observer'
+            """),
+            {"uid": user_id, "tid": tenant_id},
+        )).mappings().first()
+        if not target or target["is_active"]:
+            return
+        await session.execute(
+            text("""
+                UPDATE users
+                   SET is_active = true, notes = NULL
+                 WHERE id = CAST(:uid AS uuid) AND tenant_id = :tid AND role = 'observer'
+            """),
+            {"uid": user_id, "tid": tenant_id},
+        )
+
+
+async def list_active_observers(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+) -> list[dict]:
+    """The observers who currently hold read access to the whole workspace.
+
+    Without this the role is invisible after approval: the pending queue empties
+    and nothing else lists an observer, because it holds no module membership so
+    it never appears in the org tree. An account that can read everything and
+    that nobody can see is the wrong shape.
+    """
+    rows = (await session.execute(
+        text("""
+            SELECT id, email, name, created_at
+              FROM users
+             WHERE tenant_id = :tid
+               AND role = 'observer'
+               AND is_active = true
+             ORDER BY email
+        """),
+        {"tid": tenant_id},
+    )).mappings().all()
+    return [
+        {"id": str(r["id"]), "email": r["email"], "name": r["name"],
+         "created_at": r["created_at"]}
+        for r in rows
+    ]
+
+
+async def revoke_observer(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+    user_id: str | UUID,
+) -> None:
+    """Withdraw an active observer's access.
+
+    Deletes the row rather than flipping is_active, for two reasons. An inactive
+    observer would reappear in the PENDING queue — that query is
+    ``role = 'observer' AND is_active = false`` — so revoking would silently
+    re-offer the account for approval. And an observer never acts: the
+    stage_events.actor_role CHECK excludes the role, so unlike a supervisor
+    there is no audit trail hanging off the row to preserve. Same delete
+    reject_observer already does, on the other end of the lifecycle.
+    """
+    async with transaction(session):
+        await session.execute(
+            text("""
+                DELETE FROM users
+                 WHERE id = CAST(:uid AS uuid)
+                   AND tenant_id = :tid
+                   AND role = 'observer'
+                   AND is_active = true
+            """),
+            {"uid": user_id, "tid": tenant_id},
+        )
+
+
+async def reject_observer(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+    user_id: str | UUID,
+) -> None:
+    """Delete a pending observer row. Only ever removes an INACTIVE one, so a
+    mis-click cannot delete an approved account."""
+    async with transaction(session):
+        await session.execute(
+            text("""
+                DELETE FROM users
+                 WHERE id = CAST(:uid AS uuid)
+                   AND tenant_id = :tid
+                   AND role = 'observer'
+                   AND is_active = false
+            """),
+            {"uid": user_id, "tid": tenant_id},
+        )
+
+
 async def list_pending_supervisors(
     session: AsyncSession,
     tenant_id: str | UUID,
@@ -139,14 +321,34 @@ async def approve_supervisor(
     user_id: str | UUID,
     module: Module,
 ) -> None:
-    """Activate a pending supervisor and grant module membership; idempotent on re-submit."""
+    """Activate a pending supervisor and grant module membership; idempotent on re-submit.
+
+    Scoped to ``role = 'supervisor'``. The list query above already filters on
+    that, so the queue never OFFERS anything else — but this route takes a
+    user_id, and without the same filter here a request naming a pending
+    OBSERVER's id would activate it and write it a
+    ``role_in_module = 'supervisor'`` membership. The CHECK on that column
+    permits the value, so nothing downstream would refuse it: 20260816 claims
+    that constraint is what stops an observer holding a membership, and it is
+    not. Approve reads the same predicate as list, so the claim holds here
+    instead.
+
+    Not an escalation — ``_assert_may_write`` keys on ``users.role``, which stays
+    'observer', so the account still cannot write. It is the invariant that
+    breaks, not the boundary.
+    """
     async with transaction(session):
         # Only act on a genuinely PENDING candidate in this tenant. Without this
         # guard a re-submit (double-click) re-activates the row and tries to
         # inject a second membership — which the UNIQUE(user_id, module) then
         # rejects as an unhandled 500. Idempotent no-op instead. (#123)
         target = (await session.execute(
-            text("SELECT is_active FROM users WHERE id = CAST(:uid AS uuid) AND tenant_id = :tid"),
+            text("""
+                SELECT is_active FROM users
+                 WHERE id = CAST(:uid AS uuid)
+                   AND tenant_id = :tid
+                   AND role = 'supervisor'
+            """),
             {"uid": user_id, "tid": tenant_id},
         )).mappings().first()
         if not target or target["is_active"]:
@@ -158,6 +360,7 @@ async def approve_supervisor(
                        notes = NULL
                  WHERE id = CAST(:uid AS uuid)
                    AND tenant_id = :tid
+                   AND role = 'supervisor'
             """),
             {"uid": user_id, "tid": tenant_id},
         )
@@ -740,17 +943,29 @@ _ORG_MODULES: tuple[str, ...] = ("bd", "legal", "design", "project", "nso", "pro
 _SUPERVISOR_ONLY_MODULES: frozenset[str] = frozenset({"nso"})
 
 
-async def list_org(session: AsyncSession, tenant_id: str | UUID) -> dict:
+async def list_org(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+    *,
+    include_codes: bool = True,
+) -> dict:
     """Per-department code + the active supervisors and the executives reporting
     to each (from user_module_memberships.supervisor_id). Executives with no (or
-    an unknown) supervisor land in `unassigned_executives`."""
+    an unknown) supervisor land in `unassigned_executives`.
+
+    ``include_codes=False`` returns the same directory with every join code
+    blanked. The observer portal renders this exact payload, and a join code is
+    a credential: an observer cannot write, but a department code lets it
+    onboard a supervisor who can. The department tree itself is fine for it to
+    see — only the codes come out.
+    """
     codes = {
         r["module"]: r["code"]
         for r in (await session.execute(
             text("SELECT module, code FROM module_codes WHERE tenant_id = :tid"),
             {"tid": tenant_id},
         )).mappings().all()
-    }
+    } if include_codes else {}
 
     rows = (await session.execute(
         text("""

@@ -201,6 +201,22 @@ async def get_module_code(db: AsyncSession, code: str) -> Optional[Mapping[str, 
     )).mappings().first()
 
 
+async def get_observer_code(db: AsyncSession, code: str) -> Optional[Mapping[str, Any]]:
+    """A non-revoked workspace observer code → (tenant_id,).
+
+    No module column by design: an observer is workspace-wide. Rotation revokes
+    the old row, so a stale code returns None here rather than a stale tenant.
+    """
+    return (await db.execute(
+        text("""
+            SELECT tenant_id
+              FROM observer_codes
+             WHERE code = :code AND revoked_at IS NULL
+        """),
+        {"code": code},
+    )).mappings().first()
+
+
 async def get_supervisor_invite_code(db: AsyncSession, code: str) -> Optional[Mapping[str, Any]]:
     """A non-revoked executive supervisor_code → (tenant_id, supervisor_id, module)."""
     return (await db.execute(

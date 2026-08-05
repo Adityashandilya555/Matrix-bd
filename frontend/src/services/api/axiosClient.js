@@ -3,6 +3,7 @@ import axios from 'axios';
 import { getAuthToken, setAuthToken, notifySessionExpired } from './authToken.js';
 import { ApiError, ensureFreshAuthToken, requestCarriedToken } from './adapters/httpAdapter.js';
 import { getActiveOverride } from './adminOverride.js';
+import { assertRequestAllowed } from './readOnlyGuard.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
 const TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 20000);
@@ -43,12 +44,17 @@ export function createApiClient() {
     const override = getActiveOverride();
     if (override?.role) cfg.headers['X-Override-Role'] = override.role;
     if (override?.module) cfg.headers['X-Override-Module'] = override.module;
-    return cfg;
+    return assertRequestAllowed(cfg, ApiError);
   });
 
   client.interceptors.response.use(
     (r) => r,
     async (err) => {
+      // A request interceptor that rejects lands here too — axios runs request
+      // and response interceptors in one promise chain. Re-wrapping an already
+      // shaped ApiError would rewrite its status to 0 ("network error" in this
+      // codebase), so pass it straight through.
+      if (err instanceof ApiError) throw err;
       if (err.code === 'ECONNABORTED') {
         throw new ApiError({ status: 0, code: 'TIMEOUT', detail: 'Request timed out', cause: err });
       }

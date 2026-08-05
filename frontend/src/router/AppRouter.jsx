@@ -43,6 +43,7 @@ const ProjectOverviewPage = lazy(() => import('../modules/project/ProjectOvervie
 const NsoOverviewPage = lazy(() => import('../modules/nso/NsoOverviewPage.jsx'));
 const AdminPortalPage = lazy(() => import('../modules/admin/AdminPortalPage.jsx'));
 const BusinessAdminPortalPage = lazy(() => import('../modules/business-admin/BusinessAdminPortalPage.jsx'));
+const ObserverPortalPage = lazy(() => import('../modules/business-admin/ObserverPortalPage.jsx'));
 const ProjectQueuePage = lazy(() => import('../modules/project/ProjectQueuePage.jsx'));
 
 // Dev-only: Approval Center UI preview with mock data (no backend / no login).
@@ -70,6 +71,7 @@ const LANDING_PATH = '/welcome';
 
 function homeForRoleModule(role, module) {
   if (role === 'business_admin') return '/business-admin';
+  if (role === 'observer')       return '/observer';
   if (module === 'legal')        return ROUTES.LEGAL;
   if (module === 'design')       return ROUTES.DESIGN;
   if (module === 'project')      return ROUTES.PROJECT;
@@ -92,6 +94,11 @@ function RequireAuth({ children }) {
   // surface lives at /business-admin. Forward them out of any BD/legal/payment
   // route so they cannot land on a chrome that isn't meant for them.
   if (role === 'business_admin') return <Navigate to="/business-admin" replace/>;
+  // Same reason, and more consequential: the shared shell does not gate on role.
+  // Sidebar derives its nav from the user's module, and rbac/scope.js resolves
+  // anything that is not an executive to tenant scope — so an observer that
+  // reached it would get a BD supervisor sidebar over workspace-wide data.
+  if (role === 'observer') return <Navigate to="/observer" replace/>;
   return children;
 }
 
@@ -155,6 +162,7 @@ export default function AppRouter() {
           gates access via X-Platform-Admin-Key. */}
       <Route path="/admin" element={<AdminPortalPage/>}/>
       <Route path="/business-admin" element={<BusinessAdminPortalPage/>}/>
+      <Route path="/observer" element={<ObserverPortalPage/>}/>
       {import.meta.env.DEV && (
         <Route path="/business-admin-preview" element={
           <Suspense fallback={null}><ApprovalCenterPreview/></Suspense>

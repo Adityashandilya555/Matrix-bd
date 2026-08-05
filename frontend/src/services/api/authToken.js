@@ -76,6 +76,19 @@ function _decodeJwtPayload(token) {
   }
 }
 
+// The role baked into the token at sign-in. This is the user's REAL role: the
+// X-Override-Role header rewrites what the backend reports back, but it cannot
+// touch the credential itself, so this is the one role reading available to
+// non-React callers (the axios interceptors) that an override can't move.
+//
+// Stale if the role changes in the DB mid-session — the token is only re-minted
+// on refresh. Fine for the one thing it drives (not sending a doomed write);
+// the backend re-reads the role from the DB on every single request.
+export function getAuthTokenRole(token = getAuthToken()) {
+  const payload = _decodeJwtPayload(token);
+  return payload?.app_metadata?.role || null;
+}
+
 export function getAuthTokenExpiryMs(token = getAuthToken()) {
   const payload = _decodeJwtPayload(token);
   return payload?.exp ? Number(payload.exp) * 1000 : null;
