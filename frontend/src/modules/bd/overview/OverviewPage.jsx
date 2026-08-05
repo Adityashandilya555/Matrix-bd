@@ -15,16 +15,6 @@ import Icon from '../../shared/primitives/Icon.jsx';
 import { STAGES } from '../../shared/primitives/constants.js';
 import { ROUTES } from '../../../router/routes.js';
 
-// Overview = four drill-down KPIs:
-//   Ⅰ Total sites — pipeline drafts + shortlist + sites in process (pre-push;
-//     archived/rejected excluded). Click → expands in place with stage boxes,
-//     search and a date filter.
-//   Ⅱ Archived — archived + rejected sites. Click → expands in place with a
-//     calendar filter + search over the archive list.
-//   Ⅲ Payments — sites pushed from Sites in process (Legal ∥ Finance). Click →
-//     /payment tab (pending / awaiting approval / approved filters live there).
-//   Ⅳ Launch — Project-complete sites handed to NSO. Click → /launch tab.
-
 function CornerTicks() {
   return (
     <>
@@ -46,8 +36,6 @@ function CornerTicks() {
   );
 }
 
-// Peach-skyline KPI fills. `tone` optional — omit to keep the original glass
-// look (zero regression); set peach|blue|mint|slate to fill the card.
 const TONE_FILL = {
   peach: 'var(--zm-brand-peach)',
   blue:  'var(--zm-brand-blue)',
@@ -64,10 +52,6 @@ function MetricCard({ eyebrow, value, rule = 'var(--zm-copper)', delta, deltaTon
   const metaColor = toned ? onColor : 'var(--zm-fg-3)';
   const noColor = toned ? onColor : 'var(--zm-fg-4)';
   return (
-    // KPI card is interactive only when an onClick is supplied; in that branch
-    // it carries role="button" + tabIndex + onKeyDown, so keyboard parity is
-    // fully provided. The rule can't see the conditional role.
-    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div className="zm-glass"
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}

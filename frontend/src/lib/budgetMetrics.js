@@ -1,20 +1,5 @@
-// skipcq: JS-0833
-// Shared budget-metrics helpers — the single source of truth for the 3
-// derived, read-only ratios shown alongside the 11-line site budget
-// (Project Excellence, Project, Business Admin approval, Financial Closure).
-
-// Indices (1-based) whose sum feeds the "Civil, Interior & MEP" (fitout) metric:
-// HVAC (2) + Civil & Interiors (4). Matches the Budget J.P. Nagar sheet's
-// "Per sqft fitout" row.
-//
-// This used to be [2, 3, 4, 5, 8], which also swept in Furniture/Light (3),
-// Kitchen Equipment (5) and Utilities (8). None of those are fitout, and the
-// extra ₹45.4L inflated the J.P. Nagar figure to ₹6,196/sqft against the sheet's
-// ₹2,632. Furniture belongs to the separate FITOUT_FURNITURE_IDX metric below.
 export const CIVIL_MEP_IDX = [2, 4];
 
-// Fitout + Furniture/Light: the above + Furniture, Light & Planters (3). Matches
-// the sheet's "Per sqft fitout + Furniture/Light" row.
 export const FITOUT_FURNITURE_IDX = [2, 3, 4];
 
 export function sumByIdx(items, idxList, amountKey = 'amount') {
@@ -36,9 +21,6 @@ export function formatINR(value) {
   return `₹${amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 }
 
-// Raw numeric ratio, or null when the divisor is missing / zero / the result
-// isn't finite. Kept separate from formatRatio so callers that need to diff
-// two ratios (e.g. GFC vs Closure) can do the arithmetic before formatting.
 export function computeRatio(numerator, divisor) {
   const d = Number(divisor);
   if (!Number.isFinite(d) || d === 0) return null;
@@ -46,11 +28,6 @@ export function computeRatio(numerator, divisor) {
   return Number.isFinite(ratio) ? ratio : null;
 }
 
-// A calculated ratio renders the rupee value, or "—" when its divisor is
-// missing / zero (so we never show Infinity or NaN). A nonzero ratio that
-// would otherwise round away to a misleading "₹0" at whole-rupee precision
-// is instead shown to 2 decimal places, so a real (if tiny) value is never
-// hidden behind a flat zero.
 export function formatRatio(numerator, divisor) {
   const ratio = computeRatio(numerator, divisor);
   if (ratio === null) return '—';
@@ -60,13 +37,6 @@ export function formatRatio(numerator, divisor) {
   return formatINR(ratio);
 }
 
-// The 4 derived metrics shared across Project Excellence, Project, Business
-// Admin approval, and Financial Closure. Returns both the formatted display
-// string and the raw numeric ratio (for callers that need to diff two
-// snapshots, e.g. Financial Closure's GFC-vs-actual comparison).
-//
-// Not yet wired in — the four surfaces each inline sumByIdx + formatRatio. Kept
-// in lockstep with them so it stays correct for whoever does wire it up.
 export function computeDerivedMetrics({ items, totalIndoorAreaSqft, totalAreaSqft, covers, amountKey = 'amount' }) {
   const budgetTotal = computeBudgetTotal(items, amountKey);
   const civilMepSum = sumByIdx(items, CIVIL_MEP_IDX, amountKey);
@@ -84,8 +54,6 @@ export function computeDerivedMetrics({ items, totalIndoorAreaSqft, totalAreaSqf
   };
 }
 
-// Variation = closure actual − GFC baseline. Over budget (positive) is red,
-// under budget (negative) is green, exactly on budget is muted.
 export function variationTone(variation) {
   const v = Number(variation) || 0;
   if (v > 0) return 'var(--zm-danger)';
@@ -99,11 +67,6 @@ export function formatVariation(variation) {
   return `${sign}${formatINR(Math.abs(v))}`;
 }
 
-// Diffs two raw ratios (as returned by computeRatio / computeDerivedMetrics'
-// *Raw fields) — same sign convention as formatVariation, but never rounds a
-// small nonzero delta away to "+₹0". If both sides are null (no divisor data
-// at all, e.g. area/covers never entered) there's nothing to diff, so this
-// returns "—" rather than a misleading "₹0" flat variation.
 export function formatRatioVariation(closureRatio, gfcRatio) {
   if (closureRatio == null && gfcRatio == null) return '—';
   const c = closureRatio == null ? 0 : Number(closureRatio);

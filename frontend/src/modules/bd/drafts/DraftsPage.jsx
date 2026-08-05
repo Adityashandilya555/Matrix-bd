@@ -8,8 +8,6 @@ import Avatar from '../../shared/primitives/Avatar.jsx';
 import Icon from '../../shared/primitives/Icon.jsx';
 import { useFocusSite } from '../../../hooks/useFocusSite.js';
 
-// All render bodies preserved exactly from Drafts.jsx.
-// Only change: window globals replaced with ES imports above.
 
 const MONTHS = ['All', 'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 

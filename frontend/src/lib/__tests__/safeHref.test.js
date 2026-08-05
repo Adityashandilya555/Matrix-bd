@@ -1,6 +1,3 @@
-// #87 — stored XSS via javascript: URL in google_maps_url rendered as href.
-// safeHref must return null for any scheme outside http/https/mailto so the
-// renderer falls back to a non-link.
 import { describe, expect, it } from 'vitest';
 import { safeHref } from '../safeHref.js';
 

@@ -1,6 +1,3 @@
-// buildDrawerSite feeds the supervisor's approval drawer — it must surface the
-// revenue-share split (FEATURE_RENT_V2), or the feature captures data nobody reads.
-// skipcq: JS-0833
 import { describe, it, expect } from 'vitest';
 import { buildDrawerSite } from '../buildDrawerSite.js';
 

@@ -1,18 +1,6 @@
 import React from 'react';
 import { PRODUCT_NAME } from '../../router/routes.js';
 
-// Platform admin portal — the ONLY tenant-less page in the app. Lives outside
-// the workspace auth flow because the people approving workspace requests are
-// not part of any tenant yet (they are us, the platform operators).
-//
-// Auth model: a permanent email + password pair lives in backend env
-// (PLATFORM_ADMIN_EMAIL / PLATFORM_ADMIN_PASSWORD, defaults work out of the
-// box). The gate POSTs them to /tenancy/admin/login which echoes back the
-// X-Platform-Admin-Key value the SPA must send on every subsequent request.
-// We stash that token in sessionStorage so a refresh doesn't kick the admin
-// back to the gate, but it dies with the tab so we never persist it across
-// browser restarts.
-
 const SESSION_KEY = 'matrix.admin.platformKey';
 
 function readKey() {
@@ -51,8 +39,6 @@ async function apiFetch(path, { key, method = 'GET', body } = {}) {
   return parsed;
 }
 
-// Multipart variant for the branding logo upload. No Content-Type header —
-// the browser sets the multipart boundary itself.
 async function apiUpload(path, { key, formData }) {
   const r = await fetch(`${apiBase}${path}`, {
     method: 'POST',
@@ -82,8 +68,6 @@ function GateScreen({ onUnlock }) {
     if (!email.trim() || !password) { setError('Enter your admin email and password.'); return; }
     setBusy(true); setError(null);
     try {
-      // The login endpoint validates the credentials and hands back the
-      // X-Platform-Admin-Key the SPA must use on every subsequent call.
       const res = await fetch(`${apiBase}/tenancy/admin/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -130,9 +114,6 @@ function GateScreen({ onUnlock }) {
 }
 
 function ApproveDialog({ request, busy, onCancel, onConfirm }) {
-  // Supervisors see every site in the workspace — they're not city-scoped at
-  // the permission layer. The "primary city" field below is purely metadata
-  // for outbound emails / Slack templates, and is fully optional.
   const [city, setCity] = React.useState('');
   const [adminName, setAdminName] = React.useState(request?.admin_email?.split('@')[0] || '');
   if (!request) return null;

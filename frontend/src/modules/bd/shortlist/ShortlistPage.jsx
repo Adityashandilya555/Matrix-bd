@@ -26,8 +26,6 @@ function EyeIcon({ size = 16 }) {
 export function LOITimelineModal({ site, onCancel, onSubmit }) {
   const [days, setDays] = React.useState(14);
   const daysId = React.useId();
-  // Guard against double-submit: a second click before the first approve
-  // resolves double-fires the (unlocked) backend state transition. (#96)
   const [submitting, setSubmitting] = React.useState(false);
   const submit = async () => {
     if (submitting) return;
@@ -71,9 +69,6 @@ export function LOITimelineModal({ site, onCancel, onSubmit }) {
   );
 }
 
-// Supervisor-only side panel for granting / revoking shortlist delegations on
-// a specific site. Executives who get a grant can act on that site even if
-// it's outside their normal scope.
 function DelegationModal({ site, onClose, onChanged, showToast }) {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(null);
@@ -86,10 +81,6 @@ function DelegationModal({ site, onClose, onChanged, showToast }) {
   const { session, user } = useSession();
   const currentUserId = session?.userId || session?.id || session?.sub || user?.id;
 
-  // `isCancelled` lets the mount effect abort its own load: if the modal closes
-  // (or reopens for a different site) before the two requests resolve, we skip
-  // the setState — preventing an unmounted-component update and a stale
-  // previous-site delegation list flashing in. (#98)
   const load = React.useCallback(async (isCancelled = () => false) => {
     setLoading(true); setError(null);
     try {
@@ -99,9 +90,6 @@ function DelegationModal({ site, onClose, onChanged, showToast }) {
       ]);
       if (isCancelled()) return;
       setDelegations(list);
-      // listMyTeam('bd') returns only this supervisor's BD executives — the same
-      // module-scoped primitive Legal/Design/Project use — so executives from
-      // other departments never appear in the picker.
       setCandidates(team);
     } catch (err) {
       if (!isCancelled()) setError(err?.message || 'Failed to load delegations');
@@ -490,9 +478,6 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
     stateFilter === 'pending' ? pendingApproval :
     visibleShortlist;
 
-  // Opening the LOI modal must NOT mark the card busy — otherwise cancelling the
-  // modal (which doesn't run the submit handler) would leave the card stuck on
-  // "Processing…". Busy is set only for the duration of the actual API call.
   const onApprove = (item) => { setApproving(item); };
   const onTimelineSubmit = async (item, days) => {
     markBusy(item.id);
@@ -511,10 +496,6 @@ export default function ShortlistPage({ onOpenSite: onOpenSiteProp, showToast: s
     setDetailing(item);
   };
   const onDetailsSubmit = async (item, formData) => {
-    // Keep the modal open until the submit resolves; close ONLY on success so a
-    // backend error doesn't discard everything the BD exec typed. Mirrors the
-    // save-draft handler (detailSaving disables the button, detailError shows
-    // the message inline). (#97)
     setDetailError(null);
     setDetailSaving(true);
     markBusy(item.id);

@@ -7,8 +7,6 @@ import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Avatar from '../shared/primitives/Avatar.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 
-// A row is "rejected" if it was rejected in BD review or in Legal DD; anything
-// else that lands here (a supervisor manually shelving a site) is "archived".
 const isRejectedRow = (a) => a.status === SiteStatus.REJECTED || a.status === SiteStatus.LEGAL_REJECTED;
 const isArchivedRow = (a) => a.status === SiteStatus.ARCHIVED;
 
@@ -18,8 +16,6 @@ function statusMeta(a) {
   return { label: 'Archived', fg: '#374151', bg: '#F1F3F6' };
 }
 
-// Render body preserved from Archive.jsx; extended with archive_note rendering
-// and a Revive control (supervisor-only) wired to POST /sites/{id}/revive.
 
 function EyeIcon({ size = 12 }) {
   return (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>);
@@ -140,8 +136,6 @@ export default function ArchivePage({ onOpenSite: onOpenSiteProp, showToast: sho
     }
   };
 
-  // Supervisors get an extra column for the Revive control. Keep the column
-  // template in one place so header and rows can't drift.
   const cols = canRevive
     ? '0.85fr 1.5fr 0.9fr 1fr 0.9fr 1.4fr 90px 96px'
     : '0.9fr 1.6fr 1fr 1fr 1fr 1.4fr 90px';
