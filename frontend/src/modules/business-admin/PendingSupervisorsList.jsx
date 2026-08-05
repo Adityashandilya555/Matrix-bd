@@ -6,13 +6,21 @@ import { T, Icon, Card, Button, Skeleton, EmptyState, ErrorState, TABULAR } from
 //   onApprove(user) -> Promise        — user.module is required by the API
 //   onReject(user)  -> Promise
 //
+// Pending OBSERVERS arrive in the same list, carrying module: 'observer' and
+// kind: 'observer'. They shipped in a second queue lower down the Departments
+// tab, which meant a request could sit unnoticed under a heading nobody
+// scrolls to — this is where an admin comes to approve someone. The shell
+// dispatches approve/reject on `kind`, so the two APIs stay separate while the
+// queue is one.
+//
 // Payment + Recce omitted — Recce is part of Design, Payment isn't dept-onboarded.
 const FILTERS = [
-  { key: 'all',     label: 'All' },
-  { key: 'bd',      label: 'BD' },
-  { key: 'legal',   label: 'Legal' },
-  { key: 'design',  label: 'Design' },
-  { key: 'project', label: 'Project' },
+  { key: 'all',      label: 'All' },
+  { key: 'bd',       label: 'BD' },
+  { key: 'legal',    label: 'Legal' },
+  { key: 'design',   label: 'Design' },
+  { key: 'project',  label: 'Project' },
+  { key: 'observer', label: 'Observer' },
 ];
 
 export default function PendingSupervisorsList({ data, onApprove, onReject, onRetry }) {
@@ -63,6 +71,16 @@ export default function PendingSupervisorsList({ data, onApprove, onReject, onRe
         })}
       </div>
 
+      {/* One of the two source queues failed while the other loaded. The rows
+          below are real but incomplete, and saying so is the whole point —
+          a short list that looks complete is worse than an error. */}
+      {data.partialError && (
+        <div role="status" style={{ padding: '10px 14px', borderRadius: T.radiusSm, background: T.chip,
+          color: T.textMuted, marginBottom: 14, fontSize: 12.5, border: `1px solid ${T.line}` }}>
+          {data.partialError}
+        </div>
+      )}
+
       {error && (
         <div style={{ padding: '10px 14px', borderRadius: T.radiusSm, background: T.dangerSoft,
           color: T.dangerText, marginBottom: 14, fontSize: 12.5, border: '1px solid rgba(192,65,63,0.35)' }}>{error}</div>
@@ -81,8 +99,12 @@ export default function PendingSupervisorsList({ data, onApprove, onReject, onRe
 
       {!loading && visible.length === 0 && (
         <EmptyState icon={Icon.users}
-          title={filter === 'all' ? 'No supervisors awaiting approval' : `No pending ${filter.toUpperCase()} supervisors`}
-          hint="New sign-ups using a valid department code will appear here for review." />
+          title={filter === 'all'
+            ? 'No one awaiting approval'
+            : (filter === 'observer' ? 'No pending observers' : `No pending ${filter.toUpperCase()} supervisors`)}
+          hint={filter === 'observer'
+            ? 'People who sign up with the workspace observer code will appear here for review.'
+            : 'New sign-ups using a valid department code will appear here for review.'} />
       )}
 
       {!loading && visible.length > 0 && (

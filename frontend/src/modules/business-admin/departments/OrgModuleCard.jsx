@@ -1,5 +1,7 @@
 import React from 'react';
-import { T, Icon, Card, Button, Avatar, Disclosure, Skeleton } from '../ui/kit.jsx';
+import { T, Icon, Card, Button, Disclosure, Skeleton } from '../ui/kit.jsx';
+import CodeChip from './CodeChip.jsx';
+import Person from './Person.jsx';
 
 // One department: its invite code (+ rotate) and the supervisors with the
 // executives reporting to each. Executives with no/unknown supervisor are listed
@@ -13,67 +15,6 @@ export const MODULE_META = {
   nso:                 { label: 'NSO',                 icon: Icon.flag },
   project_excellence:  { label: 'Project Excellence',  icon: Icon.shield },
 };
-
-const fmtDate = (d) => { try { return new Date(d).toLocaleDateString(); } catch { return ''; } };
-
-function Person({ p, role, onRemove }) {
-  const [confirming, setConfirming] = React.useState(false);
-  const [busy, setBusy] = React.useState(false);
-  const [err, setErr] = React.useState(null);
-  const roleLabel = role === 'supervisor' ? 'supervisor' : 'executive';
-
-  // Two-step remove: trash → "Remove this {role}?" → confirm. On success the
-  // parent reloads the org and this row unmounts, so we don't reset state.
-  const doRemove = async (e) => {
-    e?.stopPropagation?.();
-    setBusy(true); setErr(null);
-    try {
-      await onRemove(p);
-    } catch (ex) {
-      setErr(ex?.detail || ex?.message || 'Could not remove this user.');
-      setBusy(false);
-      setConfirming(false);
-    }
-  };
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0' }}>
-      <Avatar name={p.name} email={p.email} size={28} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 600, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name || p.email}</div>
-        <div style={{ fontSize: 11.5, color: T.textFaint, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {p.email}{p.joinedAt ? ` · joined ${fmtDate(p.joinedAt)}` : ''}
-          {err ? <span style={{ color: T.dangerText }}> · {err}</span> : ''}
-        </div>
-      </div>
-      {role && !confirming && (
-        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.textMuted,
-          padding: '2px 8px', borderRadius: 999, background: T.chip, border: `1px solid ${T.line}` }}>{role}</span>
-      )}
-      {onRemove && !confirming && (
-        <button
-          type="button" title={`Remove ${roleLabel}`} aria-label={`Remove ${roleLabel}`}
-          onClick={(e) => { e.stopPropagation(); setErr(null); setConfirming(true); }}
-          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36,
-            borderRadius: 9, border: `1px solid ${T.line}`, background: 'transparent', color: T.textFaint, cursor: 'pointer', flex: '0 0 auto' }}
-        >
-          <Icon.trash size={15} />
-        </button>
-      )}
-      {onRemove && confirming && (
-        // Not an interactive control — the onClick only stops the click from
-        // bubbling up to the enclosing Disclosure header (the real buttons
-        // inside handle their own keyboard activation). Purely a guard.
-        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }} onClick={(e) => e.stopPropagation()}>
-          <span style={{ fontSize: 11.5, color: T.textMuted, whiteSpace: 'nowrap' }}>Remove this {roleLabel}?</span>
-          <Button variant="danger" size="sm" loading={busy} onClick={doRemove}>Remove</Button>
-          <Button variant="ghost" size="sm" disabled={busy} onClick={(e) => { e.stopPropagation(); setConfirming(false); setErr(null); }}>Cancel</Button>
-        </span>
-      )}
-    </div>
-  );
-}
 
 export default function OrgModuleCard({ mod, onRotate, onRemove, loading }) {
   const meta = MODULE_META[mod.module] || { label: mod.module, icon: Icon.key };
@@ -106,20 +47,13 @@ export default function OrgModuleCard({ mod, onRotate, onRemove, loading }) {
               : ' · supervisor-only'}
           </div>
         </div>
-        {/* Only when there is a code to show. The backend blanks it for anyone
-            whose real role is not the business admin (a join code is a
-            credential — it onboards a supervisor who can write), so for an
-            observer this would otherwise render a permanent, misleading
-            "No code yet" next to every department. */}
-        {mod.code && (
-          <code style={{ fontFamily: T.mono, fontSize: 14, fontWeight: 700, letterSpacing: '0.06em', padding: '8px 12px',
-            borderRadius: T.radiusSm, background: T.surfaceInset, border: `1px solid ${T.line}`,
-            color: T.text }}>{loading ? '…' : mod.code}</code>
-        )}
-        {!mod.code && !loading && onRotate && (
-          <code style={{ fontFamily: T.mono, fontSize: 14, fontWeight: 700, letterSpacing: '0.06em', padding: '8px 12px',
-            borderRadius: T.radiusSm, background: T.surfaceInset, border: `1px solid ${T.line}`,
-            color: T.textFaint }}>No code yet</code>
+        {/* Masked until revealed — a department code onboards a supervisor who
+            can write, and the realistic leak is a shared screen. Rendered only
+            when there is one: the backend blanks it for anyone whose real role
+            is not the business admin, so for an observer this would otherwise
+            show a permanent, misleading "No code yet" beside every department. */}
+        {(mod.code || onRotate) && (
+          <CodeChip code={mod.code} loading={loading} />
         )}
         {/* Gated on the callback, matching how onRemove already behaves below.
             Without this the observer portal — which passes onRotate={undefined}

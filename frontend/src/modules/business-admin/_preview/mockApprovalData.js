@@ -65,6 +65,17 @@ const store = {
     { id: 'u-p2', email: 'divya.s@bluetokai.com', module: 'design', createdAt: '2026-06-05T07:45:00Z' },
     { id: 'u-p3', email: 'farhan.ali@bluetokai.com', module: 'project', createdAt: '2026-06-05T09:50:00Z' },
   ],
+  // The observer role. Without these the preview's useQueue calls an undefined
+  // fetcher, which errors — and since pending observers now share the Awaiting
+  // approval queue, that failure would show as a permanent "list is incomplete"
+  // warning over a harness that is supposed to be a clean reference.
+  observerCode: 'OBS-3M8T',
+  pendingObservers: [
+    { id: 'u-o1', email: 'auditor@bluetokai.com', createdAt: '2026-06-05T11:15:00Z' },
+  ],
+  activeObservers: [
+    { id: 'u-o9', email: 'nikhil.board@bluetokai.com', name: 'Nikhil (board)', createdAt: '2026-05-20T00:00:00Z' },
+  ],
   org: [
     { module: 'bd', code: 'BD-7K2P', supervisors: [
       { id: 's-bd-1', email: 'rohan.kapoor@bluetokai.com', name: 'Rohan Kapoor', joinedAt: '2026-05-02T00:00:00Z', executives: [
@@ -182,6 +193,22 @@ export const mockFetchers = {
   fetchClosureQAReports: async () => { await wait(200); return { before: null, after: null }; },
 
   listSupervisors: async () => { await wait(500); return structuredClone(store.supervisors); },
+
+  getObserverCode: async () => { await wait(300); return store.observerCode; },
+  rotateObserverCode: async () => { await wait(420); store.observerCode = `OBS-${rid(4)}`; return store.observerCode; },
+  listPendingObservers: async () => { await wait(500); return structuredClone(store.pendingObservers); },
+  approveObserver: async (id) => {
+    await wait(450);
+    const u = store.pendingObservers.find((x) => x.id === id);
+    store.pendingObservers = store.pendingObservers.filter((x) => x.id !== id);
+    // Approving moves them from the queue to the roster — the one behaviour a
+    // reviewer clicking through the preview is checking.
+    if (u) store.activeObservers = [...store.activeObservers, { ...u, name: null }];
+    return { ok: true };
+  },
+  rejectObserver: async (id) => { await wait(450); store.pendingObservers = store.pendingObservers.filter((x) => x.id !== id); return { ok: true }; },
+  listActiveObservers: async () => { await wait(500); return structuredClone(store.activeObservers); },
+  revokeObserver: async (id) => { await wait(420); store.activeObservers = store.activeObservers.filter((x) => x.id !== id); return { ok: true }; },
   approveSupervisor: async (id) => { await wait(450); store.supervisors = store.supervisors.filter((u) => u.id !== id); return { ok: true }; },
   rejectSupervisor: async (id) => { await wait(450); store.supervisors = store.supervisors.filter((u) => u.id !== id); return { ok: true }; },
 

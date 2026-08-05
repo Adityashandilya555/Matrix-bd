@@ -210,6 +210,18 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     fetchClosureQAReports: fetchers.fetchClosureQAReports,
     onClosureFinalize: async (siteId, payload) => { await fetchers.finalizeClosure(siteId, payload); await loadClosure(true); },
     // departments
+    //
+    // One queue, two roles. The Awaiting approval list holds pending supervisors
+    // AND pending observers, so these dispatch on `kind` — the endpoints are
+    // deliberately not interchangeable: approving a supervisor also writes a
+    // user_module_memberships row, and approving an observer must not (an
+    // observer is workspace-wide and holds no membership).
+    onApprovePending: (u) => (
+      u.kind === 'observer' ? handlers.onApproveObserver(u) : handlers.onApproveSupervisor(u)
+    ),
+    onRejectPending: (u) => (
+      u.kind === 'observer' ? handlers.onRejectObserver(u) : handlers.onRejectSupervisor(u)
+    ),
     onApproveSupervisor: async (u) => { await fetchers.approveSupervisor(u.id, u.module); await loadSupervisors(true); await loadOrg(true); },
     onRejectSupervisor: async (u) => { await fetchers.rejectSupervisor(u.id); await loadSupervisors(true); },
     onApproveExecutiveReq: async (reqId) => { await fetchers.approveExecutiveReq(reqId); await loadExecutiveRequests(true); await loadOrg(true); },
