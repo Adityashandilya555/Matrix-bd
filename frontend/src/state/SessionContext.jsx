@@ -243,7 +243,18 @@ export function SessionProvider({ children }) {
     setSession(INITIAL_SESSION);
   }, []);
 
+  // Same teardown as signOut, minus the network calls — the session is already
+  // gone, this just clears the client. The override has to go for the same
+  // reason it does there: it lives in sessionStorage and this provider does NOT
+  // remount, so signing back in IN THIS TAB would otherwise arrive still
+  // carrying it. For an observer that means `role` resolves to the simulated
+  // supervisor and RequireAuth waves them into a module shell instead of
+  // /observer — the read-only banner is the only thing left saying why nothing
+  // works. (This is the logout fix from #472 finding 6; the expiry path is the
+  // sibling it missed.)
   const signInAgain = useCallback(() => {
+    deactivateOverride();
+    _setAdminOverride(null);
     clearAuthToken();
     setSessionExpired(null);
     setSession(INITIAL_SESSION);

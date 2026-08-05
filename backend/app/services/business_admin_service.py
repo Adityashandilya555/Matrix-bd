@@ -321,14 +321,34 @@ async def approve_supervisor(
     user_id: str | UUID,
     module: Module,
 ) -> None:
-    """Activate a pending supervisor and grant module membership; idempotent on re-submit."""
+    """Activate a pending supervisor and grant module membership; idempotent on re-submit.
+
+    Scoped to ``role = 'supervisor'``. The list query above already filters on
+    that, so the queue never OFFERS anything else — but this route takes a
+    user_id, and without the same filter here a request naming a pending
+    OBSERVER's id would activate it and write it a
+    ``role_in_module = 'supervisor'`` membership. The CHECK on that column
+    permits the value, so nothing downstream would refuse it: 20260816 claims
+    that constraint is what stops an observer holding a membership, and it is
+    not. Approve reads the same predicate as list, so the claim holds here
+    instead.
+
+    Not an escalation — ``_assert_may_write`` keys on ``users.role``, which stays
+    'observer', so the account still cannot write. It is the invariant that
+    breaks, not the boundary.
+    """
     async with transaction(session):
         # Only act on a genuinely PENDING candidate in this tenant. Without this
         # guard a re-submit (double-click) re-activates the row and tries to
         # inject a second membership — which the UNIQUE(user_id, module) then
         # rejects as an unhandled 500. Idempotent no-op instead. (#123)
         target = (await session.execute(
-            text("SELECT is_active FROM users WHERE id = CAST(:uid AS uuid) AND tenant_id = :tid"),
+            text("""
+                SELECT is_active FROM users
+                 WHERE id = CAST(:uid AS uuid)
+                   AND tenant_id = :tid
+                   AND role = 'supervisor'
+            """),
             {"uid": user_id, "tid": tenant_id},
         )).mappings().first()
         if not target or target["is_active"]:
@@ -340,6 +360,7 @@ async def approve_supervisor(
                        notes = NULL
                  WHERE id = CAST(:uid AS uuid)
                    AND tenant_id = :tid
+                   AND role = 'supervisor'
             """),
             {"uid": user_id, "tid": tenant_id},
         )

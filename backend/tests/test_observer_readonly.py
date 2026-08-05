@@ -140,6 +140,13 @@ def test_the_deny_sits_after_the_rollback():
 # in CI. test_qa_report_view_routes.py carries the same warning; this test learned
 # it the hard way.
 #
+# That warning is about the assembled app's ROUTE LIST, not about importing
+# main at all — so the router tuple itself comes from app.main.ROUTERS. This
+# test used to keep a hand-copied duplicate of that list, which meant a router
+# mounted in main.py but not added here would have been walked by nothing: the
+# assertions below would have passed green over an unguarded mutating route.
+# Silence is the one failure mode a safety net must not have.
+#
 # Matching is by qualified NAME rather than object identity, so a module imported
 # under two paths cannot make a guarded route look unguarded.
 
@@ -175,17 +182,13 @@ _CHOKEPOINT = "get_current_user"
 
 
 def _routers():
-    """Every router main.py mounts, imported directly."""
-    from app.routers import (
-        audit, auth, bd, business_admin, delegations, design, financial_closure,
-        launch_approval, legal, loi, notifications, nso, project,
-        project_excellence, sites, staging, supervisor_codes, tenancy, users,
-    )
-    return (
-        audit, auth, bd, business_admin, delegations, design, financial_closure,
-        launch_approval, legal, loi, notifications, nso, project,
-        project_excellence, sites, staging, supervisor_codes, tenancy, users,
-    )
+    """Every router main.py mounts — read from main itself, never re-listed.
+
+    Imported lazily so collection of this module does not depend on the app
+    assembling successfully.
+    """
+    from app.main import ROUTERS
+    return ROUTERS
 
 
 def _dep_names(dependant, seen=None):

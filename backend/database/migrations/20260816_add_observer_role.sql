@@ -5,13 +5,23 @@
 -- guard, and app/core/deps.py refuses every non-GET request it makes.
 --
 -- ONLY users.role is widened. The two other role CHECKs are deliberately left
--- narrow, because leaving them narrow asserts something true about this role:
+-- narrow, but note carefully what each one does and does NOT buy:
 --
---   user_module_memberships.role_in_module — an observer is workspace-wide and
---     must never hold a module membership row. If an approval path ever tries to
---     write one, this constraint is what stops it.
---   stage_events.actor_role — an observer never acts, so it can never appear as
---     the actor on a stage transition.
+--   stage_events.actor_role — enforced BY THE DATABASE. The role is absent from
+--     the allowed set, so an observer can never be written as the actor on a
+--     stage transition. This one really is a constraint.
+--   user_module_memberships.role_in_module — NOT enforced by the database, and
+--     an earlier version of this comment wrongly claimed it was. An observer is
+--     workspace-wide and must never hold a membership row, but the CHECK
+--     constrains role_in_module (supervisor|executive) and says nothing about
+--     users.role — so an approval path writing role_in_module='supervisor' for
+--     an observer would be accepted. Leaving it narrow documents the intent; it
+--     does not police it. What polices it is that every approval path scopes to
+--     the role it approves (business_admin_service.approve_supervisor and
+--     approve_observer both do), asserted in tests/test_observer_audit_findings.py.
+--
+-- Trust the first as a guarantee. Treat the second as a note, and keep the
+-- approval paths honest.
 --
 -- The existing CHECK is declared INLINE on the column, so its name is whatever
 -- Postgres auto-generated (users_role_check, or users_role_check1… if the column
