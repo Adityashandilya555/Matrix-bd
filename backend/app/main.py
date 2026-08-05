@@ -187,10 +187,19 @@ def _parse_sql_statements(raw_sql: str) -> list:
     in_dollar_quote = False
 
     for line in raw_sql.splitlines():
-        if "$$" in line:
+        # Full-line `--` comments are ignored for statement DETECTION (they are
+        # still kept verbatim in the emitted statement text). Without this, a
+        # `$$` written inside a comment — e.g. prose describing this very runner,
+        # as in 20260814/20260815 — flips the dollar-quote state and shreds every
+        # statement that follows. A DO block's real opening/closing `$$` always
+        # live on non-comment lines, so skipping comment lines here can never
+        # hide a genuine delimiter or a genuine statement terminator.
+        is_comment = line.lstrip().startswith("--")
+
+        if not is_comment and "$$" in line:
             in_dollar_quote = (line.count("$$") % 2 == 1) ^ in_dollar_quote
 
-        if not in_dollar_quote and line.strip().endswith(";"):
+        if not is_comment and not in_dollar_quote and line.strip().endswith(";"):
             current_stmt.append(line)
             stmt_text = "\n".join(current_stmt).strip()
             if stmt_text.upper() not in ("BEGIN;", "COMMIT;"):
