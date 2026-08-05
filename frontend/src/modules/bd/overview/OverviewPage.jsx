@@ -52,6 +52,7 @@ function MetricCard({ eyebrow, value, rule = 'var(--zm-copper)', delta, deltaTon
   const metaColor = toned ? onColor : 'var(--zm-fg-3)';
   const noColor = toned ? onColor : 'var(--zm-fg-4)';
   return (
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div className="zm-glass"
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}

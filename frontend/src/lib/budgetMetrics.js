@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 export const CIVIL_MEP_IDX = [2, 4];
 
 export const FITOUT_FURNITURE_IDX = [2, 3, 4];

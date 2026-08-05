@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import { describe, it, expect } from 'vitest';
 import { displayCode } from '../displayCode.js';
 

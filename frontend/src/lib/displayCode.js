@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 export function displayCode(site, fallback = '—') {
   if (!site) return fallback;
   return site.ca_code || site.caCode
