@@ -7,13 +7,6 @@ import { getSiteStageStatus } from '../../../services/api/siteTrackerApi.js';
 import { bdSiteStatusRoute } from '../../../router/routes.js';
 import { useSiteDataRefresh } from '../../../hooks/useSiteDataRefresh.js';
 
-// Focused, read-only department detail page for the BD process flow. Reached by
-// clicking a pipeline node — the content column swaps to it (with a back button),
-// the same pattern as the CA / Commercial-code and Legal status pages. Shows one
-// department's sub-status (recce/2D/3D/BOQ, project milestones, NSO stage 1/2/3,
-// legal DD checks, budgeting …) plus a recent stage-events timeline. With no
-// ?stage it falls back to the full overview. All actions (legal flip-to-Yes)
-// live on their own pages, reachable from the buttons here.
 
 const TONE_COLOR = {
   positive: 'var(--zm-success, #2D7A48)',

@@ -9,11 +9,6 @@ import {
   rejectFinance,
 } from '../../../services/api/siteTrackerApi.js';
 
-// The CA / Commercial-code finance workflow. Rendered either as a focused full
-// page (mode="page", from SiteFinancePage) or — kept for flexibility — as a
-// side panel (mode="modal"). The form logic is identical; only the outer chrome
-// differs so the page variant fills the content column like the Site status page.
-
 const PAYMENT_READY_STATUSES = new Set([
   'loi_uploaded', 'legal_review', 'legal_approved', 'pushed_to_payments',
 ]);
@@ -67,7 +62,6 @@ export default function FinancePanel({ data, role, onClose, onUpdate, mode = 'mo
   const [approving,    setApproving]    = React.useState(false);
   const [toast,        setToast]        = React.useState(null); // { msg, type }
 
-  // Sync form state when parent data updates (after onUpdate re-fetch)
   React.useEffect(() => {
     setKycVerified(data.kycVerified ?? false);
     setCaCode(data.caCode ?? '');
@@ -82,7 +76,6 @@ export default function FinancePanel({ data, role, onClose, onUpdate, mode = 'mo
   };
   React.useEffect(() => () => clearTimeout(toastTimer.current), []);
 
-  // ── Save draft ────────────────────────────────────────────────────────────
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -100,7 +93,6 @@ export default function FinancePanel({ data, role, onClose, onUpdate, mode = 'mo
     }
   };
 
-  // ── Request approval ──────────────────────────────────────────────────────
   const handleRequestApproval = async () => {
     setRequesting(true);
     try {
@@ -118,7 +110,6 @@ export default function FinancePanel({ data, role, onClose, onUpdate, mode = 'mo
     }
   };
 
-  // ── Approve ───────────────────────────────────────────────────────────────
   const handleApprove = async () => {
     setApproving(true);
     try {

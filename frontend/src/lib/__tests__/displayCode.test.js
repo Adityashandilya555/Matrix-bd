@@ -1,7 +1,4 @@
 // skipcq: JS-0833
-// Frontend half of "one site, one code". The backend resolves it in
-// _common.display_code() for response shaping; this covers the surfaces that
-// receive both fields on the wire and have to pick.
 import { describe, it, expect } from 'vitest';
 import { displayCode } from '../displayCode.js';
 
@@ -41,8 +38,6 @@ describe('displayCode', () => {
   });
 
   it('never falls back to the site id on its own', () => {
-    // Three surfaces append `|| site.id` themselves to get a handle on a codeless
-    // row. That renders a raw UUID — right there, wrong everywhere else.
     expect(displayCode({ id: 'b3f1c0de-0000-4000-8000-000000000000' })).toBe('—');
   });
 });

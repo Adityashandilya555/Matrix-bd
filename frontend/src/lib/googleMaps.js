@@ -1,14 +1,7 @@
-// Pin extraction for Google Maps inputs.
-// Accepts raw "lat, lng", a full Google Maps URL, or a maps.app.goo.gl short URL.
-// Short URLs are best-effort: browsers often block the CORS preflight, in which
-// case we surface a hint and keep the original string in the field.
-
 const COORD_RE = /(-?\d{1,3}\.\d{4,}),\s*(-?\d{1,3}\.\d{4,})/;
 
 function pickCoordsFromString(s) {
   if (!s) return null;
-  // !3d!4d is the actual place pin; @lat,lng is the map viewport center
-  // and can sit several hundred metres off the pin. Prefer the place pin.
   let m = s.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
   if (m) return `${m[1]}, ${m[2]}`;
   m = s.match(/[?&](?:q|ll|query|destination|center)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/);

@@ -2,9 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { usePagedList } from '../usePagedList.js';
 
-// Build a fetchPage mock backed by a fixed-size dataset. Each call slices the
-// dataset by { limit, offset } and returns the constant server total — exactly
-// the shape the backend queue/history endpoints return.
 function makeFetchPage(totalCount, { failOnOffset } = {}) {
   const dataset = Array.from({ length: totalCount }, (_, i) => ({ id: `site-${i}` }));
   return vi.fn(({ limit, offset }) => {
