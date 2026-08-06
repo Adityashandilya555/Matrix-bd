@@ -7,8 +7,6 @@ import { bdSiteFinanceRoute, bdSiteStagesRoute } from '../../../router/routes.js
 import { agreementStatusLabel, normalizeAgreementStatus } from '../../../lib/agreementStatus.js';
 import { useSiteDataRefresh } from '../../../hooks/useSiteDataRefresh.js';
 
-// LOI-forward hand-over graph. Every node is clickable: CA opens the finance
-// workflow page; all others open that department's focused read-only detail page.
 const NODES = [
   { id: 'loi',        label: 'BD LOI Signed',        icon: 'file',   interactive: true },
   { id: 'legal',      label: 'Legal & Compliance',   icon: 'shield', interactive: true },

@@ -8,10 +8,6 @@ import { useSession } from '../../../state/SessionContext.jsx';
 import { useSiteDataRefresh } from '../../../hooks/useSiteDataRefresh.js';
 import FinancePanel from './FinancePanel.jsx';
 
-// Focused full-page CA / Commercial-code finance workflow. Reached from the
-// site-tracker CA node — the content column swaps to this page (with a back
-// button) the same way the Legal node opens the Site status page, rather than
-// popping a squeezed side panel.
 
 const FINANCE_TAG = {
   approved:            { icon: 'check', label: 'APPROVED' },

@@ -1,7 +1,3 @@
-// Client-side mirror of backend app/domain/state_machine.py.
-// Values MUST match the lowercase strings the backend persists in
-// `sites.status` and emits in JSON responses. Mismatched casing here will
-// silently hide every site in the UI because SitesContext compares with ===.
 export const SiteStatus = {
   DRAFT_SUBMITTED:    'draft_submitted',
   SHORTLISTED:        'shortlisted',
@@ -22,15 +18,10 @@ export const ALLOWED_TRANSITIONS = {
   [SiteStatus.SHORTLISTED]:        [SiteStatus.DETAILS_SUBMITTED, SiteStatus.REJECTED, SiteStatus.ARCHIVED],
   [SiteStatus.DETAILS_SUBMITTED]:  [SiteStatus.APPROVED, SiteStatus.REJECTED, SiteStatus.ARCHIVED],
   [SiteStatus.APPROVED]:           [SiteStatus.LOI_UPLOADED, SiteStatus.REJECTED, SiteStatus.ARCHIVED],
-  // Send-back loop: a supervisor who rejects the uploaded LOI (wrong file)
-  // returns the site to APPROVED so the executive re-uploads through the
-  // unchanged APPROVED → LOI_UPLOADED path (see backend loi_service).
   [SiteStatus.LOI_UPLOADED]:       [SiteStatus.LEGAL_REVIEW, SiteStatus.APPROVED,
                                     SiteStatus.REJECTED, SiteStatus.ARCHIVED],
   [SiteStatus.LEGAL_REVIEW]:       [SiteStatus.LEGAL_APPROVED, SiteStatus.LEGAL_REJECTED],
   [SiteStatus.LEGAL_APPROVED]:     [SiteStatus.PUSHED_TO_PAYMENTS],
-  // Recovery loop: a CR approval that flips the last failing DD item revives
-  // the site back into LEGAL_REVIEW (see backend change_request_service).
   [SiteStatus.LEGAL_REJECTED]:     [SiteStatus.LEGAL_REVIEW],
   [SiteStatus.PUSHED_TO_PAYMENTS]: [], // terminal
   [SiteStatus.REJECTED]:           [], // terminal
@@ -48,8 +39,6 @@ export function assertTransition(fromStatus, toStatus) {
   }
 }
 
-// LEGACY_STAGE_MAP: maps legacy display stage strings to canonical SiteStatus values.
-// Used by SitesContext to back-compat components reading site.stage === 'draft' etc.
 export const LEGACY_STAGE_MAP = {
   draft:       SiteStatus.DRAFT_SUBMITTED,
   shortlist:   SiteStatus.SHORTLISTED,
@@ -69,7 +58,7 @@ export const LEGACY_STAGE_MAP = {
 const STATUS_TO_LEGACY = {
   [SiteStatus.DRAFT_SUBMITTED]:    'draft',
   [SiteStatus.SHORTLISTED]:        'shortlist',
-  [SiteStatus.DETAILS_SUBMITTED]:  'shortlist', // inReview is derived separately via inReview boolean
+  [SiteStatus.DETAILS_SUBMITTED]:  'shortlist',
   [SiteStatus.APPROVED]:           'staging',
   [SiteStatus.LOI_UPLOADED]:       'uploaded',
   [SiteStatus.LEGAL_REVIEW]:       'legal_review',

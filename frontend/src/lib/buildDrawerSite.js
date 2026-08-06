@@ -1,6 +1,3 @@
-// Data transform extracted from App.jsx buildDrawerSite helper.
-// Pure function — no UI, no side effects.
-
 export function buildDrawerSite(row) {
   const details = row.details || {};
   const first = (...values) => values.find((value) => value !== undefined && value !== null && value !== '');

@@ -1,13 +1,4 @@
 // skipcq: JS-0833
-// Locks the derived budget metrics against the handwritten Budget J.P. Nagar
-// summary sheet, which is the ground truth for these formulas.
-//
-// The fitout index set silently drifted once already: CIVIL_MEP_IDX was
-// [2, 3, 4, 5, 8], sweeping Furniture/Light, Kitchen Equipment and Utilities
-// into a metric labelled "Civil, Interior & MEP" and reporting ₹6,196/sqft where
-// the sheet says ₹2,632. Nothing caught it because these helpers had no tests.
-// So the assertions below are deliberately against the sheet's printed rupee
-// strings, not against whatever the code currently computes.
 import { describe, it, expect } from 'vitest';
 import {
   CIVIL_MEP_IDX,
@@ -37,8 +28,6 @@ const ITEMS = [
 
 describe('budgetMetrics — index sets', () => {
   it('CIVIL_MEP_IDX is fitout only: HVAC + Civil & Interiors', () => {
-    // Guarding the set itself, not just the ratio: the regression was a wrong
-    // set that still produced a plausible-looking number.
     expect(CIVIL_MEP_IDX).toEqual([2, 4]);
   });
 

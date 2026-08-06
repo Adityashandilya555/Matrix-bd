@@ -6,15 +6,6 @@ import { listSites } from '../../../services/api/siteService.js';
 import { siteTrackerDetailRoute, bdSiteStagesRoute, bdSiteFinanceRoute } from '../../../router/routes.js';
 import { useSiteDataRefresh } from '../../../hooks/useSiteDataRefresh.js';
 
-// A site becomes a staging tracker item as soon as BD uploads the signed LOI.
-// Legal owns the editable checklist data; this BD surface reads the live mirror
-// columns and published legal child rows.
-//
-// LEGAL_REJECTED is intentionally NOT tracked here — rejected sites live in
-// the "Due diligence failed" view (DdFailedPage). A site that recovers from
-// rejection (negative → positive via PR #29's auto-recovery) automatically
-// reappears in this list because its status transitions back to LEGAL_REVIEW
-// and its legal_dd_status flips to 'positive'.
 const TRACKED_STATUSES = [
   'loi_uploaded',
   'legal_review',
@@ -37,9 +28,6 @@ const STAGE_LABELS = {
   pushed_to_payments: 'Payments handoff',
 };
 
-// Every node is clickable — clicking opens that department's focused detail page
-// so BD can see what each downstream module has done (recce/2D/3D/BOQ, quality
-// audit, licences, budgeting). CA opens the finance workflow page instead.
 const PIPELINE_NODES = [
   { id: 'loi',        label: 'BD LOI Signed',       short: 'LOI',        icon: 'file' },
   { id: 'legal',      label: 'Legal & Compliance',  short: 'Legal',      icon: 'shield' },
@@ -126,9 +114,6 @@ function nodeState(site, nodeId) {
   }
   return 'future';
 }
-
-// The stage narrative and per-stage chips now live behind the clickable nodes
-// and the detail page, so nothing status-related renders inline on the row.
 
 function FilterBar({ filter, setFilter, query, setQuery }) {
   return (
@@ -333,7 +318,6 @@ function PipelineRow({ site, onOpenStage, onOpenDetail }) {
       boxShadow: 'var(--zm-shadow-1)',
       overflow: 'hidden',
     }}>
-      {/* Header: code chip · site name, then a muted city/stage subline. */}
       <div style={{
         display: 'flex', flexDirection: 'column', gap: 3,
         padding: '14px 16px 10px',
@@ -431,10 +415,6 @@ export default function SiteTrackerListPage() {
         for (const group of groups) {
           for (const row of group || []) {
             if (!row || seen.has(row.id)) continue;
-            // Defensive: even if a site somehow has status in TRACKED_STATUSES
-            // but legal_dd_status === 'negative' (e.g. row mid-recovery from
-            // a stale mirror column), keep it out of the staging tracker. The
-            // failed-DDR queue owns negative-verdict sites.
             if (row.legalDdStatus === 'negative') continue;
             seen.add(row.id);
             merged.push(row);

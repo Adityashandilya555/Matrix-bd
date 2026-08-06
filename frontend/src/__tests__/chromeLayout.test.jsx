@@ -1,18 +1,4 @@
 // skipcq: JS-0833
-// Where the read-only strip sits in the chrome.
-//
-// It shipped as a sibling of the sidebar row, spanning the full window. That cut
-// a horizontal band across the whole app and pushed the sidebar's top edge below
-// the TopBar, so the nav panel read as a slab floating under a stripe instead of
-// one continuous column.
-//
-// It belongs to the CONTENT column: same parent as <main>, with the sidebar
-// outside that parent. And it must stay a SIBLING of <main> rather than its
-// first child, or it scrolls away with the page — which is the property it was
-// given in the first place.
-//
-// The chrome children are stubbed because this is a test about App's own DOM
-// shape, not about what TopBar or Sidebar render.
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -67,8 +53,6 @@ describe('the read-only strip in the app chrome', () => {
   });
 
   it('sits outside <main>, so the page cannot scroll it away', () => {
-    // The property the strip was given in the first place. Moving it INTO main
-    // would fix the overlap and silently break this.
     mount();
     const banner = screen.getByTestId('read-only-banner');
     const main = document.querySelector('main.zm-app-main');
@@ -76,9 +60,6 @@ describe('the read-only strip in the app chrome', () => {
   });
 
   it('comes immediately before <main> in the column, not after it', () => {
-    // Adjacent, so nothing can be slipped between the strip and the page it
-    // describes. Avoids the `Node` global, which this eslint config does not
-    // declare — the earlier compareDocumentPosition version was a lint error.
     mount();
     const banner = screen.getByTestId('read-only-banner');
     const main = document.querySelector('main.zm-app-main');
@@ -86,8 +67,6 @@ describe('the read-only strip in the app chrome', () => {
   });
 
   it('leaves the sidebar reaching the TopBar for everyone else', () => {
-    // For any non-observer the strip renders nothing at all, so the column it
-    // lives in must not introduce a gap or a stray box.
     session = { ...baseSession, isReadOnly: false };
     mount();
     expect(screen.queryByTestId('read-only-banner')).toBeNull();

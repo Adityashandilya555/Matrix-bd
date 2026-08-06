@@ -1,4 +1,3 @@
-// Batch I — ShortlistPage modal/double-click fixes (#96 #97 #98).
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
