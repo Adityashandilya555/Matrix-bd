@@ -181,16 +181,58 @@ _MIGRATION_DIR = os.path.join(
 )
 
 
+def _sql_code_before_comment(line: str, in_dollar_quote: bool):
+    """Return ``(code, in_dollar_quote)`` for one line.
+
+    ``code`` is the line with any ``--`` comment stripped, and the returned
+    state reflects ``$$`` delimiters toggled by this line. Crucially, a ``--``,
+    ``$$`` or ``'`` is only treated as syntax when it is NOT inside a ``$$``
+    body or a single-quoted string — so a ``$$`` written in a comment (the bug
+    that silently broke 20260814/20260815) or a ``--`` inside a string literal
+    can no longer corrupt statement splitting. Only ``code`` participates in
+    ``$$``/terminator detection; the emitted statement keeps the raw line.
+
+    Single-quote tracking is line-local: these migrations contain no string
+    literal that spans lines outside a ``$$`` body.
+    """
+    i, n = 0, len(line)
+    in_squote = False
+    code_end = n
+    while i < n:
+        pair = line[i:i + 2]
+        if in_dollar_quote:
+            if pair == "$$":
+                in_dollar_quote = False
+                i += 2
+                continue
+            i += 1
+        elif in_squote:
+            if line[i] == "'":
+                in_squote = False
+            i += 1
+        elif pair == "--":
+            code_end = i
+            break
+        elif pair == "$$":
+            in_dollar_quote = True
+            i += 2
+        elif line[i] == "'":
+            in_squote = True
+            i += 1
+        else:
+            i += 1
+    return line[:code_end], in_dollar_quote
+
+
 def _parse_sql_statements(raw_sql: str) -> list:
     statements = []
     current_stmt = []
     in_dollar_quote = False
 
     for line in raw_sql.splitlines():
-        if "$$" in line:
-            in_dollar_quote = (line.count("$$") % 2 == 1) ^ in_dollar_quote
+        code, in_dollar_quote = _sql_code_before_comment(line, in_dollar_quote)
 
-        if not in_dollar_quote and line.strip().endswith(";"):
+        if not in_dollar_quote and code.strip().endswith(";"):
             current_stmt.append(line)
             stmt_text = "\n".join(current_stmt).strip()
             if stmt_text.upper() not in ("BEGIN;", "COMMIT;"):
