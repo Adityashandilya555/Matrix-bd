@@ -1,0 +1,544 @@
+<title>Matrix Flow Designer</title>
+<style>
+  :root{
+    --ground:#F6F7F9; --surface:#FFFFFF; --surface-2:#EEF1F5; --surface-3:#E4E9EF;
+    --ink:#151A21; --ink-2:#48535F; --ink-3:#79838F;
+    --line:#D8DEE6; --line-2:#C3CCD6;
+    --accent:#0E6F6B; --accent-ink:#0A5652; --accent-soft:#E0F0EE;
+    --good:#2C7A51; --good-soft:#E2F1E9;
+    --warn:#95660F; --warn-soft:#F7EDD9;
+    --bad:#A5403A;  --bad-soft:#F7E4E2;
+    --code-bg:#EFF2F6;
+    --shadow:0 1px 2px rgba(20,30,45,.06), 0 4px 14px rgba(20,30,45,.05);
+    --font-sans:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono",SFMono-Regular,"JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --ground:#0D1116; --surface:#151B22; --surface-2:#1C232B; --surface-3:#242D36;
+      --ink:#E7EDF4; --ink-2:#A2AFBD; --ink-3:#6D7B89;
+      --line:#28313B; --line-2:#36424E;
+      --accent:#37B5AA; --accent-ink:#5FD0C6; --accent-soft:#10302E;
+      --good:#4FB07E; --good-soft:#13291F;
+      --warn:#D6A441; --warn-soft:#2C2415;
+      --bad:#E06B60;  --bad-soft:#2E1B19;
+      --code-bg:#111820;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.25);
+    }
+  }
+  :root[data-theme="dark"]{
+      --ground:#0D1116; --surface:#151B22; --surface-2:#1C232B; --surface-3:#242D36;
+      --ink:#E7EDF4; --ink-2:#A2AFBD; --ink-3:#6D7B89;
+      --line:#28313B; --line-2:#36424E;
+      --accent:#37B5AA; --accent-ink:#5FD0C6; --accent-soft:#10302E;
+      --good:#4FB07E; --good-soft:#13291F;
+      --warn:#D6A441; --warn-soft:#2C2415;
+      --bad:#E06B60;  --bad-soft:#2E1B19;
+      --code-bg:#111820;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.25);
+  }
+  :root[data-theme="light"]{
+    --ground:#F6F7F9; --surface:#FFFFFF; --surface-2:#EEF1F5; --surface-3:#E4E9EF;
+    --ink:#151A21; --ink-2:#48535F; --ink-3:#79838F;
+    --line:#D8DEE6; --line-2:#C3CCD6;
+    --accent:#0E6F6B; --accent-ink:#0A5652; --accent-soft:#E0F0EE;
+    --good:#2C7A51; --good-soft:#E2F1E9;
+    --warn:#95660F; --warn-soft:#F7EDD9;
+    --bad:#A5403A;  --bad-soft:#F7E4E2;
+    --code-bg:#EFF2F6;
+    --shadow:0 1px 2px rgba(20,30,45,.06), 0 4px 14px rgba(20,30,45,.05);
+  }
+  *{box-sizing:border-box}
+  body{background:var(--ground); color:var(--ink); margin:0;
+    font-family:var(--font-sans); font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1240px; margin:0 auto; padding:clamp(20px,3.5vw,40px) clamp(14px,3vw,32px) 80px}
+  h1{font-size:clamp(23px,3vw,31px); line-height:1.12; letter-spacing:-.025em; font-weight:700; margin:0 0 8px}
+  p{margin:0 0 12px; color:var(--ink-2); max-width:76ch}
+  .eyebrow{font-family:var(--font-mono); font-size:10.5px; font-weight:600; letter-spacing:.15em;
+    text-transform:uppercase; color:var(--accent); display:block; margin-bottom:9px}
+  code{font-family:var(--font-mono); font-size:.87em}
+  .hint{font-size:12.5px; color:var(--ink-3); margin:0}
+  header{border-bottom:1px solid var(--line); padding-bottom:20px; margin-bottom:20px}
+
+  .panel{background:var(--surface); border:1px solid var(--line); border-radius:10px;
+    box-shadow:var(--shadow); overflow:hidden}
+  .panel-hd{display:flex; align-items:center; justify-content:space-between; gap:6px 10px; flex-wrap:wrap;
+    padding:10px 14px; background:var(--surface-2); border-bottom:1px solid var(--line);
+    font-family:var(--font-mono); font-size:10.5px; font-weight:600;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3)}
+  .panel-hd > *{min-width:0; overflow-wrap:anywhere}
+  .panel-bd{padding:14px; min-width:0}
+  /* grid/flex children default to min-width:auto, so a scrollable <pre> would
+     still stretch its parent and push the page wide. */
+  .panel-bd > *,.panel-bd > * > *{min-width:0}
+  .panel-bd pre{max-width:100%}
+
+  .cols{display:grid; gap:16px; grid-template-columns:1fr}
+  @media(min-width:1000px){ .cols{grid-template-columns:1.15fr .85fr; align-items:start} }
+
+  /* presets */
+  .presets{display:flex; gap:7px; flex-wrap:wrap; margin-bottom:16px}
+  .presets button{font-family:var(--font-sans); font-size:12.5px; font-weight:560; cursor:pointer;
+    background:var(--surface); color:var(--ink-2); border:1px solid var(--line-2);
+    border-radius:7px; padding:7px 12px; transition:border-color .15s, color .15s}
+  .presets button:hover{border-color:var(--accent); color:var(--ink)}
+  .presets button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  /* nodes */
+  .flow{display:flex; flex-direction:column; gap:0}
+  .node{background:var(--surface); border:1px solid var(--line-2); border-radius:9px; overflow:hidden}
+  .node.par{border-left:3px solid var(--warn)}
+  .connector{display:flex; align-items:center; gap:9px; padding:5px 0 5px 22px;
+    font-family:var(--font-mono); font-size:11px; color:var(--ink-3)}
+  .connector .bar{width:2px; height:18px; background:var(--line-2); border-radius:2px}
+
+  .node-hd{display:flex; align-items:center; gap:10px; padding:11px 13px; cursor:pointer;
+    background:var(--surface-2); border-bottom:1px solid var(--line)}
+  .node-hd:hover{background:var(--surface-3)}
+  .node-hd .seq{font-family:var(--font-mono); font-size:11px; color:var(--ink-3);
+    width:19px; text-align:right; font-variant-numeric:tabular-nums; flex:0 0 auto}
+  .node-hd .ttl{font-weight:650; font-size:15px; letter-spacing:-.01em; flex:1 1 auto; min-width:0}
+  .node-hd .ttl small{display:block; font-family:var(--font-mono); font-size:10.5px;
+    font-weight:400; color:var(--ink-3); letter-spacing:0; margin-top:1px}
+  .mv{display:flex; gap:4px; flex:0 0 auto}
+  .mv button{font-family:var(--font-mono); font-size:12px; line-height:1; cursor:pointer;
+    background:var(--surface); border:1px solid var(--line-2); color:var(--ink-2);
+    border-radius:6px; width:26px; height:26px; padding:0}
+  .mv button:hover:not(:disabled){border-color:var(--accent); color:var(--accent)}
+  .mv button:disabled{opacity:.3; cursor:default}
+  .mv button:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+
+  .node-bd{padding:13px; display:grid; gap:14px}
+  .fieldset{display:grid; gap:7px}
+  .fs-lbl{font-family:var(--font-mono); font-size:10px; letter-spacing:.11em;
+    text-transform:uppercase; color:var(--ink-3); font-weight:600}
+
+  .chips{display:flex; gap:6px; flex-wrap:wrap}
+  .chip{font-family:var(--font-mono); font-size:11.5px; cursor:pointer;
+    background:var(--surface-2); color:var(--ink-3); border:1px solid var(--line-2);
+    border-radius:999px; padding:4px 11px; transition:all .14s}
+  .chip:hover{border-color:var(--accent)}
+  .chip[aria-pressed="true"]{background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent); font-weight:600}
+  .chip:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .chips .none{font-size:12px; color:var(--ink-3); font-style:italic; padding:4px 0}
+
+  /* approval steps */
+  .steps{display:grid; gap:6px}
+  .step{display:grid; grid-template-columns:auto 1fr auto; gap:9px; align-items:center;
+    background:var(--surface-2); border:1px solid var(--line); border-radius:7px; padding:8px 10px}
+  .step .lv{font-family:var(--font-mono); font-size:10px; font-weight:700; color:#fff;
+    background:var(--accent); border-radius:5px; padding:3px 7px; white-space:nowrap}
+  :root[data-theme="dark"] .step .lv{color:#08221F}
+  @media (prefers-color-scheme:dark){ .step .lv{color:#08221F} }
+  .step select{font-family:var(--font-sans); font-size:12.5px; color:var(--ink);
+    background:var(--surface); border:1px solid var(--line-2); border-radius:6px;
+    padding:5px 8px; width:100%; max-width:100%}
+  .step select:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+  .step .rm{font-family:var(--font-mono); font-size:13px; line-height:1; cursor:pointer;
+    background:transparent; border:1px solid var(--line-2); color:var(--ink-3);
+    border-radius:6px; width:26px; height:26px; padding:0}
+  .step .rm:hover{border-color:var(--bad); color:var(--bad)}
+  .add{font-family:var(--font-sans); font-size:12.5px; font-weight:560; cursor:pointer;
+    background:transparent; color:var(--accent); border:1px dashed var(--accent);
+    border-radius:7px; padding:7px 11px; justify-self:start}
+  .add:hover{background:var(--accent-soft)}
+  .add:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  .statuschain{font-family:var(--font-mono); font-size:11.5px; color:var(--ink-2);
+    background:var(--code-bg); border:1px solid var(--line); border-radius:7px;
+    padding:9px 11px; overflow-x:auto; white-space:nowrap}
+  .statuschain b{color:var(--accent-ink); font-weight:600}
+
+  pre{background:var(--code-bg); border:1px solid var(--line); border-radius:8px;
+    padding:11px 13px; overflow-x:auto; margin:0;
+    font-family:var(--font-mono); font-size:11.5px; line-height:1.6; color:var(--ink)}
+  .sticky{position:sticky; top:16px}
+  .stack{display:grid; gap:16px}
+
+  .cmp{display:grid; gap:9px}
+  .cmp-row{display:grid; grid-template-columns:1fr; gap:3px;
+    padding:9px 11px; border-radius:7px; border:1px solid var(--line); background:var(--surface-2)}
+  .cmp-row .was,.cmp-row .now{font-family:var(--font-mono); font-size:11px; overflow-wrap:anywhere}
+  .cmp-row .was{color:var(--bad); text-decoration:line-through}
+  .cmp-row .now{color:var(--good)}
+  .cmp-row .lb{font-size:12px; color:var(--ink-3)}
+
+  .warnbox{border:1px solid var(--warn); background:var(--warn-soft); border-radius:8px;
+    padding:11px 13px; font-size:13px; color:var(--ink-2)}
+  .warnbox:empty{display:none}
+  .foot{margin-top:32px; padding-top:18px; border-top:1px solid var(--line); font-size:13px; color:var(--ink-3)}
+  @media (prefers-reduced-motion:reduce){ *{transition:none !important} }
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">Flow designer · prototype</span>
+  <h1>Arrange the approval flow</h1>
+  <p>Reorder the modules, choose what each one waits for, and set how many approval levels it has and
+  who signs each one. The panel on the right shows the rows this produces — that is the entire
+  mechanism. <strong>The graph is a view over the rows, not a thing that exists on its own.</strong></p>
+</header>
+
+<div class="presets" id="presets"></div>
+
+<div class="cols">
+  <div class="stack">
+    <div class="panel">
+      <div class="panel-hd"><span>Flow</span><span id="flow-sum"></span></div>
+      <div class="panel-bd"><div class="flow" id="flow"></div></div>
+    </div>
+  </div>
+
+  <div class="stack sticky">
+    <div class="panel">
+      <div class="panel-hd"><span>Generated configuration</span><span id="cfg-count"></span></div>
+      <div class="panel-bd" style="display:grid; gap:12px">
+        <div id="cycle" class="warnbox"></div>
+        <div>
+          <p class="hint" style="margin-bottom:6px">ontology.action_type</p>
+          <pre id="cfg-actions"></pre>
+        </div>
+        <div>
+          <p class="hint" style="margin-bottom:6px">ontology.approval_step</p>
+          <pre id="cfg-steps"></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hd"><span>What this replaces in your code today</span></div>
+      <div class="panel-bd"><div class="cmp" id="replaces"></div></div>
+    </div>
+  </div>
+</div>
+
+<p class="foot">Prototype. The generated rows match the registry schema in
+<code>ontology/poc/sql/02_registry.sql</code>; <code>approval_step</code> is the one table this
+design adds. Nothing here writes to a database.</p>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ── the modules, with the real mirror columns they already set on `sites` ──
+  var MODULES={
+    legal:  {label:"Legal DD",  col:"legal_dd_status", done:"positive", mod:"legal"},
+    finance:{label:"Finance",   col:"finance_status",  done:"approved", mod:"payment"},
+    design: {label:"Design",    col:"design_status",   done:"approved", mod:"design"},
+    project:{label:"Project",   col:"project_status",  done:"done",     mod:"project"},
+    nso:    {label:"NSO",       col:"nso_status",      done:"approved", mod:"nso"},
+    launch: {label:"Launch",    col:"is_launched",     done:true,       mod:"launch"}
+  };
+
+  // ── who an approval can be routed to ──────────────────────────────────────
+  var ASSIGNEES=[
+    {v:"supervisor",   t:"Module supervisor",        rule:function(m){return{kind:"role",role:"supervisor",module:m};}},
+    {v:"admin",        t:"Business admin",           rule:function(){return{kind:"role",role:"business_admin"};}},
+    {v:"executive",    t:"Module executive",         rule:function(m){return{kind:"role",role:"executive",module:m};}},
+    {v:"site_sup",     t:"This site's supervisor",   rule:function(){return{kind:"object_field",field:"supervisor_id"};}},
+    {v:"delegate",     t:"Site delegate for module", rule:function(m){return{kind:"site_delegation",module:m};}}
+  ];
+
+  // ── presets ───────────────────────────────────────────────────────────────
+  var PRESETS={
+    matrix:{
+      label:"Matrix today",
+      order:["legal","finance","design","project","nso","launch"],
+      waits:{legal:[], finance:[], design:["legal","finance"], project:["design"], nso:["project"], launch:["nso"]},
+      steps:{
+        legal:[{a:"supervisor"}],
+        finance:[{a:"admin"}],
+        design:[{a:"supervisor"},{a:"admin"}],
+        project:[{a:"supervisor"},{a:"admin"}],
+        nso:[{a:"supervisor"}],
+        launch:[{a:"admin"},{a:"executive"},{a:"supervisor"},{a:"admin"}]
+      }
+    },
+    designFirst:{
+      label:"Design before Finance",
+      order:["legal","design","finance","project","nso","launch"],
+      waits:{legal:[], design:["legal"], finance:["design"], project:["finance"], nso:["project"], launch:["nso"]},
+      steps:{
+        legal:[{a:"supervisor"}], design:[{a:"supervisor"}], finance:[{a:"admin"}],
+        project:[{a:"supervisor"},{a:"admin"}], nso:[{a:"supervisor"}], launch:[{a:"admin"}]
+      }
+    },
+    lean:{
+      label:"Lean franchise partner",
+      order:["legal","design","project","launch"],
+      waits:{legal:[], design:["legal"], project:["design"], launch:["project"]},
+      steps:{ legal:[{a:"delegate"}], design:[{a:"delegate"}], project:[{a:"site_sup"}], launch:[{a:"admin"}] }
+    },
+    parallel:{
+      label:"Everything parallel after Legal",
+      order:["legal","finance","design","project","nso","launch"],
+      waits:{legal:[], finance:["legal"], design:["legal"], project:["legal"], nso:["design","project"], launch:["nso","finance"]},
+      steps:{
+        legal:[{a:"supervisor"},{a:"admin"}], finance:[{a:"admin"}], design:[{a:"supervisor"}],
+        project:[{a:"supervisor"}], nso:[{a:"supervisor"}], launch:[{a:"admin"}]
+      }
+    }
+  };
+
+  var state=null, expanded=null;
+
+  function loadPreset(k){
+    var p=PRESETS[k];
+    state={
+      order:p.order.slice(),
+      waits:JSON.parse(JSON.stringify(p.waits)),
+      steps:JSON.parse(JSON.stringify(p.steps))
+    };
+    expanded=null;
+    render();
+  }
+
+  var $=function(id){return document.getElementById(id);};
+  function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+
+  // ── generation: the graph becomes rows ────────────────────────────────────
+  function conditionFor(id){
+    var m=MODULES[id];
+    var val = m.done===true ? true : m.done;
+    return {"==":[{"var":m.col}, val]};
+  }
+  function preconditionFor(id){
+    var w=(state.waits[id]||[]).filter(function(x){return state.order.indexOf(x)>-1;});
+    if(w.length===0) return {};
+    if(w.length===1) return conditionFor(w[0]);
+    return {and:w.map(conditionFor)};
+  }
+  function statusChain(id){
+    var steps=state.steps[id]||[];
+    var out=["draft"];
+    steps.forEach(function(s,i){
+      var a=ASSIGNEES.filter(function(x){return x.v===s.a;})[0];
+      out.push("pending_"+(a?a.v:"step"+(i+1)));
+    });
+    out.push(MODULES[id].done===true?"launched":MODULES[id].done);
+    return out;
+  }
+  function actionRows(){
+    return state.order.map(function(id){
+      var pre=preconditionFor(id);
+      return {
+        api_name:id+".open",
+        object_type:"Site",
+        preconditions:pre,
+        required_module:MODULES[id].mod,
+        required_role:"business_admin"
+      };
+    });
+  }
+  function stepRows(){
+    var rows=[];
+    state.order.forEach(function(id){
+      (state.steps[id]||[]).forEach(function(s,i){
+        var a=ASSIGNEES.filter(function(x){return x.v===s.a;})[0];
+        rows.push({
+          action:id+".approve",
+          seq:i+1,
+          status_value:"pending_"+(a?a.v:"step"+(i+1)),
+          assignee_rule:a?a.rule(MODULES[id].mod):{kind:"role",role:"business_admin"}
+        });
+      });
+    });
+    return rows;
+  }
+  function findCycle(){
+    // a module may only wait for something earlier in the order
+    var bad=[];
+    state.order.forEach(function(id,i){
+      (state.waits[id]||[]).forEach(function(w){
+        var j=state.order.indexOf(w);
+        if(j>=i) bad.push(MODULES[id].label+" waits for "+MODULES[w].label+", which runs later");
+      });
+    });
+    return bad;
+  }
+
+  // ── render ────────────────────────────────────────────────────────────────
+  function render(){
+    var flow=$("flow"); flow.innerHTML="";
+
+    state.order.forEach(function(id,idx){
+      if(idx>0){
+        var c=document.createElement("div");
+        c.className="connector";
+        var w=(state.waits[id]||[]);
+        c.innerHTML="<span class='bar'></span><span>"+
+          (w.length===0 ? "starts independently — no upstream gate"
+           : "waits for "+w.map(function(x){return MODULES[x].label;}).join(" + "))+"</span>";
+        flow.appendChild(c);
+      }
+
+      var m=MODULES[id];
+      var node=document.createElement("div");
+      node.className="node"+((state.waits[id]||[]).length===0 && idx>0 ? " par":"");
+
+      var steps=state.steps[id]||[];
+      var hd=document.createElement("div");
+      hd.className="node-hd"; hd.tabIndex=0; hd.setAttribute("role","button");
+      hd.setAttribute("aria-expanded", expanded===id?"true":"false");
+      hd.innerHTML=
+        "<span class='seq'>"+(idx+1)+"</span>"+
+        "<span class='ttl'>"+m.label+
+          "<small>"+m.col+" · "+steps.length+" approval level"+(steps.length===1?"":"s")+"</small></span>"+
+        "<span class='mv'>"+
+          "<button type='button' data-up='"+id+"' "+(idx===0?"disabled":"")+" aria-label='Move "+m.label+" earlier'>&#9650;</button>"+
+          "<button type='button' data-dn='"+id+"' "+(idx===state.order.length-1?"disabled":"")+" aria-label='Move "+m.label+" later'>&#9660;</button>"+
+        "</span>";
+      function toggle(){ expanded = expanded===id ? null : id; render(); }
+      hd.addEventListener("click", function(e){
+        if(e.target.closest("[data-up],[data-dn]")) return;
+        toggle();
+      });
+      hd.addEventListener("keydown", function(e){
+        if(e.key==="Enter"||e.key===" "){ e.preventDefault(); toggle(); }
+      });
+      node.appendChild(hd);
+
+      if(expanded===id){
+        var bd=document.createElement("div");
+        bd.className="node-bd";
+
+        // waits-for chips
+        var upstream=state.order.slice(0,idx);
+        var fs1=document.createElement("div"); fs1.className="fieldset";
+        fs1.innerHTML="<span class='fs-lbl'>Waits for</span>";
+        var chips=document.createElement("div"); chips.className="chips";
+        if(upstream.length===0){
+          chips.innerHTML="<span class='none'>nothing runs before this — it starts the flow</span>";
+        } else {
+          upstream.forEach(function(u){
+            var on=(state.waits[id]||[]).indexOf(u)>-1;
+            var b=document.createElement("button");
+            b.type="button"; b.className="chip"; b.setAttribute("aria-pressed",on?"true":"false");
+            b.textContent=MODULES[u].label;
+            b.addEventListener("click", function(){
+              var arr=state.waits[id]||[];
+              var i=arr.indexOf(u);
+              if(i>-1) arr.splice(i,1); else arr.push(u);
+              state.waits[id]=arr; render();
+            });
+            chips.appendChild(b);
+          });
+        }
+        fs1.appendChild(chips);
+        bd.appendChild(fs1);
+
+        // approval steps
+        var fs2=document.createElement("div"); fs2.className="fieldset";
+        fs2.innerHTML="<span class='fs-lbl'>Approval levels — in order</span>";
+        var list=document.createElement("div"); list.className="steps";
+        steps.forEach(function(s,i){
+          var row=document.createElement("div"); row.className="step";
+          var sel="<select data-step='"+i+"' aria-label='Approver for level "+(i+1)+"'>"+
+            ASSIGNEES.map(function(a){
+              return "<option value='"+a.v+"'"+(a.v===s.a?" selected":"")+">"+a.t+"</option>";
+            }).join("")+"</select>";
+          row.innerHTML="<span class='lv'>L"+(i+1)+"</span>"+sel+
+            "<button type='button' class='rm' data-rm='"+i+"' aria-label='Remove level "+(i+1)+"'>&#10005;</button>";
+          list.appendChild(row);
+        });
+        if(steps.length===0){
+          var n=document.createElement("p"); n.className="hint";
+          n.textContent="No approval — this module completes without a sign-off.";
+          list.appendChild(n);
+        }
+        fs2.appendChild(list);
+        var add=document.createElement("button");
+        add.type="button"; add.className="add"; add.textContent="+ Add approval level";
+        add.addEventListener("click", function(){
+          (state.steps[id]=state.steps[id]||[]).push({a:"supervisor"}); render();
+        });
+        fs2.appendChild(add);
+        bd.appendChild(fs2);
+
+        // resulting status chain
+        var fs3=document.createElement("div"); fs3.className="fieldset";
+        fs3.innerHTML="<span class='fs-lbl'>Resulting status chain</span>";
+        var sc=document.createElement("div"); sc.className="statuschain";
+        sc.innerHTML=statusChain(id).map(function(s,i,arr){
+          return (i===arr.length-1?"<b>"+esc(s)+"</b>":esc(s));
+        }).join(" &rarr; ");
+        fs3.appendChild(sc);
+        bd.appendChild(fs3);
+
+        bd.addEventListener("change", function(e){
+          var t=e.target;
+          if(t.matches("select[data-step]")){
+            state.steps[id][+t.getAttribute("data-step")].a=t.value; render();
+          }
+        });
+        bd.addEventListener("click", function(e){
+          var b=e.target.closest("[data-rm]");
+          if(b){ state.steps[id].splice(+b.getAttribute("data-rm"),1); render(); }
+        });
+        node.appendChild(bd);
+      }
+      flow.appendChild(node);
+    });
+
+    // right panel
+    var acts=actionRows(), stps=stepRows();
+    $("flow-sum").textContent=state.order.length+" modules";
+    $("cfg-count").textContent=acts.length+" actions · "+stps.length+" steps";
+    $("cfg-actions").textContent=acts.map(function(a){
+      return a.api_name+"\n  preconditions: "+
+        (Object.keys(a.preconditions).length?JSON.stringify(a.preconditions):"{}  (no gate)")+
+        "\n  required_module: "+a.required_module;
+    }).join("\n\n");
+    $("cfg-steps").textContent=stps.length
+      ? stps.map(function(s){
+          return s.action+"  seq="+s.seq+"\n  status: "+s.status_value+
+                 "\n  assignee: "+JSON.stringify(s.assignee_rule);
+        }).join("\n\n")
+      : "(no approval steps)";
+
+    var cyc=findCycle();
+    $("cycle").innerHTML = cyc.length
+      ? "<strong>Invalid dependency</strong><br>"+cyc.map(esc).join("<br>")+
+        "<br><span class='hint'>A module cannot wait on something that runs after it. In a real "+
+        "editor this is the validation that runs before publish.</span>"
+      : "";
+
+    var totalLevels=stps.length;
+    $("replaces").innerHTML=
+      "<div class='cmp-row'><span class='lb'>launch_approvals status chain</span>"+
+        "<span class='was'>CHECK (status IN (…6 hardcoded values…)) — schema.sql:828</span>"+
+        "<span class='now'>"+(state.steps.launch?state.steps.launch.length:0)+" approval_step rows</span></div>"+
+      "<div class='cmp-row'><span class='lb'>site_budgets status chain</span>"+
+        "<span class='was'>CHECK (status IN ('draft','pending_supervisor','pending_admin','approved'))</span>"+
+        "<span class='now'>"+(state.steps.project?state.steps.project.length:0)+" approval_step rows</span></div>"+
+      "<div class='cmp-row'><span class='lb'>design unlock gate</span>"+
+        "<span class='was'>_assert_design_unlocked + design_unlock_ready — two Python functions</span>"+
+        "<span class='now'>1 preconditions value</span></div>"+
+      "<div class='cmp-row'><span class='lb'>module order</span>"+
+        "<span class='was'>ALLOWED_TRANSITIONS + stateMachine.js + workflow_unlocks.py</span>"+
+        "<span class='now'>"+totalLevels+" rows, one source</span></div>";
+  }
+
+  // Reorder is delegated and bound ONCE. Binding it inside render() stacked a
+  // fresh listener on every re-render, so a single click swapped twice and the
+  // order appeared frozen.
+  $("flow").addEventListener("click", function(e){
+    var up=e.target.closest("[data-up]"), dn=e.target.closest("[data-dn]");
+    if(!up && !dn) return;
+    var id=(up||dn).getAttribute(up?"data-up":"data-dn");
+    var i=state.order.indexOf(id), j=up?i-1:i+1;
+    if(j<0||j>=state.order.length) return;
+    state.order[i]=state.order[j]; state.order[j]=id;
+    render();
+  });
+
+  Object.keys(PRESETS).forEach(function(k){
+    var b=document.createElement("button"); b.type="button"; b.textContent=PRESETS[k].label;
+    b.addEventListener("click", function(){ loadPreset(k); });
+    $("presets").appendChild(b);
+  });
+
+  loadPreset("matrix");
+})();
+</script>
