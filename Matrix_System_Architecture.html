@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Matrix-BD V2 — Target System Architecture</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#131826; --panel-2:#0f1420;
+    --line:#2a3346; --text:#e7ecf5; --muted:#8b95ad;
+    --kept:#3ddc84; --kept-bg:#0f2419; --kept-bd:#1f5c3d;
+    --new:#5b9dff; --new-bg:#0f1a2e; --new-bd:#22406e;
+    --core:#ffb454; --core-bg:#2a1f0c; --core-bd:#6b4e12;
+    --later:#9a7bff; --later-bg:#1a1530; --later-bd:#3d2e6e;
+    --arrow:#3a4560;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:40px 24px 80px; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  }
+  .wrap{max-width:1180px; margin:0 auto;}
+  h1{font-size:26px; margin:0 0 4px; letter-spacing:-0.01em;}
+  .sub{color:var(--muted); font-size:14px; margin:0 0 28px; line-height:1.6; max-width:820px;}
+  .legend{display:flex; gap:18px; flex-wrap:wrap; margin-bottom:34px; font-size:12.5px;}
+  .legend span{display:inline-flex; align-items:center; gap:7px; color:var(--muted);}
+  .dot{width:10px; height:10px; border-radius:3px; display:inline-block;}
+  .layer{margin-bottom:6px;}
+  .layer-label{
+    font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted);
+    margin:0 0 10px 2px; display:flex; align-items:center; gap:10px;
+  }
+  .layer-label small{color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0;}
+  .row{display:flex; gap:14px; flex-wrap:wrap;}
+  .box{
+    flex:1 1 220px; border-radius:10px; padding:14px 16px; border:1px solid var(--line);
+    background:var(--panel);
+  }
+  .box h3{margin:0 0 6px; font-size:14px;}
+  .box p{margin:0; font-size:12.5px; color:var(--muted); line-height:1.55;}
+  .box code{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:11.5px;
+    background:rgba(255,255,255,.06); padding:1px 5px; border-radius:4px; color:var(--text);
+  }
+  .kept{background:var(--kept-bg); border-color:var(--kept-bd);}
+  .new{background:var(--new-bg); border-color:var(--new-bd);}
+  .core{background:var(--core-bg); border-color:var(--core-bd);}
+  .later{background:var(--later-bg); border-color:var(--later-bd); opacity:.85;}
+  .tag{
+    display:inline-block; font-size:10px; text-transform:uppercase; letter-spacing:.05em;
+    padding:2px 7px; border-radius:20px; margin-bottom:8px; font-weight:600;
+  }
+  .tag.kept{color:var(--kept);}
+  .tag.new{color:var(--new);}
+  .tag.core{color:var(--core);}
+  .tag.later{color:var(--later);}
+  .arrow-col{display:flex; justify-content:center; margin:6px 0;}
+  .arrow{color:var(--arrow); font-size:20px; line-height:1;}
+  .arrow-label{
+    text-align:center; font-size:11px; color:var(--muted); margin:2px 0 0;
+  }
+  .pipeline{
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:16px;
+    border:1px dashed var(--new-bd); border-radius:10px; background:var(--new-bg);
+  }
+  .pill{
+    font-size:12px; padding:7px 12px; border-radius:20px; background:rgba(91,157,255,.14);
+    border:1px solid var(--new-bd); white-space:nowrap;
+  }
+  .pipeline .sep{color:var(--muted); font-size:14px;}
+  .core-block{
+    border:1px solid var(--core-bd); background:var(--core-bg); border-radius:12px; padding:18px;
+  }
+  .core-block .row{margin-top:12px;}
+  .core-block .box{background:rgba(255,255,255,.03); border-color:rgba(255,180,84,.35);}
+  .interfaces{
+    margin-top:14px; padding:12px 14px; border-radius:8px; background:rgba(255,255,255,.03);
+    border:1px solid rgba(255,180,84,.25); font-size:12.5px; color:var(--muted);
+  }
+  .interfaces b{color:var(--text);}
+  .split{display:flex; gap:14px; align-items:stretch;}
+  .split > div{flex:1;}
+  .footer-note{
+    margin-top:40px; padding:16px 18px; border-radius:10px; border:1px solid var(--later-bd);
+    background:var(--later-bg); font-size:13px; color:var(--text); line-height:1.6;
+  }
+  .footer-note b{color:var(--later);}
+  .phase-chip{
+    display:inline-block; font-size:10.5px; padding:1px 7px; border-radius:6px;
+    background:rgba(255,255,255,.08); color:var(--muted); margin-left:6px; font-weight:600;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Matrix-BD V2 — Target System Architecture</h1>
+  <p class="sub">
+    The ontology is not a new database — it's a metadata registry plus a governed write path,
+    sitting on top of the FastAPI Action runtime you already built. This diagram shows the
+    end state: read top to bottom.
+  </p>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--kept)"></i>Kept as-is (your existing Action runtime, RBAC, audit)</span>
+    <span><i class="dot" style="background:var(--core)"></i>New — the ontology registry (the core of V2)</span>
+    <span><i class="dot" style="background:var(--new)"></i>New — ingestion &amp; mapping (Phase 2)</span>
+    <span><i class="dot" style="background:var(--later)"></i>New — factors &amp; agents (Phase 3) / enterprise (Phase 4)</span>
+  </div>
+
+  <!-- LAYER 1: SOURCES -->
+  <div class="layer">
+    <p class="layer-label">1 · Sources <small>— per tenant, per vertical (coffee retail, QSR, fashion...)</small></p>
+    <div class="row">
+      <div class="box new">
+        <span class="tag new">Phase 2</span>
+        <h3>Customer ERP / POS</h3>
+        <p>Oracle EBS/Fusion, SAP, NetSuite, franchise POS — read-only service account, incremental pulls.</p>
+      </div>
+      <div class="box new">
+        <span class="tag new">Phase 2</span>
+        <h3>File uploads</h3>
+        <p>The XLSX/CSV a BD lead already emails — generalized from today's <code>site_files</code> upload path.</p>
+      </div>
+      <div class="box kept">
+        <span class="tag kept">kept</span>
+        <h3>Matrix native Postgres</h3>
+        <p>Your 24 existing tables — <code>sites</code>, <code>legal_dd_checklist</code>, <code>site_budgets</code>, etc. — become the first ontology source.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-col"><div><div class="arrow">↓</div><p class="arrow-label">dlt (Apache-2.0), embedded in the FastAPI process — no Airbyte, no separate control plane</p></div></div>
+
+  <!-- LAYER 2: INGESTION -->
+  <div class="layer">
+    <p class="layer-label">2 · Ingestion &amp; landing <small>— raw first, transform later</small></p>
+    <div class="row">
+      <div class="box new"><span class="tag new">Phase 2</span><h3>Connection registry</h3><p><code>connection</code>, <code>source_schema_snapshot</code>, <code>ingest_run</code> — credentials in Vault, never a plain column.</p></div>
+      <div class="box new"><span class="tag new">Phase 2</span><h3>Landing tables</h3><p><code>landing.&lt;tenant&gt;_&lt;connection&gt;_&lt;table&gt;</code> — append-only, replayable when a mapping is wrong.</p></div>
+      <div class="box new"><span class="tag new">Phase 2</span><h3>Schema fingerprinting</h3><p>Drift becomes a mapping-review task, not a silent failure or a crash.</p></div>
+    </div>
+  </div>
+
+  <div class="arrow-col"><div><div class="arrow">↓</div><p class="arrow-label">FK graph (mechanical) + LinkML Schema Automator (BSD-3) + LLM naming pass, always human-confirmed</p></div></div>
+
+  <!-- LAYER 3: MAPPING -->
+  <div class="layer">
+    <p class="layer-label">3 · Auto-modelling pipeline <small>— proposal, never auto-commit</small></p>
+    <div class="pipeline">
+      <span class="pill">Introspect</span><span class="sep">→</span>
+      <span class="pill">Profile columns</span><span class="sep">→</span>
+      <span class="pill">FK graph → link candidates</span><span class="sep">→</span>
+      <span class="pill">LinkML draft schema</span><span class="sep">→</span>
+      <span class="pill">LLM: naming &amp; descriptions only</span><span class="sep">→</span>
+      <span class="pill" style="background:rgba(255,180,84,.16); border-color:var(--core-bd);">Human review &amp; confirm</span>
+    </div>
+  </div>
+
+  <div class="arrow-col"><div><div class="arrow">↓</div><p class="arrow-label">commit</p></div></div>
+
+  <!-- LAYER 4: ONTOLOGY REGISTRY (CORE) -->
+  <div class="layer">
+    <p class="layer-label">4 · Ontology registry <small>— the actual product; declared in LinkML YAML, compiled to Postgres</small></p>
+    <div class="core-block">
+      <span class="tag core">Phase 0-1 · the forcing function</span>
+      <div class="row">
+        <div class="box"><h3><code>object_type</code></h3><p>e.g. <code>Site</code> — or <code>Outlet</code>, <code>Restaurant</code>, <code>Kiosk</code> for a different vertical, same engine.</p></div>
+        <div class="box"><h3><code>property_def</code></h3><p>Typed column or JSONB path, with display name, unit, sensitivity.</p></div>
+        <div class="box"><h3><code>link_type</code></h3><p>Declared relationship backed by a real FK/join — e.g. <code>Site —has→ LegalChecklist</code>.</p></div>
+        <div class="box"><h3><code>action_type</code></h3><p>Your unlock gates (<code>design_service.py</code>, <code>workflow_unlocks.py</code>) become declared rules, not <code>if</code> statements.</p></div>
+        <div class="box"><h3><code>factor_edge</code></h3><span class="phase-chip">Phase 3</span><p>Causal/influence claims — separate from links, carries <code>method</code> + <code>confidence</code>.</p></div>
+      </div>
+      <div class="interfaces">
+        <b>Interfaces — the multi-vertical trick:</b> <code>Approvable</code>, <code>Delegatable</code>, <code>Documented</code>, <code>Budgeted</code> bind your existing generic machinery
+        (delegation, approvals, file handling, audit) to a <i>shape</i>, not to <code>Site</code>. A new object type for a food-chain
+        customer — <code>FranchiseAgreement</code>, <code>KitchenEquipment</code> — inherits all of it by declaring
+        <code>implements: [Approvable, Documented]</code>. This is what makes tenant #2 a config job.
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-col"><div><div class="arrow">↕</div><p class="arrow-label">reads the registry at request time · writes flow back through it</p></div></div>
+
+  <!-- LAYER 5: ACTION RUNTIME (KEPT) -->
+  <div class="layer">
+    <p class="layer-label">5 · Action runtime <small>— unchanged; only its inputs become dynamic</small></p>
+    <div class="row">
+      <div class="box kept"><span class="tag kept">kept</span><h3>validate</h3><p><code>assert_transition</code> against <code>action_type</code> rules; RBAC via <code>require_role</code> / <code>require_module</code>.</p></div>
+      <div class="box kept"><span class="tag kept">kept</span><h3>mutate</h3><p>SQLAlchemy async session, transactional writes into the object tables.</p></div>
+      <div class="box kept"><span class="tag kept">kept</span><h3>audit</h3><p><code>audit_service.write_audit_event</code> → <code>audit_logs</code>, <code>stage_events</code> — the immutable ledger.</p></div>
+      <div class="box kept"><span class="tag kept">kept</span><h3>notify</h3><p><code>notification_service</code> → <code>notification_outbox</code>.</p></div>
+    </div>
+  </div>
+
+  <div class="arrow-col"><div><div class="arrow">↓</div><p class="arrow-label">reads hit the index, not raw source tables</p></div></div>
+
+  <!-- LAYER 6: READS + AGENTS -->
+  <div class="layer">
+    <p class="layer-label">6 · Reads &amp; agents <small>— Phase 3</small></p>
+    <div class="split">
+      <div class="box later"><span class="tag later">Phase 3</span><h3>Cube Core semantic layer</h3><p>SQL / REST / GraphQL / MCP over the same governed model. Row-level + multi-tenant security enforced at query compile time.</p></div>
+      <div class="box later"><span class="tag later">Phase 3</span><h3>Agents</h3><p>MCP server auto-generated from the <code>action_type</code> registry. Reads via Cube; writes only via <code>propose_action</code> → the Layer-5 runtime → human approval.
+      <br><b style="color:var(--text)">Agents get a menu, never a keyboard.</b></p></div>
+    </div>
+  </div>
+
+  <div class="arrow-col"><div><div class="arrow">↓</div></div></div>
+
+  <!-- LAYER 7: APPS -->
+  <div class="layer">
+    <p class="layer-label">7 · Applications</p>
+    <div class="row">
+      <div class="box new"><span class="tag new">generated</span><h3>React modules</h3><p>Today: 20 hand-built folders (<code>bd</code>, <code>legal</code>, <code>design</code>, <code>nso</code>, <code>launch</code>...). Target: generated from <code>object_type</code> + interfaces, per tenant/vertical.</p></div>
+      <div class="box later"><span class="tag later">Phase 3</span><h3>Driver-tree UI</h3><p>Interactive graph over <code>factor_edge</code> — carpet area → covers → sales, rent-to-sales viability, etc., colored by <code>declared / backtest / dowhy_gcm</code> confidence.</p></div>
+      <div class="box later"><span class="tag later">Phase 4</span><h3>Enterprise add-ons</h3><p>Ontop (no-copy federation), Debezium+LogMiner (CDC), OpenMetadata (lineage) — built only against a signed deal requirement.</p></div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    <b>Why this scales to food chains specifically:</b> one engine, N YAML files. A coffee-retail tenant's <code>Site</code>
+    and a QSR chain's <code>Outlet</code> are the same runtime, same interfaces, same audit trail — the only thing that
+    changes per vertical is the ontology declaration, not the code. See <code>Matrix_V2_Ontology_Roadmap.md</code> for the
+    phase-by-phase execution plan.
+  </div>
+
+</div>
+</body>
+</html>
