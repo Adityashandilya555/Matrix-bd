@@ -1,0 +1,712 @@
+<title>Matrix Ontology — how the flow works, and what's left</title>
+<style>
+  :root{
+    --ground:#F6F7F9; --surface:#FFFFFF; --surface-2:#EEF1F5; --surface-3:#E4E9EF;
+    --ink:#151A21; --ink-2:#48535F; --ink-3:#79838F;
+    --line:#D8DEE6; --line-2:#C3CCD6;
+    --accent:#0E6F6B; --accent-ink:#0A5652; --accent-soft:#E0F0EE;
+    --good:#2C7A51; --good-soft:#E2F1E9;
+    --warn:#95660F; --warn-soft:#F7EDD9;
+    --bad:#A5403A;  --bad-soft:#F7E4E2;
+    --code-bg:#EFF2F6;
+    --shadow:0 1px 2px rgba(20,30,45,.06), 0 4px 14px rgba(20,30,45,.05);
+    --font-sans:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono",SFMono-Regular,"JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --ground:#0D1116; --surface:#151B22; --surface-2:#1C232B; --surface-3:#242D36;
+      --ink:#E7EDF4; --ink-2:#A2AFBD; --ink-3:#6D7B89;
+      --line:#28313B; --line-2:#36424E;
+      --accent:#37B5AA; --accent-ink:#5FD0C6; --accent-soft:#10302E;
+      --good:#4FB07E; --good-soft:#13291F;
+      --warn:#D6A441; --warn-soft:#2C2415;
+      --bad:#E06B60;  --bad-soft:#2E1B19;
+      --code-bg:#111820;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.25);
+    }
+  }
+  :root[data-theme="dark"]{
+      --ground:#0D1116; --surface:#151B22; --surface-2:#1C232B; --surface-3:#242D36;
+      --ink:#E7EDF4; --ink-2:#A2AFBD; --ink-3:#6D7B89;
+      --line:#28313B; --line-2:#36424E;
+      --accent:#37B5AA; --accent-ink:#5FD0C6; --accent-soft:#10302E;
+      --good:#4FB07E; --good-soft:#13291F;
+      --warn:#D6A441; --warn-soft:#2C2415;
+      --bad:#E06B60;  --bad-soft:#2E1B19;
+      --code-bg:#111820;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.25);
+  }
+  :root[data-theme="light"]{
+    --ground:#F6F7F9; --surface:#FFFFFF; --surface-2:#EEF1F5; --surface-3:#E4E9EF;
+    --ink:#151A21; --ink-2:#48535F; --ink-3:#79838F;
+    --line:#D8DEE6; --line-2:#C3CCD6;
+    --accent:#0E6F6B; --accent-ink:#0A5652; --accent-soft:#E0F0EE;
+    --good:#2C7A51; --good-soft:#E2F1E9;
+    --warn:#95660F; --warn-soft:#F7EDD9;
+    --bad:#A5403A;  --bad-soft:#F7E4E2;
+    --code-bg:#EFF2F6;
+    --shadow:0 1px 2px rgba(20,30,45,.06), 0 4px 14px rgba(20,30,45,.05);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:var(--font-sans);
+    font-size:16px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    margin:0; padding:0;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:clamp(28px,5vw,64px) clamp(18px,4vw,40px) 96px}
+
+  /* ── type ─────────────────────────────────────────────── */
+  h1{
+    font-size:clamp(30px,4.6vw,46px); line-height:1.08; letter-spacing:-.028em;
+    font-weight:700; margin:0 0 14px; text-wrap:balance;
+  }
+  h2{
+    font-size:clamp(21px,2.6vw,27px); line-height:1.2; letter-spacing:-.019em;
+    font-weight:680; margin:0 0 6px; text-wrap:balance;
+  }
+  h3{font-size:16px; font-weight:660; letter-spacing:-.008em; margin:0 0 8px}
+  p{margin:0 0 14px; max-width:68ch; color:var(--ink-2)}
+  p.lead{font-size:clamp(16px,1.7vw,18.5px); color:var(--ink-2); max-width:70ch}
+  strong{color:var(--ink); font-weight:640}
+  a{color:var(--accent); text-underline-offset:3px}
+
+  .eyebrow{
+    font-family:var(--font-mono); font-size:11px; font-weight:600;
+    letter-spacing:.14em; text-transform:uppercase; color:var(--accent);
+    display:block; margin-bottom:10px;
+  }
+  code,.mono{font-family:var(--font-mono); font-size:.875em}
+  code:not(pre code){
+    background:var(--code-bg); padding:.12em .38em; border-radius:4px;
+    border:1px solid var(--line); color:var(--ink);
+  }
+
+  section{margin-top:clamp(46px,6vw,76px)}
+  .sec-head{border-top:2px solid var(--ink); padding-top:14px; margin-bottom:22px}
+
+  /* ── header ───────────────────────────────────────────── */
+  header{border-bottom:1px solid var(--line); padding-bottom:26px}
+  .meta{
+    display:flex; flex-wrap:wrap; gap:8px; margin-top:18px;
+  }
+  .tag{
+    font-family:var(--font-mono); font-size:11px; letter-spacing:.04em;
+    padding:4px 9px; border-radius:5px; border:1px solid var(--line-2);
+    color:var(--ink-2); background:var(--surface);
+  }
+  .tag.warnstripe{color:var(--bad); border-color:var(--bad); background:var(--bad-soft); font-weight:600}
+
+  /* ── cards ────────────────────────────────────────────── */
+  .card{
+    background:var(--surface); border:1px solid var(--line);
+    border-radius:10px; padding:20px 22px; box-shadow:var(--shadow);
+  }
+  .grid{display:grid; gap:14px}
+  @media(min-width:720px){ .grid.two{grid-template-columns:1fr 1fr} }
+
+  /* ── pipeline chain ───────────────────────────────────── */
+  .chain-scroll{overflow-x:auto; padding:4px 0 12px; -webkit-overflow-scrolling:touch}
+  .chain{display:flex; align-items:stretch; gap:0; min-width:max-content}
+  .node{
+    background:var(--surface); border:1px solid var(--line-2);
+    border-radius:8px; padding:9px 13px; min-width:118px;
+    display:flex; flex-direction:column; gap:3px;
+  }
+  .node .st{font-family:var(--font-mono); font-size:10.5px; color:var(--ink-3); letter-spacing:.02em}
+  .node .lb{font-size:13px; font-weight:620; color:var(--ink); letter-spacing:-.005em}
+  .arrow{
+    align-self:center; color:var(--ink-3); padding:0 7px;
+    font-family:var(--font-mono); font-size:14px; flex:0 0 auto;
+  }
+  .node.terminal{border-style:dashed; color:var(--ink-3)}
+  .node.terminal .lb{color:var(--ink-2)}
+
+  /* ── gate visual ──────────────────────────────────────── */
+  .gate-wrap{
+    display:grid; gap:16px; align-items:center;
+    grid-template-columns:1fr;
+  }
+  @media(min-width:820px){ .gate-wrap{grid-template-columns:1fr auto 1fr} }
+  .inputs{display:flex; flex-direction:column; gap:9px}
+  .signal{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    background:var(--surface-2); border:1px solid var(--line);
+    border-radius:7px; padding:9px 12px;
+  }
+  .signal .nm{font-family:var(--font-mono); font-size:12px; color:var(--ink-2)}
+  .signal .vl{font-family:var(--font-mono); font-size:12px; font-weight:600}
+  .signal.on .vl{color:var(--good)} .signal.off .vl{color:var(--bad)}
+  .signal.muted{opacity:.42}
+  .op{
+    font-family:var(--font-mono); font-weight:700; font-size:13px;
+    color:var(--accent); background:var(--accent-soft);
+    border:1px solid var(--accent); border-radius:999px;
+    padding:7px 15px; text-align:center; white-space:nowrap;
+  }
+
+  /* ── toggle ───────────────────────────────────────────── */
+  .switcher{
+    display:inline-flex; background:var(--surface-2); border:1px solid var(--line-2);
+    border-radius:9px; padding:3px; gap:3px; flex-wrap:wrap;
+  }
+  .switcher button{
+    font-family:var(--font-sans); font-size:13px; font-weight:600;
+    border:0; background:transparent; color:var(--ink-2);
+    padding:8px 14px; border-radius:7px; cursor:pointer;
+    transition:background .16s ease, color .16s ease;
+  }
+  .switcher button:hover{color:var(--ink)}
+  .switcher button[aria-pressed="true"]{background:var(--accent); color:#fff}
+  :root[data-theme="dark"] .switcher button[aria-pressed="true"]{color:#08221F}
+  @media (prefers-color-scheme:dark){
+    .switcher button[aria-pressed="true"]{color:#08221F}
+  }
+  .switcher button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  pre{
+    background:var(--code-bg); border:1px solid var(--line);
+    border-radius:8px; padding:13px 15px; overflow-x:auto;
+    font-family:var(--font-mono); font-size:12.5px; line-height:1.62;
+    margin:0; color:var(--ink);
+  }
+  pre .k{color:var(--accent)} pre .s{color:var(--good)} pre .d{color:var(--ink-3)}
+
+  /* ── tables ───────────────────────────────────────────── */
+  .tscroll{overflow-x:auto; border:1px solid var(--line); border-radius:9px; background:var(--surface)}
+  table{border-collapse:collapse; width:100%; font-size:14px; min-width:600px}
+  th{
+    text-align:left; font-family:var(--font-mono); font-size:10.5px;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3);
+    font-weight:600; padding:11px 14px; border-bottom:1px solid var(--line-2);
+    background:var(--surface-2); white-space:nowrap;
+  }
+  td{padding:11px 14px; border-bottom:1px solid var(--line); color:var(--ink-2); vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  td.n{font-variant-numeric:tabular-nums; font-family:var(--font-mono); font-size:12.5px; white-space:nowrap}
+  td strong{color:var(--ink)}
+
+  .pill{
+    display:inline-block; font-family:var(--font-mono); font-size:10.5px; font-weight:600;
+    letter-spacing:.05em; padding:3px 8px; border-radius:5px; white-space:nowrap;
+  }
+  .pill.done{background:var(--good-soft); color:var(--good); border:1px solid var(--good)}
+  .pill.part{background:var(--warn-soft); color:var(--warn); border:1px solid var(--warn)}
+  .pill.todo{background:var(--bad-soft);  color:var(--bad);  border:1px solid var(--bad)}
+  .pill.neut{background:var(--surface-2); color:var(--ink-3); border:1px solid var(--line-2)}
+
+  /* ── kernel stack ─────────────────────────────────────── */
+  .stack{display:flex; flex-direction:column; gap:0}
+  .layer{
+    display:grid; grid-template-columns:auto 1fr auto; gap:14px; align-items:center;
+    background:var(--surface); border:1px solid var(--line);
+    padding:13px 16px;
+  }
+  .layer:first-of-type{border-radius:9px 9px 0 0}
+  .layer:last-of-type{border-radius:0 0 9px 9px}
+  .layer + .layer{border-top:0}
+  .layer .idx{
+    font-family:var(--font-mono); font-size:11px; color:var(--ink-3);
+    width:20px; text-align:right; font-variant-numeric:tabular-nums;
+  }
+  .layer .body h3{margin:0 0 2px; font-size:14.5px}
+  .layer .body p{margin:0; font-size:13px; max-width:60ch}
+  .layer.is-data{border-left:3px solid var(--accent)}
+  .layer.is-code{border-left:3px solid var(--ink-3)}
+
+  .legend{display:flex; flex-wrap:wrap; gap:16px; margin-top:12px; font-size:12.5px; color:var(--ink-3)}
+  .legend span{display:inline-flex; align-items:center; gap:7px}
+  .swatch{width:11px; height:11px; border-radius:3px; display:inline-block}
+
+  .callout{
+    border:1px solid var(--bad); background:var(--bad-soft);
+    border-radius:10px; padding:18px 20px;
+  }
+  .callout h3{color:var(--bad)}
+  .callout p{color:var(--ink-2)}
+
+  .note{
+    border-left:3px solid var(--line-2); padding:2px 0 2px 16px;
+    color:var(--ink-3); font-size:14px; margin:16px 0;
+  }
+
+  .verdict{
+    display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;
+    font-family:var(--font-mono); font-size:13px; margin-top:14px;
+    padding-top:14px; border-top:1px dashed var(--line-2);
+  }
+  .verdict .big{font-size:15px; font-weight:700}
+  .v-pass{color:var(--good)} .v-fail{color:var(--bad)}
+
+  ul{margin:0 0 14px; padding-left:20px; color:var(--ink-2); max-width:68ch}
+  li{margin-bottom:7px}
+  li::marker{color:var(--ink-3)}
+
+  @media (prefers-reduced-motion:reduce){
+    *{transition:none !important; animation:none !important}
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">Branch <code style="font-size:11px">ontology</code> · experimental</span>
+  <h1>How the flow works, and what's left to build</h1>
+  <p class="lead">Matrix today runs one hardcoded approval flow written in Python. The goal is a
+  vertical Palantir: a pre-configured base flow that each client remaps and reorders as data. This
+  is the mechanism, and an honest account of the distance remaining.</p>
+  <div class="meta">
+    <span class="tag">verified against schema.sql &amp; state_machine.py</span>
+    <span class="tag">7 proofs passing in poc/</span>
+    <span class="tag warnstripe">never merged to main</span>
+  </div>
+</header>
+
+<!-- ══════════ 1. THE FLOW TODAY ══════════ -->
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Part one</span>
+    <h2>The flow that exists today</h2>
+  </div>
+  <p>This is the real state machine from <code>backend/app/domain/state_machine.py</code> — a site
+  moves left to right, and every transition passes <code>assert_transition</code> before anything is
+  persisted. This part is correct and stays.</p>
+
+  <div class="chain-scroll">
+    <div class="chain">
+      <div class="node"><span class="st">draft_submitted</span><span class="lb">Draft</span></div>
+      <span class="arrow">→</span>
+      <div class="node"><span class="st">shortlisted</span><span class="lb">Shortlisted</span></div>
+      <span class="arrow">→</span>
+      <div class="node"><span class="st">details_submitted</span><span class="lb">Details</span></div>
+      <span class="arrow">→</span>
+      <div class="node"><span class="st">approved</span><span class="lb">Approved</span></div>
+      <span class="arrow">→</span>
+      <div class="node"><span class="st">loi_uploaded</span><span class="lb">LOI</span></div>
+      <span class="arrow">→</span>
+      <div class="node"><span class="st">legal_review</span><span class="lb">Legal review</span></div>
+      <span class="arrow">→</span>
+      <div class="node"><span class="st">legal_approved</span><span class="lb">Legal approved</span></div>
+      <span class="arrow">→</span>
+      <div class="node terminal"><span class="st">pushed_to_payments</span><span class="lb">Payments</span></div>
+    </div>
+  </div>
+
+  <p style="margin-top:18px">Alongside that linear path, the downstream modules — Design, Project,
+  NSO, Launch — are opened by <strong>mirror columns on <code>sites</code></strong>:
+  <code>legal_dd_status</code>, <code>finance_status</code>, <code>design_status</code>,
+  <code>project_status</code>. A module unlocks when its gate condition is met. Those gate conditions
+  are the thing this whole project is about, because right now every one of them is a Python
+  <code>if</code>.</p>
+</section>
+
+<!-- ══════════ 2. THE GATE, INTERACTIVE ══════════ -->
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Part two · the mechanism</span>
+    <h2>One gate, two ways of writing it</h2>
+  </div>
+  <p>The Design module opens after due diligence clears <em>and</em> Finance approves. That rule is
+  currently stated in Python in <strong>two separate places</strong> —
+  <code>workflow_unlocks.py:25</code> and <code>design_service.py:229</code> — which is why changing
+  it means a code change and a deploy, in both files, without breaking them apart.</p>
+
+  <p>Switch the rule below and watch the same three sites re-evaluate. Nothing about the data changes;
+  only the rule does.</p>
+
+  <div style="margin:22px 0 18px">
+    <div class="switcher" role="group" aria-label="Choose which gate rule is active">
+      <button id="btn-base" aria-pressed="true">Today · hardcoded in Python</button>
+      <button id="btn-reord" aria-pressed="false">Reordered · Design before Finance</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="gate-wrap">
+      <div class="inputs">
+        <div class="signal on" id="sig-legal">
+          <span class="nm">legal_dd_status</span><span class="vl">positive</span>
+        </div>
+        <div class="signal off" id="sig-fin">
+          <span class="nm">finance_status</span><span class="vl">approved</span>
+        </div>
+      </div>
+      <div class="op" id="gate-op">AND</div>
+      <div>
+        <div class="signal" style="background:var(--accent-soft); border-color:var(--accent)">
+          <span class="nm" style="color:var(--accent-ink); font-weight:600">design.open</span>
+          <span class="vl" style="color:var(--accent-ink)">unlocks Design</span>
+        </div>
+        <p style="font-size:12.5px; margin:9px 0 0; color:var(--ink-3)" id="gate-note"></p>
+      </div>
+    </div>
+
+    <div style="margin-top:20px">
+      <h3 style="font-size:12px; font-family:var(--font-mono); letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3)">
+        Stored as <code style="font-size:11px">action_type.preconditions</code></h3>
+      <pre id="rule-json"></pre>
+    </div>
+  </div>
+
+  <h3 style="margin-top:26px">The same three sites, re-evaluated</h3>
+  <div class="tscroll" style="margin-top:10px">
+    <table>
+      <thead>
+        <tr><th>Site</th><th>legal_dd_status</th><th>finance_status</th><th>Design</th></tr>
+      </thead>
+      <tbody id="sites-body"></tbody>
+    </table>
+  </div>
+  <p style="margin-top:12px; font-size:14px" id="delta-note"></p>
+
+  <div class="note">
+    In the proof-of-concept this is not a mock. Two tenants run <em>different</em> approval orders
+    against the same code at the same time, and a third has its gate flipped by an <code>UPDATE</code>
+    mid-run — <code>False</code> to <code>True</code>, no Python touched, no restart.
+  </div>
+</section>
+
+<!-- ══════════ 3. KERNEL PATH ══════════ -->
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Part three · the path a request takes</span>
+    <h2>Where code ends and configuration begins</h2>
+  </div>
+  <p>Every read and every write would pass through these six layers. The teal layers are data you
+  edit; the grey layers are code that stays code forever.</p>
+
+  <div class="stack" style="margin-top:18px">
+    <div class="layer is-code">
+      <span class="idx">1</span>
+      <div class="body"><h3>Request arrives</h3>
+        <p>A UI click, a generated SDK call, or an agent. All three enter the same door.</p></div>
+      <span class="pill done">EXISTS</span>
+    </div>
+    <div class="layer is-data">
+      <span class="idx">2</span>
+      <div class="body"><h3>Resolve the ontology</h3>
+        <p>Base package + this tenant's overlay. Decides what <em>Site</em> is called, which
+        properties exist, and what they're labelled.</p></div>
+      <span class="pill part">PROVEN IN POC</span>
+    </div>
+    <div class="layer is-data">
+      <span class="idx">3</span>
+      <div class="body"><h3>Compile the security predicate</h3>
+        <p>Tenant + role + module membership + delegation, folded into one SQL <code>WHERE</code>.
+        The single answer to "may this caller see this row?"</p></div>
+      <span class="pill todo">NOT BUILT</span>
+    </div>
+    <div class="layer is-code">
+      <span class="idx">4</span>
+      <div class="body"><h3>Resolve to SQL</h3>
+        <p>Generic. Assembles the query from the registry, applies the client's column and value
+        mapping. No per-object-type query code anywhere.</p></div>
+      <span class="pill part">PROVEN IN POC</span>
+    </div>
+    <div class="layer is-data">
+      <span class="idx">5</span>
+      <div class="body"><h3>Evaluate the gate</h3>
+        <p>The JsonLogic precondition from Part two. This is the layer that makes approval flows
+        reorderable.</p></div>
+      <span class="pill part">PROVEN IN POC</span>
+    </div>
+    <div class="layer is-code">
+      <span class="idx">6</span>
+      <div class="body"><h3>Action runtime — the only writer</h3>
+        <p>Lock the row → check the precondition → mutate → recompute derived → audit → enqueue
+        notification. <strong>You already have this, and it is correct.</strong></p></div>
+      <span class="pill done">IN PRODUCTION</span>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><i class="swatch" style="background:var(--accent)"></i> configuration — edited, not deployed</span>
+    <span><i class="swatch" style="background:var(--ink-3)"></i> code — stays code forever</span>
+  </div>
+
+  <p style="margin-top:20px">Layer 6 is the part most attempts at this architecture never get right,
+  and it cannot be retrofitted cheaply. It is already built, already audited, already row-locked in
+  production. That is the real starting position.</p>
+</section>
+
+<!-- ══════════ 4. WHAT'S LEFT ══════════ -->
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Part four</span>
+    <h2>What's built, what's proven, what's missing</h2>
+  </div>
+  <p>Against the seven capabilities the platform needs. <strong>Proven</strong> means it runs in the
+  proof-of-concept against real column definitions, but is not wired into the app.</p>
+
+  <div class="tscroll">
+    <table>
+      <thead>
+        <tr><th>Capability</th><th>Status</th><th>What actually delivers it</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Pre-configured base flow, editable</strong></td>
+          <td><span class="pill part">PROVEN</span></td>
+          <td><code>action_type</code> rows in a base package</td>
+        </tr>
+        <tr>
+          <td><strong>Approval flow reorder</strong><br><span style="font-size:12.5px; color:var(--ink-3)">design → finance instead of → business admin</span></td>
+          <td><span class="pill part">PROVEN</span></td>
+          <td>JsonLogic <code>preconditions</code>, replacing the Python gate</td>
+        </tr>
+        <tr>
+          <td><strong>Rename fields, add fields</strong></td>
+          <td><span class="pill part">PROVEN</span></td>
+          <td><code>display_name</code> + a <code>props</code> JSONB overlay</td>
+        </tr>
+        <tr>
+          <td><strong>Relationships captured</strong></td>
+          <td><span class="pill part">PROVEN</span></td>
+          <td><code>link_type</code> declared over FKs that already exist</td>
+        </tr>
+        <tr>
+          <td><strong>Client connects their own database</strong></td>
+          <td><span class="pill part">PROVEN</span></td>
+          <td><code>datasource_binding</code> + column map + value map</td>
+        </tr>
+        <tr>
+          <td><strong>Modules shipped as apps</strong></td>
+          <td><span class="pill todo">PARTIAL</span></td>
+          <td>Interfaces proven; packaging and versioning not started</td>
+        </tr>
+        <tr>
+          <td><strong>Suggest models when a client DB doesn't fit</strong><br><span style="font-size:12.5px; color:var(--ink-3)">you ranked this last</span></td>
+          <td><span class="pill todo">NOT BUILT</span></td>
+          <td>Schema matching against the fixed base ontology</td>
+        </tr>
+        <tr style="background:var(--bad-soft)">
+          <td><strong>Row-level security</strong><br><span style="font-size:12.5px; color:var(--ink-3)">not on your list — adding it</span></td>
+          <td><span class="pill todo">NOT BUILT</span></td>
+          <td>One policy compiler, replacing ad-hoc per-route filters</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p style="margin-top:16px">Five of the seven collapse into <strong>one body of work</strong>: the
+  registry plus JsonLogic. That is why it goes first — it isn't five projects, it's one.</p>
+</section>
+
+<!-- ══════════ 5. SEQUENCE ══════════ -->
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Part five</span>
+    <h2>The remaining sequence</h2>
+  </div>
+  <p>Each stage is gated by a test, because each consumes what the previous one produces. Weeks are
+  focused-effort estimates, not calendar time.</p>
+
+  <div class="tscroll">
+    <table>
+      <thead>
+        <tr><th>Stage</th><th>Delivers</th><th class="n">Weeks</th><th>Done when</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>A · Prove it on one gate</strong></td>
+          <td>Editable approval gates</td>
+          <td class="n">2</td>
+          <td>Flipping the design gate in production is an <code>UPDATE</code>. A corrupted rule fails the request rather than opening the gate.</td>
+        </tr>
+        <tr>
+          <td><strong>B · Policy compiler</strong></td>
+          <td>Row-level security</td>
+          <td class="n">3</td>
+          <td>An executive sees only their delegated sites <em>because of the compiler</em>. Per-route filters deleted, not kept alongside.</td>
+        </tr>
+        <tr>
+          <td><strong>C · Kill the drift</strong></td>
+          <td>One schema truth</td>
+          <td class="n">3</td>
+          <td>Zero behaviour change, 43 test modules green, CI fails on drift.</td>
+        </tr>
+        <tr>
+          <td><strong>D · Properties &amp; links as data</strong></td>
+          <td>Rename, add, relate</td>
+          <td class="n">4</td>
+          <td>A tenant renames a type and adds a field; the UI reflects both with no deploy.</td>
+        </tr>
+        <tr>
+          <td><strong>E · Datasource binding</strong></td>
+          <td>Client databases</td>
+          <td class="n">6</td>
+          <td>One external database connected, mapped, and serving the base <em>Site</em> type.</td>
+        </tr>
+        <tr>
+          <td><strong>F · Interfaces &amp; packaging</strong></td>
+          <td>Shippable modules</td>
+          <td class="n">8</td>
+          <td>A brand-new object type ships using only config. If it needs one hand-written route, not done.</td>
+        </tr>
+        <tr>
+          <td><strong>G · Model suggestion</strong></td>
+          <td>Onboarding assist</td>
+          <td class="n">—</td>
+          <td>Built when a signed deal asks for it.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p style="margin-top:18px"><strong>Roughly 26 focused weeks to Stage F.</strong> That assumes
+  uninterrupted time you don't have while shipping fixes to a live design partner. Treat it as
+  ordering, not as a schedule — the sequence is the useful part, the arithmetic is not.</p>
+
+  <div class="card" style="margin-top:20px; border-left:3px solid var(--accent)">
+    <h3>The cut worth defending</h3>
+    <p style="margin-bottom:0">Stages <strong>A</strong> and <strong>B</strong> are worth doing even
+    if the platform idea is shelved entirely. A is a contained improvement to a gate you already
+    maintain in two files. B closes a security gap that exists in production right now, today,
+    independent of any of this. <strong>Everything from C onward is a bet on the platform thesis.
+    Nothing before it is.</strong></p>
+  </div>
+</section>
+
+<!-- ══════════ 6. THE RISK ══════════ -->
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Part six</span>
+    <h2>The failure this architecture invites</h2>
+  </div>
+
+  <div class="callout">
+    <h3>A malformed rule is an open gate, not an error</h3>
+    <p>While building the proof-of-concept, a precondition written through the wrong code path came
+    back out of Postgres as a JSON <em>string</em> rather than a JSON object. JsonLogic treats a
+    non-object as a literal, and a non-empty literal is truthy — so the gate evaluated
+    <strong>true unconditionally</strong>, and the test suite still printed a pass.</p>
+    <p style="margin-bottom:0">A malformed Python <code>if</code> raises. A malformed rule row just
+    permits. That asymmetry is the whole risk of moving gates from code to data, and in production it
+    would be a silent authorization bypass on an approval step.</p>
+  </div>
+
+  <p style="margin-top:20px">The fix is cheap but has to ship <em>with</em> stage A, never after:
+  the evaluator refuses any rule that isn't an object, the tests assert the rule's <strong>shape</strong>
+  rather than only its verdict, and CI validates every stored rule before it can be published.</p>
+
+  <h3 style="margin-top:26px">Two more worth naming</h3>
+  <ul>
+    <li><strong>Building the registry and continuing to hardcode alongside it</strong>, paying for
+    both. The forcing function is Stage F's exit test — until a new object type ships config-only, the
+    registry is cost with no return.</li>
+    <li><strong>Column mapping alone doesn't onboard a client.</strong> Their ERP says
+    <code>CLEARED</code> where the base ontology says <code>positive</code>. The proof-of-concept
+    declares a value map for the 1:1 cases, but anything needing computation still needs real code.</li>
+  </ul>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Try it</span>
+    <h2>Running the proofs yourself</h2>
+  </div>
+  <p>Throwaway Postgres, seeded from verbatim copies of your <code>sites</code>,
+  <code>legal_dd_checklist</code> and <code>site_budgets</code> definitions. Nothing in
+  <code>backend/</code> or <code>frontend/</code> is imported or modified, and it never touches the
+  dev or production database.</p>
+  <pre><span class="d"># requires docker — on this machine, colima start first</span>
+<span class="k">cd</span> ontology &amp;&amp; make up &amp;&amp; make demo
+
+<span class="d"># teardown</span>
+make down</pre>
+</section>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var SITES = [
+    { code:"BLR-001", name:"Indiranagar 100ft Rd", legal:"positive", finance:"approved" },
+    { code:"BLR-002", name:"Koramangala 5th Blk", legal:"positive", finance:"pending"  },
+    { code:"MUM-001", name:"Bandra Linking Rd",    legal:"pending",  finance:"pending"  }
+  ];
+
+  var RULES = {
+    base: {
+      op:"AND",
+      note:"Design waits for BOTH signals.",
+      json:'{\n  "and": [\n    { "==": [ { "var": "legal_dd_status" }, "positive" ] },\n    { "==": [ { "var": "finance_status" },  "approved" ] }\n  ]\n}',
+      test:function(s){ return s.legal==="positive" && s.finance==="approved"; },
+      financeActive:true
+    },
+    reordered: {
+      op:"ONLY",
+      note:"Design opens on due diligence alone. Finance runs after.",
+      json:'{\n  "==": [ { "var": "legal_dd_status" }, "positive" ]\n}',
+      test:function(s){ return s.legal==="positive"; },
+      financeActive:false
+    }
+  };
+
+  var current = "base";
+
+  var $ = function(id){ return document.getElementById(id); };
+  var btnBase = $("btn-base"), btnReord = $("btn-reord");
+  var ruleJson = $("rule-json"), gateOp = $("gate-op"), gateNote = $("gate-note");
+  var sigFin = $("sig-fin"), body = $("sites-body"), delta = $("delta-note");
+
+  function render(){
+    var rule = RULES[current];
+
+    btnBase.setAttribute("aria-pressed",  current === "base"      ? "true" : "false");
+    btnReord.setAttribute("aria-pressed", current === "reordered" ? "true" : "false");
+
+    ruleJson.textContent = rule.json;
+    gateOp.textContent = rule.op;
+    gateNote.textContent = rule.note;
+
+    // the finance signal visibly drops out of the rule
+    sigFin.classList.toggle("muted", !rule.financeActive);
+
+    body.innerHTML = "";
+    var passed = 0;
+    SITES.forEach(function(s){
+      var ok = rule.test(s);
+      if (ok) passed++;
+      var tr = document.createElement("tr");
+
+      var td1 = document.createElement("td");
+      td1.innerHTML = "<strong>" + s.code + "</strong><br><span style='font-size:12.5px;color:var(--ink-3)'>"
+                    + s.name + "</span>";
+
+      var td2 = document.createElement("td");
+      td2.className = "n";
+      td2.style.color = s.legal === "positive" ? "var(--good)" : "var(--ink-3)";
+      td2.textContent = s.legal;
+
+      var td3 = document.createElement("td");
+      td3.className = "n";
+      td3.style.color = s.finance === "approved" ? "var(--good)" : "var(--ink-3)";
+      if (!rule.financeActive) td3.style.opacity = ".4";
+      td3.textContent = s.finance + (rule.financeActive ? "" : "  (ignored)");
+
+      var td4 = document.createElement("td");
+      td4.innerHTML = ok
+        ? '<span class="pill done">UNLOCKED</span>'
+        : '<span class="pill todo">BLOCKED</span>';
+
+      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3); tr.appendChild(td4);
+      body.appendChild(tr);
+    });
+
+    delta.innerHTML = current === "base"
+      ? "<strong>" + passed + " of 3</strong> sites can start Design. BLR-002 is blocked purely because Finance hasn't signed — the site itself is legally clear."
+      : "<strong>" + passed + " of 3</strong> sites can start Design. BLR-002 moved without any change to its data, its code, or a redeploy — only the rule changed.";
+  }
+
+  btnBase.addEventListener("click",  function(){ current = "base";      render(); });
+  btnReord.addEventListener("click", function(){ current = "reordered"; render(); });
+
+  render();
+})();
+</script>
