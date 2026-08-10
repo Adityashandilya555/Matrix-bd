@@ -1,0 +1,630 @@
+<title>Matrix Ontology Console</title>
+<style>
+  :root{
+    --ground:#F6F7F9; --surface:#FFFFFF; --surface-2:#EEF1F5; --surface-3:#E4E9EF;
+    --ink:#151A21; --ink-2:#48535F; --ink-3:#79838F;
+    --line:#D8DEE6; --line-2:#C3CCD6;
+    --accent:#0E6F6B; --accent-ink:#0A5652; --accent-soft:#E0F0EE;
+    --good:#2C7A51; --good-soft:#E2F1E9;
+    --warn:#95660F; --warn-soft:#F7EDD9;
+    --bad:#A5403A;  --bad-soft:#F7E4E2;
+    --code-bg:#EFF2F6;
+    --shadow:0 1px 2px rgba(20,30,45,.06), 0 4px 14px rgba(20,30,45,.05);
+    --font-sans:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono",SFMono-Regular,"JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --ground:#0D1116; --surface:#151B22; --surface-2:#1C232B; --surface-3:#242D36;
+      --ink:#E7EDF4; --ink-2:#A2AFBD; --ink-3:#6D7B89;
+      --line:#28313B; --line-2:#36424E;
+      --accent:#37B5AA; --accent-ink:#5FD0C6; --accent-soft:#10302E;
+      --good:#4FB07E; --good-soft:#13291F;
+      --warn:#D6A441; --warn-soft:#2C2415;
+      --bad:#E06B60;  --bad-soft:#2E1B19;
+      --code-bg:#111820;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.25);
+    }
+  }
+  :root[data-theme="dark"]{
+      --ground:#0D1116; --surface:#151B22; --surface-2:#1C232B; --surface-3:#242D36;
+      --ink:#E7EDF4; --ink-2:#A2AFBD; --ink-3:#6D7B89;
+      --line:#28313B; --line-2:#36424E;
+      --accent:#37B5AA; --accent-ink:#5FD0C6; --accent-soft:#10302E;
+      --good:#4FB07E; --good-soft:#13291F;
+      --warn:#D6A441; --warn-soft:#2C2415;
+      --bad:#E06B60;  --bad-soft:#2E1B19;
+      --code-bg:#111820;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.25);
+  }
+  :root[data-theme="light"]{
+    --ground:#F6F7F9; --surface:#FFFFFF; --surface-2:#EEF1F5; --surface-3:#E4E9EF;
+    --ink:#151A21; --ink-2:#48535F; --ink-3:#79838F;
+    --line:#D8DEE6; --line-2:#C3CCD6;
+    --accent:#0E6F6B; --accent-ink:#0A5652; --accent-soft:#E0F0EE;
+    --good:#2C7A51; --good-soft:#E2F1E9;
+    --warn:#95660F; --warn-soft:#F7EDD9;
+    --bad:#A5403A;  --bad-soft:#F7E4E2;
+    --code-bg:#EFF2F6;
+    --shadow:0 1px 2px rgba(20,30,45,.06), 0 4px 14px rgba(20,30,45,.05);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--ground); color:var(--ink); margin:0;
+    font-family:var(--font-sans); font-size:15px; line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1200px; margin:0 auto; padding:clamp(20px,3.5vw,40px) clamp(14px,3vw,32px) 80px}
+
+  h1{font-size:clamp(23px,3vw,31px); line-height:1.12; letter-spacing:-.025em; font-weight:700; margin:0 0 8px}
+  p{margin:0 0 12px; color:var(--ink-2); max-width:74ch}
+  .eyebrow{font-family:var(--font-mono); font-size:10.5px; font-weight:600; letter-spacing:.15em;
+    text-transform:uppercase; color:var(--accent); display:block; margin-bottom:9px}
+  code{font-family:var(--font-mono); font-size:.87em}
+  .hint{font-size:12.5px; color:var(--ink-3); margin:0}
+
+  header{border-bottom:1px solid var(--line); padding-bottom:20px; margin-bottom:22px}
+
+  /* ── panels ─────────────────────────────────── */
+  .panel{background:var(--surface); border:1px solid var(--line); border-radius:10px;
+    box-shadow:var(--shadow); overflow:hidden}
+  .panel-hd{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:6px 10px; flex-wrap:wrap;
+    padding:10px 14px; background:var(--surface-2); border-bottom:1px solid var(--line);
+    font-family:var(--font-mono); font-size:10.5px; font-weight:600;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3);
+  }
+  .panel-hd > *{min-width:0; overflow-wrap:anywhere}
+  .panel-bd{padding:14px}
+
+  .cols{display:grid; gap:16px; grid-template-columns:1fr}
+  @media(min-width:900px){ .cols{grid-template-columns:330px 1fr} }
+
+  /* ── tenant switcher ────────────────────────── */
+  .tenants{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px}
+  .tenant{
+    flex:1 1 210px; text-align:left; cursor:pointer;
+    background:var(--surface); border:1px solid var(--line-2); border-radius:9px;
+    padding:11px 13px; font-family:var(--font-sans); color:var(--ink-2);
+    transition:border-color .15s ease, background .15s ease;
+  }
+  .tenant:hover{border-color:var(--accent)}
+  .tenant:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .tenant[aria-pressed="true"]{border-color:var(--accent); background:var(--accent-soft)}
+  .tenant .nm{display:block; font-weight:650; font-size:14.5px; color:var(--ink); letter-spacing:-.008em}
+  .tenant .sub{display:block; font-family:var(--font-mono); font-size:11px; color:var(--ink-3); margin-top:2px}
+  .tenant[aria-pressed="true"] .sub{color:var(--accent-ink)}
+
+  /* ── key/value rows ─────────────────────────── */
+  .kv{display:flex; justify-content:space-between; gap:12px; padding:6px 0;
+    border-bottom:1px dashed var(--line); font-size:13px}
+  .kv:last-child{border-bottom:0}
+  .kv .k{font-family:var(--font-mono); font-size:11.5px; color:var(--ink-3); flex:0 0 auto}
+  .kv .v{text-align:right; color:var(--ink); font-weight:560}
+  .kv .v.mono{font-family:var(--font-mono); font-size:11.5px; font-weight:400}
+
+  .prop{
+    display:grid; grid-template-columns:1fr auto; gap:4px 10px; align-items:baseline;
+    padding:7px 0; border-bottom:1px dashed var(--line);
+  }
+  .prop:last-child{border-bottom:0}
+  .prop .lbl{font-weight:600; font-size:13.5px; color:var(--ink)}
+  .prop .src{font-family:var(--font-mono); font-size:11px; color:var(--ink-3); grid-column:1/-1}
+  .prop.added{background:var(--accent-soft); margin:0 -8px; padding:7px 8px; border-radius:5px; border-bottom:0}
+  .prop.added .lbl{color:var(--accent-ink)}
+  .prop.renamed .lbl::after{content:"renamed"; font-family:var(--font-mono); font-size:9.5px;
+    letter-spacing:.06em; color:var(--warn); background:var(--warn-soft);
+    border:1px solid var(--warn); border-radius:4px; padding:1px 5px; margin-left:7px; vertical-align:1px}
+
+  /* ── editor ─────────────────────────────────── */
+  textarea{
+    width:100%; min-height:118px; resize:vertical;
+    font-family:var(--font-mono); font-size:12.5px; line-height:1.6;
+    background:var(--code-bg); color:var(--ink);
+    border:1px solid var(--line-2); border-radius:8px; padding:11px 13px;
+  }
+  textarea:focus{outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent)}
+  textarea.bad{border-color:var(--bad)}
+  .presets{display:flex; gap:7px; flex-wrap:wrap; margin:10px 0 0}
+  .presets button{
+    font-family:var(--font-sans); font-size:12.5px; font-weight:560; cursor:pointer;
+    background:var(--surface-2); color:var(--ink-2);
+    border:1px solid var(--line-2); border-radius:7px; padding:6px 11px;
+    transition:border-color .15s ease, color .15s ease;
+  }
+  .presets button:hover{border-color:var(--accent); color:var(--ink)}
+  .presets button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .err{
+    font-family:var(--font-mono); font-size:12px; color:var(--bad);
+    background:var(--bad-soft); border:1px solid var(--bad); border-radius:7px;
+    padding:8px 11px; margin-top:10px;
+  }
+  .err:empty{display:none}
+
+  pre{
+    background:var(--code-bg); border:1px solid var(--line); border-radius:8px;
+    padding:11px 13px; overflow-x:auto; margin:0;
+    font-family:var(--font-mono); font-size:12px; line-height:1.6; color:var(--ink);
+  }
+
+  /* ── objects table ──────────────────────────── */
+  .tscroll{overflow-x:auto}
+  table{border-collapse:collapse; width:100%; font-size:13.5px; min-width:560px}
+  th{text-align:left; font-family:var(--font-mono); font-size:10px; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--ink-3); font-weight:600;
+    padding:9px 12px; border-bottom:1px solid var(--line-2); background:var(--surface-2); white-space:nowrap}
+  td{padding:9px 12px; border-bottom:1px solid var(--line); color:var(--ink-2); vertical-align:middle}
+  tr:last-child td{border-bottom:0}
+  td.n{font-family:var(--font-mono); font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap}
+  tr.row{cursor:pointer}
+  tr.row:hover td{background:var(--surface-2)}
+  tr.row:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+  tr.detail td{background:var(--surface-2); padding:0}
+  .detail-in{padding:12px 14px; display:grid; gap:9px}
+  .lnk{font-family:var(--font-mono); font-size:11.5px; color:var(--ink-2)}
+  .lnk b{color:var(--accent-ink); font-weight:600}
+
+  .pill{display:inline-block; font-family:var(--font-mono); font-size:10px; font-weight:600;
+    letter-spacing:.05em; padding:3px 8px; border-radius:5px; white-space:nowrap}
+  .pill.ok{background:var(--good-soft); color:var(--good); border:1px solid var(--good)}
+  .pill.no{background:var(--bad-soft); color:var(--bad); border:1px solid var(--bad)}
+  .pill.nu{background:var(--surface-3); color:var(--ink-3); border:1px solid var(--line-2)}
+  .pill.ac{background:var(--accent-soft); color:var(--accent-ink); border:1px solid var(--accent)}
+
+  .summary{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    font-size:13.5px; color:var(--ink-2); padding:10px 14px;
+    background:var(--surface-2); border-top:1px solid var(--line);
+  }
+  .summary b{color:var(--ink)}
+
+  .stack{display:grid; gap:16px}
+  .foot{margin-top:34px; padding-top:18px; border-top:1px solid var(--line);
+    font-size:13px; color:var(--ink-3)}
+  .foot a{color:var(--accent)}
+  @media (prefers-reduced-motion:reduce){ *{transition:none !important} }
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">Ontology console · live registry, real data</span>
+  <h1>Matrix Ontology Console</h1>
+  <p>The same kernel that runs in <code>ontology/poc/</code>, with the registry and rows exported
+  from the running Postgres. Switch tenants to watch one object type re-resolve; edit the gate rule
+  and watch approvals re-evaluate. Nothing here is hardcoded per tenant.</p>
+</header>
+
+<div class="tenants" id="tenants" role="group" aria-label="Choose a tenant"></div>
+<p class="hint" id="chain"></p>
+
+<div class="cols" style="margin-top:18px">
+
+  <!-- LEFT -->
+  <div class="stack">
+    <div class="panel">
+      <div class="panel-hd"><span>Resolved object type</span><span id="ot-name"></span></div>
+      <div class="panel-bd" id="ot-body"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hd"><span>Datasource binding</span><span id="ds-kind"></span></div>
+      <div class="panel-bd" id="ds-body"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hd"><span>Links &amp; interfaces</span></div>
+      <div class="panel-bd" id="li-body"></div>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="stack">
+    <div class="panel">
+      <div class="panel-hd">
+        <span>Gate · action_type.preconditions</span>
+        <span id="gate-api">design.open</span>
+      </div>
+      <div class="panel-bd">
+        <p class="hint" style="margin-bottom:9px">JsonLogic, evaluated by the same operators as
+        <code>kernel/jsonlogic.py</code>. Edit it — the verdicts below update as you type.</p>
+        <textarea id="rule" spellcheck="false" aria-label="JsonLogic precondition"></textarea>
+        <div class="presets" id="presets"></div>
+        <div class="err" id="rule-err"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hd"><span>Objects · resolved through the registry</span><span id="obj-count"></span></div>
+      <div class="tscroll">
+        <table>
+          <thead><tr id="obj-head"></tr></thead>
+          <tbody id="obj-body"></tbody>
+        </table>
+      </div>
+      <div class="summary" id="obj-sum"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hd"><span>SQL the resolver assembled</span></div>
+      <div class="panel-bd">
+        <pre id="sql"></pre>
+        <p class="hint" style="margin-top:9px">Note the tenant predicate. It is injected in exactly
+        one place — the seed of the policy compiler that doesn't exist in the app yet.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="foot">Registry and rows exported from the PoC's throwaway Postgres. Run it yourself with
+<code>cd ontology &amp;&amp; make up &amp;&amp; make demo</code>. Source in
+<code>ontology/poc/</code> on the <code>ontology</code> branch.</p>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var REG  = {"tenants":[{"id":"11111111-1111-1111-1111-111111111111","name":"Coffee Chain Co","code":"COFFEE"},{"id":"33333333-3333-3333-3333-333333333333","name":"Franchise Partner Ltd","code":"FRANCH"},{"id":"22222222-2222-2222-2222-222222222222","name":"QSR Brands Ltd","code":"QSR"}],"versions":[{"id":"b0000000-0000-0000-0000-000000000001","tenant_id":null,"package":"matrix-retail-base","semver":"1.0.0","parent_id":null},{"id":"b0000000-0000-0000-0000-000000000002","tenant_id":"22222222-2222-2222-2222-222222222222","package":"qsr-overlay","semver":"1.0.0","parent_id":"b0000000-0000-0000-0000-000000000001"},{"id":"b0000000-0000-0000-0000-000000000003","tenant_id":"33333333-3333-3333-3333-333333333333","package":"client-erp-overlay","semver":"1.0.0","parent_id":"b0000000-0000-0000-0000-000000000001"}],"objectTypes":[{"version_id":"b0000000-0000-0000-0000-000000000001","api_name":"Site","display_name":"Site","plural":"Sites","primary_key":"id","implements":["Approvable","Documented"]},{"version_id":"b0000000-0000-0000-0000-000000000001","api_name":"LegalDD","display_name":"Legal DD","plural":"Legal DDs","primary_key":"site_id","implements":[]},{"version_id":"b0000000-0000-0000-0000-000000000001","api_name":"SiteBudget","display_name":"Site Budget","plural":"Site Budgets","primary_key":"id","implements":["Approvable","Budgeted"]},{"version_id":"b0000000-0000-0000-0000-000000000002","api_name":"Site","display_name":"Outlet","plural":"Outlets","primary_key":"id","implements":["Approvable","Documented"]}],"properties":[{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"Site","api_name":"id","display_name":"ID","type":"uuid","storage":"column","column_name":"id","constraints":{}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"Site","api_name":"code","display_name":"Site Code","type":"string","storage":"column","column_name":"code","constraints":{}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"Site","api_name":"name","display_name":"Name","type":"string","storage":"column","column_name":"name","constraints":{}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"Site","api_name":"city","display_name":"City","type":"string","storage":"column","column_name":"city","constraints":{}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"Site","api_name":"status","display_name":"Status","type":"string","storage":"column","column_name":"status","constraints":{"enum":["draft_submitted","shortlisted","details_submitted","approved","loi_uploaded","rejected","archived"]}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"Site","api_name":"legalDdStatus","display_name":"Legal DD Status","type":"string","storage":"column","column_name":"legal_dd_status","constraints":{"enum":["pending","in_review","positive","negative"]}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"Site","api_name":"financeStatus","display_name":"Finance Status","type":"string","storage":"column","column_name":"finance_status","constraints":{}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"Site","api_name":"expectedRent","display_name":"Expected Rent","type":"decimal","storage":"column","column_name":"expected_rent","constraints":{}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"Site","api_name":"areaSqft","display_name":"Area (sqft)","type":"integer","storage":"column","column_name":"area_sqft","constraints":{}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"LegalDD","api_name":"siteId","display_name":"Site","type":"uuid","storage":"column","column_name":"site_id","constraints":{}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"LegalDD","api_name":"titleDoc","display_name":"Title Document","type":"string","storage":"column","column_name":"title_doc","constraints":{"enum":["pending","yes","no","na"]}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"LegalDD","api_name":"sanctionedPlan","display_name":"Sanctioned Plan","type":"string","storage":"column","column_name":"sanctioned_plan","constraints":{"enum":["pending","yes","no","na"]}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"LegalDD","api_name":"finalVerdict","display_name":"Final Verdict","type":"string","storage":"column","column_name":"final_verdict","constraints":{"enum":["pending","positive","negative"]}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"LegalDD","api_name":"stage","display_name":"Stage","type":"string","storage":"column","column_name":"stage","constraints":{"enum":["draft","pending_review","published"]}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"SiteBudget","api_name":"id","display_name":"ID","type":"uuid","storage":"column","column_name":"id","constraints":{}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"SiteBudget","api_name":"siteId","display_name":"Site","type":"uuid","storage":"column","column_name":"site_id","constraints":{}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"SiteBudget","api_name":"phase","display_name":"Phase","type":"string","storage":"column","column_name":"phase","constraints":{"enum":["gfc","closure"]}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"SiteBudget","api_name":"status","display_name":"Status","type":"string","storage":"column","column_name":"status","constraints":{"enum":["draft","pending_supervisor","pending_admin","approved","rejected"]}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"SiteBudget","api_name":"budgetTotal","display_name":"Budget Total","type":"decimal","storage":"column","column_name":"budget_total","constraints":{}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"SiteBudget","api_name":"covers","display_name":"Covers","type":"integer","storage":"column","column_name":"covers","constraints":{}},{"version_id":"b0000000-0000-0000-0000-000000000002","object_type":"Site","api_name":"expectedRent","display_name":"Base Rent","type":"decimal","storage":"column","column_name":"expected_rent","constraints":{}},{"version_id":"b0000000-0000-0000-0000-000000000002","object_type":"Site","api_name":"franchiseRoyaltyPct","display_name":"Franchise Royalty %","type":"decimal","storage":"props_json","column_name":"franchise_royalty_pct","constraints":{}}],"links":[{"version_id":"b0000000-0000-0000-0000-000000000001","api_name":"siteLegalDd","from_type":"Site","to_type":"LegalDD","cardinality":"one_to_one","from_column":"id","to_column":"site_id","display":"Legal DD"},{"version_id":"b0000000-0000-0000-0000-000000000001","api_name":"siteBudgets","from_type":"Site","to_type":"SiteBudget","cardinality":"one_to_many","from_column":"id","to_column":"site_id","display":"Budgets"}],"actions":[{"version_id":"b0000000-0000-0000-0000-000000000001","api_name":"budget.submit","object_type":"SiteBudget","display_name":"Submit Budget","preconditions":{"!=":[{"var":"budget_total"},null]},"required_role":"executive","required_module":"project"},{"version_id":"b0000000-0000-0000-0000-000000000002","api_name":"design.open","object_type":"Site","display_name":"Open Design","preconditions":{"==":[{"var":"legal_dd_status"},"positive"]},"required_role":"business_admin","required_module":"design"},{"version_id":"b0000000-0000-0000-0000-000000000001","api_name":"design.open","object_type":"Site","display_name":"Open Design","preconditions":{"and":[{"==":[{"var":"legal_dd_status"},"positive"]},{"==":[{"var":"finance_status"},"approved"]}]},"required_role":"business_admin","required_module":"design"}],"bindings":[{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"Site","kind":"native","schema_name":"public","table_name":"sites","pk_column":"id","tenant_column":"tenant_id","column_map":{},"value_map":{}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"LegalDD","kind":"native","schema_name":"public","table_name":"legal_dd_checklist","pk_column":"site_id","tenant_column":null,"column_map":{},"value_map":{}},{"version_id":"b0000000-0000-0000-0000-000000000001","object_type":"SiteBudget","kind":"native","schema_name":"public","table_name":"site_budgets","pk_column":"id","tenant_column":"tenant_id","column_map":{},"value_map":{}},{"version_id":"b0000000-0000-0000-0000-000000000003","object_type":"Site","kind":"native","schema_name":"client_erp","table_name":"store_master","pk_column":"store_ref","tenant_column":"org_id","column_map":{"id":"store_ref","city":"town","code":"store_ref","name":"store_name","status":"lifecycle_state","areaSqft":"carpet_area","expectedRent":"monthly_rental","financeStatus":"finance_clearance","legalDdStatus":"legal_clearance"},"value_map":{"status":{"LIVE":"approved","PIPELINE":"details_submitted"},"financeStatus":{"RELEASED":"approved","PENDING_FIN":"pending"},"legalDdStatus":{"BLOCKED":"negative","CLEARED":"positive","IN_REVIEW":"in_review"}}}],"interfaces":[{"version_id":"b0000000-0000-0000-0000-000000000001","api_name":"Approvable","required_properties":["status"]},{"version_id":"b0000000-0000-0000-0000-000000000001","api_name":"Documented","required_properties":[]},{"version_id":"b0000000-0000-0000-0000-000000000001","api_name":"Budgeted","required_properties":["budgetTotal"]}],"impls":[{"version_id":"b0000000-0000-0000-0000-000000000001","interface_name":"Approvable","object_type":"Site"},{"version_id":"b0000000-0000-0000-0000-000000000001","interface_name":"Approvable","object_type":"SiteBudget"},{"version_id":"b0000000-0000-0000-0000-000000000001","interface_name":"Budgeted","object_type":"SiteBudget"}]};
+  var DATA = {"sites":[{"id":"5171e001-0000-0000-0000-000000000001","tenant_id":"11111111-1111-1111-1111-111111111111","code":"BLR-001","name":"Indiranagar 100ft Rd","city":"Bengaluru","status":"approved","legal_dd_status":"positive","finance_status":"approved","expected_rent":"285000.00","area_sqft":1450,"props":{}},{"id":"5171e002-0000-0000-0000-000000000002","tenant_id":"11111111-1111-1111-1111-111111111111","code":"BLR-002","name":"Koramangala 5th Block","city":"Bengaluru","status":"approved","legal_dd_status":"positive","finance_status":"pending","expected_rent":"310000.00","area_sqft":1600,"props":{}},{"id":"5171e004-0000-0000-0000-000000000004","tenant_id":"22222222-2222-2222-2222-222222222222","code":"DEL-001","name":"Connaught Place Kiosk","city":"New Delhi","status":"approved","legal_dd_status":"positive","finance_status":"approved","expected_rent":"195000.00","area_sqft":700,"props":{"franchise_royalty_pct":6.5}},{"id":"5171e005-0000-0000-0000-000000000005","tenant_id":"22222222-2222-2222-2222-222222222222","code":"DEL-002","name":"Saket Select City","city":"New Delhi","status":"approved","legal_dd_status":"positive","finance_status":"pending","expected_rent":"240000.00","area_sqft":850,"props":{"franchise_royalty_pct":7.25}},{"id":"5171e003-0000-0000-0000-000000000003","tenant_id":"11111111-1111-1111-1111-111111111111","code":"MUM-001","name":"Bandra Linking Rd","city":"Mumbai","status":"details_submitted","legal_dd_status":"pending","finance_status":"pending","expected_rent":"450000.00","area_sqft":1200,"props":{}}],"legal":[{"site_id":"5171e001-0000-0000-0000-000000000001","title_doc":"yes","sanctioned_plan":"yes","oc_cc":"yes","commercial_use":"yes","final_verdict":"positive","stage":"published"},{"site_id":"5171e002-0000-0000-0000-000000000002","title_doc":"yes","sanctioned_plan":"yes","oc_cc":"na","commercial_use":"yes","final_verdict":"positive","stage":"published"},{"site_id":"5171e003-0000-0000-0000-000000000003","title_doc":"pending","sanctioned_plan":"pending","oc_cc":"pending","commercial_use":"pending","final_verdict":"pending","stage":"draft"},{"site_id":"5171e004-0000-0000-0000-000000000004","title_doc":"yes","sanctioned_plan":"yes","oc_cc":"yes","commercial_use":"yes","final_verdict":"positive","stage":"published"},{"site_id":"5171e005-0000-0000-0000-000000000005","title_doc":"yes","sanctioned_plan":"na","oc_cc":"yes","commercial_use":"yes","final_verdict":"positive","stage":"published"}],"budgets":[{"id":"383337e9-411c-4a22-a564-94b039e80515","tenant_id":"11111111-1111-1111-1111-111111111111","site_id":"5171e001-0000-0000-0000-000000000001","phase":"gfc","status":"approved","budget_total":"4850000.00","covers":48},{"id":"05c2eb3f-641e-40e2-a758-b66c2568b4ff","tenant_id":"11111111-1111-1111-1111-111111111111","site_id":"5171e002-0000-0000-0000-000000000002","phase":"gfc","status":"draft","budget_total":"5200000.00","covers":56},{"id":"29ea9575-78a6-4c51-9c42-2189a0d52b0e","tenant_id":"22222222-2222-2222-2222-222222222222","site_id":"5171e004-0000-0000-0000-000000000004","phase":"gfc","status":"approved","budget_total":"1950000.00","covers":18}],"clientErp":[{"store_ref":"STR-4471","org_id":"33333333-3333-3333-3333-333333333333","store_name":"Phoenix Marketcity","town":"Pune","lifecycle_state":"LIVE","legal_clearance":"CLEARED","finance_clearance":"RELEASED","monthly_rental":"275000.00","carpet_area":1300},{"store_ref":"STR-4472","org_id":"33333333-3333-3333-3333-333333333333","store_name":"Hinjewadi Phase 2","town":"Pune","lifecycle_state":"LIVE","legal_clearance":"CLEARED","finance_clearance":"PENDING_FIN","monthly_rental":"198000.00","carpet_area":900},{"store_ref":"STR-4473","org_id":"33333333-3333-3333-3333-333333333333","store_name":"Baner Road","town":"Pune","lifecycle_state":"PIPELINE","legal_clearance":"IN_REVIEW","finance_clearance":"PENDING_FIN","monthly_rental":"225000.00","carpet_area":1100}]};
+
+  /* ── JsonLogic: a faithful port of kernel/jsonlogic.py ─────────────── */
+  function truthy(v){
+    if(v===null||v===false||v===undefined) return false;
+    if(v===0) return false;
+    if((typeof v==="string"||Array.isArray(v)) && v.length===0) return false;
+    if(typeof v==="object" && !Array.isArray(v) && Object.keys(v).length===0) return false;
+    return Boolean(v);
+  }
+  function getVar(args,data){
+    var path, dflt=null;
+    if(Array.isArray(args)){ path=args.length?args[0]:""; if(args.length>1) dflt=args[1]; }
+    else path=args;
+    if(path===""||path===null||path===undefined) return data;
+    var cur=data, parts=String(path).split(".");
+    for(var i=0;i<parts.length;i++){
+      if(cur && typeof cur==="object" && parts[i] in cur) cur=cur[parts[i]];
+      else return dflt;
+    }
+    return cur;
+  }
+  function cmp(op,a,b){
+    if(a===null||b===null||a===undefined||b===undefined) return false;
+    if(op===">")  return a>b;
+    if(op===">=") return a>=b;
+    if(op==="<")  return a<b;
+    return a<=b;
+  }
+  function apply(rule,data){
+    data = data||{};
+    if(rule===null||typeof rule!=="object"||Array.isArray(rule)) return rule;
+    var keys=Object.keys(rule);
+    if(keys.length!==1) throw new Error("a rule takes exactly one operator, got: "+keys.join(", "));
+    var op=keys[0], args=rule[op];
+    if(op==="var") return getVar(args,data);
+    if(!Array.isArray(args)) args=[args];
+    if(op==="and"){ var r=true; for(var i=0;i<args.length;i++){ r=apply(args[i],data); if(!truthy(r)) return r; } return r; }
+    if(op==="or"){ var s=false; for(var j=0;j<args.length;j++){ s=apply(args[j],data); if(truthy(s)) return s; } return s; }
+    if(op==="if"){
+      for(var k=0;k+1<args.length;k+=2){ if(truthy(apply(args[k],data))) return apply(args[k+1],data); }
+      return args.length%2 ? apply(args[args.length-1],data) : null;
+    }
+    var v=args.map(function(a){ return apply(a,data); });
+    switch(op){
+      case "==": return v[0]===v[1];
+      case "!=": return v[0]!==v[1];
+      case ">": case ">=": case "<": case "<=": return cmp(op,v[0],v[1]);
+      case "!":  return !truthy(v[0]);
+      case "!!": return truthy(v[0]);
+      case "in": return v[1]==null ? false : v[1].indexOf(v[0])!==-1;
+    }
+    throw new Error("unsupported operator: "+op);
+  }
+
+  /* ── registry resolution: base version, then this tenant's overlay ─── */
+  function versionChain(tenantId){
+    var base=REG.versions.filter(function(v){ return !v.tenant_id; })[0];
+    var ov  =REG.versions.filter(function(v){ return v.tenant_id===tenantId; })[0];
+    return ov ? [base,ov] : [base];
+  }
+  function pick(list,ids,keyFn){
+    var out={};
+    ids.forEach(function(id){
+      (list||[]).forEach(function(r){ if(r.version_id===id) out[keyFn(r)]=r; });
+    });
+    return out;
+  }
+  function resolve(tenantId){
+    var chain=versionChain(tenantId), ids=chain.map(function(v){ return v.id; });
+    var props={};
+    ids.forEach(function(id){
+      (REG.properties||[]).forEach(function(p){
+        if(p.version_id!==id) return;
+        props[p.object_type]=props[p.object_type]||{};
+        props[p.object_type][p.api_name]=p;
+      });
+    });
+    var impls={};
+    ids.forEach(function(id){
+      (REG.impls||[]).forEach(function(m){
+        if(m.version_id!==id) return;
+        (impls[m.interface_name]=impls[m.interface_name]||[]).push(m.object_type);
+      });
+    });
+    return {
+      chain: chain.map(function(v){ return v.package+"@"+v.semver; }),
+      objectTypes: pick(REG.objectTypes, ids, function(r){ return r.api_name; }),
+      properties: props,
+      links: pick(REG.links, ids, function(r){ return r.api_name; }),
+      actions: pick(REG.actions, ids, function(r){ return r.api_name; }),
+      bindings: pick(REG.bindings, ids, function(r){ return r.object_type; }),
+      interfaces: pick(REG.interfaces, ids, function(r){ return r.api_name; }),
+      impls: impls
+    };
+  }
+
+  /* ── the read path: column_map, value_map, props overlay ───────────── */
+  function sourceRows(binding, tenantId){
+    if(binding.table_name==="store_master")
+      return DATA.clientErp.filter(function(r){ return r.org_id===tenantId; });
+    if(binding.table_name==="sites")
+      return DATA.sites.filter(function(r){ return r.tenant_id===tenantId; });
+    return [];
+  }
+  function resolveRows(res, tenantId){
+    var b=res.bindings.Site, defs=res.properties.Site||{};
+    var cmap=b.column_map||{}, vmap=b.value_map||{};
+    return sourceRows(b,tenantId).map(function(raw){
+      var obj={_raw:raw};
+      Object.keys(defs).forEach(function(api){
+        var d=defs[api], val;
+        if(d.storage==="props_json"){
+          var bag=raw.props||{};
+          val=bag[d.column_name||api];
+        } else {
+          val=raw[cmap[api] || d.column_name];
+        }
+        if(vmap[api] && val in vmap[api]) val=vmap[api][val];
+        obj[api]= val===undefined ? null : val;
+      });
+      return obj;
+    });
+  }
+  function gateContext(res, obj){
+    // preconditions are written against BASE column names
+    var defs=res.properties.Site||{}, ctx={};
+    Object.keys(defs).forEach(function(api){
+      var col=defs[api].column_name;
+      if(col) ctx[col]=obj[api];
+    });
+    return ctx;
+  }
+  function buildSQL(res, tenantId){
+    var b=res.bindings.Site, defs=res.properties.Site||{}, cmap=b.column_map||{};
+    var sel=Object.keys(defs).map(function(api){
+      var d=defs[api];
+      if(d.storage==="props_json") return "  props ->> '"+(d.column_name||api)+"' AS \""+api+"\"";
+      return '  "'+(cmap[api]||d.column_name)+'" AS "'+api+'"';
+    }).join(",\n");
+    var sql="SELECT\n"+sel+"\nFROM \""+b.schema_name+"\".\""+b.table_name+"\"";
+    if(b.tenant_column) sql+="\nWHERE \""+b.tenant_column+"\" = '"+tenantId.slice(0,8)+"…'::uuid";
+    return sql+"\nORDER BY 1 LIMIT 50;";
+  }
+
+  /* ── state ─────────────────────────────────────────────────────────── */
+  var tenants=REG.tenants.slice().sort(function(a,b){ return a.code<b.code?-1:1; });
+  var state={ tenant:tenants.filter(function(t){return t.code==="COFFEE";})[0].id, rule:null, open:null };
+
+  var el=function(id){ return document.getElementById(id); };
+
+  function baseRuleFor(tenantId){
+    var res=resolve(tenantId), a=res.actions["design.open"];
+    return a ? a.preconditions : {};
+  }
+
+  /* ── render ────────────────────────────────────────────────────────── */
+  function renderTenants(){
+    el("tenants").innerHTML="";
+    tenants.forEach(function(t){
+      var b=document.createElement("button");
+      b.className="tenant"; b.type="button";
+      b.setAttribute("aria-pressed", t.id===state.tenant ? "true":"false");
+      var ov=REG.versions.filter(function(v){ return v.tenant_id===t.id; })[0];
+      var note = ov ? ov.package : "base ontology, unchanged";
+      b.innerHTML="<span class='nm'>"+t.name+"</span><span class='sub'>"+note+"</span>";
+      b.addEventListener("click", function(){
+        state.tenant=t.id; state.rule=null; state.open=null; renderAll();
+      });
+      el("tenants").appendChild(b);
+    });
+  }
+
+  function renderOntology(res){
+    var ot=res.objectTypes.Site;
+    var baseRes=resolve(null);
+    var baseProps=baseRes.properties.Site||{};
+    el("ot-name").textContent=ot.api_name;
+
+    var renamed = ot.display_name !== baseRes.objectTypes.Site.display_name;
+    var html="<div class='kv'><span class='k'>display_name</span><span class='v'>"+
+      ot.display_name+(renamed?" <span class='pill ac'>renamed</span>":"")+"</span></div>"+
+      "<div class='kv'><span class='k'>primary_key</span><span class='v mono'>"+ot.primary_key+"</span></div>"+
+      "<div style='margin-top:12px'>";
+
+    var defs=res.properties.Site||{};
+    Object.keys(defs).forEach(function(api){
+      var d=defs[api], isNew=!baseProps[api];
+      var wasRenamed=!isNew && baseProps[api].display_name!==d.display_name;
+      var src = d.storage==="props_json"
+        ? "props → "+(d.column_name||api)+"  ·  jsonb overlay"
+        : (res.bindings.Site.column_map||{})[api]
+          ? "column "+(res.bindings.Site.column_map||{})[api]+"  ·  mapped"
+          : "column "+d.column_name;
+      html+="<div class='prop"+(isNew?" added":"")+(wasRenamed?" renamed":"")+"'>"+
+            "<span class='lbl'>"+d.display_name+"</span>"+
+            "<span class='pill nu'>"+d.type+"</span>"+
+            "<span class='src'>"+src+"</span></div>";
+    });
+    el("ot-body").innerHTML=html+"</div>";
+  }
+
+  function renderDatasource(res){
+    var b=res.bindings.Site;
+    el("ds-kind").textContent=b.kind;
+    var foreign = b.schema_name!=="public";
+    var h="<div class='kv'><span class='k'>table</span><span class='v mono'>"+
+      b.schema_name+"."+b.table_name+(foreign?" <span class='pill ac'>client's own</span>":"")+"</span></div>"+
+      "<div class='kv'><span class='k'>pk_column</span><span class='v mono'>"+b.pk_column+"</span></div>"+
+      "<div class='kv'><span class='k'>tenant_column</span><span class='v mono'>"+(b.tenant_column||"—")+"</span></div>";
+    var vm=b.value_map||{};
+    if(Object.keys(vm).length){
+      h+="<p class='hint' style='margin:11px 0 5px'>Their vocabulary → ours</p>";
+      Object.keys(vm).forEach(function(p){
+        Object.keys(vm[p]).forEach(function(k){
+          h+="<div class='kv'><span class='k'>"+k+"</span><span class='v mono'>"+vm[p][k]+"</span></div>";
+        });
+      });
+    }
+    el("ds-body").innerHTML=h;
+  }
+
+  function renderLinksInterfaces(res){
+    var h="";
+    Object.keys(res.links).forEach(function(n){
+      var l=res.links[n];
+      h+="<div class='kv'><span class='k'>"+n+"</span><span class='v mono'>"+
+         l.from_type+" → "+l.to_type+"</span></div>";
+    });
+    h+="<p class='hint' style='margin:12px 0 5px'>Interfaces</p>";
+    Object.keys(res.interfaces).forEach(function(n){
+      var impl=(res.impls[n]||[]);
+      h+="<div class='kv'><span class='k'>"+n+"</span><span class='v mono'>"+
+         (impl.length?impl.join(", "):"—")+"</span></div>";
+    });
+    el("li-body").innerHTML=h;
+  }
+
+  function renderObjects(res, rule, ruleOk){
+    var rows=resolveRows(res, state.tenant);
+    var defs=res.properties.Site||{};
+    var cols=["code","name","city","legalDdStatus","financeStatus"].filter(function(c){ return defs[c]; });
+    if(defs.franchiseRoyaltyPct) cols.push("franchiseRoyaltyPct");
+
+    el("obj-count").textContent=rows.length+" rows";
+    el("obj-head").innerHTML=cols.map(function(c){
+      return "<th>"+defs[c].display_name+"</th>";
+    }).join("")+"<th>design.open</th>";
+
+    var body=el("obj-body"); body.innerHTML="";
+    var pass=0;
+
+    rows.forEach(function(o,idx){
+      var ok=null;
+      if(ruleOk){
+        try{ ok=truthy(apply(rule, gateContext(res,o))); }catch(e){ ok=null; }
+        if(ok) pass++;
+      }
+      var tr=document.createElement("tr");
+      tr.className="row"; tr.tabIndex=0;
+      tr.innerHTML=cols.map(function(c){
+        var v=o[c];
+        var green=(c==="legalDdStatus"&&v==="positive")||(c==="financeStatus"&&v==="approved");
+        return "<td class='"+(c==="code"||c.indexOf("Status")>-1||c==="franchiseRoyaltyPct"?"n":"")+"'"+
+               (green?" style='color:var(--good)'":"")+">"+(v===null?"—":v)+"</td>";
+      }).join("")+"<td>"+(ok===null
+          ? "<span class='pill nu'>—</span>"
+          : ok ? "<span class='pill ok'>UNLOCKED</span>" : "<span class='pill no'>BLOCKED</span>")+"</td>";
+
+      function toggle(){
+        state.open = state.open===idx ? null : idx;
+        renderAll();
+      }
+      tr.addEventListener("click", toggle);
+      tr.addEventListener("keydown", function(e){
+        if(e.key==="Enter"||e.key===" "){ e.preventDefault(); toggle(); }
+      });
+      body.appendChild(tr);
+
+      if(state.open===idx){
+        var d=document.createElement("tr"); d.className="detail";
+        var td=document.createElement("td"); td.colSpan=cols.length+1;
+        var sid=o._raw.id || o._raw.store_ref;
+        var legal=(DATA.legal||[]).filter(function(l){ return l.site_id===sid; });
+        var buds =(DATA.budgets||[]).filter(function(b){ return b.site_id===sid; });
+        var inner="<div class='detail-in'>";
+        inner+="<div class='lnk'>traversed via declared links, no hand-written join</div>";
+        if(legal.length) inner+="<div class='lnk'><b>siteLegalDd</b> → verdict="+legal[0].final_verdict+
+              " · stage="+legal[0].stage+" · title_doc="+legal[0].title_doc+"</div>";
+        if(buds.length)  buds.forEach(function(b){
+          inner+="<div class='lnk'><b>siteBudgets</b> → phase="+b.phase+" · status="+b.status+
+                 " · total="+b.budget_total+"</div>"; });
+        if(!legal.length && !buds.length)
+          inner+="<div class='lnk'>no linked records — this object comes from the client's own table, "+
+                 "which carries no legal or budget rows</div>";
+        td.innerHTML=inner+"</div>";
+        d.appendChild(td); body.appendChild(d);
+      }
+    });
+
+    el("obj-sum").innerHTML = ruleOk
+      ? "<b>"+pass+" of "+rows.length+"</b> can start Design under this rule. "+
+        "<span class='hint'>Click a row to traverse its links.</span>"
+      : "<span class='hint'>Fix the rule to see verdicts.</span>";
+  }
+
+  function renderAll(){
+    var res=resolve(state.tenant);
+    el("chain").textContent="version chain: "+res.chain.join("  →  ");
+
+    renderTenants();
+    renderOntology(res);
+    renderDatasource(res);
+    renderLinksInterfaces(res);
+
+    if(state.rule===null){
+      state.rule=JSON.stringify(baseRuleFor(state.tenant),null,2);
+      el("rule").value=state.rule;
+    }
+
+    var parsed=null, ok=false, msg="";
+    try{
+      parsed=JSON.parse(el("rule").value);
+      if(parsed===null||typeof parsed!=="object"||Array.isArray(parsed))
+        throw new Error("a precondition must be an object. A bare literal is truthy — "+
+                        "that is the always-open gate this kernel refuses.");
+      apply(parsed,{});            // surface unsupported operators early
+      ok=true;
+    }catch(e){ msg=e.message; }
+
+    el("rule").classList.toggle("bad", !ok);
+    el("rule-err").textContent = ok ? "" : msg;
+    el("sql").textContent=buildSQL(res, state.tenant);
+
+    renderObjects(res, parsed, ok);
+  }
+
+  /* ── presets ───────────────────────────────────────────────────────── */
+  var PRESETS=[
+    { label:"Today (Legal AND Finance)", rule:{ and:[
+        {"==":[{"var":"legal_dd_status"},"positive"]},
+        {"==":[{"var":"finance_status"},"approved"]}]}},
+    { label:"Design before Finance", rule:{"==":[{"var":"legal_dd_status"},"positive"]}},
+    { label:"Add a rent ceiling", rule:{ and:[
+        {"==":[{"var":"legal_dd_status"},"positive"]},
+        {"<":[{"var":"expected_rent"},300000]}]}},
+    { label:"Break it (bare literal)", rule:"always open" }
+  ];
+  PRESETS.forEach(function(p){
+    var b=document.createElement("button"); b.type="button"; b.textContent=p.label;
+    b.addEventListener("click", function(){
+      el("rule").value=JSON.stringify(p.rule,null,2); state.rule=el("rule").value; renderAll();
+    });
+    el("presets").appendChild(b);
+  });
+
+  el("rule").addEventListener("input", function(){ state.rule=el("rule").value; renderAll(); });
+
+  renderAll();
+})();
+</script>
