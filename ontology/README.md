@@ -12,6 +12,9 @@ that a client maps their own databases onto, then edits.
 | File | What it is |
 |---|---|
 | [`flow.html`](./flow.html) | **Start here.** The visual walkthrough — the live state machine, an interactive gate you can reorder, and the remaining-work status. Open it in a browser |
+| [`How_Flow_Changes_Work.md`](./How_Flow_Changes_Work.md) | Step by step: how module order, approval levels, approvers, and fields each become configuration — starting from the code as it is today |
+| [`designer.html`](./designer.html) | Arrange the flow as nodes; see the rows it generates |
+| [`console.html`](./console.html) | The kernel running over the exported registry — switch tenants, edit the gate rule |
 | [`Palantir_Evaluation.md`](./Palantir_Evaluation.md) | Foundry's real architecture, and a primitive-by-primitive scorecard of Matrix against it |
 | [`Build_Sequence.md`](./Build_Sequence.md) | The roadmap, reordered around your seven requirements |
 | [`poc/`](./poc/) | A runnable proof of five of them |
