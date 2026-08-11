@@ -1,0 +1,900 @@
+<title>How flow changes work — a step-by-step guide</title>
+<style>
+  /* ─────────────────────────────────────────────────────────────
+     Committed single-theme: dark only, by request.
+     Not pure black on pure white — #0B0C0E / #E4E5E3 avoids the
+     halation that makes long reads tiring on an LCD panel.
+     ───────────────────────────────────────────────────────────── */
+  :root{
+    --ground:#0B0C0E;
+    --surface:#131519;
+    --surface-2:#191C21;
+    --surface-3:#20242A;
+    --ink:#E4E5E3;
+    --ink-2:#9AA0A6;
+    --ink-3:#7C838B;   /* 4.9:1 on the ground — above AA for the captions it carries */
+    --line:#23272D;
+    --line-2:#2F343B;
+    --accent:#4FB3A6;
+    --accent-dim:#2A4E4A;
+    --accent-soft:#0F2321;
+    --gap:#D6A05C;
+    --gap-soft:#241C11;
+    --crit:#D97A6C;
+    --crit-soft:#241615;
+    --ok:#6BAE86;
+    --ok-soft:#132018;
+    --font-sans:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono",SFMono-Regular,"JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    background:var(--ground); color:var(--ink); margin:0;
+    font-family:var(--font-sans); font-size:17px; line-height:1.75;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  }
+
+  .shell{max-width:1180px; margin:0 auto; padding:clamp(26px,4vw,56px) clamp(16px,4vw,40px) 100px}
+  .layout{display:grid; gap:44px; grid-template-columns:1fr}
+  @media(min-width:1080px){ .layout{grid-template-columns:210px minmax(0,1fr)} }
+  /* Grid children default to min-width:auto, so a wide <pre> or table would
+     stretch the column and scroll the whole page sideways. */
+  .layout > *{min-width:0}
+  main :is(pre,.tw,table){max-width:100%}
+
+  /* ── table of contents ─────────────────────────────── */
+  nav{font-size:13.5px; line-height:1.6}
+  @media(min-width:1080px){ nav{position:sticky; top:26px; align-self:start; max-height:calc(100vh - 52px); overflow-y:auto} }
+  nav .navlbl{font-family:var(--font-mono); font-size:10px; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--ink-3); margin-bottom:12px; display:block}
+  nav ol{list-style:none; margin:0; padding:0; display:grid; gap:1px}
+  nav a{display:block; color:var(--ink-2); text-decoration:none; padding:5px 10px;
+    border-left:2px solid var(--line); border-radius:0 5px 5px 0}
+  nav a:hover{color:var(--ink); background:var(--surface); border-left-color:var(--accent)}
+  nav a:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+  nav a .n{font-family:var(--font-mono); font-size:10.5px; color:var(--ink-3); margin-right:7px}
+  nav a.isgap{border-left-color:var(--gap-soft)}
+  nav a.isgap .n{color:var(--gap)}
+
+  /* ── typography ────────────────────────────────────── */
+  h1{font-size:clamp(30px,4.4vw,42px); line-height:1.14; letter-spacing:-.026em;
+     font-weight:700; margin:0 0 16px; text-wrap:balance; color:#F1F2F0}
+  h2{font-size:clamp(21px,2.7vw,27px); line-height:1.24; letter-spacing:-.018em;
+     font-weight:660; margin:0 0 4px; text-wrap:balance; color:#F1F2F0}
+  h3{font-size:17.5px; font-weight:640; letter-spacing:-.008em; margin:30px 0 9px; color:#EDEEEC}
+  p{margin:0 0 17px; max-width:68ch; color:var(--ink-2)}
+  p strong,li strong{color:var(--ink); font-weight:620}
+  em{color:var(--ink); font-style:italic}
+  a{color:var(--accent); text-underline-offset:3px; text-decoration-color:var(--accent-dim)}
+  ul,ol{margin:0 0 17px; padding-left:22px; max-width:68ch; color:var(--ink-2)}
+  li{margin-bottom:9px}
+  li::marker{color:var(--ink-3)}
+  code{font-family:var(--font-mono); font-size:.84em; background:var(--surface-2);
+    border:1px solid var(--line); border-radius:4px; padding:.1em .38em; color:#D8DAD7}
+  hr{border:0; border-top:1px solid var(--line); margin:44px 0}
+
+  .lead{font-size:19px; line-height:1.68; color:var(--ink-2); max-width:66ch}
+  .kicker{font-family:var(--font-mono); font-size:10.5px; font-weight:600; letter-spacing:.17em;
+    text-transform:uppercase; color:var(--accent); display:block; margin-bottom:11px}
+
+  header{border-bottom:1px solid var(--line); padding-bottom:30px; margin-bottom:14px}
+  .meta{display:flex; flex-wrap:wrap; gap:7px; margin-top:20px}
+  .meta span{font-family:var(--font-mono); font-size:11px; color:var(--ink-3);
+    border:1px solid var(--line-2); border-radius:5px; padding:4px 9px}
+
+  /* ── sections ──────────────────────────────────────── */
+  section{margin-top:56px; scroll-margin-top:24px}
+  .sec-hd{display:flex; align-items:baseline; gap:13px; margin-bottom:18px;
+    padding-bottom:13px; border-bottom:1px solid var(--line)}
+  .sec-hd .num{font-family:var(--font-mono); font-size:12px; color:var(--ink-3);
+    font-variant-numeric:tabular-nums; flex:0 0 auto; padding-top:4px}
+  .sec-hd.gap{border-bottom-color:var(--gap-soft)}
+  .sec-hd.gap .num{color:var(--gap)}
+
+  .tagline{font-size:14px; color:var(--ink-3); margin:-2px 0 0}
+
+  .badge{display:inline-block; font-family:var(--font-mono); font-size:9.5px; font-weight:700;
+    letter-spacing:.1em; text-transform:uppercase; padding:3px 8px; border-radius:4px;
+    vertical-align:3px; margin-left:9px}
+  .badge.gap{background:var(--gap-soft); color:var(--gap); border:1px solid var(--gap)}
+  .badge.crit{background:var(--crit-soft); color:var(--crit); border:1px solid var(--crit)}
+
+  /* ── code ──────────────────────────────────────────── */
+  pre{background:#0E1013; border:1px solid var(--line); border-radius:9px;
+    padding:15px 17px; overflow-x:auto; margin:0 0 17px;
+    font-family:var(--font-mono); font-size:13px; line-height:1.72; color:#CFD2CF}
+  pre b{color:var(--accent); font-weight:600}
+  pre i{color:var(--ink-3); font-style:normal}
+  pre u{color:var(--gap); text-decoration:none}
+  .cap{font-size:12.5px; color:var(--ink-3); margin:-9px 0 20px; font-family:var(--font-mono)}
+
+  /* ── before / after ────────────────────────────────── */
+  .ba{display:grid; gap:12px; grid-template-columns:1fr; margin:0 0 20px}
+  @media(min-width:780px){ .ba{grid-template-columns:1fr 1fr} }
+  .ba > div{border:1px solid var(--line); border-radius:9px; overflow:hidden; min-width:0}
+  .ba .h{font-family:var(--font-mono); font-size:10px; letter-spacing:.13em; text-transform:uppercase;
+    padding:8px 13px; border-bottom:1px solid var(--line); color:var(--ink-3); background:var(--surface)}
+  .ba .b{padding:13px; font-size:13.5px; color:var(--ink-2)}
+  .ba .b code{font-size:12px}
+  .ba .was .h{color:var(--crit)}
+  .ba .now .h{color:var(--ok)}
+
+  /* ── tables ────────────────────────────────────────── */
+  .tw{overflow-x:auto; border:1px solid var(--line); border-radius:9px; margin:0 0 20px; background:var(--surface)}
+  table{border-collapse:collapse; width:100%; font-size:14.5px; min-width:520px}
+  th{text-align:left; font-family:var(--font-mono); font-size:10px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--ink-3); font-weight:600; padding:11px 15px;
+    border-bottom:1px solid var(--line-2); background:var(--surface-2); white-space:nowrap}
+  td{padding:11px 15px; border-bottom:1px solid var(--line); color:var(--ink-2); vertical-align:top; line-height:1.6}
+  tr:last-child td{border-bottom:0}
+  td strong{color:var(--ink)}
+  td code{font-size:12px}
+  .num-c{font-variant-numeric:tabular-nums; font-family:var(--font-mono); font-size:13px; white-space:nowrap}
+
+  /* ── callouts ──────────────────────────────────────── */
+  .note{border-left:2px solid var(--line-2); padding:3px 0 3px 18px; margin:0 0 20px;
+    color:var(--ink-3); font-size:15px; max-width:66ch}
+  .warn{border:1px solid var(--gap); background:var(--gap-soft); border-radius:9px;
+    padding:15px 18px; margin:0 0 20px}
+  .warn .t{font-weight:640; color:var(--gap); margin-bottom:5px; font-size:15px}
+  .warn p{margin:0; color:var(--ink-2); font-size:15px}
+  .danger{border:1px solid var(--crit); background:var(--crit-soft); border-radius:9px;
+    padding:15px 18px; margin:0 0 20px}
+  .danger .t{font-weight:640; color:var(--crit); margin-bottom:5px; font-size:15px}
+  .danger p{margin:0 0 10px; color:var(--ink-2); font-size:15px}
+  .danger p:last-child{margin:0}
+
+  /* ── comprehension check ───────────────────────────── */
+  details.chk{border:1px solid var(--accent-dim); background:var(--accent-soft);
+    border-radius:9px; margin:26px 0 20px; overflow:hidden}
+  details.chk summary{cursor:pointer; padding:13px 17px; list-style:none;
+    font-size:15px; color:var(--ink); font-weight:560; display:flex; gap:11px; align-items:flex-start}
+  details.chk summary::-webkit-details-marker{display:none}
+  details.chk summary:hover{background:rgba(79,179,166,.05)}
+  details.chk summary:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+  details.chk summary .q{font-family:var(--font-mono); font-size:9.5px; font-weight:700;
+    letter-spacing:.11em; text-transform:uppercase; color:var(--accent);
+    border:1px solid var(--accent-dim); border-radius:4px; padding:3px 7px;
+    flex:0 0 auto; margin-top:3px}
+  details.chk summary .txt{flex:1 1 auto; min-width:0}
+  details.chk summary::after{content:"show"; font-family:var(--font-mono); font-size:10.5px;
+    color:var(--ink-3); flex:0 0 auto; margin-top:5px}
+  details.chk[open] summary::after{content:"hide"}
+  details.chk .ans{padding:0 17px 15px; border-top:1px solid var(--accent-dim); margin-top:0}
+  details.chk .ans p{margin:14px 0 0; font-size:15px; color:var(--ink-2)}
+  details.chk .ans p:first-child{margin-top:14px}
+  details.chk .ans pre{margin-top:14px; font-size:12.5px}
+
+  .foot{margin-top:64px; padding-top:24px; border-top:1px solid var(--line);
+    font-size:13.5px; color:var(--ink-3)}
+  .foot a{color:var(--accent)}
+
+  @media (prefers-reduced-motion:reduce){ *{transition:none !important; animation:none !important} }
+</style>
+
+<div class="shell">
+<div class="layout">
+
+<nav>
+  <span class="navlbl">Contents</span>
+  <ol>
+    <li><a href="#s0"><span class="n">00</span>Where you are today</a></li>
+    <li><a href="#s1"><span class="n">01</span>Order becomes edges</a></li>
+    <li><a href="#s2"><span class="n">02</span>Levels become rows</a></li>
+    <li><a href="#s3"><span class="n">03</span>Assignees</a></li>
+    <li><a href="#s4"><span class="n">04</span>Fields</a></li>
+    <li><a href="#s5" class="isgap"><span class="n">05</span>What actions <em>do</em></a></li>
+    <li><a href="#s6" class="isgap"><span class="n">06</span>Change control</a></li>
+    <li><a href="#s7" class="isgap"><span class="n">07</span>In-flight records</a></li>
+    <li><a href="#s8" class="isgap"><span class="n">08</span>Column security</a></li>
+    <li><a href="#s9"><span class="n">09</span>Request-time order</a></li>
+    <li><a href="#s10"><span class="n">10</span>Revised sequence</a></li>
+    <li><a href="#s11"><span class="n">11</span>What you don't need</a></li>
+    <li><a href="#s12"><span class="n">12</span>Final self-test</a></li>
+  </ol>
+</nav>
+
+<main>
+<header>
+  <span class="kicker">Matrix · ontology branch · experimental</span>
+  <h1>How approval-flow changes work</h1>
+  <p class="lead">A step-by-step account of what has to change so that reordering approvals, adding
+  approval levels, choosing approvers, and adding fields become configuration instead of code —
+  starting from your codebase exactly as it is today.</p>
+  <div class="meta">
+    <span>verified against the repo · 2026-08-11</span>
+    <span>4 gaps marked</span>
+    <span>13 comprehension checks</span>
+  </div>
+</header>
+
+<p class="note">Each part ends with a <strong>check yourself</strong> box. Try to answer before
+opening it — if the answer surprises you, re-read that part rather than moving on. The four parts
+marked <span class="badge gap">gap</span> are things missing from the plan I gave you earlier,
+found by comparing it against what Palantir Foundry actually implements.</p>
+
+<!-- ══════════════════════ 0 ══════════════════════ -->
+<section id="s0">
+  <div class="sec-hd"><span class="num">00</span>
+    <div><h2>Where you are today</h2>
+    <p class="tagline">Three separate mechanisms, none of them data.</p></div>
+  </div>
+
+  <p>Before anything changes, be precise about what exists. Everything below was read out of the
+  repository, not assumed.</p>
+
+  <h3>Order is Python, written twice</h3>
+<pre><i># backend/app/services/workflow_unlocks.py:25</i>
+def design_unlock_ready(site: models.Site) -> bool:
+    return (site.legal_dd_status or "pending") == <b>"positive"</b> and (
+        site.finance_status or "pending") == <b>"approved"</b>
+
+<i># backend/app/services/design_service.py:230</i>
+def _assert_design_unlocked(site: models.Site) -> None:
+    ...  <i># the same rule again, raising 422 with per-branch messages</i></pre>
+  <p class="cap">one business rule · two definitions · called from lines 341, 452, 923, 983</p>
+
+  <p>So the rule that decides when Design opens has <strong>two definitions and five enforcement
+  points</strong>. On top of that, the frontend's <code>stateMachine.js</code> mirrors the transition
+  table by hand. Changing the order means editing all of it consistently.</p>
+
+  <h3>Approval levels are frozen in DDL</h3>
+<pre><i>-- backend/database/schema.sql:826</i>
+status text NOT NULL DEFAULT 'pending_admin_review'
+  CHECK (status IN (<b>'pending_admin_review'</b>,<b>'under_exec_review'</b>,
+                    <b>'under_supervisor_review'</b>,<b>'pending_admin_final'</b>,
+                    <b>'ready_to_launch'</b>,<b>'launched'</b>))
+
+<i>-- backend/database/schema.sql:729</i>
+CONSTRAINT chk_site_budget_status
+  CHECK (status IN ('draft','pending_supervisor','pending_admin','approved','rejected'))</pre>
+
+  <p>Two modules invented <em>two different</em> multi-level approval patterns, both as CHECK
+  constraints. Adding a level to either is a database migration. The third module that needs this
+  will invent a third pattern, because inventing one is cheaper than generalising.</p>
+
+  <h3>Who approves is implicit</h3>
+  <p>There is no row anywhere saying <em>"level two of the launch approval goes to the module
+  supervisor."</em> It is the shape of the code — whichever endpoint flips the status, guarded by
+  whichever role decorator sits on it. You cannot query it. You can only read the routers.</p>
+
+  <div class="warn">
+    <div class="t">The cost of one change today</div>
+    <p>"Design before Finance, with two approvers instead of one" = two Python edits, one migration,
+    a deploy, and an audit of the frontend mirror. Roughly a day, and it lands for every tenant.</p>
+  </div>
+
+  <details class="chk">
+    <summary><span class="q">Check</span><span class="txt">Why is the rule being written in two
+    places worse than it being written in one place badly?</span></summary>
+    <div class="ans">
+      <p>Because the two can <strong>disagree</strong>, and nothing will tell you. A single ugly
+      function is at least always self-consistent — whatever it does, it does everywhere.</p>
+      <p>Two copies drift the moment someone edits one. And the failure is silent and asymmetric:
+      <code>design_unlock_ready</code> decides whether the UI <em>shows</em> Design as available,
+      while <code>_assert_design_unlocked</code> decides whether the API <em>allows</em> it. Drift
+      between them means a button that appears and then 422s, or worse, a module that looks locked
+      but isn't.</p>
+      <p>This is the same class of problem as your three schema files disagreeing 30/29/24 — and it
+      is the entire argument for one rule in one row.</p>
+    </div>
+  </details>
+</section>
+
+<!-- ══════════════════════ 1 ══════════════════════ -->
+<section id="s1">
+  <div class="sec-hd"><span class="num">01</span>
+    <div><h2>Order becomes edges</h2>
+    <p class="tagline">You already have the edges. They're the mirror columns.</p></div>
+  </div>
+
+  <p>The insight that makes a node editor possible: the mirror columns on <code>sites</code> —
+  <code>legal_dd_status</code>, <code>finance_status</code>, <code>design_status</code>,
+  <code>project_status</code>, <code>is_launched</code> — are <strong>completion signals</strong>.</p>
+
+  <p>An edge <em>Legal → Design</em> is nothing more than the fact that Design's gate mentions
+  <code>legal_dd_status</code>. The graph is already there, encoded in which columns each rule reads.</p>
+
+  <div class="ba">
+    <div class="was"><div class="h">today · python</div><div class="b">
+      Two functions, five call sites. Changing the order = editing both, consistently, then deploying.
+    </div></div>
+    <div class="now"><div class="h">after · one row</div><div class="b">
+      <code>action_type.preconditions</code> — one JSON value, edited with an <code>UPDATE</code>.
+    </div></div>
+  </div>
+
+<pre>{"and": [
+  {"==": [{"var": <b>"legal_dd_status"</b>}, "positive"]},
+  {"==": [{"var": <b>"finance_status"</b>},  "approved"]}
+]}</pre>
+  <p class="cap">design.open — the rule from design_service.py:230, as data</p>
+
+  <p>To put Design <em>before</em> Finance you rewrite two rules: Design drops its
+  <code>finance_status</code> clause, and Finance gains a <code>design_status</code> clause. That is
+  the entire operation.</p>
+
+  <h3>Why there is no flow_edges table</h3>
+  <p>The graph is <strong>derived, not stored</strong>. Drawing it means reading the preconditions;
+  editing a node means rewriting them. A separate edge table would be a second source of truth that
+  could disagree with the rule actually enforced at runtime — reintroducing, one layer up, exactly
+  the drift problem this whole exercise is meant to remove.</p>
+
+  <details class="chk">
+    <summary><span class="q">Check</span><span class="txt">A colleague proposes storing the graph in
+    <code>flow_nodes</code> and <code>flow_edges</code>, and generating the preconditions from it.
+    What breaks?</span></summary>
+    <div class="ans">
+      <p>Nothing, <em>until</em> someone writes a precondition the graph cannot express — and they
+      will, on about week three. "Design opens when legal is positive <em>and</em> the site is under
+      1500 sqft" is a perfectly reasonable rule with no edge to represent it.</p>
+      <p>Now the graph is an incomplete picture of the truth. Either you forbid such rules (crippling
+      the feature) or you accept a designer that silently doesn't show everything that governs the
+      flow — which is worse, because people will trust it.</p>
+      <p>Deriving the graph from the rules means the picture is always a faithful, if sometimes
+      partial, view. Deriving the rules from the graph means the graph becomes a cage.</p>
+    </div>
+  </details>
+</section>
+
+<!-- ══════════════════════ 2 ══════════════════════ -->
+<section id="s2">
+  <div class="sec-hd"><span class="num">02</span>
+    <div><h2>Levels become rows</h2>
+    <p class="tagline">Preconditions say when a module starts. Not how many people sign off inside it.</p></div>
+  </div>
+
+  <p>This is the distinction most easily missed. A precondition is a single boolean over the object's
+  fields. It has no concept of "first the supervisor, then the admin." That needs the one new table
+  this design adds.</p>
+
+<pre>CREATE TABLE ontology.approval_step (
+  id            uuid PRIMARY KEY,
+  version_id    uuid NOT NULL REFERENCES ontology.ontology_version(id),
+  action        text NOT NULL,   <i>-- 'launch.approve'</i>
+  seq           int  NOT NULL,   <i>-- 1, 2, 3 …</i>
+  label         text NOT NULL,   <i>-- 'Supervisor review'</i>
+  status_value  text NOT NULL,   <i>-- what the record sits in awaiting this level</i>
+  assignee_rule jsonb NOT NULL,  <i>-- part 03</i>
+  on_reject     text,            <i>-- which status to fall back to</i>
+  UNIQUE (version_id, action, seq)
+);</pre>
+
+  <p><code>launch_approvals</code>' six-value CHECK becomes <strong>four rows</strong>. The status
+  values are now <em>generated from</em> rows rather than <em>constrained by</em> DDL. Adding a level
+  is an <code>INSERT</code>; removing one is a <code>DELETE</code>.</p>
+
+  <h3>How to migrate without breaking anything</h3>
+  <p>Do not drop the CHECK constraints on day one. The safe order is:</p>
+  <ol>
+    <li>Add <code>approval_step</code> and populate it to <em>describe the chains that already exist</em></li>
+    <li>Have the services read the chain from the registry, still writing the same status strings</li>
+    <li>Confirm behaviour is identical — the existing CHECK now acts as a <strong>safety net</strong></li>
+    <li>Only then relax the constraint, and only for modules a client actually needs to vary</li>
+  </ol>
+  <p>Step three is the one that matters. If the registry ever generates a status the CHECK rejects,
+  the write fails loudly instead of quietly corrupting an approval chain.</p>
+
+  <details class="chk">
+    <summary><span class="q">Check</span><span class="txt">Why keep the CHECK constraint during
+    migration when the whole point is to get rid of it?</span></summary>
+    <div class="ans">
+      <p>Because during the transition you have two systems claiming to know the valid statuses —
+      the old DDL and the new rows — and you need to find out if they disagree <em>before</em> you
+      trust the new one.</p>
+      <p>The constraint costs nothing while they agree, and the moment they don't, it converts a
+      silent data-corruption bug into a loud failed write with a stack trace. That is precisely the
+      trade you want while migrating something that governs money and legal sign-off.</p>
+      <p>Drop it only per-module, and only once a client genuinely needs a chain the constraint
+      forbids.</p>
+    </div>
+  </details>
+</section>
+
+<!-- ══════════════════════ 3 ══════════════════════ -->
+<section id="s3">
+  <div class="sec-hd"><span class="num">03</span>
+    <div><h2>Assignees</h2>
+    <p class="tagline">Who signs each level — a small, closed vocabulary.</p></div>
+  </div>
+
+  <p>Each step carries an <code>assignee_rule</code>. The important property is that it maps onto
+  machinery you have <em>already built</em>:</p>
+
+  <div class="tw"><table>
+    <thead><tr><th>Rule</th><th>Resolves to</th><th>Existing mechanism</th></tr></thead>
+    <tbody>
+      <tr><td><code>{"kind":"role","role":"supervisor","module":"design"}</code></td>
+          <td>Design supervisors</td><td><code>user_module_memberships</code></td></tr>
+      <tr><td><code>{"kind":"role","role":"business_admin"}</code></td>
+          <td>Tenant admins</td><td><code>business_admins</code></td></tr>
+      <tr><td><code>{"kind":"object_field","field":"supervisor_id"}</code></td>
+          <td><em>This site's</em> supervisor</td><td><code>sites.supervisor_id</code></td></tr>
+      <tr><td><code>{"kind":"site_delegation","module":"design"}</code></td>
+          <td>The per-site delegate</td><td><code>site_delegations</code></td></tr>
+    </tbody>
+  </table></div>
+
+  <p>That last row matters. You built per-site, per-module delegation with grant and revoke already.
+  It stops being a special case bolted onto each module and becomes one approver kind among four.</p>
+
+  <div class="warn">
+    <div class="t">The observer role must be excluded</div>
+    <p><code>rbac/roles.py</code> defines <strong>four</strong> roles, not three:
+    <code>business_admin</code>, <code>observer</code>, <code>supervisor</code>,
+    <code>executive</code>. An observer reads everything and writes nothing — enforced in
+    <code>app/core/deps.py</code>, not in the guards. An observer must therefore never resolve as an
+    assignee, or you create an approval step that nobody can ever complete. This needs an explicit
+    exclusion in the resolver, not an assumption.</p>
+  </div>
+
+  <details class="chk">
+    <summary><span class="q">Check</span><span class="txt">Why must <code>assignee_rule</code> stay a
+    closed vocabulary rather than becoming a general expression language?</span></summary>
+    <div class="ans">
+      <p>Two reasons, and the second is the one that bites.</p>
+      <p><strong>It must be invertible.</strong> You don't only ask "is this user the assignee?" —
+      you also ask "whose queue does this appear in?" and "who do we email?" A closed set of four
+      kinds can be resolved <em>forwards</em> into a set of user ids. An arbitrary boolean expression
+      can only be evaluated per-candidate, so building a queue means testing every user in the tenant
+      against every pending record.</p>
+      <p><strong>It has to be auditable.</strong> "Who could have approved this?" is a question a
+      client's auditor will ask. A closed vocabulary answers it with a query. An expression language
+      answers it with a shrug.</p>
+      <p>When routing genuinely needs computation, that is a <code>function_ref</code> — named code,
+      tested like code — not a bigger rule grammar.</p>
+    </div>
+  </details>
+</section>
+
+<!-- ══════════════════════ 4 ══════════════════════ -->
+<section id="s4">
+  <div class="sec-hd"><span class="num">04</span>
+    <div><h2>Fields</h2>
+    <p class="tagline">Add and rename columns per client, without a migration.</p></div>
+  </div>
+
+  <p>A different mechanism from the flow, but the same principle. Today, adding a field means:
+  migration → SQLAlchemy model → Pydantic schema → router → API client → form → table column. Seven
+  files, a deploy, and it lands for <em>every</em> tenant whether they want it or not.</p>
+
+<pre>INSERT INTO ontology.property_def
+  (version_id, object_type, api_name, display_name, type, <b>storage</b>, column_name)
+VALUES (qsr_overlay, 'Site', 'franchiseRoyaltyPct',
+        'Franchise Royalty %', 'decimal', <b>'props_json'</b>, 'franchise_royalty_pct');</pre>
+
+  <p><code>storage</code> carries the whole design:</p>
+
+  <div class="tw"><table>
+    <thead><tr><th>storage</th><th>Where the value lives</th><th>When to use it</th></tr></thead>
+    <tbody>
+      <tr><td><code>column</code></td><td>A real typed column</td>
+          <td>Every base property. Fast, indexed, constrained</td></tr>
+      <tr><td><code>props_json</code></td><td>A key in one <code>props jsonb</code>, GIN-indexed</td>
+          <td>Client-specific additions. No migration</td></tr>
+      <tr><td><code>derived</code></td><td>Recomputed by the runtime</td>
+          <td>The mirror columns become these</td></tr>
+    </tbody>
+  </table></div>
+
+  <p><strong>Renaming</strong> is the same row with a different <code>display_name</code>. The
+  physical column never moves, so nothing breaks — <code>expected_rent</code> stays
+  <code>expected_rent</code> on disk; tenant B just sees "Base Rent".</p>
+
+  <p><strong>Overlay authority is add and rename only, never remove.</strong> A client who could
+  delete a base property would break your own applications.</p>
+
+  <p>The escape hatch that keeps it fast: when a client starts filtering hard on a
+  <code>props_json</code> field, promote it — same <code>api_name</code>, <code>storage</code> flips
+  to <code>column</code>, backed by a real generated column. Nothing above the registry notices.
+  <strong>No EAV table, ever</strong> — that would defeat the query planner and your constraints.</p>
+
+  <details class="chk">
+    <summary><span class="q">Check</span><span class="txt">If <code>props_json</code> needs no
+    migration and works fine, why keep <code>column</code> at all? Why not put everything in JSONB?</span></summary>
+    <div class="ans">
+      <p>Three things you lose, in increasing order of pain.</p>
+      <p><strong>Type safety.</strong> <code>props->>'x'</code> is always text. Every numeric
+      comparison becomes a cast, and a bad value fails at read time rather than write time.</p>
+      <p><strong>Constraints.</strong> Your schema is full of real integrity —
+      <code>CHECK (legal_dd_status IN (…))</code>, foreign keys, <code>UNIQUE (site_id, phase)</code>.
+      None of that exists inside a JSONB blob. You'd be moving integrity from the database into
+      application code, which is exactly the trade that makes triplestores unusable for this.</p>
+      <p><strong>The planner.</strong> A GIN index answers containment well, but it cannot do a range
+      scan or drive a sensible join order. On a tenant with 40 sites nobody notices. On one with
+      40,000, a report that touched five JSONB fields becomes a sequential scan.</p>
+      <p>Hence the rule: core properties that every client has are real columns; overlay properties
+      start in JSONB and get promoted when usage proves they matter.</p>
+    </div>
+  </details>
+</section>
+
+<!-- ══════════════════════ 5 ══════════════════════ -->
+<section id="s5">
+  <div class="sec-hd gap"><span class="num">05</span>
+    <div><h2>What actions actually <em>do</em><span class="badge crit">gap · critical</span></h2>
+    <p class="tagline">The hole in the plan I gave you. Everything else leaks through it.</p></div>
+  </div>
+
+  <p>Everything up to here declares <strong>when</strong> an action may run. Nothing declares
+  <strong>what it does</strong>.</p>
+
+  <p>In my earlier plan, <code>action_type</code> holds a gate and then hands off to a hand-written
+  Python service to perform the mutation. So you would have config-driven reads and config-driven
+  gates sitting on top of <em>hand-written writes</em>.</p>
+
+  <div class="danger">
+    <div class="t">This breaks the test that governs the whole sequence</div>
+    <p>The exit test for the packaging stage reads: <em>"ship a new object type using only config; if
+    it needs one hand-written router or service function, this stage is not done."</em></p>
+    <p>With writes still hand-written, that test <strong>cannot pass</strong>. A new
+    <code>SiteInsurancePolicy</code> would still need someone to write its create-and-update service
+    by hand — which is the exact cost the platform exists to remove.</p>
+  </div>
+
+  <p>Foundry's action types declare <strong>parameters</strong> and <strong>rules</strong> — modify
+  this property, create this object, create this link, delete — so the platform can execute a write
+  it has never seen. That is what's missing:</p>
+
+<pre>action_param(action_type_id, api_name, type, required, default_expr, options_query)
+
+action_rule (action_type_id, kind, target, value_expr)
+  kind ∈ <b>modify_object</b> | <b>create_object</b> | <b>create_link</b> | <b>delete_object</b></pre>
+
+  <p>Plus one generic endpoint — <code>POST /actions/{name}/apply</code> — that validates parameters,
+  evaluates the gate, then walks the rules <em>inside</em> your existing
+  lock → mutate → audit → notify runtime. The runtime does not change. It gains a generic caller.</p>
+
+  <p class="note">Cost: roughly <strong>6–8 weeks</strong>, and it belongs between the
+  properties/links work and the client-database work. Discovering this at the packaging stage would
+  mean re-opening two earlier stages.</p>
+
+  <details class="chk">
+    <summary><span class="q">Check</span><span class="txt">Your existing write path is already
+    correct — lock, mutate, audit, notify. Why does a generic write path not put that at risk?</span></summary>
+    <div class="ans">
+      <p>Because the runtime is not what becomes generic. <strong>The caller is.</strong></p>
+      <p>Today a service function decides "set <code>design_status = 'approved'</code>" and calls the
+      runtime. Afterwards, a rule row says <code>modify_object(design_status, 'approved')</code> and a
+      generic executor calls the <em>same</em> runtime with the same lock, the same audit write, the
+      same outbox enqueue.</p>
+      <p>What changes is where the instruction comes from — a Python literal becomes a row. What must
+      not change is that there is still exactly one write path, still row-locked, still audited. If
+      the generic executor ever bypasses that runtime to write directly, you've lost the single
+      property that makes the whole architecture trustworthy.</p>
+    </div>
+  </details>
+</section>
+
+<!-- ══════════════════════ 6 ══════════════════════ -->
+<section id="s6">
+  <div class="sec-hd gap"><span class="num">06</span>
+    <div><h2>Change control<span class="badge gap">gap</span></h2>
+    <p class="tagline">You're about to let clients edit production rules. With no review step.</p></div>
+  </div>
+
+  <p>My plan gives <code>ontology_version</code> a <code>draft</code>/<code>published</code> status
+  and stops there. That is not change control — it's a flag.</p>
+
+  <p>Foundry's answer is a <strong>proposal</strong>: branch the ontology, make changes, merge checks
+  run, an editor of each affected resource approves, then publish. A pull request for the ontology.</p>
+
+  <p>Without it, a tenant admin dragging a node in the designer is <em>editing production</em>. No
+  diff, no review, no "what does this break", no rollback. The first time someone reorders Legal
+  below Design on a live workspace with forty sites in flight, you will want all four.</p>
+
+  <p>This is not decoration. It is the thing that makes an editable flow <em>safe</em>, and it has to
+  land <strong>with</strong> the designer UI, not after it. Roughly <strong>3–4 weeks</strong>.</p>
+
+  <details class="chk">
+    <summary><span class="q">Check</span><span class="txt">What should a merge check actually verify
+    before an ontology change is allowed to publish?</span></summary>
+    <div class="ans">
+      <p>At minimum, four things — and each maps to a failure you'd otherwise ship:</p>
+      <p><strong>Every precondition is a well-formed object.</strong> A rule that isn't an object is
+      a truthy literal, which means an always-open gate. This check alone justifies the mechanism.</p>
+      <p><strong>No dependency cycle, and nothing waits on a module that runs later.</strong> The
+      designer already validates this live; publish must enforce it.</p>
+      <p><strong>Every rule references properties that exist</strong> on the object type in
+      <em>this</em> version. Rename a property and any rule mentioning the old name silently
+      evaluates <code>null</code> — and <code>null == "positive"</code> is <code>false</code>, so the
+      gate quietly locks shut forever.</p>
+      <p><strong>No approval step resolves to an empty assignee set.</strong> A step nobody can
+      complete is a permanently stuck record, and you'll hear about it from the client, not the
+      tests.</p>
+    </div>
+  </details>
+</section>
+
+<!-- ══════════════════════ 7 ══════════════════════ -->
+<section id="s7">
+  <div class="sec-hd gap"><span class="num">07</span>
+    <div><h2>Records already in flight<span class="badge crit">gap · hardest</span></h2>
+    <p class="tagline">The question nobody asks until it has already happened.</p></div>
+  </div>
+
+  <p>A client changes their approval flow at 2pm. Forty sites are mid-approval. What happens to them?</p>
+
+  <p>This is not a primitive, which is why it's absent from every plan I've written you. It is the
+  hardest operational problem in the whole design, and there are only three answers:</p>
+
+  <div class="tw"><table>
+    <thead><tr><th>Approach</th><th>What happens</th><th>The cost</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Stamp and freeze</strong></td>
+          <td>Each record carries the <code>ontology_version_id</code> it started under and finishes
+              on the old flow</td>
+          <td>You now run N flow versions at once. Every queue, every dashboard, every notification
+              template must be version-aware</td></tr>
+      <tr><td><strong>Migrate</strong></td>
+          <td>Move in-flight records onto the new flow</td>
+          <td>Needs an old-status → new-status mapping, and it is genuinely ambiguous. A site sitting
+              in <code>pending_supervisor</code> when that level is deleted goes where — forward
+              unapproved, or backward?</td></tr>
+      <tr><td><strong>Freeze edits</strong></td>
+          <td>No flow changes while anything is in flight</td>
+          <td>Simplest, and useless — something is always in flight</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="warn">
+    <div class="t">Why this hurts you more than it hurts Foundry</div>
+    <p>Foundry's actions are mostly point edits — submitted and resolved in seconds. Yours are
+    multi-day approval chains that sit in a queue. Your workflow is precisely the case where a
+    mid-flight definition change is most likely and most damaging.</p>
+  </div>
+
+  <p><strong>My recommendation:</strong> stamp-and-freeze, with the version pinned at record
+  creation, plus an explicit admin-triggered migration that <em>previews</em> what moves where before
+  committing. But it has to be designed <em>before</em> the designer ships, because pinning a version
+  onto every record is a data-model decision, not a feature you add later.</p>
+
+  <details class="chk">
+    <summary><span class="q">Check</span><span class="txt">Under stamp-and-freeze, a supervisor opens
+    their queue. Two sites need approval — one on flow v1, one on v2, with different level names.
+    What does the queue show?</span></summary>
+    <div class="ans">
+      <p>This is the question that reveals the real cost, and there is no free answer.</p>
+      <p>The queue cannot show one column of statuses, because <code>pending_supervisor</code> in v1
+      and <code>pending_review</code> in v2 may be the same human step under different names — or
+      genuinely different steps. So the queue has to resolve each row's label <em>through the version
+      that row is stamped with</em>, not through the tenant's current version.</p>
+      <p>Which means every read surface — queue, dashboard, notification template, exported report —
+      takes the ontology version as an input rather than assuming "the current one". That is a real,
+      pervasive cost, and it is the honest reason people reach for "migrate" instead, then discover
+      migration is ambiguous.</p>
+      <p>If you take one thing from this part: <strong>decide it before you ship the editor</strong>,
+      because both answers are expensive and only one of them is expensive <em>later</em>.</p>
+    </div>
+  </details>
+</section>
+
+<!-- ══════════════════════ 8 ══════════════════════ -->
+<section id="s8">
+  <div class="sec-hd gap"><span class="num">08</span>
+    <div><h2>Column-level security<span class="badge gap">gap</span></h2>
+    <p class="tagline">Row visibility is planned. Property visibility isn't.</p></div>
+  </div>
+
+  <p>The policy compiler decides which <em>rows</em> a caller sees. Foundry also secures
+  <em>properties</em>, and renders an unauthorised one as <code>null</code> rather than failing the
+  request.</p>
+
+  <p>You hold commercial rent, revenue-share percentages, escalation schedules, and per-client
+  financials. <em>"This executive can see the site but not its rent"</em> is a real requirement you
+  will meet at client #2. The table is already sketched in your V3 registry —
+  <code>security_policy</code> with <code>scope='column'</code> — it simply isn't in any stage.
+  Roughly <strong>2 weeks</strong>, extending the policy compiler rather than adding a new system.</p>
+
+  <details class="chk">
+    <summary><span class="q">Check</span><span class="txt">Why render a forbidden property as
+    <code>null</code> instead of returning 403?</span></summary>
+    <div class="ans">
+      <p>Because a 403 leaks the thing you're protecting. If requesting a site returns 403 whenever
+      it has a rent value, the caller learns which sites have rents — and often that is the sensitive
+      bit.</p>
+      <p>It also makes the API unusable. A list of forty sites where two have restricted rents would
+      fail the entire request rather than returning thirty-eight usable rows plus two with a blank
+      field.</p>
+      <p><code>null</code> is uniform: the caller cannot distinguish "no value" from "not permitted",
+      the response shape stays stable, and the UI renders a dash. Foundry made this choice
+      deliberately and it's worth copying exactly.</p>
+    </div>
+  </details>
+</section>
+
+<!-- ══════════════════════ 9 ══════════════════════ -->
+<section id="s9">
+  <div class="sec-hd"><span class="num">09</span>
+    <div><h2>What runs at request time</h2>
+    <p class="tagline">The ordering is not cosmetic.</p></div>
+  </div>
+
+<pre>lock the row          <i>SELECT … FOR UPDATE  (fetch_site_for_update_or_404, _common.py:79)</i>
+  ├─ 1  lifecycle     is the object in a status where this action exists?
+  ├─ 2  identity      required_role / required_module
+  ├─ 3  parameters    validate the submitted payload
+  ├─ 4  preconditions <b>the JsonLogic gate</b>
+  ├─ 5  approval step is the caller the assignee for the <b>current</b> seq?
+  ├─ 6  apply rules   modify / create / link  <u>(part 05 — not yet built)</u>
+  ├─ 7  recompute     derived and mirror columns
+  ├─ 8  audit         audit_logs + stage_events
+  └─ 9  notify        notification_outbox</pre>
+
+  <h3>Two things to get right</h3>
+
+  <p><strong>The gate must be evaluated inside the lock.</strong> If it runs before
+  <code>SELECT … FOR UPDATE</code>, two concurrent requests can both read
+  <code>finance_status = 'approved'</code>, both pass, and both mutate. Today this is safe by
+  accident, because <code>_assert_design_unlocked(site)</code> receives a site already fetched under
+  lock. Extracting the gate into a generic evaluator makes that coupling easy to lose.</p>
+
+  <p><strong>Checks 1, 2 and 4 fail differently and must respond differently.</strong> A lifecycle
+  failure means the button should never have rendered. An identity failure is a 403 that must
+  <em>not</em> explain the workflow to an unauthorised caller. A precondition failure is a 422 that
+  <em>should</em> explain exactly what is missing, because it is your own user's next action.</p>
+
+  <details class="chk">
+    <summary><span class="q">Check</span><span class="txt">Why is identity checked at step 2, before
+    the precondition at step 4 — rather than after?</span></summary>
+    <div class="ans">
+      <p>Because the precondition's error message is <em>informative by design</em>. "Design is gated
+      on Finance approval" is exactly what your own user needs, and exactly what an unauthorised
+      caller should never receive.</p>
+      <p>Check identity first and an outsider gets a flat 403 that reveals nothing about your
+      workflow. Check it after, and you've handed them a description of your approval process, one
+      probe at a time.</p>
+      <p>The general rule: <strong>order your checks so the least informative failure fires
+      first.</strong></p>
+    </div>
+  </details>
+</section>
+
+<!-- ══════════════════════ 10 ══════════════════════ -->
+<section id="s10">
+  <div class="sec-hd"><span class="num">10</span>
+    <div><h2>The revised sequence</h2>
+    <p class="tagline">With the four gaps slotted where they belong.</p></div>
+  </div>
+
+  <div class="tw"><table>
+    <thead><tr><th>Stage</th><th>Delivers</th><th class="num-c">Weeks</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td><strong>A</strong> · One gate as data</td><td>Editable preconditions + fail-closed validator</td><td class="num-c">2</td><td>planned</td></tr>
+      <tr><td><strong>B</strong> · Policy compiler</td><td>Row-level security</td><td class="num-c">3</td><td>planned</td></tr>
+      <tr><td><strong>B+</strong> · Column security</td><td>Property-level visibility</td><td class="num-c">2</td><td><span style="color:var(--gap)">gap 4</span></td></tr>
+      <tr><td><strong>C</strong> · Kill the drift</td><td>One schema truth, CI-enforced</td><td class="num-c">3</td><td>planned</td></tr>
+      <tr><td><strong>D</strong> · Properties &amp; links</td><td>Rename, add, relate</td><td class="num-c">4</td><td>planned</td></tr>
+      <tr><td><strong>D+</strong> · Generic write path</td><td>Parameters + edit rules + apply endpoint</td><td class="num-c">6–8</td><td><span style="color:var(--crit)">gap 1 · critical</span></td></tr>
+      <tr><td><strong>D++</strong> · Version stamping</td><td>In-flight records survive a flow change</td><td class="num-c">2–3</td><td><span style="color:var(--crit)">gap 3</span></td></tr>
+      <tr><td><strong>E</strong> · Datasource binding</td><td>Client databases</td><td class="num-c">6</td><td>planned</td></tr>
+      <tr><td><strong>F</strong> · Interfaces &amp; packaging</td><td>Shippable modules</td><td class="num-c">8</td><td>planned</td></tr>
+      <tr><td><strong>F+</strong> · Proposals</td><td>Review before publish — ships with the designer</td><td class="num-c">3–4</td><td><span style="color:var(--gap)">gap 2</span></td></tr>
+      <tr><td><strong>G</strong> · Model suggestion</td><td>Onboarding assist</td><td class="num-c">—</td><td>on demand</td></tr>
+    </tbody>
+  </table></div>
+
+  <p>Roughly <strong>40 focused weeks</strong> to something honestly describable as a vertical
+  Palantir — against the 26 the earlier plan implied. For a solo founder also shipping fixes to a
+  live design partner, that is a multi-year calendar. Better said plainly than left implied by a
+  tidy-looking table.</p>
+
+  <div class="warn">
+    <div class="t">The part that is worth doing regardless</div>
+    <p>Stages <strong>A</strong> and <strong>B</strong> stand on their own merits. A removes a rule
+    duplicated across two definitions and five call sites. B closes a row-level security gap that
+    exists in production <em>today</em>, platform or no platform. Everything from C onward is a bet
+    on the platform thesis; nothing before it is.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════ 11 ══════════════════════ -->
+<section id="s11">
+  <div class="sec-hd"><span class="num">11</span>
+    <div><h2>What you don't need from Foundry</h2>
+    <p class="tagline">Most of it. That's what makes this attemptable.</p></div>
+  </div>
+
+  <p>The missing-features list is long, and it is important to be specific about how much of it is
+  irrelevant to you:</p>
+
+  <ul>
+    <li><strong>Pipeline Builder, Code Repositories, transforms</strong> — your data arrives via
+    connectors and mapping, not a transform DAG</li>
+    <li><strong>Object Storage V2 and the object data funnel</strong> — a separate index layer over
+    Postgres is unjustified at 27 tables and sub-million rows</li>
+    <li><strong>Workshop fidelity</strong> — you need one config-driven object view and form
+    renderer, not a drag-and-drop app builder</li>
+    <li><strong>Vertex, Map, Machinery, Foundry Rules</strong> — different products, different
+    problems</li>
+    <li><strong>Marketplace's cryptographic signing</strong> — copy the API-name-consistency rule,
+    skip the signing infrastructure until someone asks for it</li>
+    <li><strong>OSDK in three languages</strong> — TypeScript for your own frontend is enough; add
+    Python and Java when a third party signs</li>
+  </ul>
+
+  <p>That is most of Foundry's surface area. Skipping it deliberately — because you ship one vertical
+  rather than a general modelling tool — is the reason a small team can attempt this at all.</p>
+</section>
+
+<!-- ══════════════════════ 12 ══════════════════════ -->
+<section id="s12">
+  <div class="sec-hd"><span class="num">12</span>
+    <div><h2>Final self-test</h2>
+    <p class="tagline">If these four are comfortable, you have the model.</p></div>
+  </div>
+
+  <details class="chk">
+    <summary><span class="q">1</span><span class="txt">A client asks: "can we make Design need two
+    approvals and happen before Finance?" Which rows change?</span></summary>
+    <div class="ans">
+      <p><strong>Order</strong> — two <code>action_type.preconditions</code> values.
+      <code>design.open</code> drops its <code>finance_status</code> clause;
+      <code>finance.open</code> gains a <code>design_status</code> clause.</p>
+      <p><strong>Levels</strong> — one new <code>approval_step</code> row for
+      <code>design.approve</code> at <code>seq=2</code>, with its <code>assignee_rule</code> and
+      <code>status_value</code>.</p>
+      <p>All of it on the client's overlay version, leaving every other tenant untouched. Then —
+      and this is the part that is not yet built — a proposal, merge checks, and a decision about the
+      sites currently sitting in Design under the old chain.</p>
+    </div>
+  </details>
+
+  <details class="chk">
+    <summary><span class="q">2</span><span class="txt">Why does a corrupted precondition row fail
+    <em>open</em> rather than closed, and what stops it?</span></summary>
+    <div class="ans">
+      <p>JsonLogic treats anything that isn't an operator object as a <strong>literal</strong>.
+      <code>apply(5)</code> returns <code>5</code>; <code>apply("…")</code> returns the string. So a
+      rule that round-trips out of the database as a JSON <em>string</em> instead of an object
+      evaluates to a truthy value — and the gate permits everything.</p>
+      <p>A malformed Python <code>if</code> raises. A malformed rule row permits. That asymmetry is
+      the tax for moving logic into data.</p>
+      <p>What stops it: the evaluator type-checks and refuses any non-object rule; the tests assert
+      the rule's <em>shape</em> rather than only its verdict; and a merge check validates every rule
+      before publish. You gave up the compiler — you have to replace it with a validator.</p>
+    </div>
+  </details>
+
+  <details class="chk">
+    <summary><span class="q">3</span><span class="txt">Which single missing piece would make the
+    packaging exit test impossible to pass, and why?</span></summary>
+    <div class="ans">
+      <p>The <strong>generic write path</strong> — part 05.</p>
+      <p>The test says a new object type must ship using only config. With reads generic and gates
+      generic but writes still hand-written, every new object type still needs someone to author its
+      create-and-update service by hand. That is precisely the cost the platform exists to remove, so
+      the test fails by construction.</p>
+      <p>It is the one gap that must be closed <em>before</em> the later stages, because discovering
+      it at packaging time means re-opening the properties and links work.</p>
+    </div>
+  </details>
+
+  <details class="chk">
+    <summary><span class="q">4</span><span class="txt">Your only client is Blue Tokai. Is any of this
+    worth building right now?</span></summary>
+    <div class="ans">
+      <p>Mostly no — and that is the honest answer.</p>
+      <p>For a single tenant with one flow and one vocabulary, the registry is indirection bought for
+      flexibility nobody uses. The value starts at <strong>client #2</strong> and compounds from
+      there. So the real question isn't technical: it's how close that second client is.</p>
+      <p>The exceptions are genuine. <strong>Stage A</strong> collapses a rule that today has two
+      definitions and five call sites — worth doing as ordinary maintenance. <strong>Stage B</strong>
+      closes a row-level security gap that exists in production right now, whatever happens to the
+      platform idea.</p>
+      <p>The failure mode to avoid is building the registry and continuing to hardcode alongside it,
+      paying for both. The forcing function is the packaging exit test: until a new object type ships
+      config-only, the registry is cost with no return.</p>
+    </div>
+  </details>
+</section>
+
+<p class="foot">Companion to <code>Palantir_Evaluation.md</code> and <code>Build_Sequence.md</code> on
+the <code>ontology</code> branch. Interactive: <code>designer.html</code> to arrange the flow,
+<code>console.html</code> to run the kernel against exported data. All line references verified
+against the repository on 2026-08-11.</p>
+
+</main>
+</div>
+</div>

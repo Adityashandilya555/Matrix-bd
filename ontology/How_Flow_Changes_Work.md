@@ -1,5 +1,8 @@
 # How approval-flow changes work — step by step
 
+> **Read this as a formatted page instead:** [`guide.html`](./guide.html) — same content, dark
+> theme, with a comprehension check at the end of every step. Open it in a browser.
+
 **Companion to:** [`Palantir_Evaluation.md`](./Palantir_Evaluation.md) · [`Build_Sequence.md`](./Build_Sequence.md)
 **Interactive versions:** [`designer.html`](./designer.html) (arrange the flow) · [`console.html`](./console.html) (run the kernel)
 **Verified against the code:** 2026-08-11
@@ -206,7 +209,68 @@ In [`console.html`](./console.html), switch to **QSR Brands Ltd**: `Site` reads 
 
 ---
 
-## Step 5 — What runs at request time
+## Step 5 — What actions actually *do* — **GAP, critical**
+
+Everything above declares **when** an action may run. Nothing declares **what it does**.
+
+As originally planned, `action_type` holds a gate and then hands off to a hand-written Python service to perform the mutation. That gives config-driven reads and config-driven gates sitting on top of *hand-written writes*.
+
+**This breaks the exit test that governs the whole sequence.** `Build_Sequence.md` Stage F says: *ship a new object type using only config; if it needs one hand-written router or service function, this stage is not done.* With writes still hand-written, a new `SiteInsurancePolicy` still needs someone to author its create-and-update service by hand — the exact cost the platform exists to remove.
+
+Foundry's action types declare **parameters** and **rules**, so the platform can execute a write it has never seen:
+
+```
+action_param(action_type_id, api_name, type, required, default_expr, options_query)
+action_rule (action_type_id, kind, target, value_expr)
+  kind ∈ modify_object | create_object | create_link | delete_object
+```
+
+Plus one generic `POST /actions/{name}/apply` that validates parameters, evaluates the gate, then walks the rules **inside** the existing lock → mutate → audit → notify runtime. The runtime does not change — it gains a generic caller.
+
+**~6–8 weeks. Belongs between Stage D and Stage E.** Discovering it at Stage F means re-opening D.
+
+## Step 6 — Change control — **GAP**
+
+`ontology_version` having a `draft`/`published` flag is not change control.
+
+Foundry's mechanism is a **proposal**: branch the ontology, make changes, merge checks run, an editor of each affected resource approves, then publish — a pull request for the ontology.
+
+Without it, a tenant admin dragging a node in the designer is editing production: no diff, no review, no impact analysis, no rollback.
+
+Merge checks should verify, at minimum:
+
+- every precondition is a well-formed **object** (a literal is an always-open gate)
+- no dependency cycle, and nothing waits on a module that runs later
+- every rule references properties that exist in **this** version — rename a property and a stale rule evaluates `null`, and `null == "positive"` is false, so the gate quietly locks shut forever
+- no approval step resolves to an empty assignee set
+
+**~3–4 weeks. Must ship *with* the designer UI, not after.**
+
+## Step 7 — Records already in flight — **GAP, hardest**
+
+A client changes their flow at 2pm. Forty sites are mid-approval. What happens to them?
+
+| Approach | What happens | Cost |
+|---|---|---|
+| **Stamp and freeze** | Each record carries the `ontology_version_id` it started under and finishes on the old flow | You run N flow versions at once; every queue, dashboard and notification template becomes version-aware |
+| **Migrate** | Move in-flight records onto the new flow | Needs an old→new status mapping, and it is genuinely ambiguous — a site in `pending_supervisor` when that level is deleted goes forward unapproved, or backward? |
+| **Freeze edits** | No flow changes while anything is in flight | Simplest, and useless — something is always in flight |
+
+This hurts more here than at Palantir: Foundry's actions are mostly point edits resolved in seconds, while yours are multi-day approval chains sitting in a queue.
+
+**Recommendation:** stamp-and-freeze, version pinned at record creation, plus an admin-triggered migration that *previews* what moves where. **~2–3 weeks — but design it before Stage D**, since pinning a version onto every record is a data-model decision.
+
+## Step 8 — Column-level security — **GAP**
+
+The policy compiler decides which **rows** a caller sees. Property-level visibility is unplanned.
+
+You hold commercial rent, revenue-share percentages, escalation schedules and per-client financials. *"This executive can see the site but not its rent"* arrives at client #2. The table is already sketched in the V3 registry — `security_policy` with `scope='column'` — it just isn't in any stage.
+
+Copy Foundry's behaviour exactly: an unauthorised property renders **`null`**, never a 403. A 403 leaks which sites have the sensitive value, and it fails a whole list because two rows are restricted.
+
+**~2 weeks, extending Stage B rather than adding a system.**
+
+## Step 9 — What runs at request time
 
 Putting the pieces together. The ordering is not cosmetic.
 
@@ -258,7 +322,25 @@ Building the registry and continuing to hardcode alongside it, paying for both. 
 |---|---|---|
 | **Now** | One gate — `design.open` — moved to `action_type.preconditions`, with the fail-closed validator and evaluation tracing | **Yes, on its own merits.** It removes a rule duplicated across two definitions and five call sites, and proves the mechanism. ~2 weeks |
 | **Next** | The policy compiler (row-level security) | **Yes, independently.** It closes a gap that exists in production today, platform or no platform |
-| **When a second client asks** | `approval_step`, `assignee_rule`, the designer UI | Wait for the demand. Building the editor before there is a second flow to express is how this architecture usually dies |
+| **When a second client asks** | `approval_step`, `assignee_rule`, the designer UI — plus proposals (Step 6) and version stamping (Step 7), which must ship *with* it | Wait for the demand. Building the editor before there is a second flow to express is how this architecture usually dies |
+
+### The revised sequence, with the gaps slotted in
+
+| Stage | Delivers | Weeks | |
+|---|---|---|---|
+| A · One gate as data | Editable preconditions + fail-closed validator | 2 | planned |
+| B · Policy compiler | Row-level security | 3 | planned |
+| B+ · Column security | Property-level visibility | 2 | **gap 4** |
+| C · Kill the drift | One schema truth, CI-enforced | 3 | planned |
+| D · Properties & links | Rename, add, relate | 4 | planned |
+| D+ · Generic write path | Parameters + edit rules + apply endpoint | 6–8 | **gap 1 · critical** |
+| D++ · Version stamping | In-flight records survive a flow change | 2–3 | **gap 3** |
+| E · Datasource binding | Client databases | 6 | planned |
+| F · Interfaces & packaging | Shippable modules | 8 | planned |
+| F+ · Proposals | Review before publish — ships with the designer | 3–4 | **gap 2** |
+| G · Model suggestion | Onboarding assist | — | on demand |
+
+**~40 focused weeks** to something honestly describable as a vertical Palantir, against the 26 the earlier sequence implied.
 
 ---
 
