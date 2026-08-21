@@ -75,3 +75,44 @@ async def reject_my_pending_exec(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     await svc.reject_my_pending_exec(db, current_user["tenant_id"], user_id, current_user["sub"])
+
+
+# ── Sharing an executive between supervisors ────────────────────────────────
+#
+# An executive may report to several supervisors in one module. The link is made
+# from this side rather than by the executive redeeming a second invite code:
+# _enqueue_signup 409s on an already-active email, so a second redemption never
+# reaches an approval queue at all. See supervisor_code_service.
+
+
+@router.get("/me/{module}/available-executives", response_model=list[TeamMemberOut])
+async def list_available_executives(
+    module: Module,
+    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Executives already in this module who are not yet on my team."""
+    return await svc.list_available_executives(db, current_user, module)
+
+
+@router.post("/me/{module}/team/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def add_existing_executive(
+    module: Module,
+    user_id: str,
+    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    """Also supervise an executive who is already in this module. Idempotent."""
+    await svc.add_existing_executive(db, current_user, module, user_id)
+
+
+@router.delete("/me/{module}/team/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_from_my_team(
+    module: Module,
+    user_id: str,
+    current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    """Drop my own link only — other supervisors keep theirs, and the account
+    stays active."""
+    await svc.remove_from_my_team(db, current_user, module, user_id)

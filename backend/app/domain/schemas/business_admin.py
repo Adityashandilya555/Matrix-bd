@@ -58,6 +58,16 @@ class PendingSupervisorOut(BaseModel):
     created_at: datetime
 
 
+class RemoveOrgUserIn(BaseModel):
+    """Which supervisor's group the Remove button was pressed in.
+
+    Both fields or neither: naming a module without a supervisor would be
+    ambiguous once an executive has several links in that module.
+    """
+    module: Optional[Module] = None
+    supervisor_id: Optional[str] = None
+
+
 class ApproveSupervisorIn(BaseModel):
     module: Module
 

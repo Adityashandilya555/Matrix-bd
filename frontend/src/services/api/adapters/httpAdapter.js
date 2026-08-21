@@ -717,8 +717,15 @@ export async function revokeObserver(userId) {
 }
 
 // Deactivate an org user (supervisor/executive) — revokes their access.
-export async function removeOrgUser(userId) {
-  return post(`/business-admin/org/${userId}/remove`);
+// `module` + `supervisorId` name which supervisor's group the Remove button was
+// pressed in. An executive can report to several supervisors in a module, so
+// without them the same button in two rows would deactivate the whole account
+// from either. With them the backend drops just that link, and deactivates only
+// once the person has no membership left anywhere. Omit both for a supervisor or
+// an unassigned executive, where whole-account removal is what is meant.
+export async function removeOrgUser(userId, { module, supervisorId } = {}) {
+  const body = module && supervisorId ? { module, supervisor_id: supervisorId } : undefined;
+  return post(`/business-admin/org/${userId}/remove`, body);
 }
 
 export async function listBusinessAdminSites(limit = 80) {
@@ -864,4 +871,27 @@ export async function approveMyPendingExecutive(userId, module) {
 
 export async function rejectMyPendingExecutive(userId) {
   return post(`/supervisor-codes/me/pending-executives/${userId}/reject`);
+}
+
+// ── Sharing an executive between supervisors ────────────────────────────────
+//
+// An executive may report to several supervisors in one module. The link is made
+// from the supervisor's side: the executive cannot redeem a second invite code,
+// because signup 409s on an email that is already active in the workspace.
+
+// Executives already in this module who are not yet on my team.
+export async function listAvailableExecutives(module) {
+  const d = await get(`/supervisor-codes/me/${module}/available-executives`);
+  const items = Array.isArray(d) ? d : (d?.items || []);
+  return items.map(u => ({ id: u.id, email: u.email, name: u.name, module: u.module }));
+}
+
+// Idempotent — a double-click is a no-op, not a 409.
+export async function addExistingExecutive(module, userId) {
+  return post(`/supervisor-codes/me/${module}/team/${userId}`);
+}
+
+// Drops my link only. Other supervisors keep theirs and the account stays active.
+export async function removeFromMyTeam(module, userId) {
+  return client.delete(`/supervisor-codes/me/${module}/team/${userId}`).then(r => r.data);
 }

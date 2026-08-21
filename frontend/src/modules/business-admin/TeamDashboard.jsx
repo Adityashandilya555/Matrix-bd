@@ -235,7 +235,15 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     onApproveExecutiveReq: async (reqId) => { await fetchers.approveExecutiveReq(reqId); await loadExecutiveRequests(true); await loadOrg(true); },
     onRejectExecutiveReq: async (reqId) => { await fetchers.rejectExecutiveReq(reqId); await loadExecutiveRequests(true); },
     onRotate: async (moduleKey) => { await fetchers.rotateDeptCode(moduleKey); await loadOrg(true); },
-    onRemoveUser: async (u) => { if (!fetchers.removeOrgUser) return; await fetchers.removeOrgUser(u.id); await loadOrg(true); },
+    // `ctx` is {module, supervisorId} when Remove was pressed inside a
+    // supervisor's group, and undefined for a supervisor row or an unassigned
+    // executive. With it the backend unlinks that one team; without it it
+    // deactivates the account, exactly as before.
+    onRemoveUser: async (u, ctx) => {
+      if (!fetchers.removeOrgUser) return;
+      await fetchers.removeOrgUser(u.id, ctx);
+      await loadOrg(true);
+    },
     // observer
     onRotateObserverCode: async () => {
       setObserverRotating(true);

@@ -97,7 +97,9 @@ async def get_primary_membership(db: AsyncSession, user_id: Any) -> Mapping[str,
             SELECT module, role_in_module, supervisor_id
               FROM user_module_memberships
              WHERE user_id = :uid
-             ORDER BY module
+             -- supervisor_id too: an executive can have several rows per module
+             -- now, and without it the claim would vary between logins.
+             ORDER BY module, supervisor_id NULLS FIRST
              LIMIT 1
         """),
         {"uid": user_id},

@@ -371,7 +371,9 @@ async def approve_supervisor(
                 INSERT INTO user_module_memberships
                        (user_id, tenant_id, module, role_in_module, supervisor_id)
                 VALUES (CAST(:uid AS uuid), :tid, :module, 'supervisor', NULL)
-                ON CONFLICT (user_id, module) DO NOTHING
+                -- Targets uq_umm_user_module_unsupervised: a supervisor row
+                -- carries supervisor_id NULL and stays one-per-module.
+                ON CONFLICT (user_id, module) WHERE supervisor_id IS NULL DO NOTHING
             """),
             {"uid": user_id, "tid": tenant_id, "module": module},
         )
@@ -482,6 +484,72 @@ async def reject_executive_request(
             {"rid": request_id, "tid": tenant_id, "aid": admin_id},
         )
 
+
+
+async def unlink_or_deactivate_org_user(
+    session: AsyncSession,
+    tenant_id: str | UUID,
+    user_id: str | UUID,
+    actor: dict,
+    *,
+    module: str | None = None,
+    supervisor_id: str | UUID | None = None,
+) -> None:
+    """Remove someone from ONE supervisor's team, or from the workspace.
+
+    An executive can report to several supervisors in a module, so the org card
+    renders a Remove button inside each supervisor's group. With no context that
+    button would deactivate the whole account from either place — the same
+    control doing a workspace-wide thing in two rows.
+
+    With ``module`` + ``supervisor_id``: drop that one membership row. If the
+    person is then in no module at all, they have nowhere left to work, so fall
+    through to a full deactivation rather than leaving an active account nobody
+    can reach.
+
+    With neither: the original behaviour, which is what supervisors and the
+    unassigned-executive list still use.
+    """
+    if module is None or supervisor_id is None:
+        await deactivate_org_user(session, tenant_id, user_id, actor)
+        return
+
+    async with transaction(session):
+        deleted = (await session.execute(
+            text("""
+                DELETE FROM user_module_memberships
+                 WHERE user_id = CAST(:uid AS uuid)
+                   AND tenant_id = :tid
+                   AND module = :module
+                   AND supervisor_id = CAST(:sid AS uuid)
+                   AND role_in_module = 'executive'
+            """),
+            {"uid": user_id, "tid": tenant_id, "module": module, "sid": supervisor_id},
+        )).rowcount
+        if deleted:
+            await write_audit_event(
+                session,
+                tenant_id=tenant_id,
+                site_id=None,
+                actor_id=actor.get("sub"),
+                actor_name=actor.get("name"),
+                action="executive_unlinked_from_supervisor",
+                entity_id=user_id,
+                entity_type="user_module_membership",
+                detail=f"module={module} supervisor={supervisor_id}",
+            )
+        remaining = (await session.execute(
+            text("""
+                SELECT 1 FROM user_module_memberships
+                 WHERE user_id = CAST(:uid AS uuid) AND tenant_id = :tid
+                 LIMIT 1
+            """),
+            {"uid": user_id, "tid": tenant_id},
+        )).first()
+
+    # Outside the transaction above: deactivate_org_user opens its own.
+    if not remaining:
+        await deactivate_org_user(session, tenant_id, user_id, actor)
 
 
 async def deactivate_org_user(
@@ -1010,11 +1078,23 @@ async def list_org(
         # Supervisor-only modules (NSO) never surface executives — each supervisor's
         # `executives` stays [] and there are no unassigned execs to show.
         if exec_enabled:
+            # An executive holds one row per supervisor, so it legitimately
+            # appears under several of them. Someone counts as unassigned only
+            # when NO row of theirs resolves to a supervisor in this module —
+            # otherwise a leftover supervisor_id-NULL row (the FK is ON DELETE
+            # SET NULL) would list them under a supervisor AND in Unassigned.
+            placed: set[str] = set()
+            for e in execs_by_mod[m]:
+                sid = e.get("_supervisor_id")
+                if sid and sid in index:
+                    placed.add(e["id"])
+            seen_unassigned: set[str] = set()
             for e in execs_by_mod[m]:
                 sid = e.pop("_supervisor_id")
                 if sid and sid in index:
                     index[sid]["executives"].append(e)
-                else:
+                elif e["id"] not in placed and e["id"] not in seen_unassigned:
+                    seen_unassigned.add(e["id"])
                     unassigned.append(e)
         modules.append({
             "module": m,

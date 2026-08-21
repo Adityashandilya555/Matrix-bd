@@ -8,6 +8,9 @@ import {
   approveMyPendingExecutive,
   rejectMyPendingExecutive,
   listMyTeam,
+  listAvailableExecutives,
+  addExistingExecutive,
+  removeFromMyTeam,
 } from '../../services/api/adapters/httpAdapter.js';
 
 // TeamPage — supervisor surface for the per-supervisor invite-code flow.
@@ -16,6 +19,11 @@ import {
 //   1. My invite code for {module}            (mono code + rotate)
 //   2. Pending executives waiting for approval (per-row Approve/Reject)
 //   3. My active team                          (executives mapped to me)
+//
+// An executive can report to several supervisors in one module, so section 3
+// also offers "add someone already in this module". That is the only way to make
+// the second link: an executive cannot redeem a second invite code, because
+// signup refuses an email that is already active in the workspace.
 //
 // Executives see a read-only confirmation card. Business admins are redirected
 // to the dedicated business-admin surface — this page is for the people who
@@ -53,19 +61,24 @@ function SupervisorView({ module }) {
   const [rotating, setRotating] = useState(false);
   const [actingOn, setActingOn] = useState(null);
   const [copied, setCopied] = useState(false);
+  // Executives already in this module who are not yet on my team.
+  const [available, setAvailable] = useState([]);
+  const [sharing, setSharing] = useState(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [code, pend, mine] = await Promise.all([
+      const [code, pend, mine, free] = await Promise.all([
         getMyInviteCode(module).catch(() => null),
         listMyPendingExecutives(module).catch(() => []),
         listMyTeam(module).catch(() => []),
+        listAvailableExecutives(module).catch(() => []),
       ]);
       setInvite(code);
       setPending(pend);
       setTeam(mine);
+      setAvailable(free);
     } catch (e) {
       setError(e?.message || String(e));
     } finally {
@@ -85,6 +98,24 @@ function SupervisorView({ module }) {
     } finally {
       setRotating(false);
     }
+  };
+
+  // Also supervise someone already in this module. Idempotent server-side, so a
+  // double-click is a no-op rather than an error.
+  const share = async (userId) => {
+    setSharing(userId);
+    try { await addExistingExecutive(module, userId); await refresh(); }
+    catch (e) { setError(e?.detail || e?.message || String(e)); }
+    finally { setSharing(null); }
+  };
+
+  // Drops my link only — they keep working for any other supervisor, and the
+  // account is untouched. Deactivating someone is the business admin's job.
+  const unshare = async (userId) => {
+    setSharing(userId);
+    try { await removeFromMyTeam(module, userId); await refresh(); }
+    catch (e) { setError(e?.detail || e?.message || String(e)); }
+    finally { setSharing(null); }
   };
 
   const copyCode = () => {
@@ -213,12 +244,58 @@ function SupervisorView({ module }) {
                   <span style={{ fontWeight: 600 }}>{u.name || u.email}</span>
                   <span style={metaText}>{u.email}{u.assignedCity ? ` · ${u.assignedCity}` : ''}</span>
                 </div>
-                <span style={badge}>executive</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={badge}>executive</span>
+                  <button
+                    type="button"
+                    onClick={() => unshare(u.id)}
+                    disabled={sharing === u.id}
+                    className="zm-btn"
+                    style={btnGhost(sharing === u.id ? 'wait' : 'pointer')}
+                  >
+                    Remove
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
         )}
       </Section>
+
+      {/* Only rendered when there is actually someone to add. An empty
+          "add an executive" panel on every supervisor's page — which is the
+          common case, since most modules have one supervisor — would be noise. */}
+      {available.length > 0 && (
+        <Section
+          title="Also in this module"
+          rightMeta={<span style={countPill}>{available.length}</span>}
+        >
+          <p style={{ ...metaText, margin: '0 0 10px' }}>
+            Executives already working in this module under another supervisor.
+            Adding one puts them on your team as well — they keep their existing
+            team, and nothing about their access changes.
+          </p>
+          <ul style={list}>
+            {available.map(u => (
+              <li key={u.id} style={row}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontWeight: 600 }}>{u.name || u.email}</span>
+                  <span style={metaText}>{u.email}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => share(u.id)}
+                  disabled={sharing === u.id}
+                  className="zm-btn-primary"
+                  style={btnPrimary(sharing === u.id ? 'wait' : 'pointer')}
+                >
+                  Add to my team
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
     </div>
   );
 }

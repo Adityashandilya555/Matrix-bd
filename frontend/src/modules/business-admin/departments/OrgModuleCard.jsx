@@ -29,7 +29,13 @@ export default function OrgModuleCard({ mod, onRotate, onRemove, loading }) {
     finally { setRotating(false); }
   };
 
-  const totalExecs = (mod.supervisors || []).reduce((n, s) => n + (s.executives?.length || 0), 0) + (mod.unassignedExecutives?.length || 0);
+  // Distinct people, not rows. An executive may report to several supervisors in
+  // one module and so appears under each of them — summing the lists would count
+  // the same person once per supervisor.
+  const totalExecs = new Set([
+    ...(mod.supervisors || []).flatMap((s) => (s.executives || []).map((e) => e.id)),
+    ...(mod.unassignedExecutives || []).map((e) => e.id),
+  ]).size;
   // Supervisor-only modules (NSO) have no executive role — hide all executive UI.
   const execEnabled = mod.executivesEnabled !== false;
 
@@ -80,7 +86,15 @@ export default function OrgModuleCard({ mod, onRotate, onRemove, loading }) {
             header={<Person p={s} role="supervisor" onRemove={onRemove} />}>
             {(s.executives || []).length === 0
               ? <div style={{ fontSize: 12, color: T.textFaint, padding: '6px 0' }}>No executives under this supervisor yet.</div>
-              : (s.executives || []).map((e) => <Person key={e.id} p={e} role="executive" onRemove={onRemove} />)}
+              : (s.executives || []).map((e) => (
+                // Removing from INSIDE a supervisor's group drops only that
+                // link — the same person may still report to another supervisor
+                // here. onRemove without the context deactivates the account,
+                // which is right for a supervisor row or an unassigned exec but
+                // wrong for one row of a shared executive.
+                <Person key={e.id} p={e} role="executive"
+                  onRemove={onRemove && ((person) => onRemove(person, { module: mod.module, supervisorId: s.id }))} />
+              ))}
           </Disclosure>
         ))}
         {!loading && !execEnabled && (mod.supervisors || []).map((s) => (
