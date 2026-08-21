@@ -265,12 +265,60 @@ async def test_naming_a_module_without_a_supervisor_falls_back(make_session, fak
 
 # ── the org tree ──────────────────────────────────────────────────────────────
 
+def _rows(*pairs):
+    """(exec_id, supervisor_id) → the row shape list_org builds."""
+    return [{"id": e, "email": f"{e}@x.com", "name": e, "_supervisor_id": s} for e, s in pairs]
+
+
+def test_a_shared_executive_nests_under_every_supervisor():
+    """The point of the whole change, at the display layer."""
+    index = {"sup-1": {"id": "sup-1", "executives": []}, "sup-2": {"id": "sup-2", "executives": []}}
+    unassigned = business_admin_service._place_executives(
+        _rows(("exe-1", "sup-1"), ("exe-1", "sup-2")), index,
+    )
+    assert [e["id"] for e in index["sup-1"]["executives"]] == ["exe-1"]
+    assert [e["id"] for e in index["sup-2"]["executives"]] == ["exe-1"]
+    assert unassigned == []
+
+
 def test_a_shared_executive_is_not_also_listed_as_unassigned():
     """The FK is ON DELETE SET NULL, so an executive can hold a leftover
-    NULL-supervisor row alongside a real one. Without the fix they would render
+    NULL-supervisor row alongside a real one. Without the first pass they render
     under a supervisor AND in Unassigned executives, as two different people."""
-    src = inspect.getsource(business_admin_service.list_org)
-    assert "placed" in src and "seen_unassigned" in src
+    index = {"sup-2": {"id": "sup-2", "executives": []}}
+    unassigned = business_admin_service._place_executives(
+        _rows(("exe-1", None), ("exe-1", "sup-2")), index,
+    )
+    assert [e["id"] for e in index["sup-2"]["executives"]] == ["exe-1"]
+    assert unassigned == []
+
+
+def test_a_genuinely_orphaned_executive_is_still_listed_once():
+    """No row of theirs resolves, so they belong in Unassigned — but only once,
+    however many dangling rows they carry."""
+    unassigned = business_admin_service._place_executives(
+        _rows(("exe-1", None), ("exe-1", "sup-gone")), {},
+    )
+    assert [e["id"] for e in unassigned] == ["exe-1"]
+
+
+def test_a_row_pointing_at_a_supervisor_in_another_module_does_not_place_them():
+    """`index` holds only THIS module's supervisors, so a stale id must fall
+    through to unassigned rather than being silently dropped."""
+    unassigned = business_admin_service._place_executives(
+        _rows(("exe-1", "sup-in-legal")), {"sup-1": {"id": "sup-1", "executives": []}},
+    )
+    assert [e["id"] for e in unassigned] == ["exe-1"]
+
+
+def test_the_marker_never_leaks_into_the_response():
+    """_supervisor_id is internal bookkeeping; the API shape must not grow it."""
+    index = {"sup-1": {"id": "sup-1", "executives": []}}
+    unassigned = business_admin_service._place_executives(
+        _rows(("exe-1", "sup-1"), ("exe-2", None)), index,
+    )
+    for person in index["sup-1"]["executives"] + unassigned:
+        assert "_supervisor_id" not in person
 
 
 # ── determinism ───────────────────────────────────────────────────────────────

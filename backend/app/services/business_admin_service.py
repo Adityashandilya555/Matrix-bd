@@ -1011,6 +1011,38 @@ _ORG_MODULES: tuple[str, ...] = ("bd", "legal", "design", "project", "nso", "pro
 _SUPERVISOR_ONLY_MODULES: frozenset[str] = frozenset({"nso"})
 
 
+def _place_executives(execs: list[dict], index: dict[str, dict]) -> list[dict]:
+    """Nest each executive under every supervisor it reports to; return the rest.
+
+    An executive holds one membership row per supervisor, so the same person
+    legitimately appears under several of them — `execs` is a list of ROWS, not
+    of people.
+
+    Someone counts as unassigned only when NO row of theirs resolves to a
+    supervisor in this module. The FK is ON DELETE SET NULL, so an executive can
+    carry a leftover supervisor_id-NULL row alongside a real one; without the
+    first pass they would render under a supervisor AND in Unassigned, reading as
+    two different people.
+
+    Extracted from list_org, which is on the Departments tab's hot path and had
+    grown past the complexity gate (PY-R1000).
+    """
+    placed = {
+        e["id"] for e in execs
+        if e.get("_supervisor_id") and e["_supervisor_id"] in index
+    }
+    unassigned: list[dict] = []
+    seen: set[str] = set()
+    for e in execs:
+        sid = e.pop("_supervisor_id")
+        if sid and sid in index:
+            index[sid]["executives"].append(e)
+        elif e["id"] not in placed and e["id"] not in seen:
+            seen.add(e["id"])
+            unassigned.append(e)
+    return unassigned
+
+
 async def list_org(
     session: AsyncSession,
     tenant_id: str | UUID,
@@ -1078,24 +1110,7 @@ async def list_org(
         # Supervisor-only modules (NSO) never surface executives — each supervisor's
         # `executives` stays [] and there are no unassigned execs to show.
         if exec_enabled:
-            # An executive holds one row per supervisor, so it legitimately
-            # appears under several of them. Someone counts as unassigned only
-            # when NO row of theirs resolves to a supervisor in this module —
-            # otherwise a leftover supervisor_id-NULL row (the FK is ON DELETE
-            # SET NULL) would list them under a supervisor AND in Unassigned.
-            placed: set[str] = set()
-            for e in execs_by_mod[m]:
-                sid = e.get("_supervisor_id")
-                if sid and sid in index:
-                    placed.add(e["id"])
-            seen_unassigned: set[str] = set()
-            for e in execs_by_mod[m]:
-                sid = e.pop("_supervisor_id")
-                if sid and sid in index:
-                    index[sid]["executives"].append(e)
-                elif e["id"] not in placed and e["id"] not in seen_unassigned:
-                    seen_unassigned.add(e["id"])
-                    unassigned.append(e)
+            unassigned = _place_executives(execs_by_mod[m], index)
         modules.append({
             "module": m,
             "code": codes.get(m),
