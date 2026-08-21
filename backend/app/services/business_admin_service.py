@@ -547,8 +547,13 @@ async def unlink_or_deactivate_org_user(
             {"uid": user_id, "tid": tenant_id},
         )).first()
 
+    # `deleted` matters: if the DELETE matched nothing the admin clicked a
+    # stale row — the supervisor had already unlinked them — and the right
+    # answer is to do nothing, not to fall through and deactivate the whole
+    # account off a click that was never about that.
+    #
     # Outside the transaction above: deactivate_org_user opens its own.
-    if not remaining:
+    if deleted and not remaining:
         await deactivate_org_user(session, tenant_id, user_id, actor)
 
 
@@ -1023,6 +1028,11 @@ def _place_executives(execs: list[dict], index: dict[str, dict]) -> list[dict]:
     carry a leftover supervisor_id-NULL row alongside a real one; without the
     first pass they would render under a supervisor AND in Unassigned, reading as
     two different people.
+
+    NOT pure, despite reading like it: it pops "_supervisor_id" off every row
+    and appends into `index`. Both are deliberate — the marker must not reach
+    the response and the nesting has to land somewhere — but it means calling
+    this twice on the same rows raises KeyError. One call per module.
 
     Extracted from list_org, which is on the Departments tab's hot path and had
     grown past the complexity gate (PY-R1000).

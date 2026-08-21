@@ -38,7 +38,9 @@ const renderPage = async ({ team = [], available = [] } = {}) => {
   api.listMyTeam.mockResolvedValue(team);
   api.listAvailableExecutives.mockResolvedValue(available);
   const view = render(<TeamPage />);
-  await waitFor(() => expect(api.listAvailableExecutives).toHaveBeenCalled());
+  // listMyTeam, not listAvailableExecutives: the latter is deliberately skipped
+  // for a business admin, so waiting on it would hang that case.
+  await waitFor(() => expect(api.listMyTeam).toHaveBeenCalled());
   return view;
 };
 
@@ -49,7 +51,9 @@ beforeEach(() => {
   api.addExistingExecutive.mockResolvedValue(undefined);
   api.removeFromMyTeam.mockResolvedValue(undefined);
   session.mockReturnValue({
-    role: 'supervisor', session: { module: 'bd' }, user: { name: 'Supr Two' },
+    role: 'supervisor',
+    session: { module: 'bd', realRole: 'supervisor' },
+    user: { name: 'Supr Two' },
   });
 });
 
@@ -92,7 +96,62 @@ describe('adding someone already in the module', () => {
     api.addExistingExecutive.mockRejectedValue({ detail: 'Not a member of this module.' });
     await renderPage({ available: [FREE] });
     await user.click(screen.getByRole('button', { name: /add to my team/i }));
-    expect(await screen.findByText(/not a member of this module/i)).toBeInTheDocument();
+    const banner = await screen.findByText(/not a member of this module/i);
+    expect(banner).toBeInTheDocument();
+    // Framed as itself, not prefixed "Could not load team data" — a failed Add
+    // is not a load failure.
+    expect(banner.textContent).not.toMatch(/could not load/i);
+  });
+});
+
+describe('a business admin viewing as a supervisor', () => {
+  // list_my_team has an admin branch that returns EVERY executive in the module
+  // rather than a team, and the admin's own id supervises nothing — so every
+  // add and every remove here would 403. Draw neither.
+  const asAdmin = () => session.mockReturnValue({
+    role: 'supervisor',
+    session: { module: 'bd', realRole: 'business_admin' },
+    user: { name: 'The Admin' },
+  });
+
+  it('is offered no way to add', async () => {
+    asAdmin();
+    await renderPage({ available: [FREE] });
+    expect(screen.queryByRole('button', { name: /add to my team/i })).toBeNull();
+    expect(screen.queryByText(/also in this module/i)).toBeNull();
+  });
+
+  it('is offered no way to remove', async () => {
+    asAdmin();
+    await renderPage({ team: [MINE] });
+    expect(screen.queryByRole('button', { name: /^remove$/i })).toBeNull();
+  });
+
+  it('still sees the list itself — reading it was never the problem', async () => {
+    asAdmin();
+    await renderPage({ team: [MINE] });
+    expect(screen.getByText('Already Mine')).toBeInTheDocument();
+  });
+
+  it('does not call the endpoint that 403s for them by design', async () => {
+    // It would, correctly, be refused — and since that failure is no longer
+    // swallowed, calling it would put a red banner on a page working exactly as
+    // intended.
+    asAdmin();
+    await renderPage({ available: [FREE] });
+    expect(api.listAvailableExecutives).not.toHaveBeenCalled();
+    expect(screen.queryByText(/could not load/i)).toBeNull();
+  });
+});
+
+describe('when the team data cannot be loaded', () => {
+  it('says so instead of rendering an empty, healthy-looking page', async () => {
+    // The failure that hid a dead endpoint: available-executives was swallowed
+    // with .catch(() => []), which renders identically to "nobody to add".
+    api.listMyTeam.mockResolvedValue([]);
+    api.listAvailableExecutives.mockRejectedValue({ detail: 'Boom' });
+    render(<TeamPage />);
+    expect(await screen.findByText(/could not load team data: boom/i)).toBeInTheDocument();
   });
 });
 

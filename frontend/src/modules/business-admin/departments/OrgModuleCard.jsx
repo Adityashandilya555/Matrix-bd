@@ -36,6 +36,12 @@ export default function OrgModuleCard({ mod, onRotate, onRemove, loading }) {
     ...(mod.supervisors || []).flatMap((s) => (s.executives || []).map((e) => e.id)),
     ...(mod.unassignedExecutives || []).map((e) => e.id),
   ]).size;
+  // Ids that appear under more than one supervisor in this module.
+  const sharedIds = new Set(
+    (mod.supervisors || [])
+      .flatMap((s) => (s.executives || []).map((e) => e.id))
+      .filter((id, i, all) => all.indexOf(id) !== i),
+  );
   // Supervisor-only modules (NSO) have no executive role — hide all executive UI.
   const execEnabled = mod.executivesEnabled !== false;
 
@@ -82,6 +88,9 @@ export default function OrgModuleCard({ mod, onRotate, onRemove, loading }) {
           </div>
         )}
         {!loading && execEnabled && (mod.supervisors || []).map((s) => (
+          // `sharedIds` marks the people who also report to someone else here, so
+          // the same name appearing under two supervisors reads as one person
+          // with two teams rather than as a duplicate rendering bug.
           <Disclosure key={s.id} count={s.executives?.length || 0}
             header={<Person p={s} role="supervisor" onRemove={onRemove} />}>
             {(s.executives || []).length === 0
@@ -93,6 +102,12 @@ export default function OrgModuleCard({ mod, onRotate, onRemove, loading }) {
                 // which is right for a supervisor row or an unassigned exec but
                 // wrong for one row of a shared executive.
                 <Person key={e.id} p={e} role="executive"
+                  // The prompt has to say which of the two things this does.
+                  // Unassigned executives below still get the plain "executive"
+                  // label, because there the click really does remove the
+                  // account.
+                  subtitle={sharedIds.has(e.id) ? `${e.email} · also on another team` : undefined}
+                  removeLabel="executive from this team"
                   onRemove={onRemove && ((person) => onRemove(person, { module: mod.module, supervisorId: s.id }))} />
               ))}
           </Disclosure>

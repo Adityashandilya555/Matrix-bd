@@ -12,7 +12,13 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.domain.schemas.supervisor_codes import InviteCodeOut, Module, PendingExecOut, TeamMemberOut
+from app.domain.schemas.supervisor_codes import (
+    AvailableExecutiveOut,
+    InviteCodeOut,
+    Module,
+    PendingExecOut,
+    TeamMemberOut,
+)
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
 from app.services import supervisor_code_service as svc
@@ -85,7 +91,7 @@ async def reject_my_pending_exec(
 # reaches an approval queue at all. See supervisor_code_service.
 
 
-@router.get("/me/{module}/available-executives", response_model=list[TeamMemberOut])
+@router.get("/me/{module}/available-executives", response_model=list[AvailableExecutiveOut])
 async def list_available_executives(
     module: Module,
     current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],

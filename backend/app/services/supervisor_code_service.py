@@ -21,6 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import transaction
+from app.services.audit_service import write_audit_event
 
 
 _PENDING_PREFIX = "pending_supervisor:"
@@ -163,7 +164,10 @@ async def list_my_team(
     if current_user.get("real_role") == "business_admin":
         rows = (await session.execute(
             text(
-                "SELECT u.id, u.email, u.name, umm.joined_at "
+                # DISTINCT ON: an executive now holds one row per supervisor,
+                # and this branch has no supervisor filter — without it the
+                # same person is listed once per supervisor, with duplicate ids.
+                "SELECT DISTINCT ON (u.id) u.id, u.email, u.name, umm.joined_at "
                 "FROM user_module_memberships umm "
                 "JOIN users u ON u.id = umm.user_id "
                 "WHERE umm.module = :m "
@@ -281,6 +285,7 @@ async def list_available_executives(
             "   AND NOT EXISTS ( "
             "         SELECT 1 FROM user_module_memberships mine "
             "          WHERE mine.user_id = umm.user_id "
+            "            AND mine.tenant_id = :tid "
             "            AND mine.module = :m "
             "            AND mine.supervisor_id = :sid) "
             " ORDER BY u.name"
@@ -340,6 +345,16 @@ async def add_existing_executive(
             ),
             {"uid": user_id, "tid": tenant_id, "m": module, "sid": supervisor_id},
         )
+        # The admin-side unlink records an event; the same state change made by a
+        # supervisor was going unrecorded, so team composition was only half
+        # auditable depending on who made the change.
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=None,
+            actor_id=supervisor_id, actor_name=current_user.get("name"),
+            action="executive_linked_to_supervisor",
+            entity_id=user_id, entity_type="user_module_membership",
+            detail=f"module={module}",
+        )
 
 
 async def remove_from_my_team(
@@ -349,14 +364,42 @@ async def remove_from_my_team(
 
     Never touches users.is_active, and never touches another supervisor's link —
     an executive shared with someone else keeps working for them. Deactivating an
-    account that has run out of teams is the business admin's path
-    (business_admin_service.unlink_or_deactivate), not this one.
+    account is the business admin's job, not a supervisor's.
+
+    REFUSES to remove the last link in this module, because that state has no way
+    out. Everything downstream of the membership row is membership-driven: the
+    admin's Departments card joins through user_module_memberships so the person
+    vanishes from it entirely and cannot even be selected for removal; this
+    module's available-executives list requires a row in the module, so no
+    supervisor can re-add them; and re-redeeming an invite code 409s on an email
+    that is already active. The account stays active and logged in, with a null
+    module claim, bounced off every module route. So the last link is the admin's
+    to remove, via the Departments card while the person is still visible there.
     """
     tenant_id = current_user["tenant_id"]
     await _assert_supervises_module(
         session, supervisor_id=current_user["sub"], module=module, tenant_id=tenant_id,
     )
     async with transaction(session):
+        others = (await session.execute(
+            text(
+                "SELECT 1 FROM user_module_memberships "
+                " WHERE user_id = :uid AND tenant_id = :tid AND module = :m "
+                "   AND role_in_module = 'executive' "
+                "   AND supervisor_id IS DISTINCT FROM CAST(:sid AS uuid) "
+                " LIMIT 1"
+            ),
+            {"uid": user_id, "tid": tenant_id, "m": module, "sid": current_user["sub"]},
+        )).first()
+        if not others:
+            raise HTTPException(
+                status_code=http_status.HTTP_409_CONFLICT,
+                detail=(
+                    "You are their only supervisor in this module, so removing them "
+                    "would leave them with no way back in. Ask a business admin to "
+                    "remove the account from Departments."
+                ),
+            )
         await session.execute(
             text(
                 "DELETE FROM user_module_memberships "
@@ -364,4 +407,14 @@ async def remove_from_my_team(
                 "   AND supervisor_id = :sid AND role_in_module = 'executive'"
             ),
             {"uid": user_id, "tid": tenant_id, "m": module, "sid": current_user["sub"]},
+        )
+        # The admin-side unlink records an event; the same state change made by a
+        # supervisor was going unrecorded, so team composition was only half
+        # auditable depending on who made the change.
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=None,
+            actor_id=current_user["sub"], actor_name=current_user.get("name"),
+            action="executive_unlinked_from_supervisor",
+            entity_id=user_id, entity_type="user_module_membership",
+            detail=f"module={module}",
         )

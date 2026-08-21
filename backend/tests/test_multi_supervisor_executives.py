@@ -46,6 +46,46 @@ def test_the_composite_unique_is_gone_from_the_schema():
     assert "user_module_memberships_user_module_key" not in SCHEMA.read_text()
 
 
+def test_the_migration_does_not_drop_by_a_guessed_name():
+    """The trap this walked into once already.
+
+    schema.sql spells the constraint `user_module_memberships_user_module_key`,
+    and dropping that name looks obviously right. But schema.sql is never
+    executed (docs/10-change-management/change-rules.md calls it a historical
+    snapshot), and the migration that actually created the table —
+    202605265_user_module_memberships_table.sql — declares `UNIQUE (user_id,
+    module)` ANONYMOUSLY, so Postgres generated a different name.
+
+    DROP ... IF EXISTS on a wrong name matches nothing and succeeds. The old
+    constraint would survive, every second-supervisor INSERT would raise a unique
+    violation the ON CONFLICT arbiter does not cover, and the deploy would report
+    success. So the name must be discovered, never written down.
+    """
+    sql = MIGRATION.read_text()
+    body = "\n".join(
+        line for line in sql.splitlines() if not line.strip().startswith("--")
+    )
+    assert "user_module_memberships_user_module_key" not in body
+    assert "pg_constraint" in body, "the constraint must be found, not named"
+
+
+def test_the_migration_refuses_to_finish_if_the_drop_did_nothing():
+    """A migration that cannot do its job must fail loudly rather than record
+    itself applied. Without this the failure mode is a green deploy and a feature
+    that 500s on first use."""
+    body = MIGRATION.read_text()
+    assert "RAISE EXCEPTION" in body
+    assert body.index("RAISE EXCEPTION") < body.index("CREATE UNIQUE INDEX")
+
+
+def test_the_guard_ignores_the_two_partial_indexes_it_creates():
+    """Both new indexes are on (user_id, module[, supervisor_id]). If the
+    left-over check counted partial ones it would fire on the second run and
+    every run after."""
+    body = MIGRATION.read_text()
+    assert body.count("indpred IS NULL") >= 2
+
+
 def test_supervisors_are_still_one_row_per_module():
     """The rule only loosens for executives. A supervisor row carries
     supervisor_id NULL and the partial index still pins it to one."""
@@ -74,8 +114,22 @@ def test_the_migration_is_rerunnable():
     """The ledger keys on filename + checksum, but a half-applied file retries
     on the next boot — every statement has to tolerate having already run."""
     sql = MIGRATION.read_text()
-    assert "DROP CONSTRAINT IF EXISTS" in sql
     assert sql.count("CREATE UNIQUE INDEX IF NOT EXISTS") == 2
+    # The DO block is naturally re-runnable: it drops whatever it finds, and on a
+    # second pass finds nothing.
+
+
+def test_the_runner_parses_the_do_block_whole():
+    """The startup splitter cuts on semicolons; a DO block is full of them. If it
+    shreds, the fragments run as separate statements and the migration fails in a
+    way the ledger records as a hard error on every boot."""
+    from app.main import _parse_sql_statements
+
+    stmts = _parse_sql_statements(MIGRATION.read_text())
+    assert len(stmts) == 3, [s[:40] for s in stmts]
+    do_block = stmts[0]
+    assert do_block.count("$$") == 2
+    assert "RAISE EXCEPTION" in do_block
 
 
 # ── 2 · the writers ───────────────────────────────────────────────────────────
@@ -187,11 +241,16 @@ async def test_only_an_active_executive_can_be_linked(make_session, fake_result,
 
 # ── unlinking ─────────────────────────────────────────────────────────────────
 
+def _shared(fake_result):
+    """The 'another supervisor also has them' probe, answered yes."""
+    return fake_result(all_rows=[(1,)])
+
+
 @pytest.mark.asyncio
 async def test_a_supervisor_unlinks_only_their_own_link(make_session, fake_result):
     """Scoped to the caller: an executive shared with another supervisor keeps
     working for them, and the account is never deactivated from here."""
-    sess = make_session(_supervises(fake_result))
+    sess = make_session(_supervises(fake_result), _shared(fake_result))
     await svc.remove_from_my_team(sess, SUP, "bd", "exe-1")
     assert "DELETE FROM user_module_memberships" in sess.sql
     assert "supervisor_id = :sid" in sess.sql
@@ -202,9 +261,34 @@ async def test_a_supervisor_unlinks_only_their_own_link(make_session, fake_resul
 async def test_unlinking_cannot_reach_a_supervisor_row(make_session, fake_result):
     """role_in_module is pinned, so a crafted user_id cannot delete a peer
     supervisor's own membership."""
-    sess = make_session(_supervises(fake_result))
+    sess = make_session(_supervises(fake_result), _shared(fake_result))
     await svc.remove_from_my_team(sess, SUP, "bd", "exe-1")
     assert "role_in_module = 'executive'" in sess.sql
+
+
+@pytest.mark.asyncio
+async def test_removing_the_only_link_in_a_module_is_refused(make_session, fake_result):
+    """The state it would create has no way out. Everything downstream is
+    membership-driven: the admin's card joins through the membership table so the
+    person disappears from it and cannot be selected for removal; no supervisor
+    can re-add them, because available-executives requires a row in the module;
+    and re-redeeming an invite code 409s on an active email. The account would sit
+    active and signed in with a null module claim, bounced off every route."""
+    sess = make_session(_supervises(fake_result), fake_result(all_rows=[]))
+    with pytest.raises(HTTPException) as exc:
+        await svc.remove_from_my_team(sess, SUP, "bd", "exe-1")
+    assert exc.value.status_code == 409
+    assert "business admin" in exc.value.detail
+    assert "DELETE" not in sess.sql
+
+
+@pytest.mark.asyncio
+async def test_the_last_link_check_ignores_my_own_row(make_session, fake_result):
+    """IS DISTINCT FROM, not <>: the caller's own row must not count as 'someone
+    else still has them', and a NULL supervisor_id row must still count as one."""
+    sess = make_session(_supervises(fake_result), _shared(fake_result))
+    await svc.remove_from_my_team(sess, SUP, "bd", "exe-1")
+    assert "supervisor_id IS DISTINCT FROM" in sess.sql
 
 
 # ── the admin's Remove button ─────────────────────────────────────────────────
@@ -328,3 +412,46 @@ def test_the_session_query_orders_its_now_multiple_rows():
     from app.core import deps
     src = inspect.getsource(deps.get_current_user)
     assert "ORDER BY COALESCE(umm.has_executive_access, false) DESC" in src
+
+
+# ── the route contract ────────────────────────────────────────────────────────
+#
+# The gap that let a dead endpoint ship green. Service tests call the function
+# and never see the response_model; the frontend test mocks the adapter and never
+# sees the route. Nothing in between validated what one returns against what the
+# other declares — and an EMPTY list validates against any model, so the endpoint
+# looked healthy right up until it had something to say.
+
+def _row(**over):
+    base = {"id": "u1", "email": "e@x.com", "name": "E", "module": "bd"}
+    base.update(over)
+    return base
+
+
+def test_available_executives_validates_against_its_response_model():
+    from pydantic import TypeAdapter
+
+    from app.routers import supervisor_codes as router_mod
+
+    model = router_mod.AvailableExecutiveOut
+    TypeAdapter(list[model]).validate_python([_row()])
+
+
+def test_the_available_list_does_not_reuse_the_team_model():
+    """TeamMemberOut carries joined_at — the date they joined MY team. The whole
+    point of this list is that they have not, so there is no value to put there."""
+    from app.routers import supervisor_codes as router_mod
+
+    assert "joined_at" not in router_mod.AvailableExecutiveOut.model_fields
+    assert "joined_at" in router_mod.TeamMemberOut.model_fields
+
+
+def test_an_empty_list_is_not_evidence_the_model_fits():
+    """Why the mismatch survived review: this passes with ANY model."""
+    from pydantic import TypeAdapter
+
+    from app.routers import supervisor_codes as router_mod
+
+    assert TypeAdapter(list[router_mod.TeamMemberOut]).validate_python([]) == []
+    with pytest.raises(Exception):
+        TypeAdapter(list[router_mod.TeamMemberOut]).validate_python([_row()])
