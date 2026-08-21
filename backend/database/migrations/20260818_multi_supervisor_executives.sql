@@ -56,10 +56,11 @@ BEGIN
          WHERE ns.nspname  = 'public'
            AND rel.relname = 'user_module_memberships'
            AND con.contype = 'u'
+           AND array_length(con.conkey, 1) = 2
            AND (SELECT array_agg(att.attname::text ORDER BY att.attname)
-                  FROM unnest(con.conkey) AS k(attnum)
-                  JOIN pg_attribute att
-                    ON att.attrelid = con.conrelid AND att.attnum = k.attnum)
+                  FROM pg_attribute att
+                 WHERE att.attrelid = con.conrelid
+                   AND att.attnum = ANY (con.conkey))
                = ARRAY['module', 'user_id']
     LOOP
         RAISE NOTICE 'dropping unique constraint %', obj.conname;
@@ -78,10 +79,11 @@ BEGIN
            AND rel.relname = 'user_module_memberships'
            AND i.indisunique
            AND i.indpred IS NULL
+           AND i.indnatts = 2
            AND (SELECT array_agg(att.attname::text ORDER BY att.attname)
-                  FROM unnest(i.indkey::int[]) AS k(attnum)
-                  JOIN pg_attribute att
-                    ON att.attrelid = i.indrelid AND att.attnum = k.attnum)
+                  FROM pg_attribute att
+                 WHERE att.attrelid = i.indrelid
+                   AND att.attnum = ANY (i.indkey))
                = ARRAY['module', 'user_id']
     LOOP
         RAISE NOTICE 'dropping unique index %', obj.relname;
@@ -98,10 +100,11 @@ BEGIN
        AND rel.relname = 'user_module_memberships'
        AND i.indisunique
        AND i.indpred IS NULL
+       AND i.indnatts = 2
        AND (SELECT array_agg(att.attname::text ORDER BY att.attname)
-              FROM unnest(i.indkey::int[]) AS k(attnum)
-              JOIN pg_attribute att
-                ON att.attrelid = i.indrelid AND att.attnum = k.attnum)
+              FROM pg_attribute att
+             WHERE att.attrelid = i.indrelid
+               AND att.attnum = ANY (i.indkey))
            = ARRAY['module', 'user_id'];
 
     IF left_over > 0 THEN

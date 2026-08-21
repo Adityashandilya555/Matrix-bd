@@ -547,14 +547,19 @@ async def unlink_or_deactivate_org_user(
             {"uid": user_id, "tid": tenant_id},
         )).first()
 
-    # `deleted` matters: if the DELETE matched nothing the admin clicked a
-    # stale row — the supervisor had already unlinked them — and the right
-    # answer is to do nothing, not to fall through and deactivate the whole
-    # account off a click that was never about that.
-    #
-    # Outside the transaction above: deactivate_org_user opens its own.
-    if deleted and not remaining:
-        await deactivate_org_user(session, tenant_id, user_id, actor)
+        # `deleted` matters: if the DELETE matched nothing the admin clicked a
+        # stale row — the supervisor had already unlinked them — and the right
+        # answer is to do nothing, not to fall through and deactivate the whole
+        # account off a click that was never about that.
+        #
+        # Called INSIDE this block on purpose. transaction() takes its
+        # begin_nested() branch when one is already open, so the deactivation
+        # becomes a savepoint under ours and the two commit or roll back
+        # together. Called outside, the DELETE would already be durable if the
+        # deactivation then raised — the admin would see an error and the
+        # membership row would be gone anyway.
+        if deleted and not remaining:
+            await deactivate_org_user(session, tenant_id, user_id, actor)
 
 
 async def deactivate_org_user(

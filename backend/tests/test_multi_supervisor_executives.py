@@ -78,6 +78,29 @@ def test_the_migration_refuses_to_finish_if_the_drop_did_nothing():
     assert body.index("RAISE EXCEPTION") < body.index("CREATE UNIQUE INDEX")
 
 
+def test_the_catalog_lookup_does_not_cast_indkey_to_an_int_array():
+    """pg_index.indkey is int2vector, and pg_cast has no int2vector -> integer[].
+
+    `unnest(i.indkey::int[])` parses fine and fails at execution — which for a
+    migration means the DO block raises on deploy. `attnum = ANY (i.indkey)` is
+    the canonical form and takes int2vector directly. Nothing in the test suite
+    executes SQL, so the grammar being valid proves nothing here.
+    """
+    sql = MIGRATION.read_text()
+    assert "indkey::int[]" not in sql
+    assert "indkey::integer[]" not in sql
+    assert sql.count("attnum = ANY (i.indkey)") == 2
+
+
+def test_the_index_lookup_pins_the_column_count():
+    """`attnum = ANY (indkey)` is membership, not equality — without indnatts = 2
+    a three-column index whose first two happen to be (user_id, module) would
+    match and be dropped."""
+    sql = MIGRATION.read_text()
+    assert sql.count("i.indnatts = 2") == 2
+    assert "array_length(con.conkey, 1) = 2" in sql
+
+
 def test_the_guard_ignores_the_two_partial_indexes_it_creates():
     """Both new indexes are on (user_id, module[, supervisor_id]). If the
     left-over check counted partial ones it would fire on the second run and
@@ -455,3 +478,37 @@ def test_an_empty_list_is_not_evidence_the_model_fits():
     assert TypeAdapter(list[router_mod.TeamMemberOut]).validate_python([]) == []
     with pytest.raises(Exception):
         TypeAdapter(list[router_mod.TeamMemberOut]).validate_python([_row()])
+
+
+def test_the_unlink_and_the_deactivation_are_one_transaction():
+    """db/session.py's transaction() COMMITS on exit when none is open, and takes
+    a savepoint when one is. So calling deactivate_org_user after the block makes
+    two committed transactions: the DELETE would already be durable if the
+    deactivation then raised, leaving the admin an error and a deleted row.
+    Inside the block it nests, and the two move together.
+
+    Checked against the AST, not indentation — a sibling `if` after the block is
+    also more indented than the `async with` line, so counting spaces cannot tell
+    the two apart.
+    """
+    import ast
+    import textwrap
+
+    src = textwrap.dedent(
+        inspect.getsource(business_admin_service.unlink_or_deactivate_org_user)
+    )
+    fn = ast.parse(src).body[0]
+
+    def calls_deactivate(node):
+        return any(
+            isinstance(n, ast.Call)
+            and getattr(n.func, "id", getattr(n.func, "attr", None)) == "deactivate_org_user"
+            for n in ast.walk(node)
+        )
+
+    blocks = [n for n in ast.walk(fn) if isinstance(n, ast.AsyncWith)]
+    assert blocks, "the transaction block is gone"
+    assert any(calls_deactivate(b) for b in blocks), (
+        "deactivate_org_user is not inside `async with transaction(session)` — "
+        "the DELETE would commit separately from the deactivation"
+    )
