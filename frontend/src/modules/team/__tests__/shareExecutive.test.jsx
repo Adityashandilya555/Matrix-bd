@@ -38,9 +38,16 @@ const renderPage = async ({ team = [], available = [] } = {}) => {
   api.listMyTeam.mockResolvedValue(team);
   api.listAvailableExecutives.mockResolvedValue(available);
   const view = render(<TeamPage />);
-  // listMyTeam, not listAvailableExecutives: the latter is deliberately skipped
-  // for a business admin, so waiting on it would hang that case.
-  await waitFor(() => expect(api.listMyTeam).toHaveBeenCalled());
+  // Wait for the load to FINISH, not for a mock to have been called. Waiting on
+  // the call let assertions run while the page still rendered its loading state
+  // — green locally, red on slower CI, which is exactly what happened.
+  //
+  // Keyed on the header button leaving "Refreshing…", which covers every branch:
+  // listAvailableExecutives is deliberately skipped for a business admin, so
+  // waiting on that one would hang that case instead.
+  await waitFor(() =>
+    expect(screen.queryByRole('button', { name: /refreshing/i })).toBeNull(),
+  );
   return view;
 };
 
