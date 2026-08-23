@@ -37,6 +37,22 @@ MIGRATION = pathlib.Path("database/migrations/20260818_multi_supervisor_executiv
 SUP = {"sub": "sup-2", "tenant_id": "t1", "name": "Supervisor Two"}
 
 
+def _index_of(sess, needle, *, must_contain=None):
+    """Position of the first recorded statement containing `needle`.
+
+    Not a bare next(): that raises StopIteration, so a missing statement fails
+    the test with an opaque error rather than naming what was not emitted.
+    """
+    for i, stmt in enumerate(sess.executed):
+        if needle in stmt and (must_contain is None or must_contain in stmt):
+            return i
+    raise AssertionError(
+        f"no statement containing {needle!r}"
+        + (f" and {must_contain!r}" if must_contain else "")
+        + f"; emitted: {[' '.join(q.split())[:60] for q in sess.executed]}"
+    )
+
+
 def _supervises(fake_result):
     """The `_assert_supervises_module` probe, answered yes."""
     return fake_result(all_rows=[(1,)])
@@ -427,11 +443,9 @@ async def test_linking_locks_the_target_before_inserting(make_session, fake_resu
         fake_result(mappings_rows=[{"is_active": True, "role": "executive", "in_module": True}]),
     )
     await svc.add_existing_executive(sess, SUP, "bd", "exe-1")
-    select_users = next(q for q in sess.executed if "FROM users u" in q)
-    assert "FOR UPDATE" in select_users
-    assert sess.executed.index(select_users) < next(
-        i for i, q in enumerate(sess.executed) if "INSERT INTO user_module_memberships" in q
-    )
+    lock = _index_of(sess, "FROM users u", must_contain="FOR UPDATE")
+    insert = _index_of(sess, "INSERT INTO user_module_memberships")
+    assert lock < insert
 
 
 @pytest.mark.asyncio
@@ -445,9 +459,9 @@ async def test_unlinking_takes_the_same_lock_before_counting(make_session, fake_
     await business_admin_service.unlink_or_deactivate_org_user(
         sess, "t1", "exe-1", {"sub": "admin"}, module="bd", supervisor_id="sup-1",
     )
-    lock = next(q for q in sess.executed if "FROM users" in q and "FOR UPDATE" in q)
-    delete = next(q for q in sess.executed if "DELETE FROM user_module_memberships" in q)
-    assert sess.executed.index(lock) < sess.executed.index(delete)
+    lock = _index_of(sess, "FROM users", must_contain="FOR UPDATE")
+    delete = _index_of(sess, "DELETE FROM user_module_memberships")
+    assert lock < delete
 
 
 def test_the_primary_membership_prefers_a_real_supervisor():
