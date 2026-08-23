@@ -30,6 +30,22 @@
 -- then REFUSE to finish if one is still there. A migration that cannot do its job
 -- must fail loudly rather than report success.
 --
+-- TWO THINGS IN THE LOOKUPS THAT LOOK WRONG AND ARE NOT
+--
+--   `attnum = ANY (i.indkey)`, not `unnest(i.indkey::int[])`. indkey is
+--   int2vector, and pg_cast has int2vector -> int2[] but nothing to integer[],
+--   so the cast form parses cleanly and fails at execution — which here means
+--   the DO block raises on deploy.
+--
+--   `indnatts = 2` / `array_length(conkey, 1) = 2`. ANY is membership, not
+--   equality: without the column count a three-column index whose first two
+--   happen to be (user_id, module) would match and be dropped.
+--
+-- Neither is covered by a test. Nothing in the suite executes SQL, so anything
+-- asserted about this file could only restate it as Python substrings — which a
+-- correct rewrite fails and a broken one that keeps the strings passes. This
+-- comment is the durable form; proving it needs real Postgres.
+--
 -- Note on the FK: supervisor_id is ON DELETE SET NULL, so deleting a supervisor
 -- who shares an executive could in principle produce a second NULL row and
 -- violate the first index. Unreachable today — nothing deletes an ACTIVE

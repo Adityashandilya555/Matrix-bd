@@ -318,7 +318,16 @@ async def add_existing_executive(
                 "       EXISTS (SELECT 1 FROM user_module_memberships m "
                 "                WHERE m.user_id = u.id AND m.module = :m "
                 "                  AND m.tenant_id = :tid) AS in_module "
-                "  FROM users u WHERE u.id = :uid AND u.tenant_id = :tid"
+                "  FROM users u WHERE u.id = :uid AND u.tenant_id = :tid "
+                # Locks the users row for the rest of this transaction. Without
+                # it an admin can deactivate the target between this SELECT and
+                # the INSERT below, leaving an inactive account holding a
+                # brand-new team link. It also serialises against
+                # business_admin_service.unlink_or_deactivate_org_user, which
+                # takes the same lock — otherwise a link added between that
+                # function's "any memberships left?" check and its deactivation
+                # would be attached to an account it then switches off.
+                "   FOR UPDATE"
             ),
             {"uid": user_id, "m": module, "tid": tenant_id},
         )).mappings().first()

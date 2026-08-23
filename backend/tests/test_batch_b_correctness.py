@@ -162,7 +162,10 @@ def test_login_membership_query_is_ordered():
     assert snippet.index("ORDER BY") < snippet.index("LIMIT")
     # supervisor_id too: an executive now has several rows per module, so
     # ordering by module alone leaves the JWT's supervisor_id claim arbitrary.
-    assert "supervisor_id NULLS FIRST" in snippet
+    # LAST, not FIRST — a NULL supervisor_id is an ORPHANED link (the FK is
+    # ON DELETE SET NULL), and preferring it would mint a token with no
+    # supervisor for someone who still has a real team in that module.
+    assert "supervisor_id NULLS LAST" in snippet
 
 
 # ── #121 — assign-role provisions membership + clears notes ─────────────────

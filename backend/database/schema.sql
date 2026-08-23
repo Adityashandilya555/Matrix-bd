@@ -475,10 +475,8 @@ CREATE TABLE public.user_module_memberships (
   CONSTRAINT user_module_memberships_supervisor_id_fkey FOREIGN KEY (supervisor_id) REFERENCES public.users(id) ON DELETE SET NULL
 );
 
--- An executive may report to several supervisors in one module, so the old
--- UNIQUE (user_id, module) is split by shape (migration 20260818):
---   supervisor_id IS NULL     — supervisors, and executives with no supervisor.
---   supervisor_id IS NOT NULL — executives, one row per supervisor.
+-- Split from UNIQUE (user_id, module) by migration 20260818; the reasoning is
+-- in that file.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_umm_user_module_unsupervised
   ON public.user_module_memberships (user_id, module)
   WHERE supervisor_id IS NULL;

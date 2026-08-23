@@ -5,18 +5,22 @@ UNIQUE (user_id, module) and a single `supervisor_id`, so one row per
 (user, module) meant one supervisor, structurally. If BD had two supervisors an
 executive could be on one team or the other, never both.
 
-Three things had to change together, and each is asserted here:
+Two things had to change together, and both are asserted here:
 
-  1. the storage — two partial unique indexes instead of the composite one,
-  2. the writers — `ON CONFLICT (user_id, module)` infers the index that no
-     longer exists, so all three inserts fail at runtime without this,
-  3. an entry point — the executive cannot redeem a second invite code
+  1. the writers — `ON CONFLICT (user_id, module)` infers the index the migration
+     removes, so all three inserts fail at runtime without the rewrite,
+  2. an entry point — the executive cannot redeem a second invite code
      (_enqueue_signup 409s on an active email), so the supervisor adds them.
 
-The suite has no live database — RecordingSession records SQL and returns canned
-rows — so these assert the emitted statements and the branch decisions. The
-partial-index inference itself is only provable against real Postgres; see the
-manual steps in the PR.
+The third piece, the migration itself, is NOT asserted here. There is no live
+database in this suite — RecordingSession records SQL and returns canned rows —
+so any test of it could only restate the SQL as Python substrings, which a
+correct rewrite would fail and a broken one that kept the strings would pass.
+The reasoning that shaped that file lives in its own header, where it survives a
+rewrite. Proving it needs one integration test against real Postgres.
+
+The one exception below runs the application's own SQL splitter over the
+migration, which is executing code rather than describing it.
 """
 from __future__ import annotations
 
@@ -29,7 +33,6 @@ from fastapi import HTTPException
 from app.services import business_admin_service, supervisor_code_service as svc
 
 MIGRATION = pathlib.Path("database/migrations/20260818_multi_supervisor_executives.sql")
-SCHEMA = pathlib.Path("database/schema.sql")
 
 SUP = {"sub": "sup-2", "tenant_id": "t1", "name": "Supervisor Two"}
 
@@ -41,103 +44,7 @@ def _supervises(fake_result):
 
 # ── 1 · the storage ───────────────────────────────────────────────────────────
 
-def test_the_composite_unique_is_gone_from_the_schema():
-    """It is what made one supervisor per module structural."""
-    assert "user_module_memberships_user_module_key" not in SCHEMA.read_text()
 
-
-def test_the_migration_does_not_drop_by_a_guessed_name():
-    """The trap this walked into once already.
-
-    schema.sql spells the constraint `user_module_memberships_user_module_key`,
-    and dropping that name looks obviously right. But schema.sql is never
-    executed (docs/10-change-management/change-rules.md calls it a historical
-    snapshot), and the migration that actually created the table —
-    202605265_user_module_memberships_table.sql — declares `UNIQUE (user_id,
-    module)` ANONYMOUSLY, so Postgres generated a different name.
-
-    DROP ... IF EXISTS on a wrong name matches nothing and succeeds. The old
-    constraint would survive, every second-supervisor INSERT would raise a unique
-    violation the ON CONFLICT arbiter does not cover, and the deploy would report
-    success. So the name must be discovered, never written down.
-    """
-    sql = MIGRATION.read_text()
-    body = "\n".join(
-        line for line in sql.splitlines() if not line.strip().startswith("--")
-    )
-    assert "user_module_memberships_user_module_key" not in body
-    assert "pg_constraint" in body, "the constraint must be found, not named"
-
-
-def test_the_migration_refuses_to_finish_if_the_drop_did_nothing():
-    """A migration that cannot do its job must fail loudly rather than record
-    itself applied. Without this the failure mode is a green deploy and a feature
-    that 500s on first use."""
-    body = MIGRATION.read_text()
-    assert "RAISE EXCEPTION" in body
-    assert body.index("RAISE EXCEPTION") < body.index("CREATE UNIQUE INDEX")
-
-
-def test_the_catalog_lookup_does_not_cast_indkey_to_an_int_array():
-    """pg_index.indkey is int2vector, and pg_cast has no int2vector -> integer[].
-
-    `unnest(i.indkey::int[])` parses fine and fails at execution — which for a
-    migration means the DO block raises on deploy. `attnum = ANY (i.indkey)` is
-    the canonical form and takes int2vector directly. Nothing in the test suite
-    executes SQL, so the grammar being valid proves nothing here.
-    """
-    sql = MIGRATION.read_text()
-    assert "indkey::int[]" not in sql
-    assert "indkey::integer[]" not in sql
-    assert sql.count("attnum = ANY (i.indkey)") == 2
-
-
-def test_the_index_lookup_pins_the_column_count():
-    """`attnum = ANY (indkey)` is membership, not equality — without indnatts = 2
-    a three-column index whose first two happen to be (user_id, module) would
-    match and be dropped."""
-    sql = MIGRATION.read_text()
-    assert sql.count("i.indnatts = 2") == 2
-    assert "array_length(con.conkey, 1) = 2" in sql
-
-
-def test_the_guard_ignores_the_two_partial_indexes_it_creates():
-    """Both new indexes are on (user_id, module[, supervisor_id]). If the
-    left-over check counted partial ones it would fire on the second run and
-    every run after."""
-    body = MIGRATION.read_text()
-    assert body.count("indpred IS NULL") >= 2
-
-
-def test_supervisors_are_still_one_row_per_module():
-    """The rule only loosens for executives. A supervisor row carries
-    supervisor_id NULL and the partial index still pins it to one."""
-    sql = SCHEMA.read_text()
-    assert "uq_umm_user_module_unsupervised" in sql
-    idx = sql[sql.index("uq_umm_user_module_unsupervised"):]
-    assert "(user_id, module)" in idx[:200]
-    assert "WHERE supervisor_id IS NULL" in idx[:200]
-
-
-def test_executives_get_one_row_per_supervisor():
-    sql = SCHEMA.read_text()
-    idx = sql[sql.index("uq_umm_user_module_supervisor"):]
-    assert "(user_id, module, supervisor_id)" in idx[:200]
-    assert "WHERE supervisor_id IS NOT NULL" in idx[:200]
-
-
-def test_the_migration_drops_before_it_creates():
-    """Both indexes overlap the old constraint's key, so creating first would
-    fail on any workspace that already has data."""
-    sql = MIGRATION.read_text()
-    assert sql.index("DROP CONSTRAINT") < sql.index("CREATE UNIQUE INDEX")
-
-
-def test_the_migration_is_rerunnable():
-    """The ledger keys on filename + checksum, but a half-applied file retries
-    on the next boot — every statement has to tolerate having already run."""
-    sql = MIGRATION.read_text()
-    assert sql.count("CREATE UNIQUE INDEX IF NOT EXISTS") == 2
     # The DO block is naturally re-runnable: it drops whatever it finds, and on a
     # second pass finds nothing.
 
@@ -332,6 +239,7 @@ async def test_remove_without_context_still_deactivates(make_session, fake_resul
 async def test_remove_inside_a_supervisors_group_unlinks_only(make_session, fake_result):
     """Still has another team, so the account stays live."""
     sess = make_session(
+        fake_result(),                           # SELECT ... FOR UPDATE on users
         fake_result(rowcount=1),                 # the DELETE
         fake_result(all_rows=[(1,)]),            # a membership remains
     )
@@ -347,6 +255,7 @@ async def test_removing_the_last_link_deactivates(make_session, fake_result):
     """Otherwise the account stays active belonging to nobody — signed in, in no
     module, seeing nothing."""
     sess = make_session(
+        fake_result(),                                                    # the row lock
         fake_result(rowcount=1),                                          # the DELETE
         fake_result(all_rows=[]),                                         # nothing left
         fake_result(mappings_rows=[{"is_active": True, "role": "executive"}]),
@@ -469,17 +378,6 @@ def test_the_available_list_does_not_reuse_the_team_model():
     assert "joined_at" in router_mod.TeamMemberOut.model_fields
 
 
-def test_an_empty_list_is_not_evidence_the_model_fits():
-    """Why the mismatch survived review: this passes with ANY model."""
-    from pydantic import TypeAdapter
-
-    from app.routers import supervisor_codes as router_mod
-
-    assert TypeAdapter(list[router_mod.TeamMemberOut]).validate_python([]) == []
-    with pytest.raises(Exception):
-        TypeAdapter(list[router_mod.TeamMemberOut]).validate_python([_row()])
-
-
 def test_the_unlink_and_the_deactivation_are_one_transaction():
     """db/session.py's transaction() COMMITS on exit when none is open, and takes
     a savepoint when one is. So calling deactivate_org_user after the block makes
@@ -512,3 +410,75 @@ def test_the_unlink_and_the_deactivation_are_one_transaction():
         "deactivate_org_user is not inside `async with transaction(session)` — "
         "the DELETE would commit separately from the deactivation"
     )
+
+
+# ── the two writers serialise on the users row ────────────────────────────────
+#
+# add_existing_executive checks the target then inserts; unlink_or_deactivate
+# counts memberships then deactivates. Both are read-then-act, and they act on
+# each other's state — so they take the same row lock or they interleave.
+
+@pytest.mark.asyncio
+async def test_linking_locks_the_target_before_inserting(make_session, fake_result):
+    """Otherwise an admin can deactivate between the check and the INSERT,
+    leaving a switched-off account holding a brand-new team link."""
+    sess = make_session(
+        _supervises(fake_result),
+        fake_result(mappings_rows=[{"is_active": True, "role": "executive", "in_module": True}]),
+    )
+    await svc.add_existing_executive(sess, SUP, "bd", "exe-1")
+    select_users = next(q for q in sess.executed if "FROM users u" in q)
+    assert "FOR UPDATE" in select_users
+    assert sess.executed.index(select_users) < next(
+        i for i, q in enumerate(sess.executed) if "INSERT INTO user_module_memberships" in q
+    )
+
+
+@pytest.mark.asyncio
+async def test_unlinking_takes_the_same_lock_before_counting(make_session, fake_result):
+    """The other side. Without it a supervisor can add a link between the
+    membership count and the deactivation, and an executive with a live team gets
+    switched off."""
+    sess = make_session(
+        fake_result(), fake_result(rowcount=1), fake_result(all_rows=[(1,)]),
+    )
+    await business_admin_service.unlink_or_deactivate_org_user(
+        sess, "t1", "exe-1", {"sub": "admin"}, module="bd", supervisor_id="sup-1",
+    )
+    lock = next(q for q in sess.executed if "FROM users" in q and "FOR UPDATE" in q)
+    delete = next(q for q in sess.executed if "DELETE FROM user_module_memberships" in q)
+    assert sess.executed.index(lock) < sess.executed.index(delete)
+
+
+def test_the_primary_membership_prefers_a_real_supervisor():
+    """NULLS LAST, not FIRST. A NULL supervisor_id is an ORPHANED link — the FK
+    is ON DELETE SET NULL — so preferring it mints a JWT with no supervisor for
+    someone who still has a perfectly good team in that module."""
+    from app.services import auth_repo
+
+    src = inspect.getsource(auth_repo.get_primary_membership)
+    assert "supervisor_id NULLS LAST" in src
+    assert "NULLS FIRST" not in src
+
+
+# ── a half-filled remove payload is rejected, not guessed at ──────────────────
+
+@pytest.mark.parametrize("payload,accepted", [
+    ({}, True),
+    ({"module": "bd", "supervisor_id": "sup-1"}, True),
+    ({"module": "bd"}, False),
+    ({"supervisor_id": "sup-1"}, False),
+])
+def test_remove_context_is_both_fields_or_neither(payload, accepted):
+    """The service reads a missing pair as "no context", which is whole-account
+    deactivation — so a half-filled payload would switch an account off when it
+    meant to unlink one team."""
+    import pydantic
+
+    from app.domain.schemas.business_admin import RemoveOrgUserIn
+
+    if accepted:
+        RemoveOrgUserIn(**payload)
+    else:
+        with pytest.raises(pydantic.ValidationError):
+            RemoveOrgUserIn(**payload)

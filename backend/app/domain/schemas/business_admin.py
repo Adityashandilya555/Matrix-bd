@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, model_validator
 
 
 Module = Literal["bd", "legal", "design", "project", "nso", "project_excellence"]  # 'payment' retired (202606132); 'project_excellence' added (202606134)
@@ -61,11 +61,23 @@ class PendingSupervisorOut(BaseModel):
 class RemoveOrgUserIn(BaseModel):
     """Which supervisor's group the Remove button was pressed in.
 
-    Both fields or neither: naming a module without a supervisor would be
-    ambiguous once an executive has several links in that module.
+    Both fields or neither. Naming a module without a supervisor is ambiguous
+    once an executive has several links in that module — and the ambiguity is not
+    harmless: the service treats a missing pair as "no context", which is
+    whole-account deactivation. So a half-filled payload would silently switch
+    off an account when it meant to unlink one team. Rejected at the edge rather
+    than guessed at.
     """
     module: Optional[Module] = None
     supervisor_id: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _both_or_neither(self) -> "RemoveOrgUserIn":
+        if (self.module is None) != (self.supervisor_id is None):
+            raise ValueError(
+                "module and supervisor_id must be given together, or both omitted"
+            )
+        return self
 
 
 class ApproveSupervisorIn(BaseModel):

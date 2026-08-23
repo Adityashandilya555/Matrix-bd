@@ -515,6 +515,19 @@ async def unlink_or_deactivate_org_user(
         return
 
     async with transaction(session):
+        # Take the users row first, so this serialises against
+        # supervisor_code_service.add_existing_executive, which locks the same
+        # row. Without it a supervisor can add a link between the membership
+        # count below and the deactivation, and an executive with a live team
+        # ends up switched off.
+        await session.execute(
+            text("""
+                SELECT 1 FROM users
+                 WHERE id = CAST(:uid AS uuid) AND tenant_id = :tid
+                 FOR UPDATE
+            """),
+            {"uid": user_id, "tid": tenant_id},
+        )
         deleted = (await session.execute(
             text("""
                 DELETE FROM user_module_memberships
