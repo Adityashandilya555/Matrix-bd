@@ -223,7 +223,10 @@ async def assign_role(
                 INSERT INTO user_module_memberships
                        (user_id, tenant_id, module, role_in_module, supervisor_id)
                 VALUES (CAST(:uid AS uuid), :tid, :module, :rim, CAST(:sid AS uuid))
-                ON CONFLICT (user_id, module) DO NOTHING
+                -- No inference target: this one statement writes both a
+                -- supervisor row (supervisor_id NULL) and an executive row,
+                -- which land on different partial indexes.
+                ON CONFLICT DO NOTHING
             """),
             {"uid": user_id, "tid": tenant_id, "module": module,
              "rim": role_in_module, "sid": supervisor_id},

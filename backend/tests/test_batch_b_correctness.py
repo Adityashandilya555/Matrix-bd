@@ -97,7 +97,10 @@ async def test_approve_supervisor_inserts_with_on_conflict(make_session, fake_re
     await business_admin_service.approve_supervisor(
         sess, tenant_id="t", user_id="u", module="design",
     )
-    assert "ON CONFLICT (user_id, module)" in sess.sql
+    # A supervisor row carries supervisor_id NULL and stays one-per-module, so
+    # it targets uq_umm_user_module_unsupervised. The predicate is restated
+    # because partial-index inference will not resolve without it.
+    assert "ON CONFLICT (user_id, module) WHERE supervisor_id IS NULL" in sess.sql
     assert "UPDATE users" in sess.sql
 
 
@@ -119,7 +122,11 @@ async def test_approve_exec_inserts_with_on_conflict(make_session, fake_result):
     await supervisor_code_service.approve_my_pending_exec(
         sess, tenant_id="t", supervisor_id="s", user_id="u", module="legal",
     )
-    assert "ON CONFLICT (user_id, module)" in sess.sql
+    # Still idempotent, but the conflict target now carries supervisor_id: an
+    # executive holds one row per supervisor (20260818), so a SECOND supervisor
+    # must insert rather than be swallowed.
+    assert "ON CONFLICT (user_id, module, supervisor_id)" in sess.sql
+    assert "WHERE supervisor_id IS NOT NULL DO NOTHING" in sess.sql
 
 
 async def test_approve_exec_noop_when_already_active(make_session, fake_result):
@@ -147,9 +154,18 @@ def test_login_membership_query_is_ordered():
     src = inspect.getsource(auth_mod)
     anchor = "SELECT module, role_in_module, supervisor_id"
     assert anchor in src
-    snippet = src[src.index(anchor): src.index(anchor) + 280]
+    # Slice to the end of the statement rather than a fixed character count —
+    # the old 280-char window silently depended on how much comment sat inside
+    # the SQL, and broke the moment a line was added.
+    snippet = src[src.index(anchor): src.index("LIMIT 1", src.index(anchor)) + 8]
     assert "ORDER BY module" in snippet
     assert snippet.index("ORDER BY") < snippet.index("LIMIT")
+    # supervisor_id too: an executive now has several rows per module, so
+    # ordering by module alone leaves the JWT's supervisor_id claim arbitrary.
+    # LAST, not FIRST — a NULL supervisor_id is an ORPHANED link (the FK is
+    # ON DELETE SET NULL), and preferring it would mint a token with no
+    # supervisor for someone who still has a real team in that module.
+    assert "supervisor_id NULLS LAST" in snippet
 
 
 # ── #121 — assign-role provisions membership + clears notes ─────────────────
@@ -190,7 +206,11 @@ async def test_assign_role_provisions_membership_and_clears_notes(make_session, 
     )
 
     assert "user_module_memberships" in sess.sql
-    assert "ON CONFLICT (user_id, module)" in sess.sql
+    # Bare ON CONFLICT: this one statement writes both a supervisor row
+    # (supervisor_id NULL) and an executive row, which land on two different
+    # partial indexes, so it cannot name either as an inference target. Still
+    # idempotent, which is all this test ever guarded.
+    assert "ON CONFLICT DO NOTHING" in sess.sql
     assert "notes" in sess.sql and "NULL" in sess.sql  # notes cleared in UPDATE
     assert sess.commit_count >= 1
     assert out.role == "executive"

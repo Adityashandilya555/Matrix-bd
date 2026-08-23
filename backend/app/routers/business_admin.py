@@ -17,6 +17,7 @@ from app.domain.schemas.business_admin import (
     ObserverCodeOut,
     ActiveObserverOut,
     PendingObserverOut,
+    RemoveOrgUserIn,
     ApproveSupervisorIn,
     AdminSitesResponse,
     DeptCodeRotateOut,
@@ -225,9 +226,22 @@ async def remove_org_user(
     db: DbDep,
     current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
     tenant_id: TenantId,
+    body: RemoveOrgUserIn | None = None,
 ) -> None:
-    """Deactivate an org user (supervisor/executive) — revokes their access."""
-    await svc.deactivate_org_user(db, tenant_id, user_id, current_user)
+    """Remove an org user from one supervisor's team, or from the workspace.
+
+    An executive can report to several supervisors in a module, so the org card
+    shows a Remove button under each. The body names which group it was pressed
+    in; with it, only that link goes, and the account is deactivated only once
+    the person has no module membership left anywhere. Omitting the body keeps
+    the original whole-account behaviour, which supervisors and the unassigned
+    list still use.
+    """
+    await svc.unlink_or_deactivate_org_user(
+        db, tenant_id, user_id, current_user,
+        module=body.module if body else None,
+        supervisor_id=body.supervisor_id if body else None,
+    )
 
 
 @router.get("/sites", response_model=AdminSitesResponse)

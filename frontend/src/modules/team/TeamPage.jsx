@@ -8,6 +8,9 @@ import {
   approveMyPendingExecutive,
   rejectMyPendingExecutive,
   listMyTeam,
+  listAvailableExecutives,
+  addExistingExecutive,
+  removeFromMyTeam,
 } from '../../services/api/adapters/httpAdapter.js';
 
 // TeamPage — supervisor surface for the per-supervisor invite-code flow.
@@ -16,6 +19,11 @@ import {
 //   1. My invite code for {module}            (mono code + rotate)
 //   2. Pending executives waiting for approval (per-row Approve/Reject)
 //   3. My active team                          (executives mapped to me)
+//
+// An executive can report to several supervisors in one module, so section 3
+// also offers "add someone already in this module". That is the only way to make
+// the second link: an executive cannot redeem a second invite code, because
+// signup refuses an email that is already active in the workspace.
 //
 // Executives see a read-only confirmation card. Business admins are redirected
 // to the dedicated business-admin surface — this page is for the people who
@@ -30,6 +38,11 @@ function normalizeRole(role) {
 
 export default function TeamPage() {
   const { session, role: rawRole } = useSession();
+  // A business admin viewing as a supervisor gets list_my_team's admin branch —
+  // every executive in the module, not a team — and their own id supervises
+  // nothing, so add/remove would 403 on every row. realRole is the DB role,
+  // which the override cannot rewrite.
+  const canManageTeam = session?.realRole === 'supervisor';
   const role = normalizeRole(rawRole);
   const module = session?.module || DEFAULT_MODULE;
 
@@ -41,10 +54,10 @@ export default function TeamPage() {
     return <ExecutiveView session={session}/>;
   }
 
-  return <SupervisorView module={module}/>;
+  return <SupervisorView module={module} canManageTeam={canManageTeam}/>;
 }
 
-function SupervisorView({ module }) {
+function SupervisorView({ module, canManageTeam }) {
   const [invite, setInvite] = useState(null);
   const [pending, setPending] = useState([]);
   const [team, setTeam] = useState([]);
@@ -53,25 +66,42 @@ function SupervisorView({ module }) {
   const [rotating, setRotating] = useState(false);
   const [actingOn, setActingOn] = useState(null);
   const [copied, setCopied] = useState(false);
+  // Executives already in this module who are not yet on my team.
+  const [available, setAvailable] = useState([]);
+  const [sharing, setSharing] = useState(null);
+  // Kept apart from `error`: that one is framed "Could not load team data",
+  // which is the wrong sentence for a failed Add.
+  const [actionError, setActionError] = useState(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [code, pend, mine] = await Promise.all([
+      const [code, pend, mine, free] = await Promise.all([
         getMyInviteCode(module).catch(() => null),
         listMyPendingExecutives(module).catch(() => []),
         listMyTeam(module).catch(() => []),
+        // Skipped for anyone who cannot act on it. A business admin viewing as
+        // a supervisor has no supervisor membership of their own, so this route
+        // 403s for them by design — and since the failure is no longer swallowed
+        // (below), calling it anyway would put a red banner on a page that is
+        // working exactly as intended.
+        //
+        // NOT swallowed otherwise. A failure here used to render as "nobody to
+        // add", which is indistinguishable from the healthy empty case — it is
+        // how a 500 on this endpoint hid completely.
+        canManageTeam ? listAvailableExecutives(module) : Promise.resolve([]),
       ]);
       setInvite(code);
       setPending(pend);
       setTeam(mine);
+      setAvailable(free);
     } catch (e) {
-      setError(e?.message || String(e));
+      setError(e?.detail || e?.message || String(e));
     } finally {
       setLoading(false);
     }
-  }, [module]);
+  }, [module, canManageTeam]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -81,10 +111,30 @@ function SupervisorView({ module }) {
       const next = await rotateMyInviteCode(module);
       setInvite(next);
     } catch (e) {
-      setError(e?.message || String(e));
+      setError(e?.detail || e?.message || String(e));
     } finally {
       setRotating(false);
     }
+  };
+
+  // Also supervise someone already in this module. Idempotent server-side, so a
+  // double-click is a no-op rather than an error.
+  const share = async (userId) => {
+    setSharing(userId);
+    setActionError(null);
+    try { await addExistingExecutive(module, userId); await refresh(); }
+    catch (e) { setActionError(e?.detail || e?.message || String(e)); }
+    finally { setSharing(null); }
+  };
+
+  // Drops my link only — they keep working for any other supervisor, and the
+  // account is untouched. Deactivating someone is the business admin's job.
+  const unshare = async (userId) => {
+    setSharing(userId);
+    setActionError(null);
+    try { await removeFromMyTeam(module, userId); await refresh(); }
+    catch (e) { setActionError(e?.detail || e?.message || String(e)); }
+    finally { setSharing(null); }
   };
 
   const copyCode = () => {
@@ -103,7 +153,7 @@ function SupervisorView({ module }) {
       // round-trip so the approved exec shows up under "My active team".
       await refresh();
     } catch (e) {
-      setError(e?.message || String(e));
+      setError(e?.detail || e?.message || String(e));
       setActingOn(null);
       return;
     }
@@ -116,7 +166,7 @@ function SupervisorView({ module }) {
       await rejectMyPendingExecutive(userId);
       setPending(prev => prev.filter(u => u.id !== userId));
     } catch (e) {
-      setError(e?.message || String(e));
+      setError(e?.detail || e?.message || String(e));
     } finally {
       setActingOn(null);
     }
@@ -137,6 +187,7 @@ function SupervisorView({ module }) {
       </header>
 
       {error && <ErrorBanner message={error}/>}
+      {actionError && <ActionBanner message={actionError}/>}
 
       <Section title={`My invite code for ${module}`}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -213,12 +264,60 @@ function SupervisorView({ module }) {
                   <span style={{ fontWeight: 600 }}>{u.name || u.email}</span>
                   <span style={metaText}>{u.email}{u.assignedCity ? ` · ${u.assignedCity}` : ''}</span>
                 </div>
-                <span style={badge}>executive</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={badge}>executive</span>
+                  {canManageTeam && (
+                  <button
+                    type="button"
+                    onClick={() => unshare(u.id)}
+                    disabled={sharing !== null}
+                    className="zm-btn"
+                    style={btnGhost(sharing === u.id ? 'wait' : 'pointer')}
+                  >
+                    Remove
+                  </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
         )}
       </Section>
+
+      {/* Only rendered when there is actually someone to add. An empty
+          "add an executive" panel on every supervisor's page — which is the
+          common case, since most modules have one supervisor — would be noise. */}
+      {canManageTeam && available.length > 0 && (
+        <Section
+          title="Also in this module"
+          rightMeta={<span style={countPill}>{available.length}</span>}
+        >
+          <p style={{ ...metaText, margin: '0 0 10px' }}>
+            Executives already working in this module under another supervisor.
+            Adding one puts them on your team as well — they keep their existing
+            team, and nothing about their access changes.
+          </p>
+          <ul style={list}>
+            {available.map(u => (
+              <li key={u.id} style={row}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontWeight: 600 }}>{u.name || u.email}</span>
+                  <span style={metaText}>{u.email}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => share(u.id)}
+                  disabled={sharing !== null}
+                  className="zm-btn-primary"
+                  style={btnPrimary(sharing === u.id ? 'wait' : 'pointer')}
+                >
+                  Add to my team
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
     </div>
   );
 }
@@ -256,6 +355,13 @@ function Section({ title, rightMeta, children }) {
 
 function Empty({ children }) {
   return <div style={emptyBox}>{children}</div>;
+}
+
+// A failed Add or Remove, stated as itself. ErrorBanner below prefixes
+// "Could not load team data", which turned "That executive is not a member of
+// this module" into a sentence about loading.
+function ActionBanner({ message }) {
+  return <div role="alert" style={errorBox}>{message}</div>;
 }
 
 function ErrorBanner({ message }) {

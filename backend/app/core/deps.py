@@ -180,6 +180,14 @@ async def get_current_user(
          AND umm.module = :mod
          AND umm.tenant_id = :tid
         WHERE u.id = :uid
+        -- An executive can hold several membership rows in one module (one per
+        -- supervisor, migration 20260818), so this LEFT JOIN can match more than
+        -- once and .first() would pick arbitrarily. has_executive_access is a
+        -- supervisor flag and false on every executive row, so nothing moves
+        -- today — but order it so the permissive row always wins rather than
+        -- whichever the planner happened to emit.
+        ORDER BY COALESCE(umm.has_executive_access, false) DESC
+        LIMIT 1
     """
     params = {"uid": claims["sub"], "mod": module_to_check, "tid": claims["tenant_id"]}
     # The migration adding supervisor_executive_requests / has_executive_access

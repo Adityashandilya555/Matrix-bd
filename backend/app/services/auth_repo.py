@@ -97,7 +97,14 @@ async def get_primary_membership(db: AsyncSession, user_id: Any) -> Mapping[str,
             SELECT module, role_in_module, supervisor_id
               FROM user_module_memberships
              WHERE user_id = :uid
-             ORDER BY module
+             -- supervisor_id too: an executive can have several rows per module
+             -- now, and without it the claim would vary between logins.
+             --
+             -- NULLS LAST, not FIRST. The FK is ON DELETE SET NULL, so a row
+             -- with no supervisor is an ORPHANED link — preferring it would mint
+             -- a JWT with no supervisor_id for someone who still has a perfectly
+             -- good team in that module.
+             ORDER BY module, supervisor_id NULLS LAST
              LIMIT 1
         """),
         {"uid": user_id},

@@ -220,8 +220,19 @@ export const mockFetchers = {
     return { ok: true };
   },
   listOrg: async () => { await wait(540); return structuredClone(store.org); },
-  removeOrgUser: async (id) => {
+  // `ctx` is {module, supervisorId} when Remove was pressed inside a supervisor's
+  // group. Without honouring it the preview demonstrates the OLD behaviour —
+  // removing a shared executive from one supervisor drops them from all of them,
+  // which is the exact bug the many-supervisor change exists to fix.
+  removeOrgUser: async (id, ctx) => {
     await wait(420);
+    if (ctx?.module && ctx?.supervisorId) {
+      // Unlink one team only.
+      const m = store.org.find((x) => x.module === ctx.module);
+      const sup = (m?.supervisors || []).find((s) => s.id === ctx.supervisorId);
+      if (sup) sup.executives = (sup.executives || []).filter((e) => e.id !== id);
+      return { ok: true };
+    }
     // Deactivate = drop the user from the org listing (mirrors list_org filtering
     // out is_active=false), across supervisors, their executives, and unassigned.
     for (const m of store.org) {

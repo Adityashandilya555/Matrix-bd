@@ -21,6 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import transaction
+from app.services.audit_service import write_audit_event
 
 
 _PENDING_PREFIX = "pending_supervisor:"
@@ -144,7 +145,12 @@ async def approve_my_pending_exec(
                 "INSERT INTO user_module_memberships "
                 "(user_id, tenant_id, module, role_in_module, supervisor_id) "
                 "VALUES (:uid, :tid, :module, 'executive', :sid) "
-                "ON CONFLICT (user_id, module) DO NOTHING"
+                # Partial-index inference needs the predicate restated. Targets
+                # uq_umm_user_module_supervisor, so a SECOND supervisor for the
+                # same executive inserts rather than being swallowed — that is
+                # the multi-supervisor rule (migration 20260818).
+                "ON CONFLICT (user_id, module, supervisor_id) "
+                "WHERE supervisor_id IS NOT NULL DO NOTHING"
             ),
             {"uid": user_id, "tid": tenant_id, "module": module, "sid": supervisor_id},
         )
@@ -158,7 +164,10 @@ async def list_my_team(
     if current_user.get("real_role") == "business_admin":
         rows = (await session.execute(
             text(
-                "SELECT u.id, u.email, u.name, umm.joined_at "
+                # DISTINCT ON: an executive now holds one row per supervisor,
+                # and this branch has no supervisor filter — without it the
+                # same person is listed once per supervisor, with duplicate ids.
+                "SELECT DISTINCT ON (u.id) u.id, u.email, u.name, umm.joined_at "
                 "FROM user_module_memberships umm "
                 "JOIN users u ON u.id = umm.user_id "
                 "WHERE umm.module = :m "
@@ -210,4 +219,211 @@ async def reject_my_pending_exec(
                 "  AND role = 'executive' AND notes LIKE :marker_prefix"
             ),
             {"uid": user_id, "tid": tenant_id, "marker_prefix": marker_prefix},
+        )
+
+
+# ── Sharing an executive between supervisors ────────────────────────────────
+#
+# An executive may report to several supervisors within one module (migration
+# 20260818 split the old UNIQUE (user_id, module) into two partial indexes).
+#
+# The second link is made HERE, by the supervisor, rather than by the executive
+# redeeming a second invite code. Redeeming again is blocked two layers up:
+# _enqueue_signup 409s on an email that is already active, and
+# approve_my_pending_exec refuses any active target. Adding from this side needs
+# neither relaxed, so signup, codes and approval keep working exactly as they do
+# for a brand-new executive joining their first supervisor.
+
+
+async def _assert_supervises_module(
+    session: AsyncSession, *, supervisor_id: str, module: str, tenant_id: str,
+) -> None:
+    """Refuse a caller who is not a supervisor OF THIS MODULE.
+
+    require_role(SUPERVISOR) on the route proves the caller is a supervisor
+    somewhere; it says nothing about which module. Without this a legal
+    supervisor could rearrange the BD teams.
+    """
+    row = (await session.execute(
+        text(
+            "SELECT 1 FROM user_module_memberships "
+            " WHERE user_id = :sid AND module = :m AND tenant_id = :tid "
+            "   AND role_in_module = 'supervisor'"
+        ),
+        {"sid": supervisor_id, "m": module, "tid": tenant_id},
+    )).first()
+    if not row:
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="You do not supervise this module.",
+        )
+
+
+async def list_available_executives(
+    session: AsyncSession, current_user: dict, module: str,
+) -> list[dict]:
+    """Executives already in this module who are NOT yet on the caller's team.
+
+    Deliberately scoped to existing module members. This endpoint adds a second
+    supervisor to someone already inside the module — it is not a way to pull an
+    executive across a module boundary, which is what require_module exists to
+    hold.
+    """
+    tenant_id = current_user["tenant_id"]
+    await _assert_supervises_module(
+        session, supervisor_id=current_user["sub"], module=module, tenant_id=tenant_id,
+    )
+    rows = (await session.execute(
+        text(
+            "SELECT DISTINCT u.id, u.email, u.name "
+            "  FROM user_module_memberships umm "
+            "  JOIN users u ON u.id = umm.user_id "
+            " WHERE umm.module = :m "
+            "   AND umm.tenant_id = :tid "
+            "   AND umm.role_in_module = 'executive' "
+            "   AND u.is_active = true "
+            "   AND NOT EXISTS ( "
+            "         SELECT 1 FROM user_module_memberships mine "
+            "          WHERE mine.user_id = umm.user_id "
+            "            AND mine.tenant_id = :tid "
+            "            AND mine.module = :m "
+            "            AND mine.supervisor_id = :sid) "
+            " ORDER BY u.name"
+        ),
+        {"m": module, "tid": tenant_id, "sid": current_user["sub"]},
+    )).mappings().all()
+    return [
+        {"id": str(r["id"]), "email": r["email"], "name": r["name"], "module": module}
+        for r in rows
+    ]
+
+
+async def add_existing_executive(
+    session: AsyncSession, current_user: dict, module: str, user_id: str,
+) -> None:
+    """Link an executive already in this module to the calling supervisor too.
+
+    Idempotent: a repeat call hits the partial unique index and does nothing,
+    rather than 409-ing a supervisor who double-clicked.
+    """
+    tenant_id = current_user["tenant_id"]
+    supervisor_id = current_user["sub"]
+    await _assert_supervises_module(
+        session, supervisor_id=supervisor_id, module=module, tenant_id=tenant_id,
+    )
+    async with transaction(session):
+        target = (await session.execute(
+            text(
+                "SELECT u.is_active, u.role, "
+                "       EXISTS (SELECT 1 FROM user_module_memberships m "
+                "                WHERE m.user_id = u.id AND m.module = :m "
+                "                  AND m.tenant_id = :tid) AS in_module "
+                "  FROM users u WHERE u.id = :uid AND u.tenant_id = :tid "
+                # Locks the users row for the rest of this transaction. Without
+                # it an admin can deactivate the target between this SELECT and
+                # the INSERT below, leaving an inactive account holding a
+                # brand-new team link. It also serialises against
+                # business_admin_service.unlink_or_deactivate_org_user, which
+                # takes the same lock — otherwise a link added between that
+                # function's "any memberships left?" check and its deactivation
+                # would be attached to an account it then switches off.
+                "   FOR UPDATE"
+            ),
+            {"uid": user_id, "m": module, "tid": tenant_id},
+        )).mappings().first()
+        if not target or not target["is_active"] or target["role"] != "executive":
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail="Active executive not found in this workspace.",
+            )
+        if not target["in_module"]:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "That executive is not a member of this module. They must join "
+                    "it with a supervisor's invite code first."
+                ),
+            )
+        await session.execute(
+            text(
+                "INSERT INTO user_module_memberships "
+                "(user_id, tenant_id, module, role_in_module, supervisor_id) "
+                "VALUES (:uid, :tid, :m, 'executive', :sid) "
+                "ON CONFLICT (user_id, module, supervisor_id) "
+                "WHERE supervisor_id IS NOT NULL DO NOTHING"
+            ),
+            {"uid": user_id, "tid": tenant_id, "m": module, "sid": supervisor_id},
+        )
+        # The admin-side unlink records an event; the same state change made by a
+        # supervisor was going unrecorded, so team composition was only half
+        # auditable depending on who made the change.
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=None,
+            actor_id=supervisor_id, actor_name=current_user.get("name"),
+            action="executive_linked_to_supervisor",
+            entity_id=user_id, entity_type="user_module_membership",
+            detail=f"module={module}",
+        )
+
+
+async def remove_from_my_team(
+    session: AsyncSession, current_user: dict, module: str, user_id: str,
+) -> None:
+    """Drop only the caller's own link to this executive.
+
+    Never touches users.is_active, and never touches another supervisor's link —
+    an executive shared with someone else keeps working for them. Deactivating an
+    account is the business admin's job, not a supervisor's.
+
+    REFUSES to remove the last link in this module, because that state has no way
+    out. Everything downstream of the membership row is membership-driven: the
+    admin's Departments card joins through user_module_memberships so the person
+    vanishes from it entirely and cannot even be selected for removal; this
+    module's available-executives list requires a row in the module, so no
+    supervisor can re-add them; and re-redeeming an invite code 409s on an email
+    that is already active. The account stays active and logged in, with a null
+    module claim, bounced off every module route. So the last link is the admin's
+    to remove, via the Departments card while the person is still visible there.
+    """
+    tenant_id = current_user["tenant_id"]
+    await _assert_supervises_module(
+        session, supervisor_id=current_user["sub"], module=module, tenant_id=tenant_id,
+    )
+    async with transaction(session):
+        others = (await session.execute(
+            text(
+                "SELECT 1 FROM user_module_memberships "
+                " WHERE user_id = :uid AND tenant_id = :tid AND module = :m "
+                "   AND role_in_module = 'executive' "
+                "   AND supervisor_id IS DISTINCT FROM CAST(:sid AS uuid) "
+                " LIMIT 1"
+            ),
+            {"uid": user_id, "tid": tenant_id, "m": module, "sid": current_user["sub"]},
+        )).first()
+        if not others:
+            raise HTTPException(
+                status_code=http_status.HTTP_409_CONFLICT,
+                detail=(
+                    "You are their only supervisor in this module, so removing them "
+                    "would leave them with no way back in. Ask a business admin to "
+                    "remove the account from Departments."
+                ),
+            )
+        await session.execute(
+            text(
+                "DELETE FROM user_module_memberships "
+                " WHERE user_id = :uid AND tenant_id = :tid AND module = :m "
+                "   AND supervisor_id = :sid AND role_in_module = 'executive'"
+            ),
+            {"uid": user_id, "tid": tenant_id, "m": module, "sid": current_user["sub"]},
+        )
+        # The admin-side unlink records an event; the same state change made by a
+        # supervisor was going unrecorded, so team composition was only half
+        # auditable depending on who made the change.
+        await write_audit_event(
+            session, tenant_id=tenant_id, site_id=None,
+            actor_id=current_user["sub"], actor_name=current_user.get("name"),
+            action="executive_unlinked_from_supervisor",
+            entity_id=user_id, entity_type="user_module_membership",
+            detail=f"module={module}",
         )
