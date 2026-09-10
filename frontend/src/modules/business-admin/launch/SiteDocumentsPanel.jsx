@@ -19,7 +19,6 @@ import React from 'react';
 import { T, Icon, Card, EmptyState, ErrorState, Skeleton, TABULAR } from '../ui/kit.jsx';
 import ImageLightbox from '../../shared/media/ImageLightbox.jsx';
 import { getAdminSiteDocuments } from '../../../services/api/businessAdminApi.js';
-import { keyActivate } from '../../../lib/a11y.js';
 
 // The documents payload carries no mime type, so images are recognised by
 // extension, with file_type='photo' as the fallback for an extensionless name.
@@ -42,20 +41,34 @@ function DocRow({ doc, onOpen }) {
   // A document whose signing failed has no URL; say so rather than offering a
   // dead click.
   const openable = Boolean(doc.url);
-  const activate = openable ? () => onOpen(doc) : undefined;
+
+  // An openable row is a real <button>, not a div wearing role="button": it gets
+  // keyboard activation, focus order and the right semantics for free, and it is
+  // what jsx-a11y/no-static-element-interactions asks for. A row that cannot be
+  // opened is not interactive at all, so it stays a plain div.
+  const Row = openable ? 'button' : 'div';
+  const interactive = openable
+    ? {
+      type: 'button',
+      onClick: () => onOpen(doc),
+      onMouseEnter: (e) => { e.currentTarget.style.background = T.chip; },
+      onMouseLeave: (e) => { e.currentTarget.style.background = 'transparent'; },
+    }
+    : {};
+
   return (
-    <div
-      role={openable ? 'button' : undefined}
-      tabIndex={openable ? 0 : undefined}
-      onClick={activate}
-      onKeyDown={openable ? keyActivate(activate) : undefined}
+    <Row
+      {...interactive}
       style={{
         display: 'grid', gridTemplateColumns: '28px 1fr auto auto', alignItems: 'center', gap: 12,
-        padding: '10px 14px', borderBottom: `1px solid ${T.line}`,
+        padding: '10px 14px',
         cursor: openable ? 'pointer' : 'default', opacity: openable ? 1 : 0.55,
+        // Reset the button chrome so both row kinds render identically. border
+        // is cleared first, then the row rule reinstated, so order matters here.
+        width: '100%', textAlign: 'left', background: 'transparent',
+        font: 'inherit', color: 'inherit',
+        border: 'none', borderBottom: `1px solid ${T.line}`,
       }}
-      onMouseEnter={(e) => { if (openable) e.currentTarget.style.background = T.chip; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
     >
       <span style={{ color: T.textMuted, display: 'inline-flex' }}>
         <Icon.doc size={16} />
@@ -72,7 +85,7 @@ function DocRow({ doc, onOpen }) {
       <span style={{ fontSize: 11.5, color: T.textFaint, whiteSpace: 'nowrap', ...TABULAR }}>
         {fmtDate(doc.uploadedAt)}
       </span>
-    </div>
+    </Row>
   );
 }
 
