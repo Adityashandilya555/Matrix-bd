@@ -445,3 +445,65 @@ async def test_final_confirm_requires_a_rent_start_date(make_session, fake_resul
     # It must not have committed anything on the way to raising.
     assert appr.status == "pending_admin_final"
     assert appr.committed_at is None
+
+
+# ── the Add Details → launch loop column chain ────────────────────────────────
+#
+# The launch loop must edit the SAME columns the LOI "Add Details" form writes,
+# or a reviewer would renegotiate a number nobody reads back. Two of the four
+# names in that chain are non-obvious and easy to mis-wire:
+#
+#   form key "carpet" -> site_details.carpet_area_sqft   (NOT sites.area_sqft)
+#   form key "cadex"  -> site_details.capex              (the key is a typo)
+#
+# sites.area_sqft is the New Pipeline gross area. It only PRE-FILLS the blank
+# carpet field in Add Details (AddDetailsPage L136-141); once saved, carpet lives
+# in carpet_area_sqft and the two are independent.
+
+def test_add_details_form_keys_map_to_the_columns_the_loop_edits():
+    from app.services.bd_service import _SITE_DETAIL_KEY_MAP
+    assert _SITE_DETAIL_KEY_MAP["carpet"] == "carpet_area_sqft"
+    assert _SITE_DETAIL_KEY_MAP["cadex"] == "capex"
+    assert _SITE_DETAIL_KEY_MAP["cam"] == "cam_charges"
+    assert _SITE_DETAIL_KEY_MAP["deposit"] == "security_deposit"
+    assert _SITE_DETAIL_KEY_MAP["brokerage"] == "brokerage"
+    # Every column Add Details writes for these five is one the loop can edit.
+    for form_key in ("carpet", "cam", "cadex", "deposit", "brokerage"):
+        assert _SITE_DETAIL_KEY_MAP[form_key] in COMMERCIAL_EDITABLE_FIELDS
+
+
+def test_the_loop_does_not_edit_the_pipeline_area():
+    # sites.area_sqft is a different measurement, captured in New Pipeline and
+    # audited as a pipeline field. Adding it here would let a launch reviewer
+    # silently rewrite the gross area while editing the carpet area.
+    from app.services.audit_service import PIPELINE_FIELDS
+    assert "area_sqft" in PIPELINE_FIELDS
+    assert "area_sqft" not in COMMERCIAL_EDITABLE_FIELDS
+    assert "area_sqft" not in EDITABLE_FIELDS
+
+
+def test_site_response_reads_carpet_and_capex_from_the_committed_columns():
+    # The round trip: what the loop commits is what Add Details and the site
+    # drawer read back (item.carpet / item.cadex).
+    from app.services._common import site_to_response
+    site = _site()
+    detail = models.SiteDetail(
+        id=uuid.uuid4(), site_id=site.id, tenant_id=site.tenant_id,
+        carpet_area_sqft=1400.0, capex=250000.0,
+    )
+    resp = site_to_response(site, details=detail)
+    assert resp.carpet == 1400.0
+    assert resp.cadex == 250000.0
+
+
+def test_staging_row_is_seeded_from_the_same_detail_columns():
+    # svc_create_launch_approval copies site_details -> launch_approvals at NSO
+    # final approval. If it read the wrong column the loop would open showing a
+    # different number from the one Add Details captured.
+    import inspect
+    src = inspect.getsource(L.svc_create_launch_approval)
+    assert "row.carpet_area_sqft = _num(detail.carpet_area_sqft)" in src
+    assert "row.capex = _num(detail.capex)" in src
+    assert "row.cam_charges = _num(detail.cam_charges)" in src
+    assert "row.security_deposit = _num(detail.security_deposit)" in src
+    assert "row.brokerage = _num(detail.brokerage)" in src
