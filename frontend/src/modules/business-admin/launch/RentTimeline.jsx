@@ -152,8 +152,16 @@ function scalar(field, value) {
   if (DATE_FIELDS.has(field)) {
     // The diff stores whatever the backend stringified; an unparseable value
     // falls back to the raw string rather than printing "Invalid Date".
-    const d = new Date(String(value).replace(/^"|"$/g, ''));
-    return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString('en-IN');
+    const text = String(value).replace(/^"|"$/g, '');
+    // A bare YYYY-MM-DD is parsed by `new Date()` as UTC MIDNIGHT, then printed
+    // in the viewer's local zone — so anyone west of UTC reads a contractual date
+    // one day early (2026-05-01 renders as 30/4/2026 in New York). Build it from
+    // the parts instead, which lands on local midnight and prints the day written.
+    const ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+    const d = ymd
+      ? new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]))
+      : new Date(text);
+    return Number.isNaN(d.getTime()) ? text : d.toLocaleDateString('en-IN');
   }
   return String(value);
 }
