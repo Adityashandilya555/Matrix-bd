@@ -8,6 +8,7 @@ import { toV2Value, fromV2Key, pickLaunchRentFields, buildLaunchRentPayload } fr
 import {
   getLaunchApproval, saveLaunchRentFields, execReview, supervisorReview,
 } from '../../services/api/launchApprovalApi.js';
+import { useDialogFocus } from '../../lib/a11y.js';
 
 // Configurable rent-type UI (FEATURE_RENT_V2). Inlined per the USE_MOCK
 // convention (see App.jsx). Flag OFF → the old four-card RentTermsForm renders
@@ -120,6 +121,10 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
   // they cannot come back to save. So an unsaved edit is not merely lost, it is
   // unrecoverable, which is worth one interruption.
   const [pendingVerdict, setPendingVerdict] = React.useState(null);
+  // Same contract as the admin drawer's dialog: aria-modal means focus stays in.
+  const verdictRef = React.useRef(null);
+  const dismissVerdict = React.useCallback(() => setPendingVerdict(null), []);
+  useDialogFocus(Boolean(pendingVerdict), verdictRef, dismissVerdict);
 
   const requestVerdict = (verdict) => {
     if (verdict === 'rejected' && !comment.trim()) {
@@ -329,9 +334,9 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
       </div>
 
       {pendingVerdict && (
-        <div role="dialog" aria-modal="true" aria-labelledby="zm-unsaved-title"
-          style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.62)', backdropFilter: 'blur(3px)', zIndex: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ width: 420, maxWidth: '100%', background: 'var(--zm-bg)', border: '1px solid var(--zm-line)', borderRadius: 14, boxShadow: 'var(--zm-shadow-pop)', padding: '20px 22px' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.62)', backdropFilter: 'blur(3px)', zIndex: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div ref={verdictRef} role="dialog" aria-modal="true" aria-labelledby="zm-unsaved-title" tabIndex={-1}
+            style={{ width: 420, maxWidth: '100%', background: 'var(--zm-bg)', border: '1px solid var(--zm-line)', borderRadius: 14, boxShadow: 'var(--zm-shadow-pop)', padding: '20px 22px' }}>
             <h3 id="zm-unsaved-title" style={{ margin: 0, fontFamily: 'var(--zm-font-display)', fontWeight: 700, fontSize: 16.5, color: 'var(--zm-fg)' }}>
               You have unsaved changes
             </h3>
