@@ -57,7 +57,7 @@ describe('LaunchApprovalTab — rent v2', () => {
     const user = userEvent.setup();
     await renderTab();
     await openDrawer(user);
-    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+    await user.click(await screen.findByRole('button', { name: 'Edit rent terms' }));
 
     expect(await screen.findByText('Is the rent staggered?')).toBeTruthy();
     expect(screen.queryByText('MG + Revenue share')).toBeNull(); // a V1-only card label
@@ -72,7 +72,7 @@ describe('LaunchApprovalTab — rent v2', () => {
     await openDrawer(user);
     await screen.findByText(/Awaiting executive review/i); // drawer loaded
 
-    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Edit rent terms' })).toBeNull();
     expect(screen.queryByText('Is the rent staggered?')).toBeNull();
   });
 
@@ -86,7 +86,7 @@ describe('LaunchApprovalTab — rent v2', () => {
     const user = userEvent.setup();
     await renderTab();
     await openDrawer(user);
-    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+    await user.click(await screen.findByRole('button', { name: 'Edit rent terms' }));
     await screen.findByText('Is the rent staggered?');
 
     await user.click(screen.getByRole('button', { name: 'Save rent changes' }));
@@ -101,7 +101,7 @@ describe('LaunchApprovalTab — rent v2', () => {
     const user = userEvent.setup();
     await renderTab();
     await openDrawer(user);
-    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+    await user.click(await screen.findByRole('button', { name: 'Edit rent terms' }));
 
     await screen.findByRole('radiogroup', { name: 'Rent type' });
     expect(screen.queryByText('Is the rent staggered?')).toBeNull();

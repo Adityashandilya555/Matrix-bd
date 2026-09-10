@@ -7,8 +7,10 @@ Role gating:
   Queue / detail GET            → business_admin + supervisor + executive
   Send for review / final confirm / launch
                                 → business_admin only
-  Rent-field save               → business_admin + supervisor
-                                  (service enforces who may edit at which status)
+  Rent/commercial field save    → business_admin + supervisor + executive
+                                  (service enforces which FIELD each role may
+                                   edit at which status; the executive may set
+                                   only rent_start_date, at their own stage)
   Executive review (verdict)    → executive only (service enforces site-creator)
   Supervisor review (verdict)   → supervisor only
 """
@@ -42,7 +44,6 @@ from app.services.launch_service import (
 router = APIRouter(prefix="/launch-approvals", tags=["Launch Approvals"])
 
 AdminUser = Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))]
-EditorUser = Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN, Role.SUPERVISOR))]
 # The first review stage is the SITE CREATOR — who may be an executive OR a
 # supervisor (supervisors can create pipelines via delegation). Role is checked
 # here; svc_exec_review additionally enforces that the actor is the creator.
@@ -77,18 +78,23 @@ async def get_launch_approval(
     return await svc_get_approval(db, tenant_id=tenant_id, site_id=site_id)
 
 
-# ── Rent edits (admin first/final touch, supervisor on review) ───────────────────
+# ── Staging edits (admin first/final touch, supervisor + creator on review) ─────
 
 @router.patch("/{site_id}/rent-fields", response_model=LaunchApprovalResponse)
 async def save_rent_fields(
     site_id: str,
     body: LaunchRentFieldsRequest,
     db: DbDep,
-    current_user: EditorUser,
+    current_user: AnyUser,
     tenant_id: TenantId,
 ) -> LaunchApprovalResponse:
-    """Partial update of the rent-only staging fields. The service rejects edits
-    by a role/status combination that isn't allowed."""
+    """Partial update of the rent + commercial staging fields.
+
+    AnyUser rather than EditorUser because the site creator (an EXECUTIVE) may set
+    rent_start_date at their own review stage. Authorisation is settled PER FIELD
+    in svc_save_rent_fields, which 422s naming the field the actor may not touch —
+    more useful than the blanket 403 a role dependency would raise here.
+    """
     return await svc_save_rent_fields(db, tenant_id=tenant_id, actor=current_user, site_id=site_id, body=body)
 
 

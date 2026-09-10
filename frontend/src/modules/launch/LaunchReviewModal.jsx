@@ -2,6 +2,7 @@ import React from 'react';
 import Icon from '../shared/primitives/Icon.jsx';
 import RentTermsForm, { ZM_TOKENS } from '../shared/rent/RentTermsForm.jsx';
 import RentTermsFormV2 from '../shared/rent/RentTermsFormV2.jsx';
+import CommercialTermsForm from '../shared/rent/CommercialTermsForm.jsx';
 import RentScheduleButton from '../shared/rent/RentScheduleDialog.jsx';
 import { toV2Value, fromV2Key, pickLaunchRentFields, buildLaunchRentPayload } from '../shared/rent/launchRentAdapter.js';
 import {
@@ -15,10 +16,14 @@ const FEATURE_RENT_V2 = import.meta.env.VITE_FEATURE_RENT_V2 === 'true';
 
 // LaunchReviewModal — the BD-side review surface for the post-NSO validation loop.
 //
-//   role='exec'       → the creating executive. Read-only rent. Approve / Reject
-//                       + comment. Verdict is recorded and flows to the supervisor.
-//   role='supervisor' → supervisor. EDITABLE rent (rev-share form). Approve /
-//                       Reject + comment. Flows to the admin's final confirm.
+//   role='exec'       → the creating executive. Read-only rent and commercial
+//                       terms, EXCEPT the rent start date, which is theirs to
+//                       fill (it is required before the admin can commit).
+//                       Approve / Reject + comment; the verdict is recorded and
+//                       flows to the supervisor.
+//   role='supervisor' → supervisor. EDITABLE rent (rev-share form) and commercial
+//                       terms. Approve / Reject + comment. Flows to the admin's
+//                       final confirm.
 //
 // Both see the filled site details, every department status, and the recorded
 // timeline. Nothing here touches the canonical DB — edits stay on the backend
@@ -70,10 +75,15 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
   const [acting, setActing] = React.useState(false);
   const [savedFlash, setSavedFlash] = React.useState(false);
   const [err, setErr] = React.useState(null);
+  // The exec's only editable field is rent_start_date, so their Save button is
+  // offered only once they have actually changed it — an always-on Save on an
+  // otherwise read-only surface reads as "save the whole review", which it isn't.
+  const [dirty, setDirty] = React.useState(false);
 
   const hydrate = React.useCallback((d) => {
     setData(d);
     setForm(pickLaunchRentFields(d));
+    setDirty(false);
   }, []);
 
   React.useEffect(() => {
@@ -85,7 +95,10 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
       .finally(() => setLoading(false));
   }, [siteId, hydrate]);
 
-  const handleRentChange = (key, val) => setForm((f) => ({ ...f, [key]: val }));
+  const handleRentChange = (key, val) => {
+    setDirty(true);
+    setForm((f) => ({ ...f, [key]: val }));
+  };
   // RentTermsFormV2 speaks the canonical snake_case contract; translate its keys
   // back to the launch staging keys the form state + PATCH body use.
   const handleRentV2Change = (key, val) => handleRentChange(fromV2Key(key), val);
@@ -214,6 +227,27 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
                 )}
               </div>
 
+              {/* Commercial terms — editable for the supervisor; for the exec,
+                  only the rent start date. */}
+              <div>
+                <SectionLabel>
+                  Commercial terms
+                  {isSupervisor
+                    ? <span style={{ color: 'var(--zm-accent)' }}> · editable</span>
+                    : <span style={{ color: 'var(--zm-accent)' }}> · rent start date editable</span>}
+                </SectionLabel>
+                <CommercialTermsForm value={form} onChange={handleRentChange}
+                  readOnly={!isSupervisor} rentStartEditable tokens={ZM_TOKENS} />
+                {(isSupervisor || dirty) && (
+                  <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <button onClick={handleSaveRent} disabled={saving} className="zm-btn" style={{ height: 34, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: saving ? 'wait' : 'pointer' }}>
+                      {saving ? 'Saving…' : 'Save commercial changes'}
+                    </button>
+                    {savedFlash && <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-success)', fontWeight: 600 }}>✓ Saved</span>}
+                  </div>
+                )}
+              </div>
+
               {/* Department statuses */}
               <div>
                 <SectionLabel>Department status</SectionLabel>
@@ -246,11 +280,9 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
                   <Field label="Est. monthly sales">{inr(det.estimated_monthly_sales)}</Field>
                   <Field label="Nearest Starbucks">{num(det.nearest_starbucks)}</Field>
                   <Field label="Nearest TWC">{num(det.nearest_twc)}</Field>
-                  <Field label="Carpet area">{det.carpet_area_sqft ? `${num(det.carpet_area_sqft)} sqft` : '—'}</Field>
-                  <Field label="CAM">{inr(det.cam_charges)}</Field>
-                  <Field label="Capex">{inr(det.capex)}</Field>
-                  <Field label="Security deposit">{inr(det.security_deposit)}</Field>
-                  <Field label="Brokerage">{inr(det.brokerage)}</Field>
+                  {/* Carpet area / CAM / Capex / Security deposit / Brokerage moved
+                      to the Commercial terms section above, which renders the
+                      STAGED values rather than these canonical ones. */}
                 </div>
               </div>
 

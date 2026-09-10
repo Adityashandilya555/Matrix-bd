@@ -3,11 +3,12 @@
  *
  * The admin has TWO touches in the loop:
  *   1. pending_admin_review — review the full filled details + every department
- *      status; rent shown as "current" with Keep-same / Edit (Edit opens the
- *      rev-share form); leave a rent comment; "Send for review" → executive.
- *   2. pending_admin_final  — see every rent change from draft → now and BOTH
- *      the executive's and supervisor's verdicts (highlighted); make final rent
- *      edits if needed; "Confirm" ⇒ commits the agreed terms to the DB.
+ *      status; rent AND commercial terms shown as "current", each with its own
+ *      Keep-same / Edit toggle; leave a rent comment; "Send for review" → exec.
+ *   2. pending_admin_final  — see every change from draft → now and BOTH the
+ *      executive's and supervisor's verdicts (highlighted); make final edits if
+ *      needed; "Confirm" ⇒ commits the agreed terms to the DB. Blocked until a
+ *      rent start date is set (the backend 422s it too).
  *   then ready_to_launch → "Launch Site".
  *
  * Between the two touches the record sits with the executive then the
@@ -21,6 +22,7 @@ import {
 } from '../ui/kit.jsx';
 import RentTermsForm, { AC_TOKENS } from '../../shared/rent/RentTermsForm.jsx';
 import RentTermsFormV2 from '../../shared/rent/RentTermsFormV2.jsx';
+import CommercialTermsForm from '../../shared/rent/CommercialTermsForm.jsx';
 import RentScheduleButton from '../../shared/rent/RentScheduleDialog.jsx';
 import RentTimeline from './RentTimeline.jsx';
 import { toV2Value, fromV2Key, pickLaunchRentFields, buildLaunchRentPayload } from '../../shared/rent/launchRentAdapter.js';
@@ -90,6 +92,27 @@ function SubHead({ children, right }) {
   );
 }
 
+// Keep-same / Edit. Extracted when the commercial terms gained their own copy —
+// two identical inline toggles would have drifted the moment one was restyled.
+function ModeToggle({ mode, onChange, group }) {
+  return (
+    <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: `1px solid ${T.line}` }}>
+      {['keep', 'edit'].map((m) => {
+        const label = m === 'keep' ? 'Keep same' : 'Edit';
+        return (
+          <button key={m} onClick={() => onChange(m)}
+            aria-pressed={mode === m}
+            aria-label={`${label} ${group}`}
+            style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none',
+              background: mode === m ? T.invBg : 'transparent', color: mode === m ? T.invText : T.textMuted }}>
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function VerdictChip({ verdict }) {
   if (!verdict) return <span style={{ fontSize: 11, color: T.textFaint }}>Not reviewed</span>;
   const ok = verdict === 'approved';
@@ -123,6 +146,7 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   const [data, setData] = React.useState(null);
   const [form, setForm] = React.useState({});
   const [rentMode, setRentMode] = React.useState('keep'); // 'keep' | 'edit'
+  const [commercialMode, setCommercialMode] = React.useState('keep'); // 'keep' | 'edit'
   const [comment, setComment] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -174,6 +198,14 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   };
 
   const handleAction = async (action) => {
+    // Rent start date is required before the terms become canonical. The backend
+    // 422s a final confirm without it; catching it here keeps the reviewer in the
+    // drawer with the field they need to fill rather than round-tripping an error.
+    if (action === 'final' && !form.rent_start_date) {
+      setErr('Rent start date is required before the final confirm. Open Commercial terms → Edit to set it.');
+      setCommercialMode('edit');
+      return;
+    }
     setActing(true); setErr(null);
     try {
       let d;
@@ -207,6 +239,21 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   const d = data;
   const det = d?.details || {};
   const dep = d?.departments || {};
+
+  // Current commercial summary line. Reads the STAGED values off `form` (not
+  // `det`), so an unsaved-then-saved edit is reflected before the final commit
+  // writes it to site_details — the same rule the rent summary follows.
+  const commercialSummary = () => {
+    const parts = [
+      form.carpet_area_sqft != null ? `${num(form.carpet_area_sqft)} sqft` : null,
+      `CAM ${inr(form.cam_charges)}`,
+      `Capex ${inr(form.capex)}`,
+      `SD ${inr(form.security_deposit)}`,
+      `Brokerage ${inr(form.brokerage)}`,
+      form.rent_start_date ? `Rent starts ${fmtDate(form.rent_start_date)}` : 'Rent start date not set',
+    ].filter(Boolean);
+    return parts.join(' · ');
+  };
 
   // Current rent summary line.
   const rentSummary = () => {
@@ -296,17 +343,9 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
 
           {/* ── Rent terms (editable for admin at both touches) ────────────── */}
           <div>
-            <SubHead right={canEdit && (
-              <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: `1px solid ${T.line}` }}>
-                {['keep', 'edit'].map((m) => (
-                  <button key={m} onClick={() => setRentMode(m)}
-                    style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none',
-                      background: rentMode === m ? T.invBg : 'transparent', color: rentMode === m ? T.invText : T.textMuted }}>
-                    {m === 'keep' ? 'Keep same' : 'Edit'}
-                  </button>
-                ))}
-              </div>
-            )}>Rent terms {canEdit && <span style={{ color: '#E09A3C', fontWeight: 700 }}>· editable</span>}</SubHead>
+            <SubHead right={canEdit && <ModeToggle mode={rentMode} onChange={setRentMode} group="rent terms" />}>
+              Rent terms {canEdit && <span style={{ color: '#E09A3C', fontWeight: 700 }}>· editable</span>}
+            </SubHead>
 
             <div style={{ padding: '10px 14px', borderRadius: 10, background: T.successSoft, border: `1px solid ${T.line}`, marginBottom: canEdit && rentMode === 'edit' ? 14 : 0 }}>
               <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.textFaint }}>Current</span>
@@ -335,6 +374,27 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
                 </div>
                 <div>
                   <Button variant="solid" size="sm" loading={saving} onClick={handleSaveRent}>Save rent changes</Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Commercial terms (editable for admin at both touches) ─────── */}
+          <div>
+            <SubHead right={canEdit && <ModeToggle mode={commercialMode} onChange={setCommercialMode} group="commercial terms" />}>
+              Commercial terms {canEdit && <span style={{ color: '#E09A3C', fontWeight: 700 }}>· editable</span>}
+            </SubHead>
+
+            <div style={{ padding: '10px 14px', borderRadius: 10, background: T.successSoft, border: `1px solid ${T.line}`, marginBottom: canEdit && commercialMode === 'edit' ? 14 : 0 }}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.textFaint }}>Current</span>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: T.text, marginTop: 2, lineHeight: 1.6 }}>{commercialSummary()}</div>
+            </div>
+
+            {canEdit && commercialMode === 'edit' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <CommercialTermsForm value={form} onChange={handleRentChange} tokens={AC_TOKENS} />
+                <div>
+                  <Button variant="solid" size="sm" loading={saving} onClick={handleSaveRent}>Save commercial changes</Button>
                 </div>
               </div>
             )}
@@ -377,11 +437,9 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
               <Field label="Est. monthly sales">{inr(det.estimated_monthly_sales)}</Field>
               <Field label="Nearest Starbucks">{num(det.nearest_starbucks)}</Field>
               <Field label="Nearest TWC">{num(det.nearest_twc)}</Field>
-              <Field label="Carpet area">{det.carpet_area_sqft ? `${num(det.carpet_area_sqft)} sqft` : '—'}</Field>
-              <Field label="CAM">{inr(det.cam_charges)}</Field>
-              <Field label="Capex">{inr(det.capex)}</Field>
-              <Field label="Security deposit">{inr(det.security_deposit)}</Field>
-              <Field label="Brokerage">{inr(det.brokerage)}</Field>
+              {/* Carpet area / CAM / Capex / Security deposit / Brokerage moved to
+                  the editable Commercial terms section above — showing them here
+                  too would put the canonical value beside the staged one. */}
             </div>
           </div>
 

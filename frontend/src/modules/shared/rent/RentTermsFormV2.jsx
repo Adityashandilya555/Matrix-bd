@@ -36,7 +36,7 @@ function Label({ t, children }) {
   return <label style={{ fontFamily: t.fontBody, fontWeight: 600, fontSize: 12, color: t.fg }}>{children}</label>;
 }
 
-function NumBox({ t, value, onChange, prefix, suffix, placeholder, readOnly, flex = 1, max, big = false }) {
+export function NumBox({ t, value, onChange, prefix, suffix, placeholder, readOnly, flex = 1, max, big = false }) {
   // Hold raw keystrokes locally so a decimal like "4.5" isn't collapsed to "4"
   // mid-typing, while still emitting the coerced number immediately (no blur
   // race). Re-sync only when the external value truly diverges from what's shown
@@ -64,7 +64,7 @@ function NumBox({ t, value, onChange, prefix, suffix, placeholder, readOnly, fle
   );
 }
 
-function Field({ t, label, children }) {
+export function Field({ t, label, children }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
       <Label t={t}>{label}</Label>

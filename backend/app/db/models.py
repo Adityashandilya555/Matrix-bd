@@ -226,6 +226,10 @@ class SiteDetail(Base):
     nearest_twc_m: Mapped[Optional[int]] = mapped_column(Integer)
     # Extra field added for the Launch Approval flow (migration 202606094).
     escalation_date: Mapped[Optional[date]] = mapped_column(Date)
+    # Rent commencement date. Unlike every other column here it is NOT captured in
+    # the LOI "Add Details" form — it is filled inside the launch validation loop
+    # and committed here at the admin's final confirm (migration 20260819).
+    rent_start_date: Mapped[Optional[date]] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False,
@@ -1056,6 +1060,9 @@ class LaunchApproval(Base):
     estimated_monthly_sales: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
     capex: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
     score: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
+    # Staged rent commencement date, mirroring site_details.rent_start_date
+    # (migration 20260819).
+    rent_start_date: Mapped[Optional[date]] = mapped_column(Date)
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     # Workflow status FSM — the admin → exec → supervisor → admin validation loop.

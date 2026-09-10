@@ -69,14 +69,53 @@ RENT_FIELD_LABELS: dict[str, str] = {
 }
 
 
+# ── The editable COMMERCIAL set ─────────────────────────────────────────────────
+# The commercial terms renegotiated alongside rent. They are captured once in the
+# LOI "Add Details" form and were read-only for the whole loop, so a number agreed
+# after NSO could never be corrected. They now stage, diff and commit exactly like
+# the rent fields above.
+#
+# The staging columns for the first five ALREADY existed on launch_approvals
+# (seeded by svc_create_launch_approval); only rent_start_date is new (20260819).
+COMMERCIAL_EDITABLE_FIELDS: tuple[str, ...] = (
+    "carpet_area_sqft",
+    "cam_charges",
+    "capex",
+    "security_deposit",
+    "brokerage",
+    "rent_start_date",
+)
+
+COMMERCIAL_FIELD_LABELS: dict[str, str] = {
+    "carpet_area_sqft": "Carpet area (sqft)",
+    "cam_charges": "CAM (₹)",
+    "capex": "Capex (₹)",
+    "security_deposit": "Security deposit (₹)",
+    "brokerage": "Brokerage (₹)",
+    "rent_start_date": "Rent start date",
+}
+
+# Everything any role may stage, and the labels the diff timeline prints. Kept as
+# a UNION of two tuples rather than one flat list because the two groups have
+# different permission matrices: rent_start_date is the only field the site
+# creator may touch at under_exec_review (see launch_service._EDIT_ALLOWED).
+EDITABLE_FIELDS: tuple[str, ...] = RENT_EDITABLE_FIELDS + COMMERCIAL_EDITABLE_FIELDS
+FIELD_LABELS: dict[str, str] = {**RENT_FIELD_LABELS, **COMMERCIAL_FIELD_LABELS}
+
+
 # ── Request bodies ──────────────────────────────────────────────────────────────
 
 class LaunchRentFieldsRequest(BaseModel):
-    """Partial update of the rent-only staging fields (admin / supervisor)."""
+    """Partial update of the staging fields — rent terms plus commercial terms.
+
+    Named for rent because the endpoint (PATCH .../rent-fields) predates the
+    commercial fields; it is the single save path for both groups. Which role may
+    change WHICH field at which status is enforced in launch_service, not here.
+    """
     # extra="forbid": an unknown key — e.g. a future V2 form field not yet threaded
     # through, or the pre-fix `expected_escalation_pct` rename — becomes a 422 that
     # names the field, not a silent 200-OK no-op that discards the edit while
-    # reporting success. Both callers send a subset of RENT_EDITABLE_FIELDS, so the
+    # reporting success. Every caller sends a subset of EDITABLE_FIELDS, so the
     # blast radius is nil. NOT applied to StaggeredEscalationItem, which is shared
     # with CreateDraftRequest and deliberately tolerates a superset.
     model_config = ConfigDict(extra="forbid")
@@ -94,6 +133,15 @@ class LaunchRentFieldsRequest(BaseModel):
     rent_free_days: Optional[int] = None
     lock_in_months: Optional[int] = None
     tenure_months: Optional[int] = None
+    # Commercial terms. Editable by the same roles as rent, EXCEPT rent_start_date,
+    # which the site creator may also set at under_exec_review — the service gates
+    # per field, so the request model simply accepts all six.
+    carpet_area_sqft: Optional[float] = None
+    cam_charges: Optional[float] = None
+    capex: Optional[float] = None
+    security_deposit: Optional[float] = None
+    brokerage: Optional[float] = None
+    rent_start_date: Optional[date] = None
 
 
 class LaunchReviewRequest(BaseModel):
@@ -186,6 +234,14 @@ class LaunchApprovalResponse(BaseModel):
     rent_free_days: Optional[int] = None
     lock_in_months: Optional[int] = None
     tenure_months: Optional[int] = None
+    # Staged commercial terms. These are the values the review surfaces render and
+    # edit — NOT details.* below, which stays the canonical (pre-commit) snapshot.
+    carpet_area_sqft: Optional[float] = None
+    cam_charges: Optional[float] = None
+    capex: Optional[float] = None
+    security_deposit: Optional[float] = None
+    brokerage: Optional[float] = None
+    rent_start_date: Optional[date] = None
     notes: Optional[str] = None
 
     # Read-only context

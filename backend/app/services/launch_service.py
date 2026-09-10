@@ -38,8 +38,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import models
 from app.db.session import transaction
 from app.domain.schemas.launch import (
-    RENT_EDITABLE_FIELDS,
-    RENT_FIELD_LABELS,
+    COMMERCIAL_EDITABLE_FIELDS,
+    EDITABLE_FIELDS,
+    FIELD_LABELS,
     DepartmentStatuses,
     LaunchApprovalResponse,
     LaunchCommentRequest,
@@ -215,16 +216,29 @@ async def _record_event(
     await session.flush()
 
 
-def _apply_rent_edits(row: models.LaunchApproval, body: LaunchRentFieldsRequest) -> list[dict]:
-    """Apply ONLY the rent-editable fields, returning a field-level diff list.
+def _compute_staging_changes(
+    row: models.LaunchApproval, body: LaunchRentFieldsRequest,
+) -> tuple[list[dict], dict]:
+    """Diff the payload against the row WITHOUT mutating it.
 
-    Anything outside RENT_EDITABLE_FIELDS in the payload is ignored — the rest of
-    the record is read-only by contract, enforced here (defence in depth) as well
-    as at the router.
+    Returns (timeline-shaped changes, {field: new value}). Split out from the
+    apply step because the permission gate must run on what the payload actually
+    CHANGES, not on what it merely contains.
+
+    Both launch surfaces submit a full snapshot of every editable field — they
+    hydrate the whole record and PATCH it back — so "contains" would mean the
+    executive, whose only editable field is rent_start_date, is rejected on the
+    first of the sixteen unchanged fields they are not allowed to touch, and can
+    never save at all. Sending a value identical to the stored one is not an edit.
+
+    Covers BOTH groups (EDITABLE_FIELDS); anything outside that union is ignored —
+    the rest of the record is read-only by contract, enforced here (defence in
+    depth) as well as at the router.
     """
     data = body.model_dump(exclude_unset=True)
     changes: list[dict] = []
-    for field in RENT_EDITABLE_FIELDS:
+    values: dict = {}
+    for field in EDITABLE_FIELDS:
         if field not in data:
             continue
         new_val = data[field]
@@ -240,10 +254,18 @@ def _apply_rent_edits(row: models.LaunchApproval, body: LaunchRentFieldsRequest)
             continue
         changes.append({
             "field": field,
-            "label": RENT_FIELD_LABELS.get(field, field),
+            "label": FIELD_LABELS.get(field, field),
             "from": _str(old_val),
             "to": _str(new_val),
         })
+        values[field] = new_val
+    return changes, values
+
+
+def _apply_staging_edits(row: models.LaunchApproval, body: LaunchRentFieldsRequest) -> list[dict]:
+    """Compute and apply the editable staging fields, returning the diff list."""
+    changes, values = _compute_staging_changes(row, body)
+    for field, new_val in values.items():
         setattr(row, field, new_val)
     return changes
 
@@ -366,6 +388,15 @@ async def _build_response(
         rent_free_days=row.rent_free_days,
         lock_in_months=row.lock_in_months,
         tenure_months=row.tenure_months,
+        # Editable commercial staging. The review surfaces render THESE, not the
+        # matching details.* fields — those stay canonical until the final confirm,
+        # so a staged edit has to come from the staging row to be visible.
+        carpet_area_sqft=_num(row.carpet_area_sqft),
+        cam_charges=_num(row.cam_charges),
+        capex=_num(row.capex),
+        security_deposit=_num(row.security_deposit),
+        brokerage=_num(row.brokerage),
+        rent_start_date=row.rent_start_date,
         notes=row.notes,
         details=details,
         departments=departments,
@@ -442,6 +473,7 @@ async def svc_create_launch_approval(
         row.estimated_monthly_sales = _num(detail.estimated_monthly_sales)
         row.capex = _num(detail.capex)
         row.score = _num(detail.score)
+        row.rent_start_date = detail.rent_start_date
 
     # SAVEPOINT so a duplicate-key failure on the launch_approvals row rolls back
     # only this savepoint and never poisons the caller's NSO transaction.
@@ -450,14 +482,14 @@ async def svc_create_launch_approval(
             session.add(row)
             await session.flush()  # row.id now available
             baseline = [
-                {"field": f, "label": RENT_FIELD_LABELS.get(f, f), "from": None, "to": _str(getattr(row, f))}
-                for f in RENT_EDITABLE_FIELDS
+                {"field": f, "label": FIELD_LABELS.get(f, f), "from": None, "to": _str(getattr(row, f))}
+                for f in EDITABLE_FIELDS
                 if getattr(row, f) is not None
             ]
             session.add(models.LaunchReviewEvent(
                 launch_approval_id=row.id, site_id=site.id, tenant_id=row.tenant_id,
                 actor_role="system", stage="system", action="baseline",
-                comment="Draft rent terms captured at NSO final approval.",
+                comment="Draft rent and commercial terms captured at NSO final approval.",
                 changes=baseline or None,
             ))
             await session.flush()
@@ -538,14 +570,70 @@ async def svc_get_approval(
     return await _build_response(session, row=row, site=site)
 
 
-# ── Rent edits (admin first/final touch, supervisor on review) ───────────────────
+# ── Staging edits (admin first/final touch, supervisor on review) ───────────────
 
-# Which roles may edit at which status. Executive is review-only everywhere.
+# Which roles may edit at which status. Executive is review-only everywhere —
+# EXCEPT for rent_start_date, see _RENT_START_EDIT_ALLOWED below.
 _EDIT_ALLOWED: dict[str, set[str]] = {
     "pending_admin_review": {"business_admin"},
     "pending_admin_final": {"business_admin"},
     "under_supervisor_review": {"supervisor"},
 }
+
+# rent_start_date is the one field the SITE CREATOR fills, at their own review
+# stage — the date is theirs to know, and it is required before the admin can
+# commit. Everyone who may edit anything else may also correct it later.
+#
+# The creator may be an executive OR a supervisor (supervisors create pipelines by
+# delegation), which is why both roles appear at under_exec_review; identity is
+# then narrowed to the actual creator by _assert_is_site_creator.
+_RENT_START_EDIT_ALLOWED: dict[str, set[str]] = {
+    **_EDIT_ALLOWED,
+    "under_exec_review": {"executive", "supervisor"},
+}
+
+
+def _allowed_roles(field: str, status: str) -> set[str]:
+    """The roles that may change `field` while the record sits at `status`."""
+    table = _RENT_START_EDIT_ALLOWED if field == "rent_start_date" else _EDIT_ALLOWED
+    return table.get(status, set())
+
+
+def _assert_is_site_creator(site: models.Site, actor: dict) -> None:
+    """403 unless the actor created (or is assigned to) the site.
+
+    Shared by svc_exec_review and the under_exec_review rent_start_date edit, so
+    the two definitions of "the creator" cannot drift apart.
+    """
+    if actor.get("sub") not in (str(site.submitted_by), str(site.assigned_to or "")):
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Only the executive who created this site can review it.",
+        )
+
+
+def _assert_may_edit(
+    site: models.Site, row: models.LaunchApproval, actor: dict, submitted: set[str],
+) -> None:
+    """Gate each SUBMITTED field against the actor's role at the current status.
+
+    Per field rather than per request: at under_exec_review the creator may send
+    rent_start_date but nothing else, so a blanket check on the request would
+    either lock them out entirely or let the whole payload through.
+    """
+    role = actor.get("role")
+    for field in sorted(submitted):
+        if role in _allowed_roles(field, row.status):
+            continue
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"'{field}' is not editable by '{role}' at status '{row.status}'."
+            ),
+        )
+    # The creator-only narrowing applies to the stage the creator owns.
+    if row.status == "under_exec_review":
+        _assert_is_site_creator(site, actor)
 
 
 async def svc_save_rent_fields(
@@ -556,33 +644,45 @@ async def svc_save_rent_fields(
     site_id: str | UUID,
     body: LaunchRentFieldsRequest,
 ) -> LaunchApprovalResponse:
-    """Save staged rent-term edits, enforcing which role may edit at the current status."""
+    """Save staged rent + commercial edits, enforcing who may edit what, when."""
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         row = await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id)
 
-        allowed = _EDIT_ALLOWED.get(row.status, set())
-        if actor.get("role") not in allowed:
-            raise HTTPException(
-                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Rent terms are not editable by '{actor.get('role')}' at status '{row.status}'.",
-            )
-
-        changes = _apply_rent_edits(row, body)
+        # Diff FIRST, then gate on the fields that actually change, then write.
+        # Both surfaces PATCH a full snapshot of every editable field, so gating on
+        # what the body merely CONTAINS would reject the executive — whose only
+        # editable field is rent_start_date — on one of the sixteen unchanged
+        # values they may not touch, and they could never save at all.
+        changes, values = _compute_staging_changes(row, body)
         if not changes:
             return await _build_response(session, row=row, site=site)
+        _assert_may_edit(site, row, actor, {c["field"] for c in changes})
+        for field, new_val in values.items():
+            setattr(row, field, new_val)
 
-        stage = "supervisor_review" if row.status == "under_supervisor_review" else "admin_review"
+        if row.status == "under_supervisor_review":
+            stage = "supervisor_review"
+        elif row.status == "under_exec_review":
+            stage = "exec_review"
+        else:
+            stage = "admin_review"
         await _record_event(
             session, row=row, site=site, actor=actor,
             stage=stage, action="edited", changes=changes,
         )
-        # Mirror each rent change into the global audit feed (field-level diff).
+        # Mirror each change into the global audit feed (field-level diff). The
+        # action names the group so the feed stays searchable now that one save
+        # can carry both rent and commercial edits.
         for ch in changes:
             await write_audit_event(
                 session, tenant_id=tenant_id, site_id=site.id,
                 actor_id=actor.get("sub"), actor_name=actor.get("name"),
-                action="launch_rent_edited",
+                action=(
+                    "launch_commercial_edited"
+                    if ch["field"] in COMMERCIAL_EDITABLE_FIELDS
+                    else "launch_rent_edited"
+                ),
                 field_name=ch["field"], from_value=ch["from"], to_value=ch["to"],
             )
         return await _build_response(session, row=row, site=site)
@@ -651,12 +751,7 @@ async def svc_exec_review(
                 detail=f"Cannot record an executive verdict from status '{row.status}'.",
             )
         # Only the executive who created (or is assigned to) the site may review it.
-        actor_sub = actor.get("sub")
-        if actor_sub not in (str(site.submitted_by), str(site.assigned_to or "")):
-            raise HTTPException(
-                status_code=http_status.HTTP_403_FORBIDDEN,
-                detail="Only the executive who created this site can review it.",
-            )
+        _assert_is_site_creator(site, actor)
         row.status = "under_supervisor_review"
         row.exec_verdict = verdict
         row.exec_comment = comment
@@ -722,7 +817,7 @@ async def svc_supervisor_review(
 
 
 def _commit_rent_to_canonical(site: models.Site, detail: models.SiteDetail, row: models.LaunchApproval) -> None:
-    """Write the agreed staging rent terms into the canonical sites + site_details
+    """Write the agreed staging terms into the canonical sites + site_details
     columns the rest of the app reads (see _common.site_to_response)."""
     now = datetime.now(timezone.utc)
     # sites — pipeline-stage rent mirror
@@ -747,6 +842,15 @@ def _commit_rent_to_canonical(site: models.Site, detail: models.SiteDetail, row:
     detail.rent_free_days = row.rent_free_days
     detail.lock_in_months = row.lock_in_months
     detail.tenure_months = row.tenure_months
+    # site_details — commercial terms renegotiated during the loop. Deliberately
+    # NOT mirrored onto sites.area_sqft: that is the pipeline-stage gross area, a
+    # different measurement from the LOI carpet area, and the two must not merge.
+    detail.carpet_area_sqft = row.carpet_area_sqft
+    detail.cam_charges = row.cam_charges
+    detail.capex = row.capex
+    detail.security_deposit = row.security_deposit
+    detail.brokerage = row.brokerage
+    detail.rent_start_date = row.rent_start_date
 
 
 async def svc_admin_final_confirm(
@@ -765,6 +869,14 @@ async def svc_admin_final_confirm(
             raise HTTPException(
                 status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Cannot do the final confirm from status '{row.status}'. Expected 'pending_admin_final'.",
+            )
+        # The commit is what makes the terms canonical, so this is the last point
+        # at which a missing rent commencement date can still be caught. Optional
+        # at every earlier stage; required here, so no site launches without one.
+        if row.rent_start_date is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Rent start date is required before the final confirm.",
             )
 
         # Ensure a site_details row exists to receive the committed terms.
