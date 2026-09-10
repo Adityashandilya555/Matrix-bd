@@ -116,11 +116,26 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
     }
   };
 
+  // A verdict ends this reviewer's turn — the record moves to the next stage and
+  // they cannot come back to save. So an unsaved edit is not merely lost, it is
+  // unrecoverable, which is worth one interruption.
+  const [pendingVerdict, setPendingVerdict] = React.useState(null);
+
+  const requestVerdict = (verdict) => {
+    if (verdict === 'rejected' && !comment.trim()) {
+      setErr('A comment is required when rejecting.');
+      return;
+    }
+    if (dirty) { setPendingVerdict(verdict); return; }
+    handleVerdict(verdict);
+  };
+
   const handleVerdict = async (verdict) => {
     if (verdict === 'rejected' && !comment.trim()) {
       setErr('A comment is required when rejecting.');
       return;
     }
+    setPendingVerdict(null);
     setActing(true); setErr(null);
     try {
       const fn = isSupervisor ? supervisorReview : execReview;
@@ -301,17 +316,42 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
         {d && !loading && (
           <footer style={{ padding: '14px 26px', borderTop: '1px solid var(--zm-line)', background: 'var(--zm-surface)', display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ flex: 1 }} />
-            <button onClick={() => handleVerdict('rejected')} disabled={acting} className="zm-btn"
+            <button onClick={() => requestVerdict('rejected')} disabled={acting} className="zm-btn"
               style={{ height: 36, padding: '0 16px', borderRadius: 8, border: '1px solid var(--zm-danger)', background: 'var(--zm-danger-soft)', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: acting ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <Icon name="x" size={14} /> Reject
             </button>
-            <button onClick={() => handleVerdict('approved')} disabled={acting} className="zm-btn-primary"
+            <button onClick={() => requestVerdict('approved')} disabled={acting} className="zm-btn-primary"
               style={{ height: 36, padding: '0 18px', borderRadius: 8, border: 'none', background: 'var(--zm-success, #2EA86A)', color: '#fff', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: acting ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <Icon name="check" size={14} /> {acting ? 'Submitting…' : 'Approve'}
             </button>
           </footer>
         )}
       </div>
+
+      {pendingVerdict && (
+        <div role="dialog" aria-modal="true" aria-labelledby="zm-unsaved-title"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.62)', backdropFilter: 'blur(3px)', zIndex: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ width: 420, maxWidth: '100%', background: 'var(--zm-bg)', border: '1px solid var(--zm-line)', borderRadius: 14, boxShadow: 'var(--zm-shadow-pop)', padding: '20px 22px' }}>
+            <h3 id="zm-unsaved-title" style={{ margin: 0, fontFamily: 'var(--zm-font-display)', fontWeight: 700, fontSize: 16.5, color: 'var(--zm-fg)' }}>
+              You have unsaved changes
+            </h3>
+            <p style={{ margin: '8px 0 0', fontFamily: 'var(--zm-font-body)', fontSize: 13, lineHeight: 1.6, color: 'var(--zm-fg-2)' }}>
+              Your edits have not been saved. {pendingVerdict === 'approved' ? 'Approving' : 'Rejecting'} now
+              passes the record to the next stage and those changes will be lost.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+              <button onClick={() => setPendingVerdict(null)} className="zm-btn"
+                style={{ height: 34, padding: '0 16px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                Back
+              </button>
+              <button onClick={() => handleVerdict(pendingVerdict)} className="zm-btn"
+                style={{ height: 34, padding: '0 16px', borderRadius: 8, border: '1px solid var(--zm-danger)', background: 'var(--zm-danger-soft)', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                {pendingVerdict === 'approved' ? 'Approve anyway' : 'Reject anyway'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

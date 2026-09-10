@@ -71,12 +71,24 @@ describe('LaunchApprovalTab — commercial terms', () => {
     expect(screen.queryByText(/1,200 sqft/)).toBeNull();
   });
 
-  it('flags a missing rent start date in the summary line', async () => {
+  it('flags a missing rent start date in the Current grid', async () => {
     getLaunchApproval.mockResolvedValue(record({ rent_start_date: null }));
     const user = userEvent.setup();
     await renderTab();
     await openDrawer(user);
-    expect(await screen.findByText(/Rent start date not set/)).toBeTruthy();
+    // "Not set" rather than the em dash every other empty value shows: this is
+    // the one field whose absence blocks the final confirm.
+    expect(await screen.findByText('Not set')).toBeTruthy();
+  });
+
+  it('lays the Current commercial terms out as labelled rows, not one run-on line', async () => {
+    getLaunchApproval.mockResolvedValue(record());
+    const user = userEvent.setup();
+    await renderTab();
+    await openDrawer(user);
+    for (const label of ['Carpet area', 'CAM', 'Capex', 'Security deposit', 'Brokerage', 'Rent start date']) {
+      expect(await screen.findByText(label)).toBeTruthy();
+    }
   });
 
   it('its Edit toggle opens the commercial form without opening the rent form', async () => {
