@@ -190,8 +190,24 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
 
   React.useEffect(() => { if (siteId) load(); }, [load, siteId]);
   // A drawer reopened on another site should start on the review, not wherever
-  // the last one was left.
-  React.useEffect(() => { setTab('review'); }, [siteId]);
+  // the last one was left. The unsaved-changes dialog is cleared for the same
+  // reason: left armed, it greets whoever opens the drawer next — including the
+  // same user coming back, who then sees a warning about edits already gone.
+  React.useEffect(() => { setTab('review'); setPendingAction(null); }, [siteId]);
+
+  // Escape closes the dialog only. Drawer registers its own Escape handler on
+  // window, so without capturing here the key would dismiss the dialog AND the
+  // drawer behind it in one press.
+  React.useEffect(() => {
+    if (!pendingAction) return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      setPendingAction(null);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [pendingAction]);
 
   const status = data?.status;
   // Closure is one-way (pending → open) and the backend 409s a re-send, so the
@@ -305,6 +321,7 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   };
 
   return (
+    <>
     <Drawer
       open={!!siteId}
       onClose={onClose}
@@ -350,29 +367,6 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
         </div>
       )}
     >
-      {pendingAction && (
-        <ModalPortal>
-          <div role="dialog" aria-modal="true" aria-labelledby="ac-unsaved-title"
-            style={{ position: 'fixed', inset: 0, background: 'rgba(8,10,14,0.62)', backdropFilter: 'blur(3px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-            <Card style={{ width: 430, maxWidth: '100%', padding: '20px 22px' }}>
-              <h3 id="ac-unsaved-title" style={{ margin: 0, fontSize: 16.5, fontWeight: 700, color: T.text }}>
-                You have unsaved changes
-              </h3>
-              <p style={{ margin: '8px 0 0', fontSize: 13, lineHeight: 1.6, color: T.textMuted }}>
-                Your edits have not been saved. “{ACTION_LABEL[pendingAction] || pendingAction}” moves this
-                site to the next stage and those changes will be lost.
-              </p>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
-                <Button variant="subtle" size="md" onClick={() => setPendingAction(null)}>Back</Button>
-                <Button variant="danger" size="md" onClick={() => handleAction(pendingAction)}>
-                  {ACTION_LABEL[pendingAction] || 'Continue'} anyway
-                </Button>
-              </div>
-            </Card>
-          </div>
-        </ModalPortal>
-      )}
-
       {loading && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '10px 0' }}>
           {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} h={36} />)}
@@ -534,6 +528,30 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
         </div>
       )}
     </Drawer>
+
+      {pendingAction && (
+        <ModalPortal>
+          <div role="dialog" aria-modal="true" aria-labelledby="ac-unsaved-title"
+            style={{ position: 'fixed', inset: 0, background: 'rgba(8,10,14,0.62)', backdropFilter: 'blur(3px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <Card style={{ width: 430, maxWidth: '100%', padding: '20px 22px' }}>
+              <h3 id="ac-unsaved-title" style={{ margin: 0, fontSize: 16.5, fontWeight: 700, color: T.text }}>
+                You have unsaved changes
+              </h3>
+              <p style={{ margin: '8px 0 0', fontSize: 13, lineHeight: 1.6, color: T.textMuted }}>
+                Your edits have not been saved. “{ACTION_LABEL[pendingAction] || pendingAction}” moves this
+                site to the next stage and those changes will be lost.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+                <Button variant="subtle" size="md" onClick={() => setPendingAction(null)}>Back</Button>
+                <Button variant="danger" size="md" onClick={() => handleAction(pendingAction)}>
+                  {ACTION_LABEL[pendingAction] || 'Continue'} anyway
+                </Button>
+              </div>
+            </Card>
+          </div>
+        </ModalPortal>
+      )}
+    </>
   );
 }
 
