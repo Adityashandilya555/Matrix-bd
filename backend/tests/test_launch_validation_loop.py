@@ -507,3 +507,92 @@ def test_staging_row_is_seeded_from_the_same_detail_columns():
     assert "row.cam_charges = _num(detail.cam_charges)" in src
     assert "row.security_deposit = _num(detail.security_deposit)" in src
     assert "row.brokerage = _num(detail.brokerage)" in src
+
+
+# ── the full-snapshot PATCH the surfaces actually send ────────────────────────
+#
+# Both launch surfaces hydrate EVERY editable field off the record and PATCH the
+# whole snapshot back, so a request carries all 17 fields even when one changed.
+# The earlier gate ran on what the body CONTAINED, which meant the executive was
+# rejected on the first unchanged field they may not touch and could never save
+# the rent start date at all. Gating on the DIFF is what makes the matrix work.
+#
+# These tests build the real payload shape. Asserting against a hand-picked field
+# set (as the _assert_may_edit tests above do) is what let the bug through.
+
+_STORED = dict(
+    rent_type="fixed", expected_rent=205000.0, rev_share_pct=None,
+    revshare_dinein_pct=None, revshare_delivery_pct=None,
+    escalation_pct=15.0, expected_escalation_years=3,
+    staggered_escalation=None, rent_free_days=None,
+    lock_in_months=None, tenure_months=None,
+    carpet_area_sqft=1200.0, cam_charges=0.0, capex=0.0,
+    security_deposit=1350000.0, brokerage=120950.0, rent_start_date=None,
+)
+
+
+def _snapshot_save(role, status, changed, is_creator=True):
+    """Run the gate exactly as svc_save_rent_fields does, for a full snapshot."""
+    creator = uuid.uuid4()
+    site = _site(submitted_by=creator, assigned_to=None)
+    row = _appr(site, status=status, **_STORED)
+    body = LaunchRentFieldsRequest(**{**_STORED, **changed})
+    actor = {"sub": str(creator if is_creator else uuid.uuid4()), "role": role, "name": role}
+    changes, _values = L._compute_staging_changes(row, body)
+    if changes:
+        L._assert_may_edit(site, row, actor, {c["field"] for c in changes})
+    return [c["field"] for c in changes]
+
+
+def test_executive_can_save_the_date_in_a_full_snapshot_patch():
+    # The regression: this raised 422 on 'brokerage' before ever reaching the
+    # one field the executive is allowed to change.
+    assert _snapshot_save(
+        "executive", "under_exec_review", {"rent_start_date": date(2026, 5, 1)},
+    ) == ["rent_start_date"]
+
+
+def test_supervisor_and_admin_also_save_via_full_snapshots():
+    for role, status in (("supervisor", "under_supervisor_review"),
+                         ("business_admin", "pending_admin_final"),
+                         ("business_admin", "pending_admin_review")):
+        assert _snapshot_save(role, status, {"rent_start_date": date(2026, 5, 1)}) == ["rent_start_date"]
+
+
+def test_an_unchanged_snapshot_is_a_no_op_for_every_role():
+    # Nothing changed => nothing to authorise. A role with no edit rights at this
+    # status must not be 422'd merely for echoing the record back.
+    for role, status in (("executive", "under_exec_review"),
+                         ("business_admin", "under_supervisor_review"),
+                         ("supervisor", "pending_admin_final")):
+        assert _snapshot_save(role, status, {}) == []
+
+
+def test_the_snapshot_path_still_blocks_a_disallowed_change():
+    # Gating on the diff must not become "anything goes".
+    for field, value in (("brokerage", 999.0), ("expected_rent", 1.0), ("capex", 5.0)):
+        with pytest.raises(HTTPException) as e:
+            _snapshot_save("executive", "under_exec_review", {field: value})
+        assert e.value.status_code == 422
+        assert field in e.value.detail
+
+
+def test_the_snapshot_path_still_blocks_a_non_creator_executive():
+    with pytest.raises(HTTPException) as e:
+        _snapshot_save(
+            "executive", "under_exec_review",
+            {"rent_start_date": date(2026, 5, 1)}, is_creator=False,
+        )
+    assert e.value.status_code == 403
+
+
+def test_compute_staging_changes_does_not_mutate_the_row():
+    # The gate runs between compute and apply, so computing must leave the row
+    # untouched — otherwise a rejected edit would already have been written.
+    site = _site()
+    row = _appr(site, status="under_exec_review", **_STORED)
+    body = LaunchRentFieldsRequest(**{**_STORED, "brokerage": 999.0})
+    changes, values = L._compute_staging_changes(row, body)
+    assert [c["field"] for c in changes] == ["brokerage"]
+    assert values == {"brokerage": 999.0}
+    assert row.brokerage == 120950.0        # unchanged

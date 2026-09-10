@@ -216,16 +216,28 @@ async def _record_event(
     await session.flush()
 
 
-def _apply_staging_edits(row: models.LaunchApproval, body: LaunchRentFieldsRequest) -> list[dict]:
-    """Apply the editable staging fields, returning a field-level diff list.
+def _compute_staging_changes(
+    row: models.LaunchApproval, body: LaunchRentFieldsRequest,
+) -> tuple[list[dict], dict]:
+    """Diff the payload against the row WITHOUT mutating it.
 
-    Covers BOTH groups — rent terms and commercial terms (EDITABLE_FIELDS).
-    Anything outside that union in the payload is ignored — the rest of the record
-    is read-only by contract, enforced here (defence in depth) as well as at the
-    router. WHO may change which field is settled earlier, by _assert_may_edit.
+    Returns (timeline-shaped changes, {field: new value}). Split out from the
+    apply step because the permission gate must run on what the payload actually
+    CHANGES, not on what it merely contains.
+
+    Both launch surfaces submit a full snapshot of every editable field — they
+    hydrate the whole record and PATCH it back — so "contains" would mean the
+    executive, whose only editable field is rent_start_date, is rejected on the
+    first of the sixteen unchanged fields they are not allowed to touch, and can
+    never save at all. Sending a value identical to the stored one is not an edit.
+
+    Covers BOTH groups (EDITABLE_FIELDS); anything outside that union is ignored —
+    the rest of the record is read-only by contract, enforced here (defence in
+    depth) as well as at the router.
     """
     data = body.model_dump(exclude_unset=True)
     changes: list[dict] = []
+    values: dict = {}
     for field in EDITABLE_FIELDS:
         if field not in data:
             continue
@@ -246,6 +258,14 @@ def _apply_staging_edits(row: models.LaunchApproval, body: LaunchRentFieldsReque
             "from": _str(old_val),
             "to": _str(new_val),
         })
+        values[field] = new_val
+    return changes, values
+
+
+def _apply_staging_edits(row: models.LaunchApproval, body: LaunchRentFieldsRequest) -> list[dict]:
+    """Compute and apply the editable staging fields, returning the diff list."""
+    changes, values = _compute_staging_changes(row, body)
+    for field, new_val in values.items():
         setattr(row, field, new_val)
     return changes
 
@@ -629,14 +649,17 @@ async def svc_save_rent_fields(
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         row = await _fetch_approval(session, site_id=site.id, tenant_id=tenant_id)
 
-        # Gate on what was actually SENT (exclude_unset), not on the whole model —
-        # every absent field is Optional/None and would otherwise read as an edit.
-        submitted = set(body.model_dump(exclude_unset=True)) & set(EDITABLE_FIELDS)
-        _assert_may_edit(site, row, actor, submitted)
-
-        changes = _apply_staging_edits(row, body)
+        # Diff FIRST, then gate on the fields that actually change, then write.
+        # Both surfaces PATCH a full snapshot of every editable field, so gating on
+        # what the body merely CONTAINS would reject the executive — whose only
+        # editable field is rent_start_date — on one of the sixteen unchanged
+        # values they may not touch, and they could never save at all.
+        changes, values = _compute_staging_changes(row, body)
         if not changes:
             return await _build_response(session, row=row, site=site)
+        _assert_may_edit(site, row, actor, {c["field"] for c in changes})
+        for field, new_val in values.items():
+            setattr(row, field, new_val)
 
         if row.status == "under_supervisor_review":
             stage = "supervisor_review"

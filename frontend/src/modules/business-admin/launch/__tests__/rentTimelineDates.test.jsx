@@ -6,13 +6,19 @@
 // Anyone west of UTC read a contractual date one day early — 2026-05-01 showed as
 // 30/4/2026 in New York. IST is east of UTC so it looked fine in dev.
 //
-// TZ is forced west of UTC before anything imports, and the first test asserts the
-// environment really is skewed, so this file cannot quietly stop testing anything.
-process.env.TZ = 'America/New_York';
-
+// TZ is forced west of UTC and the first test asserts the environment really is
+// skewed, so this file cannot quietly stop testing anything.
+//
+// The assignment MUST sit below the imports: DeepSource's JavaScript analyzer
+// parses a file whose first statement is not an import as a SCRIPT, then errors
+// with "'import' and 'export' may appear only with 'sourceType: module'" — a
+// parse failure, which skipcq cannot suppress. Date reads the zone per call, so
+// setting it here is just as effective.
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import RentTimeline from '../RentTimeline.jsx';
+
+process.env.TZ = 'America/New_York';
 
 const event = (changes) => ([{
   id: 'e1', actor_name: 'Admin', actor_role: 'business_admin',
