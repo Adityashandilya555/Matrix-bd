@@ -13,18 +13,23 @@
  *
  * Between the two touches the record sits with the executive then the
  * supervisor; the admin sees it read-only ("With executive / supervisor").
+ *
+ * A Documents tab sits beside the review, so the evidence behind the numbers —
+ * the LOI, site photos, design deliverables — is readable at the moment of
+ * signing off, instead of in another module.
  */
 // skipcq: JS-0833
 import React from 'react';
 import {
   T, Icon, Button, Card, SectionHeader, EmptyState, ErrorState, Skeleton,
-  TABULAR, Drawer, inr,
+  TABULAR, Drawer, ModalPortal, SegmentedNav, inr,
 } from '../ui/kit.jsx';
 import RentTermsForm, { AC_TOKENS } from '../../shared/rent/RentTermsForm.jsx';
 import RentTermsFormV2 from '../../shared/rent/RentTermsFormV2.jsx';
 import CommercialTermsForm from '../../shared/rent/CommercialTermsForm.jsx';
 import RentScheduleButton from '../../shared/rent/RentScheduleDialog.jsx';
 import RentTimeline from './RentTimeline.jsx';
+import SiteDocumentsPanel from './SiteDocumentsPanel.jsx';
 import { toV2Value, fromV2Key, pickLaunchRentFields, buildLaunchRentPayload } from '../../shared/rent/launchRentAdapter.js';
 import { usePageContext } from '../../../App.jsx';
 import {
@@ -113,6 +118,12 @@ function ModeToggle({ mode, onChange, group }) {
   );
 }
 
+const ACTION_LABEL = {
+  send: 'Send for review',
+  final: 'Confirm & commit',
+  launch: 'Launch Site',
+};
+
 function VerdictChip({ verdict }) {
   if (!verdict) return <span style={{ fontSize: 11, color: T.textFaint }}>Not reviewed</span>;
   const ok = verdict === 'approved';
@@ -153,10 +164,17 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   const [acting, setActing] = React.useState(false);
   const [savedFlash, setSavedFlash] = React.useState(false);
   const [err, setErr] = React.useState(null);
+  // Set by any edit, cleared by every hydrate (load and save both re-hydrate).
+  // Guards the stage-advancing actions, which move the record on and leave no
+  // way back to save.
+  const [dirty, setDirty] = React.useState(false);
+  const [pendingAction, setPendingAction] = React.useState(null);
+  const [tab, setTab] = React.useState('review');
 
   const hydrate = React.useCallback((d) => {
     setData(d);
     setForm(pickLaunchRentFields(d));
+    setDirty(false);
   }, []);
 
   const load = React.useCallback(async () => {
@@ -171,6 +189,9 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   }, [siteId, hydrate]);
 
   React.useEffect(() => { if (siteId) load(); }, [load, siteId]);
+  // A drawer reopened on another site should start on the review, not wherever
+  // the last one was left.
+  React.useEffect(() => { setTab('review'); }, [siteId]);
 
   const status = data?.status;
   // Closure is one-way (pending → open) and the backend 409s a re-send, so the
@@ -179,7 +200,10 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   const closureSent = (data?.financial_closure_status || 'pending') !== 'pending';
   const canEdit = status === 'pending_admin_review' || status === 'pending_admin_final';
   const isFinal = status === 'pending_admin_final';
-  const handleRentChange = (key, val) => setForm((f) => ({ ...f, [key]: val }));
+  const handleRentChange = (key, val) => {
+    setDirty(true);
+    setForm((f) => ({ ...f, [key]: val }));
+  };
   // RentTermsFormV2 speaks the canonical snake_case contract; translate its keys
   // back to the launch staging keys the form state + PATCH body use.
   const handleRentV2Change = (key, val) => handleRentChange(fromV2Key(key), val);
@@ -197,7 +221,16 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
     }
   };
 
+  // Every action here advances the stage, so an unsaved edit would be lost with
+  // no way back. Confirm first. 'send_closure' is excluded: it happens after the
+  // terms are committed, when nothing is editable any more.
+  const requestAction = (action) => {
+    if (dirty && action !== 'send_closure') { setPendingAction(action); return; }
+    handleAction(action);
+  };
+
   const handleAction = async (action) => {
+    setPendingAction(null);
     // Rent start date is required before the terms become canonical. The backend
     // 422s a final confirm without it; catching it here keeps the reviewer in the
     // drawer with the field they need to fill rather than round-tripping an error.
@@ -240,20 +273,22 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   const det = d?.details || {};
   const dep = d?.departments || {};
 
-  // Current commercial summary line. Reads the STAGED values off `form` (not
-  // `det`), so an unsaved-then-saved edit is reflected before the final commit
-  // writes it to site_details — the same rule the rent summary follows.
-  const commercialSummary = () => {
-    const parts = [
-      form.carpet_area_sqft != null ? `${num(form.carpet_area_sqft)} sqft` : null,
-      `CAM ${inr(form.cam_charges)}`,
-      `Capex ${inr(form.capex)}`,
-      `SD ${inr(form.security_deposit)}`,
-      `Brokerage ${inr(form.brokerage)}`,
-      form.rent_start_date ? `Rent starts ${fmtDate(form.rent_start_date)}` : 'Rent start date not set',
-    ].filter(Boolean);
-    return parts.join(' · ');
-  };
+  // Current commercial terms, as label/value pairs laid out on the same 3-column
+  // grid the edit form uses — six figures joined by separators into one sentence
+  // read as a run-on and made the numbers hard to compare at a glance.
+  //
+  // Reads the STAGED values off `form` (not `det`), so an edit is reflected
+  // before the final commit writes it to site_details — the rule rent follows.
+  const commercialRows = () => [
+    ['Carpet area', form.carpet_area_sqft != null ? `${num(form.carpet_area_sqft)} sqft` : null],
+    ['CAM', inr(form.cam_charges)],
+    ['Capex', inr(form.capex)],
+    ['Security deposit', inr(form.security_deposit)],
+    ['Brokerage', inr(form.brokerage)],
+    // The one field whose absence blocks the final confirm, so say so rather
+    // than printing the same em dash as an ordinary empty value.
+    ['Rent start date', form.rent_start_date ? fmtDate(form.rent_start_date) : 'Not set'],
+  ];
 
   // Current rent summary line.
   const rentSummary = () => {
@@ -285,17 +320,17 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
           {savedFlash && <span style={{ fontSize: 12, color: T.successText, fontWeight: 600 }}>✓ Rent changes saved</span>}
           <span style={{ flex: 1 }} />
           {status === 'pending_admin_review' && (
-            <Button variant="accent" size="md" loading={acting} onClick={() => handleAction('send')}>
+            <Button variant="accent" size="md" loading={acting} onClick={() => requestAction('send')}>
               Send for review →
             </Button>
           )}
           {status === 'pending_admin_final' && (
-            <Button variant="success" size="md" loading={acting} onClick={() => handleAction('final')}>
+            <Button variant="success" size="md" loading={acting} onClick={() => requestAction('final')}>
               Confirm &amp; commit
             </Button>
           )}
           {status === 'ready_to_launch' && (
-            <Button variant="success" size="md" loading={acting} onClick={() => handleAction('launch')}
+            <Button variant="success" size="md" loading={acting} onClick={() => requestAction('launch')}
               style={{ background: '#2EA86A', color: '#fff' }}>
               Launch Site
             </Button>
@@ -305,7 +340,7 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
               <Icon.check size={14} /> Sent for financial closure
             </span>
           ) : (
-            <Button variant="accent" size="md" loading={acting} onClick={() => handleAction('send_closure')}>
+            <Button variant="accent" size="md" loading={acting} onClick={() => requestAction('send_closure')}>
               Send for financial closure →
             </Button>
           ))}
@@ -315,6 +350,29 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
         </div>
       )}
     >
+      {pendingAction && (
+        <ModalPortal>
+          <div role="dialog" aria-modal="true" aria-labelledby="ac-unsaved-title"
+            style={{ position: 'fixed', inset: 0, background: 'rgba(8,10,14,0.62)', backdropFilter: 'blur(3px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <Card style={{ width: 430, maxWidth: '100%', padding: '20px 22px' }}>
+              <h3 id="ac-unsaved-title" style={{ margin: 0, fontSize: 16.5, fontWeight: 700, color: T.text }}>
+                You have unsaved changes
+              </h3>
+              <p style={{ margin: '8px 0 0', fontSize: 13, lineHeight: 1.6, color: T.textMuted }}>
+                Your edits have not been saved. “{ACTION_LABEL[pendingAction] || pendingAction}” moves this
+                site to the next stage and those changes will be lost.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+                <Button variant="subtle" size="md" onClick={() => setPendingAction(null)}>Back</Button>
+                <Button variant="danger" size="md" onClick={() => handleAction(pendingAction)}>
+                  {ACTION_LABEL[pendingAction] || 'Continue'} anyway
+                </Button>
+              </div>
+            </Card>
+          </div>
+        </ModalPortal>
+      )}
+
       {loading && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '10px 0' }}>
           {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} h={36} />)}
@@ -328,6 +386,21 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
       )}
 
       {d && !loading && (
+        <div style={{ marginBottom: 20 }}>
+          <SegmentedNav
+            tabs={[
+              { key: 'review', label: 'Review', icon: Icon.check },
+              { key: 'documents', label: 'Documents', icon: Icon.doc },
+            ]}
+            active={tab}
+            onChange={setTab}
+          />
+        </div>
+      )}
+
+      {d && !loading && tab === 'documents' && <SiteDocumentsPanel siteId={siteId} />}
+
+      {d && !loading && tab === 'review' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
           {/* ── Verdicts (final touch) ─────────────────────────────────────── */}
@@ -385,9 +458,13 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
               Commercial terms {canEdit && <span style={{ color: '#E09A3C', fontWeight: 700 }}>· editable</span>}
             </SubHead>
 
-            <div style={{ padding: '10px 14px', borderRadius: 10, background: T.successSoft, border: `1px solid ${T.line}`, marginBottom: canEdit && commercialMode === 'edit' ? 14 : 0 }}>
+            <div style={{ padding: '12px 16px', borderRadius: 10, background: T.successSoft, border: `1px solid ${T.line}`, marginBottom: canEdit && commercialMode === 'edit' ? 14 : 0 }}>
               <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.textFaint }}>Current</span>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: T.text, marginTop: 2, lineHeight: 1.6 }}>{commercialSummary()}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 14, marginTop: 10 }}>
+                {commercialRows().map(([label, value]) => (
+                  <Field key={label} label={label}>{value}</Field>
+                ))}
+              </div>
             </div>
 
             {canEdit && commercialMode === 'edit' && (
