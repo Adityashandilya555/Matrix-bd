@@ -40,6 +40,18 @@ export const LAUNCH_RENT_KEYS = [
   'rent_free_days', 'lock_in_months', 'tenure_months',
 ];
 
+// The commercial terms the loop renegotiates alongside rent. Same staging row,
+// same PATCH, same diff timeline — they simply were not editable until now.
+// These names are identical on both sides (no V2 rename applies), and none of
+// them come from RentTermsFormV2; CommercialTermsForm emits them directly.
+export const LAUNCH_COMMERCIAL_KEYS = [
+  'carpet_area_sqft', 'cam_charges', 'capex',
+  'security_deposit', 'brokerage', 'rent_start_date',
+];
+
+// Everything the launch surfaces hydrate and submit.
+export const LAUNCH_ALL_KEYS = [...LAUNCH_RENT_KEYS, ...LAUNCH_COMMERCIAL_KEYS];
+
 // The single divergent key, in both directions.
 const LAUNCH_TO_V2 = { escalation_pct: 'expected_escalation_pct' };
 const V2_TO_LAUNCH = { expected_escalation_pct: 'escalation_pct' };
@@ -66,18 +78,20 @@ export function toV2Value(form) {
 // unknown, so this console.error is a canary that only fires on a future rename.
 export function fromV2Key(key) {
   if (key in V2_TO_LAUNCH) return V2_TO_LAUNCH[key];
-  if (!LAUNCH_RENT_KEYS.includes(key)) {
+  if (!LAUNCH_ALL_KEYS.includes(key)) {
     console.error(
-      `[launchRentAdapter] RentTermsFormV2 emitted an unmapped key "${key}". It is not a launch rent field and PATCH /launch-approvals/{id}/rent-fields (extra="forbid") will reject it. Add it to LAUNCH_RENT_KEYS or V2_TO_LAUNCH.`,
+      `[launchRentAdapter] RentTermsFormV2 emitted an unmapped key "${key}". It is not a launch staging field and PATCH /launch-approvals/{id}/rent-fields (extra="forbid") will reject it. Add it to LAUNCH_RENT_KEYS or V2_TO_LAUNCH.`,
     );
   }
   return key;
 }
 
-// Shared hydrate body: pick just the rent keys off the server record.
+// Shared hydrate body: pick the rent AND commercial keys off the server record.
+// Both groups live at the TOP LEVEL of the response (the staged working copy) —
+// deliberately not under `details`, which stays the canonical pre-commit snapshot.
 export function pickLaunchRentFields(d) {
   const f = {};
-  LAUNCH_RENT_KEYS.forEach((k) => { f[k] = d?.[k] ?? null; });
+  LAUNCH_ALL_KEYS.forEach((k) => { f[k] = d?.[k] ?? null; });
   return f;
 }
 

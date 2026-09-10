@@ -62,9 +62,9 @@ def test_launch_split_is_editable_and_labeled():
 
 def test_apply_rent_edits_applies_split_and_diffs():
     from app.domain.schemas.launch import LaunchRentFieldsRequest
-    from app.services.launch_service import _apply_rent_edits
+    from app.services.launch_service import _apply_staging_edits
     row = SimpleNamespace(revshare_dinein_pct=None, revshare_delivery_pct=None)
-    changes = _apply_rent_edits(row, LaunchRentFieldsRequest(revshare_dinein_pct=8))
+    changes = _apply_staging_edits(row, LaunchRentFieldsRequest(revshare_dinein_pct=8))
     assert row.revshare_dinein_pct == 8
     assert any(c["field"] == "revshare_dinein_pct" for c in changes)
     # A field not sent is left untouched (exclude_unset).
@@ -75,9 +75,9 @@ def test_apply_rent_edits_normalizes_staggered_schedule():
     # Launch loop: the year-wise schedule is editable; StaggeredEscalationItem's
     # null optional keys are stripped so a {year, percent} row persists exactly.
     from app.domain.schemas.launch import LaunchRentFieldsRequest
-    from app.services.launch_service import _apply_rent_edits
+    from app.services.launch_service import _apply_staging_edits
     row = SimpleNamespace(staggered_escalation=None)
-    changes = _apply_rent_edits(row, LaunchRentFieldsRequest(
+    changes = _apply_staging_edits(row, LaunchRentFieldsRequest(
         staggered_escalation=[{"year": 1, "percent": 5}, {"year": 2, "percent": 6}],
     ))
     assert row.staggered_escalation == [{"year": 1, "percent": 5}, {"year": 2, "percent": 6}]
@@ -87,10 +87,12 @@ def test_apply_rent_edits_normalizes_staggered_schedule():
 # ── Bringing RentTermsFormV2 to the launch Edit tab ──────────────────────────
 
 def test_launch_rent_fields_request_matches_editable_set():
-    # The request schema and the editable-field tuple must stay in lockstep, or
+    # The request schema and the editable-field union must stay in lockstep, or
     # extra="forbid" would 422 a field the loop is actually allowed to edit.
-    from app.domain.schemas.launch import LaunchRentFieldsRequest, RENT_EDITABLE_FIELDS
-    assert set(LaunchRentFieldsRequest.model_fields) == set(RENT_EDITABLE_FIELDS)
+    # EDITABLE_FIELDS, not RENT_EDITABLE_FIELDS: the one endpoint now carries the
+    # commercial terms too (carpet area, CAM, capex, deposit, brokerage, start date).
+    from app.domain.schemas.launch import LaunchRentFieldsRequest, EDITABLE_FIELDS
+    assert set(LaunchRentFieldsRequest.model_fields) == set(EDITABLE_FIELDS)
 
 
 def test_launch_rent_fields_request_forbids_unknown_key():
@@ -108,9 +110,9 @@ def test_apply_rent_edits_preserves_per_year_split():
     # The launch save must carry the per-year dine-in / delivery split, not strip
     # every row to {year, percent} the way the old launch builder did.
     from app.domain.schemas.launch import LaunchRentFieldsRequest
-    from app.services.launch_service import _apply_rent_edits
+    from app.services.launch_service import _apply_staging_edits
     row = SimpleNamespace(staggered_escalation=None)
-    _apply_rent_edits(row, LaunchRentFieldsRequest(
+    _apply_staging_edits(row, LaunchRentFieldsRequest(
         staggered_escalation=[{"year": 1, "percent": 5, "dine_in_pct": 8, "delivery_pct": 4}],
     ))
     assert row.staggered_escalation == [{"year": 1, "percent": 5, "dine_in_pct": 8, "delivery_pct": 4}]
@@ -125,6 +127,8 @@ def test_commit_preserves_split_into_canonical_site():
         revshare_dinein_pct=8, revshare_delivery_pct=4, fixed_rent_amt=None,
         escalation_date=None, rent_free_days=None, lock_in_months=None, tenure_months=None,
         staggered_escalation=[{"year": 1, "percent": 5, "dine_in_pct": 8, "delivery_pct": 4}],
+        carpet_area_sqft=None, cam_charges=None, capex=None,
+        security_deposit=None, brokerage=None, rent_start_date=None,
     )
     site, detail = SimpleNamespace(), SimpleNamespace()
     _commit_rent_to_canonical(site, detail, row)

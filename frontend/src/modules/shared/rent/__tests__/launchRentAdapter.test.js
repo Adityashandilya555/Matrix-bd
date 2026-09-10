@@ -9,7 +9,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  LAUNCH_RENT_KEYS, toV2Value, fromV2Key, pickLaunchRentFields, buildLaunchRentPayload,
+  LAUNCH_RENT_KEYS, LAUNCH_COMMERCIAL_KEYS, LAUNCH_ALL_KEYS,
+  toV2Value, fromV2Key, pickLaunchRentFields, buildLaunchRentPayload,
 } from '../launchRentAdapter.js';
 
 describe('launchRentAdapter — key translation', () => {
@@ -47,13 +48,58 @@ describe('launchRentAdapter — key translation', () => {
 });
 
 describe('launchRentAdapter — hydrate', () => {
-  it('picks exactly the launch rent keys, nulling absent ones', () => {
+  it('picks exactly the launch staging keys, nulling absent ones', () => {
     const f = pickLaunchRentFields({ rent_type: 'fixed', escalation_pct: 5, unrelated: 'x' });
-    expect(Object.keys(f).sort()).toEqual([...LAUNCH_RENT_KEYS].sort());
+    expect(Object.keys(f).sort()).toEqual([...LAUNCH_ALL_KEYS].sort());
     expect(f.rent_type).toBe('fixed');
     expect(f.escalation_pct).toBe(5);
     expect(f.rent_free_days).toBeNull();
     expect('unrelated' in f).toBe(false);
+  });
+
+  it('hydrates the commercial terms from the TOP LEVEL, not from details', () => {
+    // The staged values are what the reviewer edits; details.* stays canonical
+    // until the admin's final confirm, so reading it would show a stale number.
+    const f = pickLaunchRentFields({
+      carpet_area_sqft: 1400, cam_charges: 5000, capex: 250000,
+      security_deposit: 1350000, brokerage: 120950, rent_start_date: '2026-05-01',
+      details: { carpet_area_sqft: 1200, cam_charges: 0 },
+    });
+    expect(f.carpet_area_sqft).toBe(1400);
+    expect(f.cam_charges).toBe(5000);
+    expect(f.rent_start_date).toBe('2026-05-01');
+  });
+
+  it('keeps the two groups disjoint and their union complete', () => {
+    const overlap = LAUNCH_RENT_KEYS.filter((k) => LAUNCH_COMMERCIAL_KEYS.includes(k));
+    expect(overlap).toEqual([]);
+    expect(LAUNCH_ALL_KEYS).toHaveLength(LAUNCH_RENT_KEYS.length + LAUNCH_COMMERCIAL_KEYS.length);
+  });
+});
+
+describe('launchRentAdapter — commercial keys survive the payload builder', () => {
+  it('carries every commercial key through untouched', () => {
+    // The builder exists to normalise the RENT side (staggered rows, cleared
+    // rev-share). The commercial fields must ride along unmodified, or the
+    // backend's extra="forbid" turns a dropped key into a silently discarded edit.
+    const payload = buildLaunchRentPayload({
+      rent_type: 'fixed', expected_rent: 120000,
+      carpet_area_sqft: 1400, cam_charges: 5000, capex: 250000,
+      security_deposit: 1350000, brokerage: 120950, rent_start_date: '2026-05-01',
+    });
+    expect(payload.carpet_area_sqft).toBe(1400);
+    expect(payload.cam_charges).toBe(5000);
+    expect(payload.capex).toBe(250000);
+    expect(payload.security_deposit).toBe(1350000);
+    expect(payload.brokerage).toBe(120950);
+    expect(payload.rent_start_date).toBe('2026-05-01');
+  });
+
+  it('does not log the unmapped-key canary for a commercial key', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    LAUNCH_COMMERCIAL_KEYS.forEach((k) => expect(fromV2Key(k)).toBe(k));
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });
 

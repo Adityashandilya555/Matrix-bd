@@ -88,7 +88,7 @@ const cm = (color, pct) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
 // Icon is a map of components (Icon.clock), not a component taking a name.
 const ACTION = {
   baseline:        { label: 'Draft baseline',  icon: Icon.doc,   tone: () => T.textMuted },
-  edited:          { label: 'Edited rent',     icon: Icon.rupee, tone: () => T.accent },
+  edited:          { label: 'Edited terms',    icon: Icon.rupee, tone: () => T.accent },
   sent_for_review: { label: 'Sent for review', icon: Icon.clock, tone: () => T.textMuted },
   approved:        { label: 'Approved',        icon: Icon.check, tone: () => T.success },
   rejected:        { label: 'Rejected',        icon: Icon.x,     tone: () => T.danger },
@@ -102,7 +102,13 @@ const RENT_TYPE_LABEL = {
   fixed: 'Fixed + escalation', revshare: 'Revenue share',
   mg_revshare: 'MG + Revenue share', staggered: 'Staggered',
 };
-const MONEY_FIELDS = new Set(['expected_rent', 'fixed_rent_amt']);
+const MONEY_FIELDS = new Set([
+  'expected_rent', 'fixed_rent_amt',
+  // Commercial terms, editable in the loop since the launch commercial-edit work.
+  'cam_charges', 'capex', 'security_deposit', 'brokerage',
+]);
+const AREA_FIELDS = new Set(['carpet_area_sqft']);
+const DATE_FIELDS = new Set(['escalation_date', 'rent_start_date']);
 
 const fmtDay = (iso) => new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 const fmtTime = (iso) => new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
@@ -138,6 +144,16 @@ function scalar(field, value) {
   if (MONEY_FIELDS.has(field)) {
     const n = Number(value);
     return Number.isFinite(n) ? inr(n) : String(value);
+  }
+  if (AREA_FIELDS.has(field)) {
+    const n = Number(value);
+    return Number.isFinite(n) ? `${n.toLocaleString('en-IN')} sqft` : String(value);
+  }
+  if (DATE_FIELDS.has(field)) {
+    // The diff stores whatever the backend stringified; an unparseable value
+    // falls back to the raw string rather than printing "Invalid Date".
+    const d = new Date(String(value).replace(/^"|"$/g, ''));
+    return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString('en-IN');
   }
   return String(value);
 }

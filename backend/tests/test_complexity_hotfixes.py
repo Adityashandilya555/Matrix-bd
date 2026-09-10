@@ -59,6 +59,8 @@ def _row():
         staggered_escalation=None,
         escalation_pct=None, escalation_date=None, expected_escalation_years=None,
         rent_free_days=None, lock_in_months=None, tenure_months=None, notes=None,
+        carpet_area_sqft=None, cam_charges=None, capex=None,
+        security_deposit=None, brokerage=None, rent_start_date=None,
         admin_review_comment=None, admin_sent_for_review_at=_DT, admin_sent_for_review_by=uuid4(),
         exec_verdict=None, exec_comment=None, exec_reviewed_at=_DT, exec_reviewed_by=uuid4(),
         supervisor_verdict=None, supervisor_comment=None, supervisor_reviewed_at=_DT,

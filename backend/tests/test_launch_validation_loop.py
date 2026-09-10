@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import date
 
 import pytest
 from fastapi import HTTPException
 
 from app.db import models
 from app.domain.schemas.launch import (
+    COMMERCIAL_EDITABLE_FIELDS,
+    EDITABLE_FIELDS,
     RENT_EDITABLE_FIELDS,
     LaunchCommentRequest,
     LaunchRentFieldsRequest,
@@ -57,13 +60,13 @@ def test_rent_editable_set_is_rent_only():
         assert f not in RENT_EDITABLE_FIELDS
 
 
-def test_apply_rent_edits_emits_diff_only_for_changes():
+def test_apply_staging_edits_emits_diff_only_for_changes():
     row = models.LaunchApproval(
         id=uuid.uuid4(), site_id=uuid.uuid4(), tenant_id=uuid.uuid4(),
         status="pending_admin_review", rent_type="fixed", expected_rent=100000.0, escalation_pct=5.0,
     )
     body = LaunchRentFieldsRequest(rent_type="fixed", expected_rent=120000, escalation_pct=5)
-    changes = L._apply_rent_edits(row, body)
+    changes = L._apply_staging_edits(row, body)
 
     # rent_type + escalation unchanged → only expected_rent is a diff.
     assert {c["field"] for c in changes} == {"expected_rent"}
@@ -73,12 +76,12 @@ def test_apply_rent_edits_emits_diff_only_for_changes():
     assert ch["label"]  # human label present for the timeline
 
 
-def test_apply_rent_edits_noop_returns_empty():
+def test_apply_staging_edits_noop_returns_empty():
     row = models.LaunchApproval(
         id=uuid.uuid4(), site_id=uuid.uuid4(), tenant_id=uuid.uuid4(),
         status="pending_admin_review", rent_type="revshare", rev_share_pct=12.0,
     )
-    assert L._apply_rent_edits(row, LaunchRentFieldsRequest(rev_share_pct=12)) == []
+    assert L._apply_staging_edits(row, LaunchRentFieldsRequest(rev_share_pct=12)) == []
 
 
 # ── the escalation schedule: structure in, structure out ──────────────────────────
@@ -99,7 +102,7 @@ def _sched_row(schedule):
 def test_schedule_diff_is_json_not_python_repr():
     """The frontend renders a table by parsing this; repr's quotes break that."""
     row = _sched_row([{"year": 1, "percent": 5}])
-    changes = L._apply_rent_edits(
+    changes = L._apply_staging_edits(
         row, LaunchRentFieldsRequest(staggered_escalation=[{"year": 1, "percent": 9}]),
     )
     to = changes[0]["to"]
@@ -113,14 +116,14 @@ def test_resaving_the_same_schedule_is_not_an_edit():
     body = LaunchRentFieldsRequest(
         staggered_escalation=[{"year": 1, "percent": 12, "dine_in_pct": 2, "delivery_pct": 3}],
     )
-    assert L._apply_rent_edits(row, body) == []
+    assert L._apply_staging_edits(row, body) == []
 
 
 def test_key_order_alone_is_not_an_edit():
     """Postgres jsonb reorders object keys on storage; that is not a rent change."""
     row = _sched_row([{"percent": 5, "year": 1}])
     body = LaunchRentFieldsRequest(staggered_escalation=[{"year": 1, "percent": 5}])
-    assert L._apply_rent_edits(row, body) == []
+    assert L._apply_staging_edits(row, body) == []
 
 
 def test_a_real_schedule_change_is_still_detected():
@@ -130,7 +133,7 @@ def test_a_real_schedule_change_is_still_detected():
     body = LaunchRentFieldsRequest(
         staggered_escalation=[{"year": 1, "percent": 12}, {"year": 2, "percent": 4}],
     )
-    changes = L._apply_rent_edits(row, body)
+    changes = L._apply_staging_edits(row, body)
     assert [c["field"] for c in changes] == ["staggered_escalation"]
     assert len(json.loads(changes[0]["from"])) == 3
     assert len(json.loads(changes[0]["to"])) == 2
@@ -299,3 +302,146 @@ async def test_build_response_licenses_come_from_legal_not_nso(make_session, fak
     assert dep.fssai_status == "done"            # from legal "yes", NOT nso "pending"
     assert dep.health_trade_status == "pending"
     assert dep.storage_license_status == "pending"
+
+
+# ── commercial terms: the editable set ─────────────────────────────────────────
+
+def test_commercial_editable_set_holds_the_six_renegotiable_fields():
+    assert set(COMMERCIAL_EDITABLE_FIELDS) == {
+        "carpet_area_sqft", "cam_charges", "capex",
+        "security_deposit", "brokerage", "rent_start_date",
+    }
+
+
+def test_editable_fields_is_the_disjoint_union():
+    # The two tuples must not overlap, or a field would be diffed twice and the
+    # per-field permission lookup would depend on iteration order.
+    assert set(RENT_EDITABLE_FIELDS).isdisjoint(COMMERCIAL_EDITABLE_FIELDS)
+    assert set(EDITABLE_FIELDS) == set(RENT_EDITABLE_FIELDS) | set(COMMERCIAL_EDITABLE_FIELDS)
+
+
+def test_apply_staging_edits_diffs_commercial_fields():
+    row = models.LaunchApproval(
+        id=uuid.uuid4(), site_id=uuid.uuid4(), tenant_id=uuid.uuid4(),
+        status="pending_admin_review", carpet_area_sqft=1200.0, cam_charges=0.0,
+    )
+    changes = L._apply_staging_edits(
+        row, LaunchRentFieldsRequest(carpet_area_sqft=1400, cam_charges=0),
+    )
+    # cam_charges is unchanged (0 == 0), so only the carpet area is a diff.
+    assert {c["field"] for c in changes} == {"carpet_area_sqft"}
+    assert changes[0]["label"] == "Carpet area (sqft)"
+    assert row.carpet_area_sqft == 1400
+
+
+# ── commercial terms: who may edit what, when ─────────────────────────────────
+
+def _actor(role, sub=None):
+    return {"sub": str(sub or uuid.uuid4()), "role": role, "name": role.title()}
+
+
+def test_admin_may_edit_commercial_at_both_admin_touches():
+    site = _site()
+    for status in ("pending_admin_review", "pending_admin_final"):
+        row = _appr(site, status=status)
+        # Does not raise.
+        L._assert_may_edit(site, row, _admin(), {"carpet_area_sqft", "brokerage"})
+
+
+def test_supervisor_may_edit_commercial_at_supervisor_review():
+    site = _site()
+    row = _appr(site, status="under_supervisor_review")
+    L._assert_may_edit(site, row, _actor("supervisor"), set(COMMERCIAL_EDITABLE_FIELDS))
+
+
+def test_executive_may_set_rent_start_date_at_their_own_stage():
+    creator = uuid.uuid4()
+    site = _site(submitted_by=creator)
+    row = _appr(site, status="under_exec_review")
+    L._assert_may_edit(site, row, _actor("executive", creator), {"rent_start_date"})
+
+
+def test_executive_may_not_edit_the_other_commercial_fields():
+    creator = uuid.uuid4()
+    site = _site(submitted_by=creator)
+    row = _appr(site, status="under_exec_review")
+    with pytest.raises(HTTPException) as e:
+        L._assert_may_edit(site, row, _actor("executive", creator), {"carpet_area_sqft"})
+    assert e.value.status_code == 422
+    # The message must name the field — a blanket "not editable" sends the
+    # reviewer hunting for which of six inputs was rejected.
+    assert "carpet_area_sqft" in e.value.detail
+
+
+def test_executive_may_not_edit_rent_at_their_own_stage():
+    creator = uuid.uuid4()
+    site = _site(submitted_by=creator)
+    row = _appr(site, status="under_exec_review")
+    with pytest.raises(HTTPException) as e:
+        L._assert_may_edit(site, row, _actor("executive", creator), {"expected_rent"})
+    assert e.value.status_code == 422
+
+
+def test_a_non_creator_executive_cannot_set_the_rent_start_date():
+    site = _site(submitted_by=uuid.uuid4(), assigned_to=None)
+    row = _appr(site, status="under_exec_review")
+    with pytest.raises(HTTPException) as e:
+        L._assert_may_edit(site, row, _actor("executive"), {"rent_start_date"})
+    assert e.value.status_code == 403
+
+
+def test_admin_cannot_edit_while_the_record_is_out_for_review():
+    site = _site()
+    row = _appr(site, status="under_supervisor_review")
+    with pytest.raises(HTTPException) as e:
+        L._assert_may_edit(site, row, _admin(), {"brokerage"})
+    assert e.value.status_code == 422
+
+
+# ── commercial terms: commit + the final-confirm guard ────────────────────────
+
+def test_commit_writes_the_commercial_columns_to_site_details():
+    site = _site()
+    detail = models.SiteDetail(id=uuid.uuid4(), site_id=site.id, tenant_id=site.tenant_id)
+    row = _appr(
+        site, rent_type="fixed", expected_rent=200000.0,
+        carpet_area_sqft=1400.0, cam_charges=5000.0, capex=250000.0,
+        security_deposit=1350000.0, brokerage=120950.0,
+        rent_start_date=date(2026, 5, 1),
+    )
+    L._commit_rent_to_canonical(site, detail, row)
+    assert detail.carpet_area_sqft == 1400.0
+    assert detail.cam_charges == 5000.0
+    assert detail.capex == 250000.0
+    assert detail.security_deposit == 1350000.0
+    assert detail.brokerage == 120950.0
+    assert detail.rent_start_date == date(2026, 5, 1)
+
+
+def test_commit_does_not_touch_sites_area_sqft():
+    # sites.area_sqft is the pipeline-stage gross area, a different measurement
+    # from the LOI carpet area. Merging the two would silently rewrite it.
+    site = _site(area_sqft=999.0)
+    detail = models.SiteDetail(id=uuid.uuid4(), site_id=site.id, tenant_id=site.tenant_id)
+    row = _appr(site, rent_type="fixed", carpet_area_sqft=1400.0)
+    L._commit_rent_to_canonical(site, detail, row)
+    assert site.area_sqft == 999.0
+
+
+async def test_final_confirm_requires_a_rent_start_date(make_session, fake_result):
+    # The confirm is what makes the staged terms canonical, so it is the last
+    # chance to catch a missing rent commencement date. Status is correct here —
+    # only the blank date stops it.
+    site = _site()
+    appr = _appr(site, status="pending_admin_final", rent_start_date=None)
+    sess = make_session(fake_result(scalar=site), fake_result(scalar=appr))
+    with pytest.raises(HTTPException) as ei:
+        await L.svc_admin_final_confirm(
+            sess, tenant_id=site.tenant_id, actor=_admin(),
+            site_id=site.id, body=LaunchCommentRequest(),
+        )
+    assert ei.value.status_code == 422
+    assert "rent start date" in ei.value.detail.lower()
+    # It must not have committed anything on the way to raising.
+    assert appr.status == "pending_admin_final"
+    assert appr.committed_at is None

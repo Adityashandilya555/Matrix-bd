@@ -190,6 +190,7 @@ CREATE TABLE public.site_details (
   nearest_starbucks_m   integer,
   nearest_twc_m         integer,
   escalation_date       date,                    -- added for Launch Approval flow (202606094)
+  rent_start_date       date,                    -- rent commencement, set during the launch loop (20260819)
   created_at            timestamp with time zone NOT NULL DEFAULT now(),
   updated_at            timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT site_details_pkey PRIMARY KEY (id),
@@ -816,6 +817,7 @@ CREATE TABLE public.launch_approvals (
   revshare_delivery_pct   numeric(6,2),                          -- revenue-share split: Delivery % (20260810)
   escalation_pct          numeric(6,2),
   escalation_date         date,
+  rent_start_date         date,                                   -- rent commencement, mirrors site_details (20260819)
   expected_escalation_years integer,
   staggered_escalation    jsonb,                                 -- year-wise staggered schedule, mirrors sites (20260811)
   cam_charges             numeric(14,2),
