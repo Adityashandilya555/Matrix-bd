@@ -114,6 +114,40 @@ describe('unsaved-changes dialog — Back', () => {
     expect(sendForReview).not.toHaveBeenCalled();
   });
 
+  it('moves focus into the dialog and keeps Tab inside it', async () => {
+    // aria-modal is a promise that focus is contained. This asserts the promise
+    // is kept: a ref that silently fails to attach (Card is not forwardRef)
+    // leaves the trap inert while the markup still claims to be modal.
+    const user = userEvent.setup();
+    await renderTab();
+    await openDrawer(user);
+    await makeDirty(user);
+    await user.click(screen.getByRole('button', { name: /Send for review/i }));
+    const dialog = await screen.findByRole('dialog', { name: /You have unsaved changes/i });
+
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+
+    // Tab off the last control wraps back inside rather than escaping to the
+    // drawer behind.
+    await user.tab();
+    await user.tab();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+
+  it('restores focus to the trigger when the dialog closes', async () => {
+    const user = userEvent.setup();
+    await renderTab();
+    await openDrawer(user);
+    await makeDirty(user);
+    const trigger = screen.getByRole('button', { name: /Send for review/i });
+    await user.click(trigger);
+    await screen.findByText(/You have unsaved changes/i);
+
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
   it('does not leave the dialog armed for the next time the drawer opens', async () => {
     const user = userEvent.setup();
     await renderTab();

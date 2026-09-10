@@ -37,7 +37,7 @@ import {
   sendForReview, finalConfirm, launchSite,
 } from '../../../services/api/launchApprovalApi.js';
 import { sendForFinancialClosure } from '../../../services/api/financialClosureApi.js';
-import { keyActivate } from '../../../lib/a11y.js';
+import { keyActivate, useDialogFocus } from '../../../lib/a11y.js';
 
 // Configurable rent-type UI (FEATURE_RENT_V2). Inlined per the USE_MOCK
 // convention (see App.jsx). Flag OFF → the old four-card RentTermsForm (rollback).
@@ -195,19 +195,12 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   // same user coming back, who then sees a warning about edits already gone.
   React.useEffect(() => { setTab('review'); setPendingAction(null); }, [siteId]);
 
-  // Escape closes the dialog only. Drawer registers its own Escape handler on
-  // window, so without capturing here the key would dismiss the dialog AND the
-  // drawer behind it in one press.
-  React.useEffect(() => {
-    if (!pendingAction) return undefined;
-    const onKey = (e) => {
-      if (e.key !== 'Escape') return;
-      e.stopPropagation();
-      setPendingAction(null);
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [pendingAction]);
+  // aria-modal is a promise that focus is contained; the hook keeps it. It also
+  // takes Escape in the capture phase, because Drawer registers its own Escape
+  // handler on window and one press would otherwise close both.
+  const unsavedRef = React.useRef(null);
+  const dismissPending = React.useCallback(() => setPendingAction(null), []);
+  useDialogFocus(Boolean(pendingAction), unsavedRef, dismissPending);
 
   const status = data?.status;
   // Closure is one-way (pending → open) and the backend 409s a re-send, so the
@@ -529,11 +522,12 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
       )}
     </Drawer>
 
-      {pendingAction && (
+      {siteId && pendingAction && (
         <ModalPortal>
-          <div role="dialog" aria-modal="true" aria-labelledby="ac-unsaved-title"
-            style={{ position: 'fixed', inset: 0, background: 'rgba(8,10,14,0.62)', backdropFilter: 'blur(3px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-            <Card style={{ width: 430, maxWidth: '100%', padding: '20px 22px' }}>
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(8,10,14,0.62)', backdropFilter: 'blur(3px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <div ref={unsavedRef} role="dialog" aria-modal="true" aria-labelledby="ac-unsaved-title" tabIndex={-1}
+              style={{ width: 430, maxWidth: '100%', outline: 'none' }}>
+            <Card style={{ padding: '20px 22px' }}>
               <h3 id="ac-unsaved-title" style={{ margin: 0, fontSize: 16.5, fontWeight: 700, color: T.text }}>
                 You have unsaved changes
               </h3>
@@ -548,6 +542,7 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
                 </Button>
               </div>
             </Card>
+            </div>
           </div>
         </ModalPortal>
       )}
