@@ -14,6 +14,7 @@ import { keyActivate } from '../../../lib/a11y.js';
 import Icon from '../../shared/primitives/Icon.jsx';
 import { STAGES } from '../../shared/primitives/constants.js';
 import { ROUTES } from '../../../router/routes.js';
+import { statusMeta, EyeIcon, ReasonDialog } from '../../archive/ArchivePage.jsx';
 
 function CornerTicks() {
   return (
@@ -316,32 +317,31 @@ function MotionTable({ rows, onOpen, limit = 12 }) {
   );
 }
 
-// ArchiveTable — compact archive listing for the expanded Archived KPI.
-function ArchiveTable({ rows, onOpen }) {
+// ArchiveTable — same row shape as the Archived / rejected page, minus revive
+// (that action lives on the dedicated page).
+const ARCH_COLS = '0.9fr 1.6fr 1fr 1fr 1fr 1.4fr 90px';
+
+function ArchiveTable({ rows, onOpen, onViewReason }) {
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
-      <div style={{ flexShrink: 0, display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1.1fr 0.9fr 1.5fr', gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
-        <span>Code</span><span>Site</span><span>City</span><span>Created by</span><span>Archived on</span><span>Reason / note</span>
+      <div style={{ flexShrink: 0, display: 'grid', gridTemplateColumns: ARCH_COLS, gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
+        <span>Code</span><span>Site</span><span>City</span><span>Created by</span><span>Archived on</span><span>Status · reason</span><span/>
       </div>
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {rows.map(a => {
-          const hasReasons = (a.reasons || []).length > 0;
+          const meta = statusMeta(a);
           return (
-            <div key={a.id} role="button" tabIndex={0} onClick={() => onOpen?.(a)} onKeyDown={keyActivate(() => onOpen?.(a))} className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1.1fr 0.9fr 1.5fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', cursor: 'pointer', position: 'relative', alignItems: 'flex-start' }}>
+            <div key={a.id} className="zm-row" style={{ display: 'grid', gridTemplateColumns: ARCH_COLS, gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', alignItems: 'flex-start' }}>
               <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)', paddingTop: 2 }}>{a.caCode || a.code}</span>
-              <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{a.name}</span>
-              <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{a.city}</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Avatar name={a.createdBy} size={20}/><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{a.createdBy}</span></span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{a.name}</span><span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 10.5, color: 'var(--zm-fg-3)' }}>{a.id}</span></div>
+              <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', paddingTop: 2 }}>{a.city}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingTop: 2 }}><Avatar name={a.createdBy} size={20}/><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{a.createdBy}</span></div>
               <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 12, color: 'var(--zm-fg)', paddingTop: 2 }}>{a.archivedAt || '—'}</span>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {hasReasons && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                    {a.reasons.map(r => (<span key={r} style={{ padding: '2px 8px', borderRadius: 999, background: '#F1F3F6', color: '#374151', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, whiteSpace: 'nowrap' }}>{r}</span>))}
-                  </div>
-                )}
-                {a.note && (<span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-2)', lineHeight: 1.45 }}>{a.note}</span>)}
-                {!hasReasons && !a.note && (<span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)' }}>—</span>)}
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, paddingTop: 1 }}>
+                <span style={{ padding: '3px 9px', borderRadius: 999, background: meta.bg, color: meta.fg, fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, whiteSpace: 'nowrap' }}>{meta.label}</span>
+                <button onClick={() => onViewReason(a)} className="zm-btn zm-row-cta" style={{ height: 26, padding: '0 10px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><EyeIcon size={11}/> View reason</button>
               </div>
+              <button onClick={() => onOpen?.(a)} className="zm-btn zm-row-cta" style={{ height: 28, padding: '0 10px', border: '1px solid var(--zm-line)', borderRadius: 7, background: 'var(--zm-surface)', color: 'var(--zm-fg-2)', justifySelf: 'end', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><EyeIcon size={12}/> View</button>
             </div>
           );
         })}
@@ -390,6 +390,7 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
   const [archStatus, setArchStatus] = React.useState('all'); // all | archived | rejected
   const [archAdvanced, setArchAdvanced] = React.useState({ month: '', preset: '', from: '', to: '' });
   const [archSearch, setArchSearch] = React.useState('');
+  const [viewingReason, setViewingReason] = React.useState(null);
 
   const ME = user.name;
   // RBAC: isExec = cannot shortlist (exec cannot approve); used for scope/display logic in render body
@@ -578,7 +579,8 @@ export default function OverviewPage({ onOpenSite: onOpenSiteProp }) {
               <DateFilterButton value={archAdvanced} onChange={setArchAdvanced} dateLabel="archived date"/>
             </div>
           </div>
-          <ArchiveTable rows={filteredArchive} onOpen={(a) => onOpenSite?.(a)}/>
+          <ArchiveTable rows={filteredArchive} onOpen={(a) => onOpenSite?.(a)} onViewReason={setViewingReason}/>
+          {viewingReason && <ReasonDialog site={viewingReason} onClose={() => setViewingReason(null)}/>}
         </div>
       )}
 
