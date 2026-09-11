@@ -98,20 +98,19 @@ def _compute_variation(gfc_items: list, closure_items: list) -> dict[int, float]
 
 
 def _variation_total(
-    variation: dict[int, float],
+    total: float,
     gfc_total: Optional[float],
     closure_total: Optional[float],
 ) -> Optional[float]:
     """Summed variation, or None when there is nothing to compare.
 
-    _compute_variation treats a missing line as 0.0, so its sum is 0.0 for a site
-    with no budgets at all — which renders as "0" and reads as "no variation"
-    rather than "no data". A variation only means something once at least one
-    side has a budget; before that it is absent, not zero.
+    Line variations treat a missing side as 0.0, so the sum is 0.0 for a site with
+    no budget at all — which renders as a total and reads as "no variation" rather
+    than "no data". A variation only means something once one side has a budget.
     """
     if gfc_total is None and closure_total is None:
         return None
-    return round(sum(variation.values()), 2)
+    return round(total, 2)
 
 
 async def _batch_fc_prefetch(
@@ -224,6 +223,8 @@ async def _build_fc_state(
     gfc_items = {i.idx: i for i in (await budget_service.budget_items(session, budget_id=gfc.id, tenant_id=site.tenant_id) if gfc else [])}
     closure_items = {i.idx: i for i in (await budget_service.budget_items(session, budget_id=closure.id, tenant_id=site.tenant_id) if closure else [])}
     lines, variation_total = _fc_budget_lines(gfc_items, closure_items)
+    gfc_total = _opt_float(gfc, "budget_total")
+    closure_total = _opt_float(closure, "budget_total")
 
     delegate = await _active_fc_delegate(session, site_id=site.id)
     return FCStateResponse(
@@ -238,13 +239,9 @@ async def _build_fc_state(
         closure_status=(closure.status if closure else "draft"),
         allocated_to=str(delegate[0]) if delegate else None,
         allocated_to_name=(delegate[1] if delegate else None),
-        gfc_budget_total=_opt_float(gfc, "budget_total"),
-        closure_budget_total=_opt_float(closure, "budget_total"),
-        variation_total=(
-            None
-            if _opt_float(gfc, "budget_total") is None and _opt_float(closure, "budget_total") is None
-            else round(variation_total, 2)
-        ),
+        gfc_budget_total=gfc_total,
+        closure_budget_total=closure_total,
+        variation_total=_variation_total(variation_total, gfc_total, closure_total),
         total_indoor_area_sqft=_opt_float(gfc, "total_indoor_area_sqft"),
         total_area_sqft=_opt_float(gfc, "total_area_sqft"),
         covers=_opt_int(gfc, "covers"),
@@ -360,6 +357,8 @@ async def svc_fc_queue(  # skipcq: PY-R1000
                 closure_items_by_budget.get(closure.id, []) if closure else [],
             )
             delegate = delegates_by_site.get(site.id)
+            gfc_total = float(gfc.budget_total) if gfc and gfc.budget_total is not None else None
+            closure_total = float(closure.budget_total) if closure and closure.budget_total is not None else None
             items.append(FCQueueItem(
                 site_id=str(site.id),
                 site_code=display_code(site),
@@ -369,9 +368,9 @@ async def svc_fc_queue(  # skipcq: PY-R1000
                 financial_closure_status=site.financial_closure_status or "pending",
                 allocated_to_name=(delegate[1] if delegate else None),
                 submitted_by_name=names.get(site.submitted_by),
-                gfc_budget_total=(gfc_total := float(gfc.budget_total) if gfc and gfc.budget_total is not None else None),
-                closure_budget_total=(closure_total := float(closure.budget_total) if closure and closure.budget_total is not None else None),
-                variation_total=_variation_total(variation, gfc_total, closure_total),
+                gfc_budget_total=gfc_total,
+                closure_budget_total=closure_total,
+                variation_total=_variation_total(sum(variation.values()), gfc_total, closure_total),
             ))
         return FCQueueResponse(items=items, total=total)
 
@@ -597,6 +596,8 @@ async def svc_fc_admin_queue(
             closure_items_by_budget.get(closure.id, []) if closure else [],
         )
         delegate = delegates_by_site.get(site.id)
+        gfc_total = float(gfc.budget_total) if gfc and gfc.budget_total is not None else None
+        closure_total = float(closure.budget_total) if closure.budget_total is not None else None
         items.append(FCQueueItem(
             site_id=str(site.id), site_code=display_code(site),
             site_name=site.name, city=site.city,
@@ -604,9 +605,9 @@ async def svc_fc_admin_queue(
             financial_closure_status=site.financial_closure_status or "pending",
             allocated_to_name=(delegate[1] if delegate else None),
             submitted_by_name=names.get(site.submitted_by),
-            gfc_budget_total=(gfc_total := float(gfc.budget_total) if gfc and gfc.budget_total is not None else None),
-            closure_budget_total=(closure_total := float(closure.budget_total) if closure.budget_total is not None else None),
-            variation_total=_variation_total(variation, gfc_total, closure_total),
+            gfc_budget_total=gfc_total,
+            closure_budget_total=closure_total,
+            variation_total=_variation_total(sum(variation.values()), gfc_total, closure_total),
         ))
     return FCQueueResponse(items=items, total=total)
 
