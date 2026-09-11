@@ -39,6 +39,19 @@ def test_queue_has_no_project_module_gate():
     assert "_module" not in _params(fc.fc_queue)
 
 
+def test_detail_read_has_no_project_module_gate():
+    # The Launch Sites tab reads one closed closure through this.
+    assert "_module" not in _params(fc.get_fc)
+
+
+def test_detail_read_still_checks_executive_delegation_per_site():
+    # This is what contains the detail read now that the module gate is gone: a
+    # non-delegated executive gets 404 for a site that is not theirs.
+    src = inspect.getsource(fc.get_fc)
+    assert "_is_executive" in src
+    assert "svc_is_delegated" in src
+
+
 def test_queue_still_requires_a_role():
     # Dropping the module gate must not have dropped the role guard with it —
     # current_user is annotated FCMember (supervisor | executive).

@@ -160,8 +160,19 @@ async def review_fc_budget(
 
 @router.get("/{site_id}", response_model=FCStateResponse)
 async def get_fc(
-    site_id: str, db: DbDep, current_user: FCMember, _module: InProjectModule, tenant_id: TenantId,
+    site_id: str, db: DbDep, current_user: FCMember, tenant_id: TenantId,
 ) -> FCStateResponse:
+    """One closure record, read-only.
+
+    No require_module("project") gate, for the same reason as /queue above: the
+    Launch Sites page reads a closed closure from its Financial Closure tab, and
+    that page has no module gate, so its supervisors and executives hold
+    whichever module they were onboarded into.
+
+    This one is narrower than the queue looks, because the executive check below
+    is PER SITE: an executive who is not delegated onto a site gets 404, module
+    claim or not. Writes are unaffected and stay project-gated.
+    """
     if _is_executive(current_user):
         ok = await svc_is_delegated(db, tenant_id=tenant_id, site_id=site_id, user_id=current_user["sub"], module=_MODULE)
         if not ok:

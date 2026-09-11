@@ -14,6 +14,7 @@ import {
   CLOSURE_BUDGET_LABELS, CLOSURE_BUDGET_TONES, PENDING_STATUSES, isClosed, pendingWith,
 } from '../financial_closure/closureStatus.js';
 import LaunchReviewModal from './LaunchReviewModal.jsx';
+import ClosureDetailsDrawer from './ClosureDetailsDrawer.jsx';
 import { keyActivate } from '../../lib/a11y.js';
 import { displayCode } from '../../lib/displayCode.js';
 
@@ -127,6 +128,7 @@ export default function LaunchPage() {
 
   const [review, setReview] = React.useState(null); // { siteId, role: 'exec' | 'supervisor' }
   const [fcFilter, setFcFilter] = React.useState('pending'); // 'pending' | 'closed'
+  const [closureDetail, setClosureDetail] = React.useState(null); // site_id
 
   const isExec = role === 'exec' || role === 'executive';
   const isSupervisor = role === 'supervisor';
@@ -421,7 +423,7 @@ export default function LaunchPage() {
                   </span>
                   <span>
                     {isClosed(row) && (
-                      <button onClick={() => onOpenSite({ id: row.site_id })}
+                      <button onClick={() => setClosureDetail(row.site_id)}
                         aria-label={`Details for ${row.site_name}`}
                         style={{ height: 28, padding: '0 12px', borderRadius: 7, border: '1px solid var(--zm-line)', background: 'var(--zm-surface-2)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                         Details
@@ -449,6 +451,14 @@ export default function LaunchPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {closureDetail && (
+        <ClosureDetailsDrawer
+          siteId={closureDetail}
+          onClose={() => setClosureDetail(null)}
+          onOpenSiteRecord={(siteId) => { setClosureDetail(null); onOpenSite({ id: siteId }); }}
+        />
       )}
 
       {review && (

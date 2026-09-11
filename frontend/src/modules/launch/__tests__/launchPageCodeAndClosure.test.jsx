@@ -10,16 +10,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const { getLaunchQueue, getFCQueue, listSites, onOpenSite, state } = vi.hoisted(() => ({
+const { getLaunchQueue, getFCQueue, getFC, listSites, onOpenSite, state } = vi.hoisted(() => ({
   getLaunchQueue: vi.fn(),
   getFCQueue: vi.fn(),
+  getFC: vi.fn(),
   listSites: vi.fn(),
   onOpenSite: vi.fn(),
   state: { role: 'supervisor' },
 }));
 
 vi.mock('../../../services/api/launchApprovalApi.js', () => ({ getLaunchQueue }));
-vi.mock('../../../services/api/financialClosureApi.js', () => ({ getFCQueue }));
+vi.mock('../../../services/api/financialClosureApi.js', () => ({ getFCQueue, getFC }));
 vi.mock('../../../services/api/siteService.js', () => ({ listSites }));
 vi.mock('../../../App.jsx', () => ({ usePageContext: () => ({ showToast: vi.fn(), onOpenSite }) }));
 vi.mock('../../../state/SessionContext.jsx', () => ({
@@ -52,6 +53,7 @@ beforeEach(() => {
   getLaunchQueue.mockResolvedValue({ items: [launched()], total: 1 });
   getFCQueue.mockResolvedValue({ items: [], total: 0 });
   onOpenSite.mockReset();
+  getFC.mockResolvedValue({ siteId: 'f9', siteCode: 'CA-301', siteName: 'Done one', city: 'Mumbai', closureStatus: 'approved', lines: [] });
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -174,10 +176,9 @@ describe('Launch Sites — Financial Closure tab', () => {
     expect(screen.getByText('Powai')).toBeTruthy();
   });
 
-  it('offers Details on a closed site, and opens the app-wide site drawer', async () => {
-    // The drawer already carries Overview / Activity / Documents / Payments and
-    // is opened by a ?site=<id> param, so this button hands off to the existing
-    // opener rather than growing a second detail view.
+  it('offers Details on a closed site, opening the closure record', async () => {
+    // Details opens the CLOSURE record — the budget numbers the site drawer does
+    // not carry. The site drawer is one hop further, from that drawer's footer.
     getFCQueue.mockResolvedValue({
       items: [closure({ site_id: 'f9', site_name: 'Done one', financial_closure_status: 'closed', closure_status: 'approved' })],
       total: 1,
@@ -189,7 +190,8 @@ describe('Launch Sites — Financial Closure tab', () => {
 
     await user.click(await screen.findByRole('button', { name: /Details for Done one/i }));
 
-    expect(onOpenSite).toHaveBeenCalledWith({ id: 'f9' });
+    await waitFor(() => expect(getFC).toHaveBeenCalledWith('f9'));
+    expect(await screen.findByRole('dialog', { name: /Financial closure details/i })).toBeTruthy();
   });
 
   it('does not offer Details while a closure is still moving', async () => {
