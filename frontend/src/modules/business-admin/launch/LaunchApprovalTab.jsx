@@ -579,6 +579,7 @@ export default function LaunchApprovalTab() {
   const [queue, setQueue] = React.useState({ status: 'loading', items: [], error: null });
   const [selectedSiteId, setSelectedSiteId] = React.useState(null);
   const [statusFilter, setStatusFilter] = React.useState('all');
+  const [query, setQuery] = React.useState('');
 
   const load = React.useCallback(async (silent = false) => {
     setQueue((s) => silent ? { ...s, refreshing: true } : { status: 'loading', items: [], error: null });
@@ -602,7 +603,13 @@ export default function LaunchApprovalTab() {
     { key: 'launched',                label: 'Launched' },
   ];
 
-  const displayedItems = statusFilter === 'all' ? queue.items : queue.items.filter((i) => i.status === statusFilter);
+  const needle = query.trim().toLowerCase();
+  const displayedItems = queue.items.filter((i) => {
+    if (statusFilter !== 'all' && i.status !== statusFilter) return false;
+    if (!needle) return true;
+    return `${i.ca_code || ''} ${i.site_code || ''} ${i.site_name || ''} ${i.city || ''}`
+      .toLowerCase().includes(needle);
+  });
   const actionableCount = queue.items.filter((i) => ['pending_admin_review', 'pending_admin_final', 'ready_to_launch'].includes(i.status)).length;
 
   return (
@@ -617,9 +624,18 @@ export default function LaunchApprovalTab() {
         refreshing={queue.refreshing}
       />
 
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18, marginTop: 14 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 18, marginTop: 14 }}>
+        <div style={{ position: 'relative', flex: '1 1 260px', maxWidth: 380 }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: T.textFaint }}><Icon.search size={16} /></span>
+          <input className="ac-input" value={query} onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search sites by name, code, or city" aria-label="Search sites by name, code, or city"
+            style={{ width: '100%', boxSizing: 'border-box', height: 38, padding: '0 12px 0 36px', borderRadius: T.radiusSm,
+              border: `1px solid ${T.lineStrong}`, background: T.surfaceInset, color: T.text, fontSize: 13, outline: 'none' }} />
+        </div>
         {STATUS_TABS.map(({ key, label }) => {
-          const count = key === 'all' ? queue.items.length : queue.items.filter((i) => i.status === key).length;
+          const inSearch = (i) => !needle
+            || `${i.ca_code || ''} ${i.site_code || ''} ${i.site_name || ''} ${i.city || ''}`.toLowerCase().includes(needle);
+          const count = queue.items.filter((i) => (key === 'all' || i.status === key) && inSearch(i)).length;
           const active = statusFilter === key;
           return (
             <button key={key} onClick={() => setStatusFilter(key)}
@@ -661,7 +677,9 @@ export default function LaunchApprovalTab() {
         {queue.status === 'ready' && displayedItems.length === 0 && (
           <div style={{ padding: '36px 24px' }}>
             <EmptyState icon={Icon.check} title="Nothing to show"
-              hint={statusFilter === 'all' ? 'Sites will appear here after NSO final approval.' : 'No sites in this status.'} />
+              hint={needle
+                ? 'No sites match your search.'
+                : statusFilter === 'all' ? 'Sites will appear here after NSO final approval.' : 'No sites in this status.'} />
           </div>
         )}
 
