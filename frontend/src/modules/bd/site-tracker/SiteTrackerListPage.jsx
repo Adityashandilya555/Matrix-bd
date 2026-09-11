@@ -47,7 +47,7 @@ const STATUS_TONES = {
   active:   { color: 'var(--zm-warning, #B0712E)', border: 'var(--zm-warning, #B0712E)', bg: 'var(--zm-warning-soft, #F8EEDC)', label: 'Open' },
   complete: { color: 'var(--zm-success, #2D7A48)', border: 'var(--zm-success, #2D7A48)', bg: 'var(--zm-success-soft, rgba(45,122,72,0.08))', label: 'Complete' },
   rejected: { color: 'var(--zm-danger, #B91C1C)', border: 'var(--zm-danger, #B91C1C)', bg: 'rgba(185,28,28,0.08)', label: 'Rejected' },
-  future:   { color: 'var(--zm-fg-4)', border: 'var(--zm-line-faint)', bg: 'rgba(255,255,255,0.56)', label: 'Queued' },
+  future:   { color: 'var(--zm-fg-3)', border: 'var(--zm-line-faint)', bg: 'var(--zm-surface-2)', label: 'Queued' },
 };
 
 const ACTIVE_PROJECT_STATUSES = new Set(['pending', 'allocated', 'budgeting', 'in_progress']);

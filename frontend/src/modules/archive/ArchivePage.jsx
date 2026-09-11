@@ -172,10 +172,10 @@ export default function ArchivePage({ onOpenSite: onOpenSiteProp, showToast: sho
         })}
       </div>
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
-        <div style={{ flexShrink: 0, display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
-          <span>Code</span><span>Site</span><span>City</span><span>Created by</span><span>Archived on</span><span>Status · reason</span><span/>{canRevive && <span style={{ textAlign: 'right' }}>Revive</span>}
-        </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div style={{ position: 'sticky', top: 0, zIndex: 1, display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
+            <span>Code</span><span>Site</span><span>City</span><span>Created by</span><span>Archived on</span><span>Status · reason</span><span/>{canRevive && <span style={{ textAlign: 'right' }}>Revive</span>}
+          </div>
           {filtered.map(a => {
             const meta = statusMeta(a);
             return (

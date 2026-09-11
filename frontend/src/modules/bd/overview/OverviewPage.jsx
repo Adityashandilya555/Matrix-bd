@@ -295,10 +295,10 @@ function PipelineFilter({ stage, onStage, counts, advanced, onAdvanced }) {
 function MotionTable({ rows, onOpen, limit = 12 }) {
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
-      <div style={{ flexShrink: 0, display: 'grid', gridTemplateColumns: '0.9fr 1.7fr 1fr 1fr 0.7fr 1.1fr 1.2fr', gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
-        <span>Code</span><span>Site</span><span>City</span><span>Owner</span><span>Days</span><span>Stage</span><span>Detail</span>
-      </div>
       <div style={{ flex: 1, overflowY: 'auto' }}>
+        <div style={{ position: 'sticky', top: 0, zIndex: 1, display: 'grid', gridTemplateColumns: '0.9fr 1.7fr 1fr 1fr 0.7fr 1.1fr 1.2fr', gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
+          <span>Code</span><span>Site</span><span>City</span><span>Owner</span><span>Days</span><span>Stage</span><span>Detail</span>
+        </div>
         {rows.slice(0, limit).map(r => (
           <div key={r.id} role="button" tabIndex={0} onClick={() => onOpen(r)} onKeyDown={keyActivate(() => onOpen(r))} className="zm-row" style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.7fr 1fr 1fr 0.7fr 1.1fr 1.2fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', background: r.stage === 'overdue' ? 'rgba(217,119,6,0.06)' : 'transparent', cursor: 'pointer', position: 'relative' }}>
             {r.stage === 'overdue' && <span style={{ position: 'absolute', left: 0, top: 12, bottom: 12, width: 2, background: 'var(--zm-warning)', borderRadius: 2 }}/>}
@@ -324,10 +324,10 @@ const ARCH_COLS = '0.9fr 1.6fr 1fr 1fr 1fr 1.4fr 90px';
 function ArchiveTable({ rows, onOpen, onViewReason }) {
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
-      <div style={{ flexShrink: 0, display: 'grid', gridTemplateColumns: ARCH_COLS, gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
-        <span>Code</span><span>Site</span><span>City</span><span>Created by</span><span>Archived on</span><span>Status · reason</span><span/>
-      </div>
       <div style={{ flex: 1, overflowY: 'auto' }}>
+        <div style={{ position: 'sticky', top: 0, zIndex: 1, display: 'grid', gridTemplateColumns: ARCH_COLS, gap: 10, padding: '11px 16px', background: 'var(--zm-surface-2)', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
+          <span>Code</span><span>Site</span><span>City</span><span>Created by</span><span>Archived on</span><span>Status · reason</span><span/>
+        </div>
         {rows.map(a => {
           const meta = statusMeta(a);
           return (

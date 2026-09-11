@@ -285,7 +285,7 @@ function MiniField({ label, value }) {
       padding: '7px 8px',
       border: '1px solid var(--zm-line-faint)',
       borderRadius: 8,
-      background: 'rgba(255,255,255,0.54)',
+      background: 'var(--zm-surface-2)',
     }}>
       <div style={{
         fontFamily: 'var(--zm-font-body)',
