@@ -7,17 +7,17 @@ import PageHeader, { HeaderTag } from '../shared/page-header/PageHeader.jsx';
 import Avatar from '../shared/primitives/Avatar.jsx';
 import Icon from '../shared/primitives/Icon.jsx';
 
-const isRejectedRow = (a) => a.status === SiteStatus.REJECTED || a.status === SiteStatus.LEGAL_REJECTED;
+export const isRejectedRow = (a) => a.status === SiteStatus.REJECTED || a.status === SiteStatus.LEGAL_REJECTED;
 const isArchivedRow = (a) => a.status === SiteStatus.ARCHIVED;
 
-function statusMeta(a) {
+export function statusMeta(a) {
   if (a.status === SiteStatus.LEGAL_REJECTED) return { label: 'Legal rejected', fg: '#B42318', bg: '#FEF3F2' };
   if (a.status === SiteStatus.REJECTED) return { label: 'Rejected', fg: '#B42318', bg: '#FEF3F2' };
   return { label: 'Archived', fg: '#374151', bg: '#F1F3F6' };
 }
 
 
-function EyeIcon({ size = 12 }) {
+export function EyeIcon({ size = 12 }) {
   return (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>);
 }
 
@@ -49,7 +49,7 @@ function ReviveDialog({ site, onCancel, onConfirm, busy }) {
   );
 }
 
-function ReasonDialog({ site, onClose }) {
+export function ReasonDialog({ site, onClose }) {
   React.useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
