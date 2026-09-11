@@ -11,9 +11,11 @@
 // project module, which this page's users generally do not hold.
 import React from 'react';
 import Icon from '../shared/primitives/Icon.jsx';
+import ThemedPortal from '../shared/primitives/ThemedPortal.jsx';
 import { getFC } from '../../services/api/financialClosureApi.js';
 import { formatINR, formatVariation, variationTone, computeRatio } from '../../lib/budgetMetrics.js';
 import { CLOSURE_BUDGET_LABELS, CLOSURE_BUDGET_TONES } from '../financial_closure/closureStatus.js';
+import { useDialogFocus } from '../../lib/a11y.js';
 
 const RENT_TYPE_LABEL = {
   fixed: 'Fixed + escalation',
@@ -79,19 +81,29 @@ export default function ClosureDetailsDrawer({
     return () => { alive = false; };
   }, [siteId, fetchDetail]);
 
+  // aria-modal is a promise that focus is contained. The hook moves focus in,
+  // keeps Tab inside the panel, restores it on close, and takes Escape in the
+  // capture phase — which is also what the local Escape handler used to do.
+  const panelRef = React.useRef(null);
+  const dismiss = React.useCallback(() => onClose?.(), [onClose]);
+  useDialogFocus(true, panelRef, dismiss);
+
+  // Lock the page behind. Save and restore the previous value rather than
+  // assuming '': another overlay may already have locked it (ImageLightbox).
   React.useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
 
   const d = data;
   const indoor = d?.totalIndoorAreaSqft;
 
   return (
+    <ThemedPortal>
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,12,16,0.50)', backdropFilter: 'blur(6px)', zIndex: 120, display: 'flex', alignItems: 'stretch', justifyContent: 'flex-end' }}>
-      <div role="dialog" aria-modal="true" aria-label="Financial closure details"
-        style={{ background: 'var(--zm-bg)', borderLeft: '1px solid var(--zm-line)', width: 760, maxWidth: '96%', display: 'flex', flexDirection: 'column', boxShadow: 'var(--zm-shadow-pop)' }}>
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-label="Financial closure details" tabIndex={-1}
+        style={{ background: 'var(--zm-bg)', borderLeft: '1px solid var(--zm-line)', width: 760, maxWidth: '96%', height: '100%', display: 'flex', flexDirection: 'column', boxShadow: 'var(--zm-shadow-pop)', outline: 'none' }}>
 
         <header style={{ padding: '18px 26px', background: 'var(--zm-surface)', borderBottom: '1px solid var(--zm-line)', display: 'flex', alignItems: 'flex-start', gap: 16 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -222,5 +234,6 @@ export default function ClosureDetailsDrawer({
         )}
       </div>
     </div>
+    </ThemedPortal>
   );
 }
