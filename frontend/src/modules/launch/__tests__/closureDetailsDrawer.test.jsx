@@ -39,6 +39,71 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
+describe('ClosureDetailsDrawer — floats free of its mount point', () => {
+  // The bug: the admin shell wraps every tab panel in `.ac-fade-in`, whose
+  // keyframes animate transform with fill-mode: both. The animation keeps
+  // applying after it ends, so the wrapper is permanently a containing block for
+  // fixed descendants and the drawer was sized and clipped to the panel instead
+  // of the viewport. These pin the portal that escapes it.
+  it('renders outside the element it was mounted into', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    render(<ClosureDetailsDrawer siteId="f1" onClose={vi.fn()} />, { container: host });
+
+    const dialog = await screen.findByRole('dialog', { name: /Financial closure details/i });
+    expect(host.contains(dialog)).toBe(false);
+    expect(document.body.contains(dialog)).toBe(true);
+  });
+
+  it('is not trapped by an ancestor that establishes a containing block', async () => {
+    // Reproduces the admin shell's wrapper directly.
+    const trap = document.createElement('div');
+    trap.style.transform = 'translateY(7px)';
+    document.body.appendChild(trap);
+    render(<ClosureDetailsDrawer siteId="f1" onClose={vi.fn()} />, { container: trap });
+
+    const dialog = await screen.findByRole('dialog', { name: /Financial closure details/i });
+    expect(trap.contains(dialog)).toBe(false);
+  });
+
+  it('carries the app theme across the portal', async () => {
+    // Dark tokens are [data-theme="dark"] on an ancestor div, never on <html>.
+    // A portal that drops the attribute renders the panel unthemed.
+    const themed = document.createElement('div');
+    themed.setAttribute('data-theme', 'dark');
+    document.body.appendChild(themed);
+    render(<ClosureDetailsDrawer siteId="f1" onClose={vi.fn()} />, { container: themed });
+
+    const dialog = await screen.findByRole('dialog', { name: /Financial closure details/i });
+    expect(dialog.closest('[data-theme="dark"]')).toBeTruthy();
+  });
+});
+
+describe('ClosureDetailsDrawer — dialog behaviour', () => {
+  it('moves focus into the panel and keeps Tab inside it', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    const dialog = await screen.findByRole('dialog', { name: /Financial closure details/i });
+
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+    await user.tab();
+    await user.tab();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+
+  it('locks the page behind while open and restores it on close', async () => {
+    // Restores the PREVIOUS value, not '': another overlay may already have
+    // locked it, and clobbering that would unlock the page underneath it.
+    document.body.style.overflow = 'scroll';
+    const { unmount } = renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    expect(document.body.style.overflow).toBe('hidden');
+
+    unmount();
+    expect(document.body.style.overflow).toBe('scroll');
+  });
+});
+
 describe('ClosureDetailsDrawer', () => {
   it('shows the budget totals and the variation', async () => {
     renderDrawer();

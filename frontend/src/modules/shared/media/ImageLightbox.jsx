@@ -15,6 +15,7 @@ import { createPortal } from 'react-dom';
 import Icon from '../primitives/Icon.jsx';
 import { isImage } from '../../../lib/mime.js';
 import { safeHref } from '../../../lib/safeHref.js';
+import { lockBodyScroll } from '../../../lib/scrollLock.js';
 
 // Above every in-app dialog (max 120) and the CitySelect dropdown (200), but
 // BELOW the toast (300) so upload/error toasts stay readable over it, and well
@@ -74,15 +75,15 @@ export default function ImageLightbox({ open, photo, onClose, onRefreshUrl }) {
       if (el) (el.querySelector(FOCUSABLE) || el).focus();
     });
 
-    // Save and restore the PREVIOUS value rather than assuming '' — another
-    // overlay may already have locked it.
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    // Counted, so the order overlays close in does not matter: save/restore of a
+    // "previous" value hands scrolling back to the page whenever the OUTER
+    // overlay closes first, while the inner one is still up.
+    const releaseScroll = lockBodyScroll();
 
     return () => {
       window.removeEventListener('keydown', onKey);
       cancelAnimationFrame(frame);
-      document.body.style.overflow = prevOverflow;
+      releaseScroll();
       const trigger = triggerRef.current;
       if (trigger && typeof trigger.focus === 'function') trigger.focus();
     };
