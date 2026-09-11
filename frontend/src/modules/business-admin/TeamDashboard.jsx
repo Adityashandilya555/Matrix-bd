@@ -29,6 +29,7 @@ import DepartmentsTab from './departments/DepartmentsTab.jsx';
 import { mergePending } from './departments/pendingQueue.js';
 import SitesTab, { classifyCounts } from './sites/SitesTab.jsx';
 import LaunchApprovalTab from './launch/LaunchApprovalTab.jsx';
+import FinancialClosureTab from './closure/FinancialClosureTab.jsx';
 import WorkspaceSwitcherPanel from './WorkspaceSwitcherPanel.jsx';
 
 // Real API wiring. Injectable so the dev preview (and tests) can drive the whole
@@ -72,6 +73,7 @@ export const REAL_FETCHERS = {
 const TABS = [
   { key: 'approvals',   label: 'Approval Center',  icon: Icon.check },
   { key: 'launch',      label: 'Launch Approvals', icon: Icon.flag },
+  { key: 'closure',     label: 'Financial Closure', icon: Icon.rupee },
   { key: 'departments', label: 'Departments',       icon: Icon.key },
   { key: 'sites',       label: 'Sites',             icon: Icon.pin },
   { key: 'workspace',   label: 'Workspace Access',  icon: Icon.external },
@@ -293,9 +295,10 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   const navItems = [
     { ...TABS[0], count: approvalSites.length },
     { ...TABS[1] }, // Launch Approvals — count fetched inside the tab
-    { ...TABS[2], count: pendingAccessCount + executiveRequests.items.length },
-    { ...TABS[3] },
-    { ...TABS[4] }, // Workspace Access tab
+    { ...TABS[2] }, // Financial Closure — count fetched inside the tab
+    { ...TABS[3], count: pendingAccessCount + executiveRequests.items.length },
+    { ...TABS[4] },
+    { ...TABS[5] }, // Workspace Access tab
   ];
 
   return (
@@ -368,6 +371,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
             {tab === 'launch' && (
               <LaunchApprovalTab />
             )}
+            {tab === 'closure' && <FinancialClosureTab />}
             {tab === 'departments' && (
               <DepartmentsTab org={org} pendingSupervisors={supervisors} executiveRequests={executiveRequests}
               observers={{ code: observerCode, pending: observerPending, roster: observerRoster,

@@ -114,8 +114,9 @@ export default function LaunchPage() {
   } = usePagedList(({ limit, offset }) => getLaunchQueue({ limit, offset }));
   const approvalLoading = approvalStatus === 'loading';
 
-  // GET /financial-closure/queue applies executive scoping server-side, so an
-  // executive already sees only the sites allocated to them.
+  // Financial closure is a supervisor concern on this page; executives do not see
+  // the tab, so the fetcher short-circuits rather than issuing a request whose
+  // result would never be rendered.
   const {
     items: fcItems,
     total: fcTotal,
@@ -123,7 +124,9 @@ export default function LaunchPage() {
     hasMore: fcHasMore,
     loadingMore: fcLoadingMore,
     loadMore: loadMoreFc,
-  } = usePagedList(({ limit, offset }) => getFCQueue({ limit, offset }));
+  } = usePagedList(({ limit, offset }) => (
+    isSupervisor ? getFCQueue({ limit, offset }) : Promise.resolve({ items: [], total: 0 })
+  ));
 
   const [review, setReview] = React.useState(null); // { siteId, role: 'exec' | 'supervisor' }
   const [fcFilter, setFcFilter] = React.useState('pending'); // 'pending' | 'closed'
@@ -183,7 +186,7 @@ export default function LaunchPage() {
     { key: 'nso',       label: 'NSO Sites', count: rows.length },
     ...(showReview ? [{ key: 'review', label: 'Review', count: reviewItems.length }] : []),
     { key: 'launched',  label: 'Launched',  count: launchedItems.length },
-    { key: 'closure',   label: 'Financial Closure', count: fcPending.length },
+    ...(isSupervisor ? [{ key: 'closure', label: 'Financial Closure', count: fcPending.length }] : []),
   ];
 
   return (
@@ -377,8 +380,8 @@ export default function LaunchPage() {
         </div>
       )}
 
-      {/* ── Financial Closure tab ── */}
-      {tab === 'closure' && (
+      {/* ── Financial Closure tab (supervisor only) ── */}
+      {tab === 'closure' && isSupervisor && (
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
             <SearchBox value={q} onChange={setQ} placeholder="Search code, site, city, pending with…" />

@@ -60,7 +60,9 @@ function rentSummary(d) {
   return `Fixed · ${money(d.expectedRent)}/mo · ${pct(d.expectedEscalationPct)} every ${d.expectedEscalationYears || '—'} yr`;
 }
 
-export default function ClosureDetailsDrawer({ siteId, onClose, onOpenSiteRecord }) {
+export default function ClosureDetailsDrawer({
+  siteId, onClose, onOpenSiteRecord, fetchDetail = getFC,
+}) {
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState(null);
@@ -70,12 +72,12 @@ export default function ClosureDetailsDrawer({ siteId, onClose, onOpenSiteRecord
     let alive = true;
     setLoading(true);
     setErr(null);
-    getFC(siteId)
+    fetchDetail(siteId)
       .then((d) => { if (alive) setData(d); })
       .catch((e) => { if (alive) setErr(e?.detail || e?.message || 'Failed to load the closure record'); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [siteId]);
+  }, [siteId, fetchDetail]);
 
   React.useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
@@ -207,15 +209,17 @@ export default function ClosureDetailsDrawer({ siteId, onClose, onOpenSiteRecord
           )}
         </div>
 
-        <footer style={{ padding: '14px 26px', borderTop: '1px solid var(--zm-line)', background: 'var(--zm-surface)', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ flex: 1, fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)' }}>
-            Documents, activity and payments live in the site record.
-          </span>
-          <button onClick={() => onOpenSiteRecord?.(siteId)}
-            style={{ height: 34, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface-2)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            Documents &amp; site record <Icon name="arrow" size={13} />
-          </button>
-        </footer>
+        {onOpenSiteRecord && (
+          <footer style={{ padding: '14px 26px', borderTop: '1px solid var(--zm-line)', background: 'var(--zm-surface)', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ flex: 1, fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)' }}>
+              Documents, activity and payments live in the site record.
+            </span>
+            <button onClick={() => onOpenSiteRecord(siteId)}
+              style={{ height: 34, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface-2)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              Documents &amp; site record <Icon name="arrow" size={13} />
+            </button>
+          </footer>
+        )}
       </div>
     </div>
   );

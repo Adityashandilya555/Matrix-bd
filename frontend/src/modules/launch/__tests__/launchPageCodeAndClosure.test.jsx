@@ -220,6 +220,29 @@ describe('Launch Sites — Financial Closure tab', () => {
   });
 });
 
+describe('Launch Sites — closure tab is supervisor-only', () => {
+  it('is hidden from an executive, and does not even fetch', async () => {
+    // Financial closure is a supervisor and business-admin concern. An
+    // executive gets no tab, and no request whose result is never rendered.
+    state.role = 'executive';
+    getFCQueue.mockResolvedValue({ items: [closure()], total: 1 });
+    await renderPage();
+    await screen.findByRole('button', { name: /Launched/i });
+
+    expect(screen.queryByRole('button', { name: /Financial Closure/i })).toBeNull();
+    expect(getFCQueue).not.toHaveBeenCalled();
+  });
+
+  it('is offered to a supervisor', async () => {
+    state.role = 'supervisor';
+    getFCQueue.mockResolvedValue({ items: [closure()], total: 1 });
+    await renderPage();
+
+    expect(await screen.findByRole('button', { name: /Financial Closure/i })).toBeTruthy();
+    await waitFor(() => expect(getFCQueue).toHaveBeenCalled());
+  });
+});
+
 describe('Launch Sites — search is per tab', () => {
   it('clears the needle when switching tabs', async () => {
     // Each tab searches a different list, so carrying a needle across would
