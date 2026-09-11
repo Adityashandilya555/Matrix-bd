@@ -16,6 +16,7 @@ import { getFC } from '../../services/api/financialClosureApi.js';
 import { formatINR, formatVariation, variationTone, computeRatio } from '../../lib/budgetMetrics.js';
 import { CLOSURE_BUDGET_LABELS, CLOSURE_BUDGET_TONES } from '../financial_closure/closureStatus.js';
 import { useDialogFocus } from '../../lib/a11y.js';
+import { lockBodyScroll } from '../../lib/scrollLock.js';
 
 const RENT_TYPE_LABEL = {
   fixed: 'Fixed + escalation',
@@ -88,13 +89,9 @@ export default function ClosureDetailsDrawer({
   const dismiss = React.useCallback(() => onClose?.(), [onClose]);
   useDialogFocus(true, panelRef, dismiss);
 
-  // Lock the page behind. Save and restore the previous value rather than
-  // assuming '': another overlay may already have locked it (ImageLightbox).
-  React.useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, []);
+  // Lock the page behind. Counted, so closing this drawer while another overlay
+  // is still open does not hand scrolling back to the page underneath it.
+  React.useEffect(() => lockBodyScroll(), []);
 
   const d = data;
   const indoor = d?.totalIndoorAreaSqft;
