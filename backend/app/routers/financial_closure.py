@@ -40,6 +40,11 @@ from app.services.project_service import svc_qa_reports_for_site
 router = APIRouter(prefix="/financial-closure", tags=["Financial Closure"])
 
 FCMember = Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.EXECUTIVE))]
+# The queue is also the business admin's whole-tenant view of closure. Reading it
+# is not the same privilege as acting on a closure, which stays SUPERVISOR-only
+# below. svc_fc_queue narrows by allocation only for an EXECUTIVE, so an admin
+# gets the unscoped tenant list without any extra branch.
+FCReader = Annotated[dict, Depends(require_role(Role.SUPERVISOR, Role.EXECUTIVE, Role.BUSINESS_ADMIN))]
 FCSupervisor = Annotated[dict, Depends(require_role(Role.SUPERVISOR))]
 InProjectModule = Annotated[dict, Depends(require_module("project"))]
 BusinessAdmin = Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))]
@@ -61,10 +66,10 @@ async def send_for_financial_closure(
 
 @router.get("/queue", response_model=FCQueueResponse)
 async def fc_queue(
-    db: DbDep, current_user: FCMember, tenant_id: TenantId,
+    db: DbDep, current_user: FCReader, tenant_id: TenantId,
     limit: int = Query(500, ge=1, le=1000), offset: int = Query(0, ge=0),
 ) -> FCQueueResponse:
-    """The closure queue for supervisors and executives.
+    """The closure queue for supervisors, executives and the business admin.
 
     No require_module("project") gate, unlike every other endpoint on this
     router. The Launch Sites page shows this queue as a tab, and that page has
