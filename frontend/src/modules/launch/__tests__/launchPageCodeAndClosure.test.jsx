@@ -220,6 +220,28 @@ describe('Launch Sites — Financial Closure tab', () => {
   });
 });
 
+describe('Launch Sites — search is per tab', () => {
+  it('clears the needle when switching tabs', async () => {
+    // Each tab searches a different list, so carrying a needle across would
+    // silently filter a table the user has not typed into.
+    getLaunchQueue.mockResolvedValue({
+      items: [launched(), launched({ site_id: 's2', ca_code: 'CA-400', site_name: 'Big Chill' })],
+      total: 2,
+    });
+    getFCQueue.mockResolvedValue({ items: [closure({ siteName: 'Powai' })], total: 1 });
+    const user = userEvent.setup();
+    await renderPage();
+    await openTab(user, 'Launched');
+    await user.type(screen.getByLabelText(/Search code, site, city/i), 'big');
+    await waitFor(() => expect(screen.queryByText('Sainikpuri')).toBeNull());
+
+    await openTab(user, 'Financial Closure');
+
+    expect(screen.getByLabelText(/Search code, site, city, pending with/i).value).toBe('');
+    expect(await screen.findByText('Powai')).toBeTruthy();
+  });
+});
+
 describe('Launch Sites — Launched tab search', () => {
   it('narrows the launched list, which it previously could not do', async () => {
     getLaunchQueue.mockResolvedValue({

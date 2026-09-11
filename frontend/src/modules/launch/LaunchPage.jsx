@@ -97,6 +97,7 @@ export default function LaunchPage() {
   const [q, setQ] = React.useState('');
   const [range, setRange] = React.useState({ from: '', to: '' });
   const [tab, setTab] = React.useState('nso');
+  const selectTab = (key) => { setTab(key); setQ(''); };
 
   // Launch-approval rows (Review + Launched tabs) — "View more" batch pager.
   // `total` is the server COUNT(*) of all launch-approval rows; the creator /
@@ -198,7 +199,7 @@ export default function LaunchPage() {
         {/* Tab switcher */}
         <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid var(--zm-line)', paddingBottom: 0 }}>
           {TABS.map(({ key, label, count }) => (
-            <button key={key} onClick={() => setTab(key)}
+            <button key={key} onClick={() => selectTab(key)}
               style={{ padding: '8px 16px', borderRadius: '8px 8px 0 0', border: '1px solid var(--zm-line)',
                 borderBottom: tab === key ? '1px solid var(--zm-surface)' : '1px solid var(--zm-line)',
                 background: tab === key ? 'var(--zm-surface)' : 'transparent',
