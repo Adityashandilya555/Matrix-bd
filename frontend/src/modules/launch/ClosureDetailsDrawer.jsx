@@ -12,7 +12,9 @@
 import React from 'react';
 import Icon from '../shared/primitives/Icon.jsx';
 import ThemedPortal from '../shared/primitives/ThemedPortal.jsx';
-import { getFC } from '../../services/api/financialClosureApi.js';
+import { getFC, getClosureQAReports } from '../../services/api/financialClosureApi.js';
+import { getSiteDocuments } from '../../services/api/siteService.js';
+import ImageLightbox from '../shared/media/ImageLightbox.jsx';
 import { formatINR, formatVariation, variationTone, computeRatio } from '../../lib/budgetMetrics.js';
 import { CLOSURE_BUDGET_LABELS, CLOSURE_BUDGET_TONES } from '../financial_closure/closureStatus.js';
 import { useDialogFocus } from '../../lib/a11y.js';
@@ -63,8 +65,43 @@ function rentSummary(d) {
   return `Fixed · ${money(d.expectedRent)}/mo · ${pct(d.expectedEscalationPct)} every ${d.expectedEscalationYears || '—'} yr`;
 }
 
+// The payload carries no mime type, so images are recognised by extension with
+// file_type as the fallback for an extensionless name.
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i;
+const isImageDoc = (d) => IMAGE_EXT.test(d.fileName || '') || d.fileType === 'photo';
+
+const MODULE_FOR_TYPE = {
+  loi: 'BD', photo: 'BD', excellence: 'Project Excellence', closure: 'Financial Closure',
+};
+const docModule = (d) => d.module
+  || MODULE_FOR_TYPE[d.fileType]
+  || (String(d.fileType || '').startsWith('design_') ? 'Design' : 'Other');
+
+// Quality-audit reports are not documents in the site_files sense — they live in
+// their own table and arrive from a different endpoint. Flattened to the same
+// row shape so one list can render both, as SiteApprovalPanel's ClosureBlock does.
+//
+// Filtered on the report EXISTING, not on its URL. download_url is null in two
+// different situations — the report was never uploaded, and the report exists
+// but signing failed — and only the first is an absence. Dropping both would
+// make an uploaded report silently vanish instead of showing as unavailable,
+// which is the row state that exists for exactly this.
+const qaAsDocs = (qa) => [qa?.before, qa?.after]
+  .filter(Boolean)
+  .map((r) => ({
+    id: `qa-${r.kind}`,
+    module: 'Quality audit',
+    fileName: `${r.kind === 'before' ? 'Before' : 'After'} — ${r.fileName || 'report.pdf'}`,
+    uploadedAt: r.uploadedAt,
+    url: r.downloadUrl,
+  }));
+
 export default function ClosureDetailsDrawer({
-  siteId, onClose, onOpenSiteRecord, fetchDetail = getFC,
+  siteId, onClose, fetchDetail = getFC,
+  // Injected per surface, like fetchDetail. The business admin's documents
+  // endpoint also returns design deliverables; the shared one does not.
+  fetchDocuments = getSiteDocuments,
+  fetchQAReports = getClosureQAReports,
 }) {
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -92,6 +129,67 @@ export default function ClosureDetailsDrawer({
   // Lock the page behind. Counted, so closing this drawer while another overlay
   // is still open does not hand scrolling back to the page underneath it.
   React.useEffect(() => lockBodyScroll(), []);
+
+  const [tab, setTab] = React.useState('closure');
+  const [docs, setDocs] = React.useState({ status: 'idle', items: [] });
+  const [preview, setPreview] = React.useState(null);
+
+  // Each source is caught on its own, because the two surfaces have different
+  // reach: a supervisor cannot call the admin documents endpoint, and an
+  // executive not delegated onto the site gets 404 for the reports. One failing
+  // has to hide its own group rather than empty the tab.
+  //
+  // But swallowing BOTH failures would render "No documents have been uploaded"
+  // over an auth error or an outage — telling the reader a site has no paperwork
+  // when the truth is we could not ask. If neither source answered, that is an
+  // error, and it says so with a retry.
+  const loadDocs = React.useCallback(() => {
+    if (!siteId) return undefined;
+    let alive = true;
+    setDocs({ status: 'loading', items: [] });
+    const failed = { docs: false, qa: false };
+    Promise.all([
+      Promise.resolve(fetchDocuments(siteId))
+        .then((r) => r?.documents || [])
+        .catch(() => { failed.docs = true; return []; }),
+      Promise.resolve(fetchQAReports(siteId))
+        .then(qaAsDocs)
+        .catch(() => { failed.qa = true; return []; }),
+    ]).then(([files, qa]) => {
+      if (!alive) return;
+      if (failed.docs && failed.qa) {
+        setDocs({ status: 'error', items: [] });
+        return;
+      }
+      setDocs({ status: 'ready', items: [...qa, ...files] });
+    });
+    return () => { alive = false; };
+  }, [siteId, fetchDocuments, fetchQAReports]);
+
+  // Loaded when the tab is opened, and again on each open: signed URLs expire
+  // after 300s, so a drawer left sitting would otherwise hand out dead links.
+  React.useEffect(() => {
+    if (tab !== 'documents') return undefined;
+    return loadDocs();
+  }, [tab, loadDocs]);
+
+  // The lightbox re-signs on open. Re-fetching the list is the only way to get a
+  // fresh URL, since signing is server-side and keyed by storage path.
+  const refreshUrl = React.useCallback(async (photo) => {
+    const r = await fetchDocuments(siteId);
+    return (r?.documents || []).find((x) => x.id === photo?.id)?.url || null;
+  }, [siteId, fetchDocuments]);
+
+  const openDoc = (doc) => {
+    if (isImageDoc(doc)) { setPreview(doc); return; }
+    window.open(doc.url, '_blank', 'noopener,noreferrer');
+  };
+
+  const groups = docs.items.reduce((acc, doc) => {
+    const key = docModule(doc);
+    (acc[key] = acc[key] || []).push(doc);
+    return acc;
+  }, {});
 
   const d = data;
   const indoor = d?.totalIndoorAreaSqft;
@@ -128,6 +226,78 @@ export default function ClosureDetailsDrawer({
           </button>
         </header>
 
+        <div style={{ flexShrink: 0, display: 'flex', gap: 6, padding: '12px 26px 0', background: 'var(--zm-surface)', borderBottom: '1px solid var(--zm-line)' }}>
+          {[
+            { key: 'closure', label: 'Closure' },
+            { key: 'documents', label: 'Documents' },
+          ].map(({ key, label }) => (
+            <button key={key} onClick={() => setTab(key)} aria-pressed={tab === key}
+              style={{ padding: '8px 14px', border: 'none', borderBottom: `2px solid ${tab === key ? 'var(--zm-accent)' : 'transparent'}`, background: 'transparent', color: tab === key ? 'var(--zm-fg)' : 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              {label}
+              {key === 'documents' && docs.status === 'ready' && docs.items.length > 0 && (
+                <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: 'var(--zm-fg-3)' }}>{docs.items.length}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'documents' && (
+          <div style={{ flex: 1, overflowY: 'auto', padding: '22px 26px' }}>
+            {docs.status === 'loading' && (
+              <div style={{ padding: 40, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>Loading documents…</div>
+            )}
+            {docs.status === 'error' && (
+              <div style={{ padding: 40, textAlign: 'center', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
+                <div style={{ color: 'var(--zm-danger)' }}>Could not load documents.</div>
+                <button onClick={loadDocs}
+                  style={{ marginTop: 12, height: 32, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface-2)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+                  Retry
+                </button>
+              </div>
+            )}
+            {docs.status === 'ready' && docs.items.length === 0 && (
+              <div style={{ padding: 40, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
+                No documents have been uploaded for this site yet.
+              </div>
+            )}
+            {docs.status === 'ready' && Object.entries(groups).map(([module, items]) => (
+              <div key={module} style={{ marginBottom: 18 }}>
+                <SectionLabel>{module} · {items.length}</SectionLabel>
+                <div style={{ background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 10, overflow: 'hidden' }}>
+                  {items.map((doc, i) => {
+                    const openable = Boolean(doc.url);
+                    const Row = openable ? 'button' : 'div';
+                    return (
+                      <Row key={doc.id || i}
+                        {...(openable ? { type: 'button', onClick: () => openDoc(doc) } : {})}
+                        aria-label={openable ? `Open ${doc.fileName}` : undefined}
+                        style={{
+                          display: 'grid', gridTemplateColumns: '28px 1fr 110px', alignItems: 'center', gap: 14,
+                          width: '100%', textAlign: 'left', padding: '12px 16px',
+                          background: 'transparent', font: 'inherit', color: 'inherit',
+                          border: 'none', borderBottom: i < items.length - 1 ? '1px solid var(--zm-line-faint)' : 'none',
+                          cursor: openable ? 'pointer' : 'default', opacity: openable ? 1 : 0.55,
+                        }}>
+                        <span style={{ color: 'var(--zm-fg-3)', display: 'inline-flex' }}><Icon name="file" size={16} /></span>
+                        <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 500, color: 'var(--zm-fg)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {doc.fileName || 'Untitled document'}
+                          {!openable && <span style={{ color: 'var(--zm-fg-3)', fontSize: 11.5 }}> · unavailable</span>}
+                        </span>
+                        <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>
+                          {doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString('en-IN') : '—'}
+                        </span>
+                      </Row>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <ImageLightbox open={Boolean(preview)} photo={preview}
+              onClose={() => setPreview(null)} onRefreshUrl={refreshUrl} />
+          </div>
+        )}
+
+        {tab === 'closure' && (
         <div style={{ flex: 1, overflowY: 'auto', padding: '22px 26px' }}>
           {loading && <div style={{ padding: 40, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>Loading…</div>}
 
@@ -217,17 +387,6 @@ export default function ClosureDetailsDrawer({
             </div>
           )}
         </div>
-
-        {onOpenSiteRecord && (
-          <footer style={{ padding: '14px 26px', borderTop: '1px solid var(--zm-line)', background: 'var(--zm-surface)', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ flex: 1, fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)' }}>
-              Documents, activity and payments live in the site record.
-            </span>
-            <button onClick={() => onOpenSiteRecord(siteId)}
-              style={{ height: 34, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface-2)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              Documents &amp; site record <Icon name="arrow" size={13} />
-            </button>
-          </footer>
         )}
       </div>
     </div>

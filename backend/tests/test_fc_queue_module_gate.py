@@ -52,6 +52,24 @@ def test_detail_read_still_checks_executive_delegation_per_site():
     assert "svc_is_delegated" in src
 
 
+def test_qa_reports_read_has_no_project_module_gate():
+    # A Launch Sites supervisor holds whichever module they were onboarded into,
+    # so a module gate here would 403 the surface this route exists to serve.
+    assert "_module" not in _params(fc.fc_qa_reports)
+
+
+def test_qa_reports_read_still_checks_executive_delegation_per_site():
+    # Without this an executive could mint signed report URLs by guessing site
+    # ids. Same containment as get_fc.
+    src = inspect.getsource(fc.fc_qa_reports)
+    assert "_is_executive" in src
+    assert "svc_is_delegated" in src
+
+
+def test_qa_reports_read_requires_a_role():
+    assert "current_user" in _params(fc.fc_qa_reports)
+
+
 def test_queue_still_requires_a_role():
     # Dropping the module gate must not have dropped the role guard with it —
     # current_user is annotated FCMember (supervisor | executive).

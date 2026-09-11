@@ -163,6 +163,34 @@ async def review_fc_budget(
     return await svc_review_fc_budget(db, tenant_id=tenant_id, actor=current_user, site_id=site_id, body=body)
 
 
+@router.get("/{site_id}/qa-reports", response_model=QAReportsResponse)
+async def fc_qa_reports(
+    site_id: str, db: DbDep, current_user: FCReader, tenant_id: TenantId,
+) -> QAReportsResponse:
+    """Quality-audit reports for a site, read-only.
+
+    A sibling of admin-detail/{site_id}/qa-reports, not a replacement: that one
+    is BUSINESS_ADMIN, and the project / project_excellence routes returning the
+    same payload each require their own module claim. A Launch Sites supervisor
+    holds none of those, so before this route every way of reading a QA report
+    403'd for them — and the closure drawer they open from that page is exactly
+    where the reports are wanted.
+
+    Hence FCReader and no require_module, the same shape as the queue above and
+    as project_excellence's DocMember, whose comment makes the same argument for
+    attachments read from two surfaces.
+
+    The executive check below is what keeps this narrow, and mirrors get_fc: an
+    executive not delegated onto the site gets 404 rather than a signed URL they
+    could otherwise mint by guessing site ids.
+    """
+    if _is_executive(current_user):
+        ok = await svc_is_delegated(db, tenant_id=tenant_id, site_id=site_id, user_id=current_user["sub"], module=_MODULE)
+        if not ok:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
+    return await svc_qa_reports_for_site(db, tenant_id=tenant_id, site_id=site_id)
+
+
 @router.get("/{site_id}", response_model=FCStateResponse)
 async def get_fc(
     site_id: str, db: DbDep, current_user: FCMember, tenant_id: TenantId,

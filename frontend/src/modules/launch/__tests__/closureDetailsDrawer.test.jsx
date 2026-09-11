@@ -11,8 +11,13 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ClosureDetailsDrawer from '../ClosureDetailsDrawer.jsx';
 
-const { getFC } = vi.hoisted(() => ({ getFC: vi.fn() }));
-vi.mock('../../../services/api/financialClosureApi.js', () => ({ getFC }));
+const { getFC, getClosureQAReports, getSiteDocuments } = vi.hoisted(() => ({
+  getFC: vi.fn(),
+  getClosureQAReports: vi.fn(),
+  getSiteDocuments: vi.fn(),
+}));
+vi.mock('../../../services/api/financialClosureApi.js', () => ({ getFC, getClosureQAReports }));
+vi.mock('../../../services/api/siteService.js', () => ({ getSiteDocuments }));
 
 const record = (over = {}) => ({
   siteId: 'f1', siteCode: 'CA-301', siteName: 'Powai', city: 'Mumbai',
@@ -33,9 +38,27 @@ const record = (over = {}) => ({
 const renderDrawer = (props = {}) =>
   render(<ClosureDetailsDrawer siteId="f1" onClose={vi.fn()} onOpenSiteRecord={vi.fn()} {...props} />);
 
+const doc = (over = {}) => ({
+  id: 'd1', fileName: 'loi-signed.pdf', fileType: 'loi',
+  uploadedAt: '2026-04-02T10:00:00Z', url: 'https://x/loi.pdf', ...over,
+});
+
+const qa = (over = {}) => ({
+  siteId: 'f1',
+  before: { kind: 'before', fileName: 'before.pdf', downloadUrl: 'https://x/before.pdf' },
+  after: { kind: 'after', fileName: 'after.pdf', downloadUrl: 'https://x/after.pdf' },
+  ...over,
+});
+
+const openDocuments = (user) => user.click(screen.getByRole('button', { name: /^Documents/ }));
+
 beforeEach(() => {
   getFC.mockReset();
+  getClosureQAReports.mockReset();
+  getSiteDocuments.mockReset();
   getFC.mockResolvedValue(record());
+  getSiteDocuments.mockResolvedValue({ documents: [doc()] });
+  getClosureQAReports.mockResolvedValue(qa());
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -148,15 +171,11 @@ describe('ClosureDetailsDrawer', () => {
     expect(screen.queryByText('Business admin')).toBeNull();
   });
 
-  it('hands off to the site record for documents', async () => {
-    const onOpenSiteRecord = vi.fn();
-    const user = userEvent.setup();
-    renderDrawer({ onOpenSiteRecord });
+  it('no longer links out to the site record', async () => {
+    // Documents live in this drawer now, so the footer went with them.
+    renderDrawer();
     await screen.findByText('Powai', { exact: false });
-
-    await user.click(screen.getByRole('button', { name: /Documents & site record/i }));
-
-    expect(onOpenSiteRecord).toHaveBeenCalledWith('f1');
+    expect(screen.queryByRole('button', { name: /site record/i })).toBeNull();
   });
 
   it('surfaces a load failure instead of an empty shell', async () => {
@@ -174,5 +193,193 @@ describe('ClosureDetailsDrawer', () => {
     await user.keyboard('{Escape}');
 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+});
+
+
+describe('ClosureDetailsDrawer — Documents tab', () => {
+  it('does not fetch documents until the tab is opened', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    expect(getSiteDocuments).not.toHaveBeenCalled();
+
+    await openDocuments(user);
+    await waitFor(() => expect(getSiteDocuments).toHaveBeenCalledWith('f1'));
+  });
+
+  it('lists documents and quality-audit reports together', async () => {
+    // QA reports are not in site_files — they come from a second endpoint and
+    // are flattened into the same list, which is the whole point of the tab.
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+
+    expect(await screen.findByText('loi-signed.pdf')).toBeTruthy();
+    expect(screen.getByText(/Before — before\.pdf/)).toBeTruthy();
+    expect(screen.getByText(/After — after\.pdf/)).toBeTruthy();
+    expect(screen.getByText(/Quality audit · 2/)).toBeTruthy();
+  });
+
+  it('still shows documents when the QA reports are forbidden', async () => {
+    // The two surfaces have different reach, so one source failing must hide
+    // only its own group rather than empty the tab.
+    getClosureQAReports.mockRejectedValue({ status: 403 });
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+
+    expect(await screen.findByText('loi-signed.pdf')).toBeTruthy();
+    expect(screen.queryByText(/Quality audit/)).toBeNull();
+  });
+
+  it('still shows the QA reports when the documents list is forbidden', async () => {
+    getSiteDocuments.mockRejectedValue({ status: 403 });
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+
+    expect(await screen.findByText(/Before — before\.pdf/)).toBeTruthy();
+    expect(screen.queryByText('loi-signed.pdf')).toBeNull();
+  });
+
+  it('opens a PDF in a new tab with noopener', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+    await user.click(await screen.findByRole('button', { name: /Open loi-signed\.pdf/i }));
+
+    expect(openSpy).toHaveBeenCalledWith('https://x/loi.pdf', '_blank', 'noopener,noreferrer');
+  });
+
+  it('previews an image in place instead of navigating away', async () => {
+    getSiteDocuments.mockResolvedValue({
+      documents: [doc({ id: 'd2', fileName: 'front.jpg', fileType: 'photo', url: 'https://x/front.jpg' })],
+    });
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+    await user.click(await screen.findByRole('button', { name: /Open front\.jpg/i }));
+
+    expect(openSpy).not.toHaveBeenCalled();
+    await waitFor(() => expect(document.querySelector('img[src="https://x/front.jpg"]')).toBeTruthy());
+  });
+
+  it('marks an unsignable document unavailable rather than a dead click', async () => {
+    getSiteDocuments.mockResolvedValue({ documents: [doc({ url: null })] });
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+
+    expect(await screen.findByText(/unavailable/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Open loi-signed/i })).toBeNull();
+  });
+
+  it('uses the injected documents source, so the admin can read the richer list', async () => {
+    const fetchDocuments = vi.fn().mockResolvedValue({ documents: [doc({ fileName: 'recce.pdf', fileType: 'design_recce' })] });
+    const user = userEvent.setup();
+    renderDrawer({ fetchDocuments });
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+
+    await waitFor(() => expect(fetchDocuments).toHaveBeenCalledWith('f1'));
+    expect(getSiteDocuments).not.toHaveBeenCalled();
+    expect(await screen.findByText('recce.pdf')).toBeTruthy();
+  });
+
+  it('lists an uploaded report whose URL could not be signed, rather than dropping it', async () => {
+    // download_url is null both when a report was never uploaded and when
+    // signing failed. Only the first is an absence; the second must show as
+    // unavailable, or an uploaded report silently vanishes.
+    getClosureQAReports.mockResolvedValue({
+      before: { kind: 'before', fileName: 'before.pdf', downloadUrl: null },
+      after: null,
+    });
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+
+    expect(await screen.findByText(/Before — before\.pdf/)).toBeTruthy();
+    expect(screen.getByText(/unavailable/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Open Before/i })).toBeNull();
+  });
+
+  it('omits a report that was never uploaded', async () => {
+    getClosureQAReports.mockResolvedValue({ before: null, after: null });
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+
+    await screen.findByText('loi-signed.pdf');
+    expect(screen.queryByText(/Quality audit/)).toBeNull();
+  });
+
+  it('reports an error when BOTH sources fail, instead of claiming there are none', async () => {
+    // Swallowing both would render "No documents have been uploaded" over an
+    // auth error or an outage — telling the reader a site has no paperwork when
+    // the truth is we could not ask.
+    getSiteDocuments.mockRejectedValue(new Error('network'));
+    getClosureQAReports.mockRejectedValue(new Error('network'));
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+
+    expect(await screen.findByText(/Could not load documents/i)).toBeTruthy();
+    expect(screen.queryByText(/No documents have been uploaded/i)).toBeNull();
+    expect(screen.getByRole('button', { name: /Retry/i })).toBeTruthy();
+  });
+
+  it('retries both sources from the error state', async () => {
+    getSiteDocuments.mockRejectedValueOnce(new Error('network')).mockResolvedValue({ documents: [doc()] });
+    getClosureQAReports.mockRejectedValueOnce(new Error('network')).mockResolvedValue(qa());
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+    await screen.findByText(/Could not load documents/i);
+
+    await user.click(screen.getByRole('button', { name: /Retry/i }));
+
+    expect(await screen.findByText('loi-signed.pdf')).toBeTruthy();
+  });
+
+  it('re-signs an expired image URL when the lightbox opens', async () => {
+    // Signed URLs live 300s; without onRefreshUrl a drawer left sitting shows a
+    // broken image.
+    getSiteDocuments.mockResolvedValue({
+      documents: [doc({ id: 'd2', fileName: 'front.jpg', fileType: 'photo', url: 'https://x/front.jpg' })],
+    });
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+    await waitFor(() => expect(getSiteDocuments).toHaveBeenCalledTimes(1));
+
+    await user.click(await screen.findByRole('button', { name: /Open front\.jpg/i }));
+
+    // The lightbox asks for a fresh URL, which means re-fetching the list.
+    await waitFor(() => expect(getSiteDocuments).toHaveBeenCalledTimes(2));
+  });
+
+  it('shows an empty state when the site has nothing attached', async () => {
+    getSiteDocuments.mockResolvedValue({ documents: [] });
+    getClosureQAReports.mockResolvedValue({ before: null, after: null });
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+
+    expect(await screen.findByText(/No documents have been uploaded/i)).toBeTruthy();
   });
 });
