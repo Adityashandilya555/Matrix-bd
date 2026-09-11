@@ -93,6 +93,8 @@ function ReviewRow({ item, onReview }) {
 export default function LaunchPage() {
   const { onOpenSite } = usePageContext();
   const { role, user } = useSession();
+  const isExec = role === 'exec' || role === 'executive';
+  const isSupervisor = role === 'supervisor';
   const { rows: allRows, loading, error, refresh: refreshNso } = useLaunchSites();
   const [q, setQ] = React.useState('');
   const [range, setRange] = React.useState({ from: '', to: '' });
@@ -126,14 +128,13 @@ export default function LaunchPage() {
     loadMore: loadMoreFc,
   } = usePagedList(({ limit, offset }) => (
     isSupervisor ? getFCQueue({ limit, offset }) : Promise.resolve({ items: [], total: 0 })
-  ));
+  // deps: the fetcher branches on isSupervisor, so a role that resolves after
+  // mount must refetch rather than leave the previous role's list in place.
+  ), { deps: [isSupervisor] });
 
   const [review, setReview] = React.useState(null); // { siteId, role: 'exec' | 'supervisor' }
   const [fcFilter, setFcFilter] = React.useState('pending'); // 'pending' | 'closed'
   const [closureDetail, setClosureDetail] = React.useState(null); // site_id
-
-  const isExec = role === 'exec' || role === 'executive';
-  const isSupervisor = role === 'supervisor';
 
   // Scope filter for exec view (NSO sites tab)
   const rows = isExec ? filterByScope(allRows, role, user) : allRows;

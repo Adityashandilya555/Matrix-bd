@@ -1,10 +1,13 @@
 // skipcq: JS-0833
 // Financial Closure in the Business Admin portal.
 //
-// It reads /financial-closure/admin-queue, not the /queue the BD tab uses: that
-// one scopes an executive to their own allocations, which would silently hide
-// rows from an admin who is meant to see the whole tenant. Details likewise
-// reads admin-detail, since the supervisor-facing detail endpoint would 403.
+// The endpoint choice is the thing worth pinning. It reads /financial-closure/
+// queue, which lists every opened closure — NOT admin-queue, which despite its
+// name filters to budgets with status 'pending_admin' and so never returns a
+// closed site, leaving the Closed view permanently empty.
+//
+// /queue narrows by allocation only for an EXECUTIVE, so an admin gets the whole
+// tenant. Detail reads admin-detail, which has no status filter.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -38,7 +41,8 @@ beforeEach(() => {
   getFCAdminDetail.mockReset();
   getFCQueue.mockReset();
   getFC.mockReset();
-  getFCAdminQueue.mockResolvedValue({ items: [row()], total: 1 });
+  getFCQueue.mockResolvedValue({ items: [row()], total: 1 });
+  getFCAdminQueue.mockResolvedValue({ items: [], total: 0 });
   getFCAdminDetail.mockResolvedValue({
     siteId: 'f1', siteCode: 'CA-301', siteName: 'Powai', city: 'Mumbai',
     closureStatus: 'approved', lines: [],
@@ -47,14 +51,17 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('Business Admin — Financial Closure tab', () => {
-  it('reads the admin queue, never the executive-scoped one', async () => {
+  it('reads the full closure list, never the pending-admin action queue', async () => {
+    // admin-queue filters to status='pending_admin'. Using it here would make
+    // the Closed pill permanently empty and drop every in-flight closure that
+    // is not currently awaiting the admin.
     await renderTab();
-    await waitFor(() => expect(getFCAdminQueue).toHaveBeenCalled());
-    expect(getFCQueue).not.toHaveBeenCalled();
+    await waitFor(() => expect(getFCQueue).toHaveBeenCalled());
+    expect(getFCAdminQueue).not.toHaveBeenCalled();
   });
 
   it('lists closures with who owes the next action', async () => {
-    getFCAdminQueue.mockResolvedValue({
+    getFCQueue.mockResolvedValue({
       items: [
         row({ siteId: 'f1', siteName: 'Delegated', allocatedToName: 'Priya S.' }),
         row({ siteId: 'f2', siteName: 'Direct' }),
@@ -70,7 +77,7 @@ describe('Business Admin — Financial Closure tab', () => {
   });
 
   it('splits Pending from Closed', async () => {
-    getFCAdminQueue.mockResolvedValue({
+    getFCQueue.mockResolvedValue({
       items: [
         row({ siteId: 'f1', siteName: 'Open one', financialClosureStatus: 'open' }),
         row({ siteId: 'f2', siteName: 'Done one', financialClosureStatus: 'closed', closureStatus: 'approved' }),
@@ -89,7 +96,7 @@ describe('Business Admin — Financial Closure tab', () => {
   });
 
   it('searches across code, site and pending with', async () => {
-    getFCAdminQueue.mockResolvedValue({
+    getFCQueue.mockResolvedValue({
       items: [
         row({ siteId: 'f1', siteName: 'Powai', allocatedToName: 'Priya S.' }),
         row({ siteId: 'f2', siteName: 'Bagaha', siteCode: 'CA-999' }),
@@ -124,13 +131,13 @@ describe('Business Admin — Financial Closure tab', () => {
   });
 
   it('surfaces a load failure with a retry', async () => {
-    getFCAdminQueue.mockRejectedValue({ detail: 'boom' });
+    getFCQueue.mockRejectedValue({ detail: 'boom' });
     await renderTab();
     expect(await screen.findByText('boom')).toBeTruthy();
   });
 
   it('shows an empty state when nothing is in closure', async () => {
-    getFCAdminQueue.mockResolvedValue({ items: [], total: 0 });
+    getFCQueue.mockResolvedValue({ items: [], total: 0 });
     await renderTab();
     expect(await screen.findByText('No sites are in financial closure.')).toBeTruthy();
   });
