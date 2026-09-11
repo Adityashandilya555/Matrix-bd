@@ -10,17 +10,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const { getLaunchQueue, getFCQueue, listSites, state } = vi.hoisted(() => ({
+const { getLaunchQueue, getFCQueue, listSites, onOpenSite, state } = vi.hoisted(() => ({
   getLaunchQueue: vi.fn(),
   getFCQueue: vi.fn(),
   listSites: vi.fn(),
+  onOpenSite: vi.fn(),
   state: { role: 'supervisor' },
 }));
 
 vi.mock('../../../services/api/launchApprovalApi.js', () => ({ getLaunchQueue }));
 vi.mock('../../../services/api/financialClosureApi.js', () => ({ getFCQueue }));
 vi.mock('../../../services/api/siteService.js', () => ({ listSites }));
-vi.mock('../../../App.jsx', () => ({ usePageContext: () => ({ showToast: vi.fn() }) }));
+vi.mock('../../../App.jsx', () => ({ usePageContext: () => ({ showToast: vi.fn(), onOpenSite }) }));
 vi.mock('../../../state/SessionContext.jsx', () => ({
   useSession: () => ({ role: state.role, user: { id: 'u1', name: 'Supervisor' } }),
 }));
@@ -50,6 +51,7 @@ beforeEach(() => {
   listSites.mockResolvedValue({ items: [], total: 0 });
   getLaunchQueue.mockResolvedValue({ items: [launched()], total: 1 });
   getFCQueue.mockResolvedValue({ items: [], total: 0 });
+  onOpenSite.mockReset();
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -170,6 +172,36 @@ describe('Launch Sites — Financial Closure tab', () => {
 
     await waitFor(() => expect(screen.queryByText('Bagaha')).toBeNull());
     expect(screen.getByText('Powai')).toBeTruthy();
+  });
+
+  it('offers Details on a closed site, and opens the app-wide site drawer', async () => {
+    // The drawer already carries Overview / Activity / Documents / Payments and
+    // is opened by a ?site=<id> param, so this button hands off to the existing
+    // opener rather than growing a second detail view.
+    getFCQueue.mockResolvedValue({
+      items: [closure({ site_id: 'f9', site_name: 'Done one', financial_closure_status: 'closed', closure_status: 'approved' })],
+      total: 1,
+    });
+    const user = userEvent.setup();
+    await renderPage();
+    await openTab(user, 'Financial Closure');
+    await user.click(screen.getByRole('button', { name: /^Closed/ }));
+
+    await user.click(await screen.findByRole('button', { name: /Details for Done one/i }));
+
+    expect(onOpenSite).toHaveBeenCalledWith({ id: 'f9' });
+  });
+
+  it('does not offer Details while a closure is still moving', async () => {
+    // Nothing to read yet, and the drawer says nothing about closure progress —
+    // the row's own PENDING WITH is the thing to look at.
+    getFCQueue.mockResolvedValue({ items: [closure({ site_name: 'Still open' })], total: 1 });
+    const user = userEvent.setup();
+    await renderPage();
+    await openTab(user, 'Financial Closure');
+    await screen.findByText('Still open');
+
+    expect(screen.queryByRole('button', { name: /Details for/i })).toBeNull();
   });
 
   it('shows an empty state rather than a bare table', async () => {

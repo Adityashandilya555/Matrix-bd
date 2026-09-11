@@ -400,8 +400,8 @@ export default function LaunchPage() {
           </div>
 
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
-            <div style={{ flexShrink: 0, display: 'grid', gridTemplateColumns: '0.8fr 1.5fr 0.9fr 1.3fr 0.9fr', gap: 12, padding: '9px 16px', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
-              <span>Code</span><span>Site</span><span>City</span><span>Pending With</span><span>Closure Status</span>
+            <div style={{ flexShrink: 0, display: 'grid', gridTemplateColumns: '0.8fr 1.5fr 0.9fr 1.3fr 0.9fr 0.6fr', gap: 12, padding: '9px 16px', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
+              <span>Code</span><span>Site</span><span>City</span><span>Pending With</span><span>Closure Status</span><span />
             </div>
             <div style={{ flex: 1, overflowY: 'auto' }}>
               {fcStatus === 'loading' && <div style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)', fontSize: 13 }}>Loading…</div>}
@@ -411,13 +411,22 @@ export default function LaunchPage() {
                 </div>
               )}
               {fcStatus === 'ready' && fcFiltered.map((row) => (
-                <div key={row.site_id} style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.5fr 0.9fr 1.3fr 0.9fr', gap: 12, padding: '13px 16px', borderBottom: '1px solid var(--zm-line-faint)', alignItems: 'center' }}>
+                <div key={row.site_id} style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.5fr 0.9fr 1.3fr 0.9fr 0.6fr', gap: 12, padding: '13px 16px', borderBottom: '1px solid var(--zm-line-faint)', alignItems: 'center' }}>
                   <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{displayCode(row)}</span>
                   <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{row.site_name}</span>
                   <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{row.city}</span>
                   <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{pendingWith(row)}</span>
                   <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: CLOSURE_BUDGET_TONES[row.closure_status] || 'var(--zm-accent)' }}>
                     {CLOSURE_BUDGET_LABELS[row.closure_status] || row.closure_status || '—'}
+                  </span>
+                  <span>
+                    {isClosed(row) && (
+                      <button onClick={() => onOpenSite({ id: row.site_id })}
+                        aria-label={`Details for ${row.site_name}`}
+                        style={{ height: 28, padding: '0 12px', borderRadius: 7, border: '1px solid var(--zm-line)', background: 'var(--zm-surface-2)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                        Details
+                      </button>
+                    )}
                   </span>
                 </div>
               ))}
