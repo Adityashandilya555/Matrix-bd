@@ -21,6 +21,10 @@ const { getFCAdminQueue, getFCAdminDetail, getFCQueue, getFC } = vi.hoisted(() =
 
 vi.mock('../../../services/api/financialClosureApi.js', () => ({
   getFCAdminQueue, getFCAdminDetail, getFCQueue, getFC,
+  getClosureQAReports: vi.fn(async () => ({ before: null, after: null })),
+}));
+vi.mock('../../../services/api/businessAdminApi.js', () => ({
+  getAdminSiteDocuments: vi.fn(async () => ({ documents: [] })),
 }));
 
 const row = (over = {}) => ({

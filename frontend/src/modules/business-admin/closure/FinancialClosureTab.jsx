@@ -24,6 +24,7 @@ import {
   CLOSURE_BUDGET_LABELS, CLOSURE_BUDGET_TONES, PENDING_STATUSES, isClosed, pendingWith,
 } from '../../financial_closure/closureStatus.js';
 import { getFCQueue, getFCAdminDetail } from '../../../services/api/financialClosureApi.js';
+import { getAdminSiteDocuments } from '../../../services/api/businessAdminApi.js';
 import ClosureDetailsDrawer from '../../launch/ClosureDetailsDrawer.jsx';
 import { displayCode } from '../../../lib/displayCode.js';
 
@@ -155,6 +156,7 @@ export default function FinancialClosureTab() {
         <ClosureDetailsDrawer
           siteId={detailSiteId}
           fetchDetail={getFCAdminDetail}
+          fetchDocuments={getAdminSiteDocuments}
           onClose={() => setDetailSiteId(null)}
         />
       )}

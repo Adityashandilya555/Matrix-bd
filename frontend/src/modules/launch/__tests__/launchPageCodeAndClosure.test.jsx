@@ -20,8 +20,8 @@ const { getLaunchQueue, getFCQueue, getFC, listSites, onOpenSite, state } = vi.h
 }));
 
 vi.mock('../../../services/api/launchApprovalApi.js', () => ({ getLaunchQueue }));
-vi.mock('../../../services/api/financialClosureApi.js', () => ({ getFCQueue, getFC }));
-vi.mock('../../../services/api/siteService.js', () => ({ listSites }));
+vi.mock('../../../services/api/financialClosureApi.js', () => ({ getFCQueue, getFC, getClosureQAReports: vi.fn(async () => ({ before: null, after: null })) }));
+vi.mock('../../../services/api/siteService.js', () => ({ listSites, getSiteDocuments: vi.fn(async () => ({ documents: [] })) }));
 vi.mock('../../../App.jsx', () => ({ usePageContext: () => ({ showToast: vi.fn(), onOpenSite }) }));
 vi.mock('../../../state/SessionContext.jsx', () => ({
   useSession: () => ({ role: state.role, user: { id: 'u1', name: 'Supervisor' } }),

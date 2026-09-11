@@ -146,6 +146,32 @@ export async function getFCAdminQueue() {
   return { items: (data.items || []).map(queueItemFromServer), total: data.total ?? 0 };
 }
 
+// Quality-audit reports live in their own table, not site_files, so no documents
+// endpoint returns them — the closure drawer has to ask separately.
+//
+// This route (unlike admin-detail/{id}/qa-reports, and unlike the project and
+// project_excellence ones) is role-guarded without a module gate, so the Launch
+// Sites supervisor who opens the drawer can actually read it.
+function qaReportFromServer(r) {
+  if (!r) return null;
+  return {
+    kind: r.kind,
+    fileName: r.file_name,
+    uploadedAt: r.uploaded_at,
+    pushedAt: r.pushed_at,
+    downloadUrl: r.download_url,
+  };
+}
+
+export async function getClosureQAReports(siteId) {
+  const data = await client.get(`/financial-closure/${siteId}/qa-reports`).then((r) => r.data);
+  return {
+    siteId: data.site_id,
+    before: qaReportFromServer(data.before),
+    after: qaReportFromServer(data.after),
+  };
+}
+
 export async function getFCAdminDetail(siteId) {
   const data = await client.get(`/financial-closure/admin-detail/${siteId}`).then((r) => r.data);
   return stateFromServer(data);

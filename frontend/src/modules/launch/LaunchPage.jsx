@@ -460,7 +460,6 @@ export default function LaunchPage() {
         <ClosureDetailsDrawer
           siteId={closureDetail}
           onClose={() => setClosureDetail(null)}
-          onOpenSiteRecord={(siteId) => { setClosureDetail(null); onOpenSite({ id: siteId }); }}
         />
       )}
 
