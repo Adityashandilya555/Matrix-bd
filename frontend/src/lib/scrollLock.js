@@ -11,10 +11,14 @@
 // taken, and restored once, when the last is released. Order of release stops
 // mattering.
 //
+// FILE SHAPE: the first statement must be an import or an export. DeepSource's
+// JavaScript analyzer parses a file that opens with anything else as a SCRIPT
+// and fails at the first export — a parse error, which skipcq cannot suppress.
+// The module state therefore sits at the bottom; function declarations are
+// hoisted, so nothing depends on the ordering at runtime. Same shape as
+// lib/displayCode.js and lib/mime.js.
+//
 // COMMENT STYLE: line comments only, no JSDoc blocks — see launchRentAdapter.js.
-
-let depth = 0;
-let saved = null;
 
 // Take a lock and get back a release function. The releaser is idempotent, so a
 // double-invoke (StrictMode's double effect, a defensive caller) cannot drive the
@@ -46,3 +50,9 @@ export function __resetBodyScrollLock() {
   depth = 0;
   saved = null;
 }
+
+// How many overlays currently hold the lock, and the page's own overflow value
+// captured when the first of them took it. See FILE SHAPE above for why these
+// are declared here rather than at the top.
+let depth = 0;
+let saved = null;
