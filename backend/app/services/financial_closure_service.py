@@ -97,6 +97,23 @@ def _compute_variation(gfc_items: list, closure_items: list) -> dict[int, float]
     }
 
 
+def _variation_total(
+    variation: dict[int, float],
+    gfc_total: Optional[float],
+    closure_total: Optional[float],
+) -> Optional[float]:
+    """Summed variation, or None when there is nothing to compare.
+
+    _compute_variation treats a missing line as 0.0, so its sum is 0.0 for a site
+    with no budgets at all — which renders as "0" and reads as "no variation"
+    rather than "no data". A variation only means something once at least one
+    side has a budget; before that it is absent, not zero.
+    """
+    if gfc_total is None and closure_total is None:
+        return None
+    return round(sum(variation.values()), 2)
+
+
 async def _batch_fc_prefetch(
     session: AsyncSession, *,
     rows: list,
@@ -223,7 +240,11 @@ async def _build_fc_state(
         allocated_to_name=(delegate[1] if delegate else None),
         gfc_budget_total=_opt_float(gfc, "budget_total"),
         closure_budget_total=_opt_float(closure, "budget_total"),
-        variation_total=round(variation_total, 2),
+        variation_total=(
+            None
+            if _opt_float(gfc, "budget_total") is None and _opt_float(closure, "budget_total") is None
+            else round(variation_total, 2)
+        ),
         total_indoor_area_sqft=_opt_float(gfc, "total_indoor_area_sqft"),
         total_area_sqft=_opt_float(gfc, "total_area_sqft"),
         covers=_opt_int(gfc, "covers"),
@@ -348,9 +369,9 @@ async def svc_fc_queue(  # skipcq: PY-R1000
                 financial_closure_status=site.financial_closure_status or "pending",
                 allocated_to_name=(delegate[1] if delegate else None),
                 submitted_by_name=names.get(site.submitted_by),
-                gfc_budget_total=float(gfc.budget_total) if gfc and gfc.budget_total is not None else None,
-                closure_budget_total=float(closure.budget_total) if closure and closure.budget_total is not None else None,
-                variation_total=round(sum(variation.values()), 2),
+                gfc_budget_total=(gfc_total := float(gfc.budget_total) if gfc and gfc.budget_total is not None else None),
+                closure_budget_total=(closure_total := float(closure.budget_total) if closure and closure.budget_total is not None else None),
+                variation_total=_variation_total(variation, gfc_total, closure_total),
             ))
         return FCQueueResponse(items=items, total=total)
 
@@ -583,9 +604,9 @@ async def svc_fc_admin_queue(
             financial_closure_status=site.financial_closure_status or "pending",
             allocated_to_name=(delegate[1] if delegate else None),
             submitted_by_name=names.get(site.submitted_by),
-            gfc_budget_total=float(gfc.budget_total) if gfc and gfc.budget_total is not None else None,
-            closure_budget_total=float(closure.budget_total) if closure.budget_total is not None else None,
-            variation_total=round(sum(variation.values()), 2),
+            gfc_budget_total=(gfc_total := float(gfc.budget_total) if gfc and gfc.budget_total is not None else None),
+            closure_budget_total=(closure_total := float(closure.budget_total) if closure.budget_total is not None else None),
+            variation_total=_variation_total(variation, gfc_total, closure_total),
         ))
     return FCQueueResponse(items=items, total=total)
 

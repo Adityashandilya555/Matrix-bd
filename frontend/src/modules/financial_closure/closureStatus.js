@@ -1,17 +1,13 @@
 // skipcq: JS-0833
-// The two status vocabularies of financial closure, and the one rule for reading
-// "who owes the next action" off them.
+// Financial closure status vocabularies, shared by the closure queue page and the
+// Launch Sites closure tab.
 //
-// These lived in FinancialClosureQueuePage until the Launch Sites page grew a
-// Financial Closure tab and needed the same labels. They are shared rather than
-// copied because the pair has already caused one bug: the two vocabularies are
-// DIFFERENT and were once looked up in the same map, so every CLOSURE STATUS
-// lookup missed and fell through to a raw token ("pending_supervisor").
+// There are two, and they are not interchangeable:
+//   sites.financial_closure_status — the site's stage in the closure workflow
+//   site_budgets.status            — the closure budget's review state
 //
-//   sites.financial_closure_status  — where the site is in the closure workflow
-//   site_budgets.status            — where the closure BUDGET is in its review
-//
-// COMMENT STYLE: line comments only, no JSDoc blocks — see launchRentAdapter.js.
+// They were once looked up in the same map, so every CLOSURE STATUS lookup missed
+// and fell through to a raw token. Kept in one module so they cannot drift apart.
 
 // sites.financial_closure_status — the workflow stage. Drives the filter pills.
 export const STATUS_LABELS = {
@@ -46,33 +42,30 @@ export const STATUS_FILTERS = [
   { key: 'closed',    label: 'Closed',    color: 'var(--zm-success)' },
 ];
 
-// The Launch Sites tab collapses the four workflow stages into the only two
-// questions a BD reader asks: is this still moving, or is it done?
+// The Launch Sites tab collapses the four workflow stages into two: still moving,
+// or done.
 export const PENDING_STATUSES = ['open', 'allocated', 'budgeting'];
 
-export const isClosed = (row) => row?.financial_closure_status === 'closed';
+// Rows come from getFCQueue / getFC, both of which camelCase the wire payload.
+export const isClosed = (row) => row?.financialClosureStatus === 'closed';
 
 // Who owes the next action.
 //
-// The BUDGET status is the real signal — it says whose desk the closure is on —
-// so it is read first. Only while the budget is still being prepared (draft, or
-// bounced back as rejected) does the question fall to who is preparing it: the
-// delegated executive if one was allocated, otherwise the supervisor who owns
-// the site.
+// The budget status is read first: it identifies whose desk the closure is on.
+// Only while the budget is still being prepared does ownership fall to whoever is
+// preparing it — the delegated executive, else the supervisor.
 //
-// Deliberately NOT submitted_by_name: that is the site's CREATOR, who may be an
-// executive and is not the person reviewing the closure. Naming them would point
-// the reader at the wrong desk.
+// Not submittedByName: that is the site's creator, not the closure's reviewer.
 export function pendingWith(row) {
   if (!row) return '—';
   if (isClosed(row)) return '—';
-  switch (row.closure_status) {
+  switch (row.closureStatus) {
     case 'pending_supervisor': return 'Supervisor';
     case 'pending_admin': return 'Business Admin';
     case 'approved': return '—';
     default:
-      return row.allocated_to_name
-        ? `Executive · ${row.allocated_to_name} (delegated)`
+      return row.allocatedToName
+        ? `Executive · ${row.allocatedToName} (delegated)`
         : 'Supervisor';
   }
 }

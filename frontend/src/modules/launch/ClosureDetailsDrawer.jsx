@@ -1,22 +1,14 @@
 // skipcq: JS-0833
-// ClosureDetailsDrawer — the finished financial-closure record for one site,
-// read-only, opened from the Launch Sites Financial Closure tab.
+// ClosureDetailsDrawer — one site's financial closure record, read-only, opened
+// from the Launch Sites closure tab.
 //
-// This shows what the SITE drawer cannot: the closure's own numbers. GFC
-// baseline against closure actual, the variation between them, the eleven budget
-// lines behind those totals, the per-sqft and per-cover metrics, and the agreed
-// rent the site launched on.
+// Shows what the site drawer does not: GFC baseline against closure actual, the
+// variation, the budget lines behind those totals, the derived metrics and the
+// agreed rent. Documents, activity and payments stay in the site drawer, which
+// the footer links to.
 //
-// It deliberately does NOT duplicate the site record. Documents, activity and
-// payments already live in the app-wide SiteDrawer, so the footer hands off to
-// that rather than growing a second copy that would drift.
-//
-// Read-only by construction: every mutating financial-closure endpoint still
-// requires the project module, which the supervisors and executives on this page
-// generally do not hold. They can read a closed record here; changing one stays
-// in the Financial Closure module.
-//
-// COMMENT STYLE: line comments only, no JSDoc blocks — see launchRentAdapter.js.
+// Read-only by construction — every mutating closure endpoint still requires the
+// project module, which this page's users generally do not hold.
 import React from 'react';
 import Icon from '../shared/primitives/Icon.jsx';
 import { getFC } from '../../services/api/financialClosureApi.js';
@@ -32,8 +24,8 @@ const RENT_TYPE_LABEL = {
 
 const pct = (n) => (n == null ? '—' : `${Number(n)}%`);
 const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-IN'));
-// formatINR(null) is ₹0, not a dash — Number(null) is 0 and finite. On a
-// financial screen "no data" must not read as "zero rupees".
+// formatINR(null) returns ₹0, since Number(null) is 0 and finite. A missing
+// figure must not render as zero rupees.
 const money = (n) => (n == null ? '—' : formatINR(n));
 const ratio = (a, b) => {
   const r = computeRatio(a, b);

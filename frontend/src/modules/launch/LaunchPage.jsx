@@ -46,8 +46,7 @@ function inRange(iso, from, to) {
 }
 
 // ── Review queue row ────────────────────────────────────────────────────────────
-// The search input, lifted out of the NSO tab so every table on this page can
-// have one. It was inline there, which is why the other tabs had no search at all.
+// Extracted from the NSO tab, which held the page's only search input inline.
 function SearchBox({ value, onChange, placeholder = 'Search code, site, city…' }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 36, padding: '0 12px', flex: '1 1 260px', maxWidth: 380, border: '1px solid var(--zm-line)', borderRadius: 8, background: 'var(--zm-surface)' }}>
@@ -114,9 +113,8 @@ export default function LaunchPage() {
   } = usePagedList(({ limit, offset }) => getLaunchQueue({ limit, offset }));
   const approvalLoading = approvalStatus === 'loading';
 
-  // Financial closure. Its own paged source: GET /financial-closure/queue already
-  // applies executive scoping server-side, so an executive sees only the sites
-  // allocated to them without any filtering here.
+  // GET /financial-closure/queue applies executive scoping server-side, so an
+  // executive already sees only the sites allocated to them.
   const {
     items: fcItems,
     total: fcTotal,
@@ -162,18 +160,19 @@ export default function LaunchPage() {
 
   const launchedItems = approvalItems.filter((i) => i.status === 'launched');
 
-  // One matcher for both tables fed by a queue payload. The FC and launch queues
-  // differ in shape but agree on these four, and pending-with is searchable so
-  // "who owes this" is a way to find a row, not just a thing to read off one.
+  // Shared by both queue tables. The launch queue is a raw snake_case
+  // pass-through while the closure queue is camelCased by its adapter, so each
+  // field is read under either spelling.
   const matchesQuery = (row, extra = '') => {
     if (!needle) return true;
-    return `${row.ca_code || ''} ${row.site_code || ''} ${row.site_name || ''} ${row.city || ''} ${extra}`
-      .toLowerCase().includes(needle);
+    const code = row.ca_code || row.caCode || row.site_code || row.siteCode || '';
+    const name = row.site_name || row.siteName || '';
+    return `${code} ${name} ${row.city || ''} ${extra}`.toLowerCase().includes(needle);
   };
 
   const launchedFiltered = launchedItems.filter((i) => matchesQuery(i));
 
-  const fcPending = fcItems.filter((r) => PENDING_STATUSES.includes(r.financial_closure_status));
+  const fcPending = fcItems.filter((r) => PENDING_STATUSES.includes(r.financialClosureStatus));
   const fcClosed = fcItems.filter(isClosed);
   const fcFiltered = (fcFilter === 'closed' ? fcClosed : fcPending)
     .filter((r) => matchesQuery(r, pendingWith(r)));
@@ -382,8 +381,7 @@ export default function LaunchPage() {
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
             <SearchBox value={q} onChange={setQ} placeholder="Search code, site, city, pending with…" />
-            {/* Two pills, not the closure module's four stages: on this page the
-                only question is whether a closure is still moving or done. */}
+            {/* Two pills rather than the closure module's four stages. */}
             <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--zm-line)' }}>
               {[
                 { key: 'pending', label: 'Pending', count: fcPending.length },
@@ -413,18 +411,18 @@ export default function LaunchPage() {
                 </div>
               )}
               {fcStatus === 'ready' && fcFiltered.map((row) => (
-                <div key={row.site_id} style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.5fr 0.9fr 1.3fr 0.9fr 0.6fr', gap: 12, padding: '13px 16px', borderBottom: '1px solid var(--zm-line-faint)', alignItems: 'center' }}>
+                <div key={row.siteId} style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.5fr 0.9fr 1.3fr 0.9fr 0.6fr', gap: 12, padding: '13px 16px', borderBottom: '1px solid var(--zm-line-faint)', alignItems: 'center' }}>
                   <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{displayCode(row)}</span>
-                  <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{row.site_name}</span>
+                  <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{row.siteName}</span>
                   <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{row.city}</span>
                   <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{pendingWith(row)}</span>
-                  <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: CLOSURE_BUDGET_TONES[row.closure_status] || 'var(--zm-accent)' }}>
-                    {CLOSURE_BUDGET_LABELS[row.closure_status] || row.closure_status || '—'}
+                  <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: CLOSURE_BUDGET_TONES[row.closureStatus] || 'var(--zm-accent)' }}>
+                    {CLOSURE_BUDGET_LABELS[row.closureStatus] || row.closureStatus || '—'}
                   </span>
                   <span>
                     {isClosed(row) && (
-                      <button onClick={() => setClosureDetail(row.site_id)}
-                        aria-label={`Details for ${row.site_name}`}
+                      <button onClick={() => setClosureDetail(row.siteId)}
+                        aria-label={`Details for ${row.siteName}`}
                         style={{ height: 28, padding: '0 12px', borderRadius: 7, border: '1px solid var(--zm-line)', background: 'var(--zm-surface-2)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                         Details
                       </button>

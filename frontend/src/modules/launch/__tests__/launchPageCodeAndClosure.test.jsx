@@ -33,10 +33,14 @@ const launched = (over = {}) => ({
   launched_at: '2026-07-27T00:00:00Z', ...over,
 });
 
+// Mirrors queueItemFromServer in financialClosureApi.js — camelCase, because the
+// adapter converts the wire payload before the page ever sees it. A snake_case
+// fixture here is what let a tab that renders no rows pass its own tests.
 const closure = (over = {}) => ({
-  site_id: 'f1', site_code: 'CA-301', site_name: 'Powai', city: 'Mumbai',
-  financial_closure_status: 'allocated', closure_status: 'draft',
-  allocated_to_name: null, submitted_by_name: 'Creator', ...over,
+  siteId: 'f1', siteCode: 'CA-301', siteName: 'Powai', city: 'Mumbai',
+  financialClosureStatus: 'allocated', closureStatus: 'draft',
+  allocatedToName: null, submittedByName: 'Creator',
+  gfcBudgetTotal: null, closureBudgetTotal: null, variationTotal: null, ...over,
 });
 
 async function renderPage() {
@@ -103,8 +107,8 @@ describe('Launch Sites — Financial Closure tab', () => {
   it('names the delegated executive, and says Supervisor when not delegated', async () => {
     getFCQueue.mockResolvedValue({
       items: [
-        closure({ site_id: 'f1', site_name: 'Delegated', allocated_to_name: 'Priya S.' }),
-        closure({ site_id: 'f2', site_name: 'Direct', allocated_to_name: null }),
+        closure({ siteId: 'f1', siteName: 'Delegated', allocatedToName: 'Priya S.' }),
+        closure({ siteId: 'f2', siteName: 'Direct', allocatedToName: null }),
       ],
       total: 2,
     });
@@ -120,7 +124,7 @@ describe('Launch Sites — Financial Closure tab', () => {
     // The budget status says whose desk it is on, and outranks the allocation:
     // the executive prepared it, but it is the admin who owes the next action.
     getFCQueue.mockResolvedValue({
-      items: [closure({ closure_status: 'pending_admin', allocated_to_name: 'Priya S.' })],
+      items: [closure({ closureStatus: 'pending_admin', allocatedToName: 'Priya S.' })],
       total: 1,
     });
     const user = userEvent.setup();
@@ -134,9 +138,9 @@ describe('Launch Sites — Financial Closure tab', () => {
   it('splits Pending from Closed and Closed excludes the in-flight stages', async () => {
     getFCQueue.mockResolvedValue({
       items: [
-        closure({ site_id: 'f1', site_name: 'Open one', financial_closure_status: 'open' }),
-        closure({ site_id: 'f2', site_name: 'Budgeting one', financial_closure_status: 'budgeting' }),
-        closure({ site_id: 'f3', site_name: 'Done one', financial_closure_status: 'closed', closure_status: 'approved' }),
+        closure({ siteId: 'f1', siteName: 'Open one', financialClosureStatus: 'open' }),
+        closure({ siteId: 'f2', siteName: 'Budgeting one', financialClosureStatus: 'budgeting' }),
+        closure({ siteId: 'f3', siteName: 'Done one', financialClosureStatus: 'closed', closureStatus: 'approved' }),
       ],
       total: 3,
     });
@@ -158,8 +162,8 @@ describe('Launch Sites — Financial Closure tab', () => {
   it('searches on code, site and pending-with', async () => {
     getFCQueue.mockResolvedValue({
       items: [
-        closure({ site_id: 'f1', site_name: 'Powai', allocated_to_name: 'Priya S.' }),
-        closure({ site_id: 'f2', site_name: 'Bagaha', site_code: 'CA-999', allocated_to_name: null }),
+        closure({ siteId: 'f1', siteName: 'Powai', allocatedToName: 'Priya S.' }),
+        closure({ siteId: 'f2', siteName: 'Bagaha', siteCode: 'CA-999', allocatedToName: null }),
       ],
       total: 2,
     });
@@ -180,7 +184,7 @@ describe('Launch Sites — Financial Closure tab', () => {
     // Details opens the CLOSURE record — the budget numbers the site drawer does
     // not carry. The site drawer is one hop further, from that drawer's footer.
     getFCQueue.mockResolvedValue({
-      items: [closure({ site_id: 'f9', site_name: 'Done one', financial_closure_status: 'closed', closure_status: 'approved' })],
+      items: [closure({ siteId: 'f9', siteName: 'Done one', financialClosureStatus: 'closed', closureStatus: 'approved' })],
       total: 1,
     });
     const user = userEvent.setup();
@@ -197,7 +201,7 @@ describe('Launch Sites — Financial Closure tab', () => {
   it('does not offer Details while a closure is still moving', async () => {
     // Nothing to read yet, and the drawer says nothing about closure progress —
     // the row's own PENDING WITH is the thing to look at.
-    getFCQueue.mockResolvedValue({ items: [closure({ site_name: 'Still open' })], total: 1 });
+    getFCQueue.mockResolvedValue({ items: [closure({ siteName: 'Still open' })], total: 1 });
     const user = userEvent.setup();
     await renderPage();
     await openTab(user, 'Financial Closure');
