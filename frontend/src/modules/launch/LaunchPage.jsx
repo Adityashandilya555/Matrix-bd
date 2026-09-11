@@ -9,8 +9,13 @@ import { usePagedList } from '../../hooks/usePagedList.js';
 import { useSession } from '../../state/SessionContext.jsx';
 import { filterByScope } from '../../rbac/scope.js';
 import { getLaunchQueue } from '../../services/api/launchApprovalApi.js';
+import { getFCQueue } from '../../services/api/financialClosureApi.js';
+import {
+  CLOSURE_BUDGET_LABELS, CLOSURE_BUDGET_TONES, PENDING_STATUSES, isClosed, pendingWith,
+} from '../financial_closure/closureStatus.js';
 import LaunchReviewModal from './LaunchReviewModal.jsx';
 import { keyActivate } from '../../lib/a11y.js';
+import { displayCode } from '../../lib/displayCode.js';
 
 // LaunchPage — BD-facing page for the post-NSO validation loop.
 //
@@ -40,13 +45,25 @@ function inRange(iso, from, to) {
 }
 
 // ── Review queue row ────────────────────────────────────────────────────────────
+// The search input, lifted out of the NSO tab so every table on this page can
+// have one. It was inline there, which is why the other tabs had no search at all.
+function SearchBox({ value, onChange, placeholder = 'Search code, site, city…' }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 36, padding: '0 12px', flex: '1 1 260px', maxWidth: 380, border: '1px solid var(--zm-line)', borderRadius: 8, background: 'var(--zm-surface)' }}>
+      <Icon name="search" size={14} style={{ color: 'var(--zm-fg-3)' }} />
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder}
+        style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }} />
+    </div>
+  );
+}
+
 function ReviewRow({ item, onReview }) {
   const verdictPills = [];
   if (item.exec_verdict) verdictPills.push({ who: 'Exec', v: item.exec_verdict });
   if (item.supervisor_verdict) verdictPills.push({ who: 'Sup', v: item.supervisor_verdict });
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.5fr 0.9fr 1.4fr auto', gap: 12, padding: '13px 16px', borderBottom: '1px solid var(--zm-line-faint)', alignItems: 'center' }}>
-      <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{item.site_code || '—'}</span>
+      <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{displayCode(item)}</span>
       <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{item.site_name}</span>
       <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{item.city}</span>
       <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -95,7 +112,21 @@ export default function LaunchPage() {
     reload: loadApprovals,
   } = usePagedList(({ limit, offset }) => getLaunchQueue({ limit, offset }));
   const approvalLoading = approvalStatus === 'loading';
+
+  // Financial closure. Its own paged source: GET /financial-closure/queue already
+  // applies executive scoping server-side, so an executive sees only the sites
+  // allocated to them without any filtering here.
+  const {
+    items: fcItems,
+    total: fcTotal,
+    status: fcStatus,
+    hasMore: fcHasMore,
+    loadingMore: fcLoadingMore,
+    loadMore: loadMoreFc,
+  } = usePagedList(({ limit, offset }) => getFCQueue({ limit, offset }));
+
   const [review, setReview] = React.useState(null); // { siteId, role: 'exec' | 'supervisor' }
+  const [fcFilter, setFcFilter] = React.useState('pending'); // 'pending' | 'closed'
 
   const isExec = role === 'exec' || role === 'executive';
   const isSupervisor = role === 'supervisor';
@@ -129,11 +160,28 @@ export default function LaunchPage() {
 
   const launchedItems = approvalItems.filter((i) => i.status === 'launched');
 
+  // One matcher for both tables fed by a queue payload. The FC and launch queues
+  // differ in shape but agree on these four, and pending-with is searchable so
+  // "who owes this" is a way to find a row, not just a thing to read off one.
+  const matchesQuery = (row, extra = '') => {
+    if (!needle) return true;
+    return `${row.ca_code || ''} ${row.site_code || ''} ${row.site_name || ''} ${row.city || ''} ${extra}`
+      .toLowerCase().includes(needle);
+  };
+
+  const launchedFiltered = launchedItems.filter((i) => matchesQuery(i));
+
+  const fcPending = fcItems.filter((r) => PENDING_STATUSES.includes(r.financial_closure_status));
+  const fcClosed = fcItems.filter(isClosed);
+  const fcFiltered = (fcFilter === 'closed' ? fcClosed : fcPending)
+    .filter((r) => matchesQuery(r, pendingWith(r)));
+
   const showReview = isExec || isSupervisor;
   const TABS = [
     { key: 'nso',       label: 'NSO Sites', count: rows.length },
     ...(showReview ? [{ key: 'review', label: 'Review', count: reviewItems.length }] : []),
     { key: 'launched',  label: 'Launched',  count: launchedItems.length },
+    { key: 'closure',   label: 'Financial Closure', count: fcPending.length },
   ];
 
   return (
@@ -171,11 +219,7 @@ export default function LaunchPage() {
       {tab === 'nso' && (
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 36, padding: '0 12px', flex: '1 1 260px', maxWidth: 380, border: '1px solid var(--zm-line)', borderRadius: 8, background: 'var(--zm-surface)' }}>
-              <Icon name="search" size={14} style={{ color: 'var(--zm-fg-3)' }} />
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search code, site, city…"
-                style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }} />
-            </div>
+            <SearchBox value={q} onChange={setQ} />
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--zm-font-body)', fontSize: 12, color: 'var(--zm-fg-3)' }}>
               <Icon name="calendar" size={13} /> Last activity
             </span>
@@ -207,7 +251,7 @@ export default function LaunchPage() {
                 return (
                   <div key={site.id} data-site-id={site.id} className="zm-row" role="button" tabIndex={0} onClick={() => onOpenSite?.(site)} onKeyDown={keyActivate(() => onOpenSite?.(site))}
                     style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 1fr 1.1fr 1.2fr 1.2fr', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--zm-line-faint)', cursor: 'pointer', position: 'relative', alignItems: 'center' }}>
-                    <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{site.caCode || site.code}</span>
+                    <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{displayCode(site)}</span>
                     <div>
                       <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{site.name}</span>
                       {site.isLaunched && (
@@ -287,15 +331,19 @@ export default function LaunchPage() {
 
       {/* ── Launched tab ── */}
       {tab === 'launched' && (
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <SearchBox value={q} onChange={setQ} />
+        </div>
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
           <div style={{ flexShrink: 0, display: 'grid', gridTemplateColumns: '0.8fr 1.5fr 0.9fr 1fr', gap: 12, padding: '9px 16px', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
             <span>Code</span><span>Site</span><span>City</span><span>Launched On</span>
           </div>
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {approvalLoading && <div style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)', fontSize: 13 }}>Loading…</div>}
-            {!approvalLoading && launchedItems.map((item) => (
+            {!approvalLoading && launchedFiltered.map((item) => (
               <div key={item.site_id} style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.5fr 0.9fr 1fr', gap: 12, padding: '13px 16px', borderBottom: '1px solid var(--zm-line-faint)', alignItems: 'center' }}>
-                <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{item.site_code || '—'}</span>
+                <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{displayCode(item)}</span>
                 <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)', display: 'flex', alignItems: 'center', gap: 8 }}>
                   {item.site_name}
                   <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 800, background: 'var(--zm-success-soft)', color: 'var(--zm-success)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Launched</span>
@@ -306,9 +354,9 @@ export default function LaunchPage() {
                 </span>
               </div>
             ))}
-            {!approvalLoading && launchedItems.length === 0 && (
+            {!approvalLoading && launchedFiltered.length === 0 && (
               <div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
-                No sites have been launched yet.
+                {needle ? 'No launched sites match your search.' : 'No sites have been launched yet.'}
               </div>
             )}
             {/* Pager loads more of all launch-approval rows; the launched bucket
@@ -322,6 +370,74 @@ export default function LaunchPage() {
                 onClick={loadMoreApprovals}
               />
             )}
+          </div>
+        </div>
+        </div>
+      )}
+
+      {/* ── Financial Closure tab ── */}
+      {tab === 'closure' && (
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+            <SearchBox value={q} onChange={setQ} placeholder="Search code, site, city, pending with…" />
+            {/* Two pills, not the closure module's four stages: on this page the
+                only question is whether a closure is still moving or done. */}
+            <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--zm-line)' }}>
+              {[
+                { key: 'pending', label: 'Pending', count: fcPending.length },
+                { key: 'closed', label: 'Closed', count: fcClosed.length },
+              ].map(({ key, label, count }) => (
+                <button key={key} onClick={() => setFcFilter(key)} aria-pressed={fcFilter === key}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 34, padding: '0 14px', border: 'none', cursor: 'pointer',
+                    fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600,
+                    background: fcFilter === key ? 'var(--zm-accent)' : 'transparent',
+                    color: fcFilter === key ? 'var(--zm-accent-on)' : 'var(--zm-fg-2)' }}>
+                  {label}
+                  <span style={{ fontSize: 10.5, fontWeight: 800, opacity: 0.85 }}>{count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--zm-shadow-1)' }}>
+            <div style={{ flexShrink: 0, display: 'grid', gridTemplateColumns: '0.8fr 1.5fr 0.9fr 1.3fr 0.9fr', gap: 12, padding: '9px 16px', borderBottom: '1px solid var(--zm-line)', fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
+              <span>Code</span><span>Site</span><span>City</span><span>Pending With</span><span>Closure Status</span>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {fcStatus === 'loading' && <div style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)', fontSize: 13 }}>Loading…</div>}
+              {fcStatus === 'error' && (
+                <div style={{ padding: 32, textAlign: 'center', color: 'var(--zm-danger)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
+                  Could not load financial closure.
+                </div>
+              )}
+              {fcStatus === 'ready' && fcFiltered.map((row) => (
+                <div key={row.site_id} style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.5fr 0.9fr 1.3fr 0.9fr', gap: 12, padding: '13px 16px', borderBottom: '1px solid var(--zm-line-faint)', alignItems: 'center' }}>
+                  <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{displayCode(row)}</span>
+                  <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: 600, color: 'var(--zm-fg)' }}>{row.site_name}</span>
+                  <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{row.city}</span>
+                  <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{pendingWith(row)}</span>
+                  <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: CLOSURE_BUDGET_TONES[row.closure_status] || 'var(--zm-accent)' }}>
+                    {CLOSURE_BUDGET_LABELS[row.closure_status] || row.closure_status || '—'}
+                  </span>
+                </div>
+              ))}
+              {fcStatus === 'ready' && fcFiltered.length === 0 && (
+                <div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
+                  {needle
+                    ? 'No closures match your search.'
+                    : fcFilter === 'closed' ? 'No closed sites yet.' : 'No sites are in financial closure.'}
+                </div>
+              )}
+              {fcStatus === 'ready' && (
+                <ViewMoreButton
+                  hasMore={fcHasMore}
+                  loadingMore={fcLoadingMore}
+                  loaded={fcItems.length}
+                  total={fcTotal}
+                  onClick={loadMoreFc}
+                />
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -61,9 +61,22 @@ async def send_for_financial_closure(
 
 @router.get("/queue", response_model=FCQueueResponse)
 async def fc_queue(
-    db: DbDep, current_user: FCMember, _module: InProjectModule, tenant_id: TenantId,
+    db: DbDep, current_user: FCMember, tenant_id: TenantId,
     limit: int = Query(500, ge=1, le=1000), offset: int = Query(0, ge=0),
 ) -> FCQueueResponse:
+    """The closure queue for supervisors and executives.
+
+    No require_module("project") gate, unlike every other endpoint on this
+    router. The Launch Sites page shows this queue as a tab, and that page has
+    no module gate of its own — its supervisors and executives hold whichever
+    module they were onboarded into, so the project gate 403'd nearly all of
+    them. Reading which sites are in closure, and who owes the next action, is
+    not project-module-privileged; ACTING on a closure still is, and every
+    mutating endpoint below keeps its gate.
+
+    The role guard and the executive scoping below are what actually contain
+    this: an executive still sees only the sites allocated to them.
+    """
     restrict_to: Optional[list[str]] = None
     if _is_executive(current_user):
         restrict_to = await svc_assigned_sites(db, tenant_id=tenant_id, user_id=current_user["sub"], module=_MODULE)

@@ -13,41 +13,13 @@ import { useFocusSite } from '../../hooks/useFocusSite.js';
 import { keyActivate } from '../../lib/a11y.js';
 import { formatINR, formatVariation, variationTone } from '../../lib/budgetMetrics.js';
 import { TABULAR } from '../business-admin/ui/kit.jsx';
+import {
+  STATUS_LABELS, CLOSURE_BUDGET_LABELS, CLOSURE_BUDGET_TONES, STATUS_FILTERS,
+} from './closureStatus.js';
 
-// sites.financial_closure_status — the workflow stage. Drives the filter pills.
-const STATUS_LABELS = {
-  open: 'Open',
-  allocated: 'Allocated',
-  budgeting: 'Budgeting',
-  closed: 'Closed',
-};
-
-// site_budgets.status — the closure budget row's own state. A DIFFERENT vocabulary,
-// and the CLOSURE STATUS column reads this one. The column used to be looked up in
-// STATUS_LABELS above, so every lookup missed and it fell through to the raw token
-// ("pending_supervisor"). The two are meant to differ; they just shared one map.
-const CLOSURE_BUDGET_LABELS = {
-  draft: 'Draft',
-  pending_supervisor: 'Supervisor',
-  pending_admin: 'Admin',
-  approved: 'Approved',
-  rejected: 'Rejected',
-};
-
-const CLOSURE_BUDGET_TONES = {
-  draft: 'var(--zm-fg-3)',
-  pending_supervisor: 'var(--zm-warning)',
-  pending_admin: 'var(--zm-warning)',
-  approved: 'var(--zm-success)',
-  rejected: 'var(--zm-danger)',
-};
-
-const STATUS_FILTERS = [
-  { key: 'open',      label: 'Open',      color: 'var(--zm-warning)' },
-  { key: 'allocated', label: 'Allocated', color: 'var(--zm-accent)' },
-  { key: 'budgeting', label: 'Budgeting', color: 'var(--zm-copper)' },
-  { key: 'closed',    label: 'Closed',    color: 'var(--zm-success)' },
-];
+// The two status vocabularies moved to ./closureStatus.js when the Launch Sites
+// page grew a Financial Closure tab that needs the same labels. One definition,
+// so the pair cannot drift back apart.
 
 // formatINR(null) is Rs0, not a dash — Number(null) is 0 and finite. On a financial
 // screen "no data" must not read as "zero rupees", so guard before formatting.
