@@ -295,6 +295,83 @@ describe('ClosureDetailsDrawer — Documents tab', () => {
     expect(await screen.findByText('recce.pdf')).toBeTruthy();
   });
 
+  it('lists an uploaded report whose URL could not be signed, rather than dropping it', async () => {
+    // download_url is null both when a report was never uploaded and when
+    // signing failed. Only the first is an absence; the second must show as
+    // unavailable, or an uploaded report silently vanishes.
+    getClosureQAReports.mockResolvedValue({
+      before: { kind: 'before', fileName: 'before.pdf', downloadUrl: null },
+      after: null,
+    });
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+
+    expect(await screen.findByText(/Before — before\.pdf/)).toBeTruthy();
+    expect(screen.getByText(/unavailable/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Open Before/i })).toBeNull();
+  });
+
+  it('omits a report that was never uploaded', async () => {
+    getClosureQAReports.mockResolvedValue({ before: null, after: null });
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+
+    await screen.findByText('loi-signed.pdf');
+    expect(screen.queryByText(/Quality audit/)).toBeNull();
+  });
+
+  it('reports an error when BOTH sources fail, instead of claiming there are none', async () => {
+    // Swallowing both would render "No documents have been uploaded" over an
+    // auth error or an outage — telling the reader a site has no paperwork when
+    // the truth is we could not ask.
+    getSiteDocuments.mockRejectedValue(new Error('network'));
+    getClosureQAReports.mockRejectedValue(new Error('network'));
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+
+    expect(await screen.findByText(/Could not load documents/i)).toBeTruthy();
+    expect(screen.queryByText(/No documents have been uploaded/i)).toBeNull();
+    expect(screen.getByRole('button', { name: /Retry/i })).toBeTruthy();
+  });
+
+  it('retries both sources from the error state', async () => {
+    getSiteDocuments.mockRejectedValueOnce(new Error('network')).mockResolvedValue({ documents: [doc()] });
+    getClosureQAReports.mockRejectedValueOnce(new Error('network')).mockResolvedValue(qa());
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+    await screen.findByText(/Could not load documents/i);
+
+    await user.click(screen.getByRole('button', { name: /Retry/i }));
+
+    expect(await screen.findByText('loi-signed.pdf')).toBeTruthy();
+  });
+
+  it('re-signs an expired image URL when the lightbox opens', async () => {
+    // Signed URLs live 300s; without onRefreshUrl a drawer left sitting shows a
+    // broken image.
+    getSiteDocuments.mockResolvedValue({
+      documents: [doc({ id: 'd2', fileName: 'front.jpg', fileType: 'photo', url: 'https://x/front.jpg' })],
+    });
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+    await waitFor(() => expect(getSiteDocuments).toHaveBeenCalledTimes(1));
+
+    await user.click(await screen.findByRole('button', { name: /Open front\.jpg/i }));
+
+    // The lightbox asks for a fresh URL, which means re-fetching the list.
+    await waitFor(() => expect(getSiteDocuments).toHaveBeenCalledTimes(2));
+  });
+
   it('shows an empty state when the site has nothing attached', async () => {
     getSiteDocuments.mockResolvedValue({ documents: [] });
     getClosureQAReports.mockResolvedValue({ before: null, after: null });

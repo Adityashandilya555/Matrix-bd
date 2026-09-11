@@ -80,8 +80,14 @@ const docModule = (d) => d.module
 // Quality-audit reports are not documents in the site_files sense — they live in
 // their own table and arrive from a different endpoint. Flattened to the same
 // row shape so one list can render both, as SiteApprovalPanel's ClosureBlock does.
+//
+// Filtered on the report EXISTING, not on its URL. download_url is null in two
+// different situations — the report was never uploaded, and the report exists
+// but signing failed — and only the first is an absence. Dropping both would
+// make an uploaded report silently vanish instead of showing as unavailable,
+// which is the row state that exists for exactly this.
 const qaAsDocs = (qa) => [qa?.before, qa?.after]
-  .filter((r) => r && r.downloadUrl)
+  .filter(Boolean)
   .map((r) => ({
     id: `qa-${r.kind}`,
     module: 'Quality audit',
@@ -128,25 +134,51 @@ export default function ClosureDetailsDrawer({
   const [docs, setDocs] = React.useState({ status: 'idle', items: [] });
   const [preview, setPreview] = React.useState(null);
 
-  // Loaded when the tab is opened, and again on each open: signed URLs expire
-  // after 300s, so a drawer left sitting would otherwise hand out dead links.
+  // Each source is caught on its own, because the two surfaces have different
+  // reach: a supervisor cannot call the admin documents endpoint, and an
+  // executive not delegated onto the site gets 404 for the reports. One failing
+  // has to hide its own group rather than empty the tab.
   //
-  // Each source is caught on its own. The two surfaces have different reach —
-  // a supervisor cannot call the admin documents endpoint, and an executive not
-  // delegated onto the site gets 404 for the reports — so one failing must hide
-  // its own group rather than empty the tab.
-  React.useEffect(() => {
-    if (tab !== 'documents' || !siteId) return undefined;
+  // But swallowing BOTH failures would render "No documents have been uploaded"
+  // over an auth error or an outage — telling the reader a site has no paperwork
+  // when the truth is we could not ask. If neither source answered, that is an
+  // error, and it says so with a retry.
+  const loadDocs = React.useCallback(() => {
+    if (!siteId) return undefined;
     let alive = true;
     setDocs({ status: 'loading', items: [] });
+    const failed = { docs: false, qa: false };
     Promise.all([
-      Promise.resolve(fetchDocuments(siteId)).then((r) => r?.documents || []).catch(() => []),
-      Promise.resolve(fetchQAReports(siteId)).then(qaAsDocs).catch(() => []),
+      Promise.resolve(fetchDocuments(siteId))
+        .then((r) => r?.documents || [])
+        .catch(() => { failed.docs = true; return []; }),
+      Promise.resolve(fetchQAReports(siteId))
+        .then(qaAsDocs)
+        .catch(() => { failed.qa = true; return []; }),
     ]).then(([files, qa]) => {
-      if (alive) setDocs({ status: 'ready', items: [...qa, ...files] });
+      if (!alive) return;
+      if (failed.docs && failed.qa) {
+        setDocs({ status: 'error', items: [] });
+        return;
+      }
+      setDocs({ status: 'ready', items: [...qa, ...files] });
     });
     return () => { alive = false; };
-  }, [tab, siteId, fetchDocuments, fetchQAReports]);
+  }, [siteId, fetchDocuments, fetchQAReports]);
+
+  // Loaded when the tab is opened, and again on each open: signed URLs expire
+  // after 300s, so a drawer left sitting would otherwise hand out dead links.
+  React.useEffect(() => {
+    if (tab !== 'documents') return undefined;
+    return loadDocs();
+  }, [tab, loadDocs]);
+
+  // The lightbox re-signs on open. Re-fetching the list is the only way to get a
+  // fresh URL, since signing is server-side and keyed by storage path.
+  const refreshUrl = React.useCallback(async (photo) => {
+    const r = await fetchDocuments(siteId);
+    return (r?.documents || []).find((x) => x.id === photo?.id)?.url || null;
+  }, [siteId, fetchDocuments]);
 
   const openDoc = (doc) => {
     if (isImageDoc(doc)) { setPreview(doc); return; }
@@ -214,6 +246,15 @@ export default function ClosureDetailsDrawer({
             {docs.status === 'loading' && (
               <div style={{ padding: 40, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>Loading documents…</div>
             )}
+            {docs.status === 'error' && (
+              <div style={{ padding: 40, textAlign: 'center', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
+                <div style={{ color: 'var(--zm-danger)' }}>Could not load documents.</div>
+                <button onClick={loadDocs}
+                  style={{ marginTop: 12, height: 32, padding: '0 14px', borderRadius: 8, border: '1px solid var(--zm-line)', background: 'var(--zm-surface-2)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+                  Retry
+                </button>
+              </div>
+            )}
             {docs.status === 'ready' && docs.items.length === 0 && (
               <div style={{ padding: 40, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
                 No documents have been uploaded for this site yet.
@@ -251,7 +292,8 @@ export default function ClosureDetailsDrawer({
                 </div>
               </div>
             ))}
-            <ImageLightbox open={Boolean(preview)} photo={preview} onClose={() => setPreview(null)} />
+            <ImageLightbox open={Boolean(preview)} photo={preview}
+              onClose={() => setPreview(null)} onRefreshUrl={refreshUrl} />
           </div>
         )}
 
