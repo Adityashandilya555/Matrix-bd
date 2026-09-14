@@ -275,6 +275,12 @@ function SiteOverviewTab({ site, editedFields = [] }) {
   const staggeredShort = isStaggeredSchedule
     ? `Yr${staggeredRows[0].year ?? 1} ${formatPercent(staggeredRows[0].percent)}${staggeredRows.length > 1 ? ` · +${staggeredRows.length - 1} yr${staggeredRows.length - 1 > 1 ? 's' : ''}` : ''}`
     : '';
+  const hasRevshareElsewhere = ['revshare', 'mg_revshare'].includes(site.rentType)
+    || hasValue(site.revshareDinein) || hasValue(site.revshareDelivery)
+    || staggeredSchedule.some((e) => hasValue(e?.dine_in_pct) || hasValue(e?.delivery_pct));
+  const revshareValue = numberValue(site.revshare) !== null
+    ? formatPercent(site.revshare, ' of sales')
+    : hasRevshareElsewhere ? 'Yes' : 'NA';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -304,7 +310,7 @@ function SiteOverviewTab({ site, editedFields = [] }) {
               </span>
             ) : escalationValue
           }/>
-          <Field label="Revenue share" value={formatPercent(site.revshare, ' of sales')} mono/>
+          <Field label="Revenue share" value={revshareValue} mono/>
           {hasValue(site.revshareDinein) && <Field label="Dine-in share" value={formatPercent(site.revshareDinein, ' of sales')} mono/>}
           {hasValue(site.revshareDelivery) && <Field label="Delivery share" value={formatPercent(site.revshareDelivery, ' of sales')} mono/>}
           <Field label="Security deposit" value={formatINR(site.deposit)} mono/>
@@ -485,17 +491,6 @@ function SiteDocsTab({ site }) {
   );
 }
 
-function SitePaymentsTab({ site }) {
-  const ready = site.status === SiteStatus.LEGAL_APPROVED || site.status === SiteStatus.PUSHED_TO_PAYMENTS || site.licensingStatus === 'complete';
-  return (
-    <div style={{ padding: 32, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
-      {ready
-        ? 'Legal has cleared this site for the Payment section.'
-        : 'Payment details are not available until Legal approves DDR, agreement, and licensing.'}
-    </div>
-  );
-}
-
 export default function SiteDrawer({ site, onClose }) {
   const [tab, setTab] = useState('overview');
   const { role, user, session, isReadOnly } = useSession();
@@ -572,7 +567,6 @@ export default function SiteDrawer({ site, onClose }) {
               <Tab label="Overview"  active={tab === 'overview'}  onClick={() => setTab('overview')}/>
               <Tab label="Activity"  active={tab === 'activity'} onClick={() => setTab('activity')}/>
               <Tab label="Documents" active={tab === 'docs'}     onClick={() => setTab('docs')}/>
-              <Tab label="Payments"  active={tab === 'payments'} onClick={() => setTab('payments')}/>
             </div>
           </div>
           <button onClick={onClose} className="zm-icon-btn" style={{
@@ -586,7 +580,6 @@ export default function SiteDrawer({ site, onClose }) {
           {tab === 'overview'  && <SiteOverviewTab site={site} editedFields={editedFields}/>}
           {tab === 'activity'  && <SiteActivityTab site={site}/>}
           {tab === 'docs'      && <SiteDocsTab site={site}/>}
-          {tab === 'payments'  && <SitePaymentsTab site={site}/>}
         </div>
 
         <div style={{
