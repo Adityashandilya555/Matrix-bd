@@ -70,6 +70,23 @@ def _assert_closure_open(site: models.Site) -> None:
         )
 
 
+async def svc_assert_in_closure(
+    session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
+) -> None:
+    """404/422 unless the site has actually been sent to financial closure.
+
+    The public form of ``_assert_closure_open`` for routes that read closure data
+    through a service belonging to another module. ``svc_qa_reports_for_site``
+    lives in project_service and is shared with the project and
+    project_excellence routes, which legitimately read reports for sites that
+    were never sent to closure — so the check cannot go inside it, and a closure
+    route that needs it has to make it here.
+    """
+    _assert_closure_open(
+        await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+    )
+
+
 async def _active_fc_delegate(
     session: AsyncSession, *, site_id: str | UUID,
 ) -> Optional[tuple[UUID, str, str]]:

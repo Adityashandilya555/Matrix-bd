@@ -25,6 +25,7 @@ from app.services.delegation_service import svc_assigned_sites, svc_is_delegated
 from app.services.financial_closure_service import (
     svc_admin_finalize_fc,
     svc_allocate_fc,
+    svc_assert_in_closure,
     svc_fc_admin_queue,
     svc_fc_queue,
     svc_get_fc,
@@ -185,11 +186,24 @@ async def fc_qa_reports(
     The executive check below is what keeps this narrow, and mirrors get_fc: an
     executive not delegated onto the site gets 404 rather than a signed URL they
     could otherwise mint by guessing site ids.
+
+    The closure check is what keeps it narrow for a SUPERVISOR, who gets no
+    per-site narrowing at all. Dropping require_module here was right — the
+    module claim was barring the Launch Sites supervisor for an unrelated reason,
+    and tenant isolation comes from fetch_site_or_404, not from the gate — but it
+    left this route broader than the two it sits beside: /queue is confined by
+    `financial_closure_status != 'pending'` and /{site_id} by
+    _assert_closure_open, while this one had nothing, so any supervisor in the
+    tenant could mint signed URLs for the quality-audit PDFs of any site,
+    including sites never sent to closure. Confining it to sites the closure
+    summary can already list restores the intended surface without narrowing the
+    supervisor access this route was added for.
     """
     if _is_executive(current_user):
         ok = await svc_is_delegated(db, tenant_id=tenant_id, site_id=site_id, user_id=current_user["sub"], module=_MODULE)
         if not ok:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
+    await svc_assert_in_closure(db, tenant_id=tenant_id, site_id=site_id)
     return await svc_qa_reports_for_site(db, tenant_id=tenant_id, site_id=site_id)
 
 
