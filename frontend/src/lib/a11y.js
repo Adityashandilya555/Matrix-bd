@@ -23,10 +23,21 @@ export const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:no
 // `onEscape` is captured in a ref so a caller passing an inline arrow does not
 // tear down and rebuild the listener on every render.
 //
-// The keydown listener is CAPTURE-phase and stops propagation, because the
-// surfaces these dialogs sit on (Drawer, LaunchReviewModal) register their own
-// Escape handlers on window. Without capturing, one press would dismiss the
-// dialog and the surface behind it together.
+// The keydown listener is CAPTURE-phase and stops propagation: the surfaces
+// these dialogs sit on (Drawer, LaunchReviewModal) register their own Escape
+// handlers on window, and one press must not dismiss both.
+//
+// But phase alone is positional, not semantic — earliest registrant wins, which
+// is not "the overlay on top". An overlay opened INSIDE a consumer (ImageLightbox
+// inside ClosureDetailsDrawer) lost every key to the drawer behind it (#497). So
+// ownership is explicit: each active dialog pushes onto a shared stack and a
+// handler acts only while its entry is on top. Same shape as lib/scrollLock.js.
+//
+// Order is opening order. Two dialogs armed in the same commit would register
+// inner-first (child effects run before parent), but nothing opens that way — an
+// overlay arms nothing until it is actually opened.
+const stack = [];
+
 export function useDialogFocus(active, panelRef, onEscape) {
   const escapeRef = React.useRef(onEscape);
   React.useEffect(() => { escapeRef.current = onEscape; }, [onEscape]);
@@ -34,8 +45,15 @@ export function useDialogFocus(active, panelRef, onEscape) {
   React.useEffect(() => {
     if (!active) return undefined;
     const trigger = document.activeElement;
+    // Identity only — the array position is the ordering, and splice-by-identity
+    // on cleanup keeps it correct when overlays close out of order.
+    const entry = {};
+    stack.push(entry);
 
     const onKey = (e) => {
+      // Not the topmost overlay: this press belongs to whoever is above us, who
+      // has their own listener. Falling through would close the wrong thing.
+      if (stack[stack.length - 1] !== entry) return;
       if (e.key === 'Escape') {
         e.stopPropagation();
         escapeRef.current?.();
@@ -59,6 +77,8 @@ export function useDialogFocus(active, panelRef, onEscape) {
     });
 
     return () => {
+      const i = stack.indexOf(entry);
+      if (i !== -1) stack.splice(i, 1);
       window.removeEventListener('keydown', onKey, true);
       cancelAnimationFrame(frame);
       if (trigger && typeof trigger.focus === 'function') trigger.focus();

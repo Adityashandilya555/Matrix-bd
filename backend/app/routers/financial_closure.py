@@ -25,6 +25,7 @@ from app.services.delegation_service import svc_assigned_sites, svc_is_delegated
 from app.services.financial_closure_service import (
     svc_admin_finalize_fc,
     svc_allocate_fc,
+    svc_assert_in_closure,
     svc_fc_admin_queue,
     svc_fc_queue,
     svc_get_fc,
@@ -68,6 +69,7 @@ async def send_for_financial_closure(
 async def fc_queue(
     db: DbDep, current_user: FCReader, tenant_id: TenantId,
     limit: int = Query(500, ge=1, le=1000), offset: int = Query(0, ge=0),
+    closed: Optional[bool] = Query(None),
 ) -> FCQueueResponse:
     """The closure queue for supervisors, executives and the business admin.
 
@@ -86,7 +88,8 @@ async def fc_queue(
     if _is_executive(current_user):
         restrict_to = await svc_assigned_sites(db, tenant_id=tenant_id, user_id=current_user["sub"], module=_MODULE)
     return await svc_fc_queue(
-        db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to, limit=limit, offset=offset,
+        db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to,
+        limit=limit, offset=offset, closed=closed,
     )
 
 
@@ -183,11 +186,17 @@ async def fc_qa_reports(
     The executive check below is what keeps this narrow, and mirrors get_fc: an
     executive not delegated onto the site gets 404 rather than a signed URL they
     could otherwise mint by guessing site ids.
+
+    The closure check is what keeps it narrow for a SUPERVISOR, who gets no
+    per-site narrowing at all. Both siblings are already confined to sites in
+    closure (/queue by status, /{site_id} by _assert_closure_open); without it any
+    supervisor could mint signed QA-report URLs for any site in the tenant.
     """
     if _is_executive(current_user):
         ok = await svc_is_delegated(db, tenant_id=tenant_id, site_id=site_id, user_id=current_user["sub"], module=_MODULE)
         if not ok:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
+    await svc_assert_in_closure(db, tenant_id=tenant_id, site_id=site_id)
     return await svc_qa_reports_for_site(db, tenant_id=tenant_id, site_id=site_id)
 
 

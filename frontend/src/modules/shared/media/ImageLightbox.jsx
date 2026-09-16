@@ -16,78 +16,38 @@ import Icon from '../primitives/Icon.jsx';
 import { isImage } from '../../../lib/mime.js';
 import { safeHref } from '../../../lib/safeHref.js';
 import { lockBodyScroll } from '../../../lib/scrollLock.js';
+import { useDialogFocus } from '../../../lib/a11y.js';
 
 // Above every in-app dialog (max 120) and the CitySelect dropdown (200), but
 // BELOW the toast (300) so upload/error toasts stay readable over it, and well
 // below the session-expired modal (9999), which must always win.
 const Z = 290;
 
-const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
-
 export default function ImageLightbox({ open, photo, onClose, onRefreshUrl }) {
   const panelRef = React.useRef(null);
-  const triggerRef = React.useRef(null);
   const retriedRef = React.useRef(false);
   const [src, setSrc] = React.useState(photo?.url || null);
   const [failed, setFailed] = React.useState(false);
 
-  // Signed URLs live 300s, so a drawer left open past five minutes holds a dead
-  // link. Re-sign on every open rather than trusting whatever was fetched with
-  // the tile.
+  // Reset to the URL the list was fetched with, and re-arm the one-shot retry.
+  // Deliberately no re-sign here: onRefreshUrl re-signs the site's WHOLE document
+  // list to recover one URL, a storage round-trip per file on every open (#499).
+  // onImgError handles the rarer expired URL instead.
   React.useEffect(() => {
-    if (!open) return undefined;
-    let alive = true;
     retriedRef.current = false;
     setFailed(false);
     setSrc(photo?.url || null);
-    (async () => {
-      if (!onRefreshUrl) return;
-      try {
-        const fresh = await onRefreshUrl(photo);
-        if (alive && fresh) setSrc(fresh);
-      } catch {
-        // Keep whatever we had; onError below still gets a chance.
-      }
-    })();
-    return () => { alive = false; };
-  }, [open, photo, onRefreshUrl]);
+  }, [open, photo]);
 
-  React.useEffect(() => {
-    if (!open) return undefined;
-    triggerRef.current = document.activeElement;
+  // Escape, Tab trap, focus-in and focus-restore. Sharing the hook rather than
+  // keeping a private copy is what puts the lightbox on the overlay stack, so it
+  // takes the keys from the drawer it was opened over (#497).
+  useDialogFocus(open && Boolean(photo), panelRef, onClose);
 
-    const onKey = (e) => {
-      if (e.key === 'Escape') { onClose?.(); return; }
-      if (e.key !== 'Tab') return;
-      const el = panelRef.current;
-      if (!el) return;
-      const items = Array.from(el.querySelectorAll(FOCUSABLE));
-      if (items.length === 0) { e.preventDefault(); return; }
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
-    window.addEventListener('keydown', onKey);
-
-    const frame = requestAnimationFrame(() => {
-      const el = panelRef.current;
-      if (el) (el.querySelector(FOCUSABLE) || el).focus();
-    });
-
-    // Counted, so the order overlays close in does not matter: save/restore of a
-    // "previous" value hands scrolling back to the page whenever the OUTER
-    // overlay closes first, while the inner one is still up.
-    const releaseScroll = lockBodyScroll();
-
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      cancelAnimationFrame(frame);
-      releaseScroll();
-      const trigger = triggerRef.current;
-      if (trigger && typeof trigger.focus === 'function') trigger.focus();
-    };
-  }, [open, onClose]);
+  // Counted, so the order overlays close in does not matter: save/restore of a
+  // "previous" value hands scrolling back to the page whenever the OUTER
+  // overlay closes first, while the inner one is still up.
+  React.useEffect(() => (open ? lockBodyScroll() : undefined), [open]);
 
   if (!open || !photo) return null;
 

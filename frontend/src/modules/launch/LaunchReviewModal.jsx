@@ -107,7 +107,14 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
   const handleSaveRent = async () => {
     setSaving(true); setErr(null); setSavedFlash(false);
     try {
-      hydrate(await saveLaunchRentFields(siteId, buildLaunchRentPayload(form)));
+      // The exec may only edit rent_start_date, so that is all they send.
+      // buildLaunchRentPayload normalises rather than echoes (it nulls
+      // rev_share_pct for a fixed rent), and those rewrites 422 as edits to
+      // fields the exec may not touch — blocking the final confirm (#496).
+      const payload = isSupervisor
+        ? buildLaunchRentPayload(form)
+        : { rent_start_date: form.rent_start_date ?? null };
+      hydrate(await saveLaunchRentFields(siteId, payload));
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2200);
     } catch (e) {
