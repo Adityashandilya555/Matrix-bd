@@ -44,7 +44,14 @@ class FCQueueItem(BaseModel):
 
 class FCQueueResponse(BaseModel):
     items: list[FCQueueItem]
+    # The count for the filter this page was fetched under, so "loaded X of
+    # total" and the pager agree with the rows actually on screen.
     total: int
+    # Both bucket counts, regardless of which one was requested. The closure
+    # surfaces render Pending and Closed as two tabs, each with a count, so the
+    # tab that is NOT being paged still needs its number (#498).
+    pending_total: int = 0
+    closed_total: int = 0
 
 
 class FCStateResponse(BaseModel):

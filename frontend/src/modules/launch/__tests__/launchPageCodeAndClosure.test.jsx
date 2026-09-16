@@ -43,6 +43,20 @@ const closure = (over = {}) => ({
   gfcBudgetTotal: null, closureBudgetTotal: null, variationTotal: null, ...over,
 });
 
+// Mirrors the server: /financial-closure/queue filters by `closed` and returns
+// BOTH bucket counts (#498). A mock that ignored `closed` would let a
+// client-side split over the loaded page keep passing, which is the bug.
+const queue = (all) => async ({ closed } = {}) => {
+  const done = (r) => r.financialClosureStatus === 'closed';
+  const items = all.filter((r) => (closed ? done(r) : !done(r)));
+  return {
+    items,
+    total: items.length,
+    pendingTotal: all.filter((r) => !done(r)).length,
+    closedTotal: all.filter(done).length,
+  };
+};
+
 async function renderPage() {
   vi.resetModules();
   const { default: LaunchPage } = await import('../LaunchPage.jsx');
@@ -55,7 +69,7 @@ beforeEach(() => {
   state.role = 'supervisor';
   listSites.mockResolvedValue({ items: [], total: 0 });
   getLaunchQueue.mockResolvedValue({ items: [launched()], total: 1 });
-  getFCQueue.mockResolvedValue({ items: [], total: 0 });
+  getFCQueue.mockImplementation(queue([]));
   onOpenSite.mockReset();
   getFC.mockResolvedValue({ siteId: 'f9', siteCode: 'CA-301', siteName: 'Done one', city: 'Mumbai', closureStatus: 'approved', lines: [] });
 });
@@ -135,15 +149,15 @@ describe('Launch Sites — Financial Closure tab', () => {
     expect(screen.queryByText(/Priya S./)).toBeNull();
   });
 
-  it('splits Pending from Closed and Closed excludes the in-flight stages', async () => {
-    getFCQueue.mockResolvedValue({
-      items: [
-        closure({ siteId: 'f1', siteName: 'Open one', financialClosureStatus: 'open' }),
-        closure({ siteId: 'f2', siteName: 'Budgeting one', financialClosureStatus: 'budgeting' }),
-        closure({ siteId: 'f3', siteName: 'Done one', financialClosureStatus: 'closed', closureStatus: 'approved' }),
-      ],
-      total: 3,
-    });
+  it('splits Pending from Closed ON THE SERVER, and Closed excludes the in-flight stages', async () => {
+    // launched_at DESC has no relation to closure state, so the first page can
+    // legitimately be all-open. Bucketing over the loaded page made the Closed
+    // tab claim no site had completed closure while closed ones sat later (#498).
+    getFCQueue.mockImplementation(queue([
+      closure({ siteId: 'f1', siteName: 'Open one', financialClosureStatus: 'open' }),
+      closure({ siteId: 'f2', siteName: 'Budgeting one', financialClosureStatus: 'budgeting' }),
+      closure({ siteId: 'f3', siteName: 'Done one', financialClosureStatus: 'closed', closureStatus: 'approved' }),
+    ]));
     const user = userEvent.setup();
     await renderPage();
     await openTab(user, 'Financial Closure');
@@ -157,6 +171,8 @@ describe('Launch Sites — Financial Closure tab', () => {
 
     await waitFor(() => expect(screen.getByText('Done one')).toBeTruthy());
     expect(screen.queryByText('Open one')).toBeNull();
+    // Re-fetched for the other bucket rather than re-filtering what was loaded.
+    expect(getFCQueue).toHaveBeenLastCalledWith(expect.objectContaining({ closed: true }));
   });
 
   it('searches on code, site and pending-with', async () => {

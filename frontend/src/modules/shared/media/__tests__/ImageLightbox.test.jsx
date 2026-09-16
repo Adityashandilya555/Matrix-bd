@@ -106,38 +106,50 @@ describe('focus and scroll', () => {
 });
 
 describe('signed-URL expiry', () => {
-  it('re-signs on open and uses the fresh URL', async () => {
+  it('does NOT re-sign on open — the URL it was handed is used as-is', async () => {
+    // Every onRefreshUrl implementation re-signs the site's WHOLE document list
+    // to recover one URL — one storage round-trip per file, 8 at a time. Calling
+    // it on every open cost 25 round-trips to look at one photo on a 25-document
+    // site (#499). The URL is usually still valid; expiry is handled below.
     const onRefreshUrl = vi.fn().mockResolvedValue('https://storage/signed?token=FRESH');
     renderBox({ onRefreshUrl });
 
-    expect(onRefreshUrl).toHaveBeenCalledWith(photo);
+    expect(screen.getByRole('img', { name: 'storefront.jpg' })).toHaveAttribute('src', photo.url);
+    expect(onRefreshUrl).not.toHaveBeenCalled();
+  });
+
+  it('re-signs when the URL has actually expired, and retries exactly once', async () => {
+    // The loop guard matters: a genuinely deleted object errors forever, and an
+    // unguarded retry would hammer the API for as long as the dialog is open.
+    const onRefreshUrl = vi.fn().mockResolvedValue(photo.url);
+    renderBox({ onRefreshUrl });
+    expect(onRefreshUrl).not.toHaveBeenCalled();
+
+    fireEvent.error(screen.getByRole('img', { name: 'storefront.jpg' }));
+    await vi.waitFor(() => expect(onRefreshUrl).toHaveBeenCalledWith(photo));
+
+    fireEvent.error(screen.getByRole('img', { name: 'storefront.jpg' }));
+    await screen.findByText(/could not be loaded/i);
+    expect(onRefreshUrl).toHaveBeenCalledTimes(1);   // NOT 2
+  });
+
+  it('recovers an expired URL with the fresh one', async () => {
+    const onRefreshUrl = vi.fn().mockResolvedValue('https://storage/signed?token=FRESH');
+    renderBox({ onRefreshUrl });
+
+    fireEvent.error(screen.getByRole('img', { name: 'storefront.jpg' }));
+
     await vi.waitFor(() => {
       expect(screen.getByRole('img', { name: 'storefront.jpg' }))
         .toHaveAttribute('src', 'https://storage/signed?token=FRESH');
     });
   });
 
-  it('retries exactly once on a load error, then gives up', async () => {
-    // The loop guard matters: a genuinely deleted object errors forever, and an
-    // unguarded retry would hammer the API for as long as the dialog is open.
-    const onRefreshUrl = vi.fn().mockResolvedValue(photo.url);
-    renderBox({ onRefreshUrl });
-    await vi.waitFor(() => expect(onRefreshUrl).toHaveBeenCalledTimes(1)); // the open re-sign
-
-    fireEvent.error(screen.getByRole('img', { name: 'storefront.jpg' }));
-    await vi.waitFor(() => expect(onRefreshUrl).toHaveBeenCalledTimes(2));
-
-    fireEvent.error(screen.getByRole('img', { name: 'storefront.jpg' }));
-    await screen.findByText(/could not be loaded/i);
-    expect(onRefreshUrl).toHaveBeenCalledTimes(2);   // NOT 3
-  });
-
   it('survives a refresh that throws', async () => {
     const onRefreshUrl = vi.fn().mockRejectedValue(new Error('offline'));
     renderBox({ onRefreshUrl });
-    // Keeps the original URL rather than blanking the dialog.
-    await vi.waitFor(() => {
-      expect(screen.getByRole('img', { name: 'storefront.jpg' })).toHaveAttribute('src', photo.url);
-    });
+    fireEvent.error(screen.getByRole('img', { name: 'storefront.jpg' }));
+    // Says so rather than blanking the dialog or looping.
+    expect(await screen.findByText(/could not be loaded/i)).toBeTruthy();
   });
 });

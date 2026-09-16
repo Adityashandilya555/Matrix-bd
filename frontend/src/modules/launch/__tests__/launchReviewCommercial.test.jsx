@@ -96,6 +96,47 @@ describe('LaunchReviewModal — commercial terms', () => {
     expect(saveLaunchRentFields.mock.calls[0][1].rent_start_date).toBe('2026-05-01');
   });
 
+  it('executive: the PATCH carries rent_start_date and NOTHING else', async () => {
+    // buildLaunchRentPayload normalises rather than echoes — it nulls
+    // rev_share_pct for a fixed rent and the flat split for a staggered one. On
+    // a row seeded with either, those rewrites are real changes to fields the
+    // exec may not touch, so the backend 422'd on a field they never edited.
+    // rent_start_date is required before the final confirm, so that locked the
+    // site out of launching with no in-app way back (#496).
+    getLaunchApproval.mockResolvedValue(record({
+      status: 'under_exec_review',
+      rent_type: 'fixed',
+      rev_share_pct: 7.5,                                   // seeded from site_details at NSO
+      staggered_escalation: [{ year: 1, percent: 5 }],       // left over from an earlier rent-type change
+    }));
+    saveLaunchRentFields.mockImplementation(async (_id, body) => record({ ...body }));
+    await renderModal({ role: 'exec' });
+    await screen.findByText(/Commercial terms/);
+
+    fireEvent.change(dateBox(), { target: { value: '2026-05-01' } });
+    fireEvent.click(await screen.findByRole('button', { name: /Save commercial changes/i }));
+
+    await waitFor(() => expect(saveLaunchRentFields).toHaveBeenCalled());
+    expect(Object.keys(saveLaunchRentFields.mock.calls[0][1])).toEqual(['rent_start_date']);
+  });
+
+  it('supervisor: still sends the full normalised snapshot', async () => {
+    // The narrowing is the EXEC surface's, not the endpoint's — the supervisor
+    // edits every field and relies on the builder's normalisation.
+    getLaunchApproval.mockResolvedValue(record({ rent_type: 'fixed', rev_share_pct: 7.5 }));
+    saveLaunchRentFields.mockImplementation(async (_id, body) => record({ ...body }));
+    await renderModal({ role: 'supervisor' });
+    await screen.findByText(/Commercial terms/);
+
+    fireEvent.change(dateBox(), { target: { value: '2026-05-01' } });
+    fireEvent.click(await screen.findByRole('button', { name: /Save commercial changes/i }));
+
+    await waitFor(() => expect(saveLaunchRentFields).toHaveBeenCalled());
+    const body = saveLaunchRentFields.mock.calls[0][1];
+    expect(Object.keys(body).length).toBeGreaterThan(1);
+    expect(body.rev_share_pct).toBeNull();   // normalised away for a fixed rent
+  });
+
   it('renders the staged commercial values, not the canonical details copy', async () => {
     getLaunchApproval.mockResolvedValue(record({
       carpet_area_sqft: 1400,

@@ -120,8 +120,8 @@ export default function ClosureDetailsDrawer({
   }, [siteId, fetchDetail]);
 
   // aria-modal is a promise that focus is contained. The hook moves focus in,
-  // keeps Tab inside the panel, restores it on close, and takes Escape in the
-  // capture phase — which is also what the local Escape handler used to do.
+  // keeps Tab inside the panel, restores it on close, and owns Escape while this
+  // is the topmost overlay — it yields both to the image preview opened over it.
   const panelRef = React.useRef(null);
   const dismiss = React.useCallback(() => onClose?.(), [onClose]);
   useDialogFocus(true, panelRef, dismiss);
@@ -166,15 +166,27 @@ export default function ClosureDetailsDrawer({
     return () => { alive = false; };
   }, [siteId, fetchDocuments, fetchQAReports]);
 
-  // Loaded when the tab is opened, and again on each open: signed URLs expire
-  // after 300s, so a drawer left sitting would otherwise hand out dead links.
+  // Loaded the first time the Documents tab is opened, and not again on a tab
+  // switch. Listing signs one storage object per file, so keying this on `tab`
+  // re-signed the whole set every time the reader flicked back (#499). Staleness
+  // is handled where it shows up instead: the lightbox re-signs on a load error,
+  // and Retry re-runs this by hand.
+  // Tracked in a ref, not read off docs.status: status is state, so gating on it
+  // puts it in the dep array, the effect re-runs the moment loadDocs flips to
+  // 'loading', and the previous run's cleanup sets alive=false — killing the
+  // request it just started and leaving the tab on "Loading documents…" forever.
+  // The ref holds the site it loaded for, so a drawer reused for another site
+  // still fetches.
+  const docsLoadedForRef = React.useRef(null);
   React.useEffect(() => {
-    if (tab !== 'documents') return undefined;
+    if (tab !== 'documents' || docsLoadedForRef.current === siteId) return undefined;
+    docsLoadedForRef.current = siteId;
     return loadDocs();
-  }, [tab, loadDocs]);
+  }, [tab, siteId, loadDocs]);
 
-  // The lightbox re-signs on open. Re-fetching the list is the only way to get a
-  // fresh URL, since signing is server-side and keyed by storage path.
+  // Re-fetching the list is the only way to get a fresh URL, since signing is
+  // server-side and keyed by storage path. Called only from the lightbox's error
+  // path, so this costs nothing until a URL has actually expired.
   const refreshUrl = React.useCallback(async (photo) => {
     const r = await fetchDocuments(siteId);
     return (r?.documents || []).find((x) => x.id === photo?.id)?.url || null;

@@ -7,7 +7,7 @@
 // is 0 and finite — on a financial screen a missing figure must not read as
 // "zero rupees", so every amount goes through a null check first.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ClosureDetailsDrawer from '../ClosureDetailsDrawer.jsx';
 
@@ -354,9 +354,10 @@ describe('ClosureDetailsDrawer — Documents tab', () => {
     expect(await screen.findByText('loi-signed.pdf')).toBeTruthy();
   });
 
-  it('re-signs an expired image URL when the lightbox opens', async () => {
-    // Signed URLs live 300s; without onRefreshUrl a drawer left sitting shows a
-    // broken image.
+  it('opens a preview WITHOUT re-signing the whole document list', async () => {
+    // Re-signing means re-fetching the list, and listing signs one storage
+    // object per file. Doing that on every preview open cost a round-trip per
+    // document to look at one photo (#499); the URL in hand is used instead.
     getSiteDocuments.mockResolvedValue({
       documents: [doc({ id: 'd2', fileName: 'front.jpg', fileType: 'photo', url: 'https://x/front.jpg' })],
     });
@@ -367,9 +368,43 @@ describe('ClosureDetailsDrawer — Documents tab', () => {
     await waitFor(() => expect(getSiteDocuments).toHaveBeenCalledTimes(1));
 
     await user.click(await screen.findByRole('button', { name: /Open front\.jpg/i }));
+    await waitFor(() => expect(document.querySelector('img[src="https://x/front.jpg"]')).toBeTruthy());
 
-    // The lightbox asks for a fresh URL, which means re-fetching the list.
+    expect(getSiteDocuments).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-signs only once the image actually fails to load', async () => {
+    // Signed URLs live 300s, so a drawer left sitting does hold dead links —
+    // recovered on the error path, which is where the expiry shows up.
+    getSiteDocuments.mockResolvedValue({
+      documents: [doc({ id: 'd2', fileName: 'front.jpg', fileType: 'photo', url: 'https://x/front.jpg' })],
+    });
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+    await user.click(await screen.findByRole('button', { name: /Open front\.jpg/i }));
+    const img = await waitFor(() => document.querySelector('img[src="https://x/front.jpg"]'));
+
+    fireEvent.error(img);
+
     await waitFor(() => expect(getSiteDocuments).toHaveBeenCalledTimes(2));
+  });
+
+  it('does not re-fetch the documents when the tab is switched away and back', async () => {
+    // Keying the load effect on `tab` re-signed every document each time the
+    // reader flicked between Closure and Documents (#499).
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+    await waitFor(() => expect(getSiteDocuments).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole('button', { name: /^Closure/ }));
+    await openDocuments(user);
+
+    expect(await screen.findByText('loi-signed.pdf')).toBeTruthy();
+    expect(getSiteDocuments).toHaveBeenCalledTimes(1);
   });
 
   it('shows an empty state when the site has nothing attached', async () => {

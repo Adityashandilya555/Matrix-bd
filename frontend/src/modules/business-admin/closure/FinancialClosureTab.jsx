@@ -21,7 +21,7 @@ import {
 import { usePagedList } from '../../../hooks/usePagedList.js';
 import ViewMoreButton from '../../shared/primitives/ViewMoreButton.jsx';
 import {
-  CLOSURE_BUDGET_LABELS, CLOSURE_BUDGET_TONES, PENDING_STATUSES, isClosed, pendingWith,
+  CLOSURE_BUDGET_LABELS, CLOSURE_BUDGET_TONES, pendingWith,
 } from '../../financial_closure/closureStatus.js';
 import { getFCQueue, getFCAdminDetail } from '../../../services/api/financialClosureApi.js';
 import { getAdminSiteDocuments } from '../../../services/api/businessAdminApi.js';
@@ -31,11 +31,19 @@ import { displayCode } from '../../../lib/displayCode.js';
 const COLS = '0.8fr 1.5fr 0.9fr 1.3fr 0.9fr 0.6fr';
 
 export default function FinancialClosureTab() {
+  const [filter, setFilter] = React.useState('pending'); // 'pending' | 'closed'
+  // Both bucket counts come from the server. Deriving them from `items` counted
+  // the loaded page only, so with >50 sites in closure the Closed tab could read
+  // "No sites have completed closure yet" with closed sites on page 2 (#498).
+  const [counts, setCounts] = React.useState({ pending: 0, closed: 0 });
   const {
     items, total, status, error, hasMore, loadingMore, loadMore, reload,
-  } = usePagedList(({ limit, offset }) => getFCQueue({ limit, offset }));
+  } = usePagedList(async ({ limit, offset }) => {
+    const r = await getFCQueue({ limit, offset, closed: filter === 'closed' });
+    setCounts({ pending: r.pendingTotal, closed: r.closedTotal });
+    return r;
+  }, { deps: [filter] });
 
-  const [filter, setFilter] = React.useState('pending'); // 'pending' | 'closed'
   const [query, setQuery] = React.useState('');
   const [detailSiteId, setDetailSiteId] = React.useState(null);
 
@@ -46,9 +54,9 @@ export default function FinancialClosureTab() {
       .toLowerCase().includes(needle);
   };
 
-  const pending = items.filter((r) => PENDING_STATUSES.includes(r.financialClosureStatus));
-  const closed = items.filter(isClosed);
-  const rows = (filter === 'closed' ? closed : pending).filter(matches);
+  // Already the right bucket — the server filtered it — so only the search box
+  // narrows further, and it reaches the loaded rows only (see the empty state).
+  const rows = items.filter(matches);
 
   return (
     <div>
@@ -56,8 +64,8 @@ export default function FinancialClosureTab() {
         icon={Icon.rupee}
         title="Financial Closure"
         description="Sites in closure across the workspace, and who owes the next action."
-        count={pending.length}
-        tone={pending.length > 0 ? 'warn' : 'success'}
+        count={counts.pending}
+        tone={counts.pending > 0 ? 'warn' : 'success'}
         onRefresh={() => reload(true)}
       />
 
@@ -73,8 +81,8 @@ export default function FinancialClosureTab() {
               border: `1px solid ${T.lineStrong}`, background: T.surfaceInset, color: T.text, fontSize: 13, outline: 'none' }} />
         </div>
         {[
-          { key: 'pending', label: 'Pending', count: pending.length },
-          { key: 'closed', label: 'Closed', count: closed.length },
+          { key: 'pending', label: 'Pending', count: counts.pending },
+          { key: 'closed', label: 'Closed', count: counts.closed },
         ].map(({ key, label, count }) => {
           const active = filter === key;
           return (
@@ -117,7 +125,11 @@ export default function FinancialClosureTab() {
           <div style={{ padding: '36px 24px' }}>
             <EmptyState icon={Icon.rupee} title="Nothing to show"
               hint={needle
-                ? 'No closures match your search.'
+                // Search runs over the loaded rows only, so say so rather than
+                // report an absence that has not been established.
+                ? (hasMore
+                  ? `No match in the ${items.length} loaded — use “View more” to search the rest.`
+                  : 'No closures match your search.')
                 : filter === 'closed' ? 'No sites have completed closure yet.' : 'No sites are in financial closure.'} />
           </div>
         )}

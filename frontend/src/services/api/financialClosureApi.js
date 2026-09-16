@@ -86,13 +86,22 @@ export async function sendForFinancialClosure(siteId) {
   return stateFromServer(data);
 }
 
-export async function getFCQueue({ limit, offset } = {}) {
+export async function getFCQueue({ limit, offset, closed } = {}) {
   // limit/offset only travel when the caller supplies them (default page intact).
   const params = {};
   if (limit != null) params.limit = limit;
   if (offset != null) params.offset = offset;
+  // The Pending/Closed split is a server filter, so each tab pages independently
+  // and its total counts the whole bucket rather than the loaded page (#498).
+  if (closed != null) params.closed = closed;
   const data = await client.get('/financial-closure/queue', { params }).then((r) => r.data);
-  return { items: (data.items || []).map(queueItemFromServer), total: data.total ?? 0 };
+  return {
+    items: (data.items || []).map(queueItemFromServer),
+    total: data.total ?? 0,
+    // Both buckets, so the tab that is not being paged still shows a count.
+    pendingTotal: data.pending_total ?? 0,
+    closedTotal: data.closed_total ?? 0,
+  };
 }
 
 export async function getFC(siteId) {

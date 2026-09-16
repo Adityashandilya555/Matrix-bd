@@ -68,6 +68,7 @@ async def send_for_financial_closure(
 async def fc_queue(
     db: DbDep, current_user: FCReader, tenant_id: TenantId,
     limit: int = Query(500, ge=1, le=1000), offset: int = Query(0, ge=0),
+    closed: Optional[bool] = Query(None),
 ) -> FCQueueResponse:
     """The closure queue for supervisors, executives and the business admin.
 
@@ -86,7 +87,8 @@ async def fc_queue(
     if _is_executive(current_user):
         restrict_to = await svc_assigned_sites(db, tenant_id=tenant_id, user_id=current_user["sub"], module=_MODULE)
     return await svc_fc_queue(
-        db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to, limit=limit, offset=offset,
+        db, tenant_id=tenant_id, restrict_to_site_ids=restrict_to,
+        limit=limit, offset=offset, closed=closed,
     )
 
 

@@ -314,12 +314,20 @@ async def svc_fc_queue(  # skipcq: PY-R1000
     restrict_to_site_ids: Optional[list[str]] = None,
     limit: int = 500,
     offset: int = 0,
+    closed: Optional[bool] = None,
 ) -> FCQueueResponse:
     """Return one page of the Financial Closure queue, newest-launched first.
 
     Paginated (``limit``/``offset``) so the queue and its per-row budget lookups
     are bounded by page size (#230). Executive scoping is applied before
-    pagination. ``total`` is the page row count.
+    pagination. ``total`` is the true count of the filtered set, not the page.
+
+    ``closed`` splits the queue into the two buckets the UI shows as tabs: True
+    for completed closures, False for everything still moving, None for both.
+    It is filtered HERE rather than over the loaded page because the ordering is
+    ``launched_at DESC``, which has no relation to closure state — the first page
+    can legitimately be entirely one bucket, so a client-side split rendered
+    "No sites have completed closure yet" while closed sites sat on page 2 (#498).
     """
     async with transaction(session):
         stmt = (
@@ -337,13 +345,28 @@ async def svc_fc_queue(  # skipcq: PY-R1000
             if not restrict_to_site_ids:
                 return FCQueueResponse(items=[], total=0)
             stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
-        total = await count_rows(session, stmt)
+
+        # Counted before the bucket filter is applied, so both tabs get a real
+        # number whichever one is being paged. The base already excludes
+        # 'pending', so "not closed" is exactly open/allocated/budgeting.
+        is_closed = models.Site.financial_closure_status == "closed"
+        closed_total = await count_rows(session, stmt.where(is_closed))
+        pending_total = await count_rows(session, stmt.where(~is_closed))
+        if closed is not None:
+            stmt = stmt.where(is_closed if closed else ~is_closed)
+        total = (
+            closed_total if closed is True
+            else pending_total if closed is False
+            else closed_total + pending_total
+        )
+        counts = {"pending_total": pending_total, "closed_total": closed_total}
+
         rows = (await session.execute(
             stmt.order_by(models.Site.launched_at.desc(), models.Site.id).limit(limit).offset(offset)
         )).all()
 
         if not rows:
-            return FCQueueResponse(items=[], total=total)
+            return FCQueueResponse(items=[], total=total, **counts)
 
         gfc_by_site, gfc_items_by_budget, closure_items_by_budget, delegates_by_site, names = (
             await _batch_fc_prefetch(session, rows=rows, tenant_id=tenant_id)
@@ -372,7 +395,7 @@ async def svc_fc_queue(  # skipcq: PY-R1000
                 closure_budget_total=closure_total,
                 variation_total=_variation_total(sum(variation.values()), gfc_total, closure_total),
             ))
-        return FCQueueResponse(items=items, total=total)
+        return FCQueueResponse(items=items, total=total, **counts)
 
 
 async def svc_get_fc(

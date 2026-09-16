@@ -11,7 +11,7 @@ import { filterByScope } from '../../rbac/scope.js';
 import { getLaunchQueue } from '../../services/api/launchApprovalApi.js';
 import { getFCQueue } from '../../services/api/financialClosureApi.js';
 import {
-  CLOSURE_BUDGET_LABELS, CLOSURE_BUDGET_TONES, PENDING_STATUSES, isClosed, pendingWith,
+  CLOSURE_BUDGET_LABELS, CLOSURE_BUDGET_TONES, isClosed, pendingWith,
 } from '../financial_closure/closureStatus.js';
 import LaunchReviewModal from './LaunchReviewModal.jsx';
 import ClosureDetailsDrawer from './ClosureDetailsDrawer.jsx';
@@ -119,6 +119,11 @@ export default function LaunchPage() {
   // Financial closure is a supervisor concern on this page; executives do not see
   // the tab, so the fetcher short-circuits rather than issuing a request whose
   // result would never be rendered.
+  const [fcFilter, setFcFilter] = React.useState('pending'); // 'pending' | 'closed'
+  // Both bucket counts, from the server. They cannot be derived from `fcItems`:
+  // that is one page of ONE bucket now, and the tab strip shows the pending count
+  // even while the Closed tab is the one being paged (#498).
+  const [fcCounts, setFcCounts] = React.useState({ pending: 0, closed: 0 });
   const {
     items: fcItems,
     total: fcTotal,
@@ -126,14 +131,17 @@ export default function LaunchPage() {
     hasMore: fcHasMore,
     loadingMore: fcLoadingMore,
     loadMore: loadMoreFc,
-  } = usePagedList(({ limit, offset }) => (
-    isSupervisor ? getFCQueue({ limit, offset }) : Promise.resolve({ items: [], total: 0 })
+  } = usePagedList(async ({ limit, offset }) => {
+    if (!isSupervisor) return { items: [], total: 0 };
+    const r = await getFCQueue({ limit, offset, closed: fcFilter === 'closed' });
+    setFcCounts({ pending: r.pendingTotal, closed: r.closedTotal });
+    return r;
   // deps: the fetcher branches on isSupervisor, so a role that resolves after
-  // mount must refetch rather than leave the previous role's list in place.
-  ), { deps: [isSupervisor] });
+  // mount must refetch rather than leave the previous role's list in place; and
+  // on fcFilter, which is now a server filter rather than a client-side split.
+  }, { deps: [isSupervisor, fcFilter] });
 
   const [review, setReview] = React.useState(null); // { siteId, role: 'exec' | 'supervisor' }
-  const [fcFilter, setFcFilter] = React.useState('pending'); // 'pending' | 'closed'
   const [closureDetail, setClosureDetail] = React.useState(null); // site_id
 
   // Scope filter for exec view (NSO sites tab)
@@ -177,17 +185,16 @@ export default function LaunchPage() {
 
   const launchedFiltered = launchedItems.filter((i) => matchesQuery(i));
 
-  const fcPending = fcItems.filter((r) => PENDING_STATUSES.includes(r.financialClosureStatus));
-  const fcClosed = fcItems.filter(isClosed);
-  const fcFiltered = (fcFilter === 'closed' ? fcClosed : fcPending)
-    .filter((r) => matchesQuery(r, pendingWith(r)));
+  // Already the right bucket — the server filtered it — so only the search box
+  // narrows further, and it reaches the loaded rows only (see the empty state).
+  const fcFiltered = fcItems.filter((r) => matchesQuery(r, pendingWith(r)));
 
   const showReview = isExec || isSupervisor;
   const TABS = [
     { key: 'nso',       label: 'NSO Sites', count: rows.length },
     ...(showReview ? [{ key: 'review', label: 'Review', count: reviewItems.length }] : []),
     { key: 'launched',  label: 'Launched',  count: launchedItems.length },
-    ...(isSupervisor ? [{ key: 'closure', label: 'Financial Closure', count: fcPending.length }] : []),
+    ...(isSupervisor ? [{ key: 'closure', label: 'Financial Closure', count: fcCounts.pending }] : []),
   ];
 
   return (
@@ -389,8 +396,8 @@ export default function LaunchPage() {
             {/* Two pills rather than the closure module's four stages. */}
             <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--zm-line)' }}>
               {[
-                { key: 'pending', label: 'Pending', count: fcPending.length },
-                { key: 'closed', label: 'Closed', count: fcClosed.length },
+                { key: 'pending', label: 'Pending', count: fcCounts.pending },
+                { key: 'closed', label: 'Closed', count: fcCounts.closed },
               ].map(({ key, label, count }) => (
                 <button key={key} onClick={() => setFcFilter(key)} aria-pressed={fcFilter === key}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 34, padding: '0 14px', border: 'none', cursor: 'pointer',
@@ -438,7 +445,11 @@ export default function LaunchPage() {
               {fcStatus === 'ready' && fcFiltered.length === 0 && (
                 <div style={{ padding: 48, textAlign: 'center', color: 'var(--zm-fg-3)', fontFamily: 'var(--zm-font-body)', fontSize: 13 }}>
                   {needle
-                    ? 'No closures match your search.'
+                    // Search runs over the loaded rows only, so say so rather than
+                    // report an absence that has not been established.
+                    ? (fcHasMore
+                      ? `No match in the ${fcItems.length} loaded — use “View more” to search the rest.`
+                      : 'No closures match your search.')
                     : fcFilter === 'closed' ? 'No closed sites yet.' : 'No sites are in financial closure.'}
                 </div>
               )}

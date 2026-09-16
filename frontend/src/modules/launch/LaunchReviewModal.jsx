@@ -107,7 +107,18 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
   const handleSaveRent = async () => {
     setSaving(true); setErr(null); setSavedFlash(false);
     try {
-      hydrate(await saveLaunchRentFields(siteId, buildLaunchRentPayload(form)));
+      // The exec may edit rent_start_date and nothing else, so that is all they
+      // send. buildLaunchRentPayload does not echo the stored record back — it
+      // NORMALISES it, nulling rev_share_pct for a fixed rent and the flat
+      // dine-in/delivery split for a staggered one. On a row seeded with either,
+      // those rewrites are real changes to fields the exec may not touch, and
+      // the backend 422s naming a field they never edited. Since rent_start_date
+      // is required before the final confirm, that made the site unlaunchable
+      // with no in-app way out (#496). PATCH is partial by contract.
+      const payload = isSupervisor
+        ? buildLaunchRentPayload(form)
+        : { rent_start_date: form.rent_start_date ?? null };
+      hydrate(await saveLaunchRentFields(siteId, payload));
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2200);
     } catch (e) {
