@@ -1359,10 +1359,9 @@ async def svc_qa_reports_for_site(
     from app.services.storage_service import signed_url  # local: avoids storage import at load
 
     site = await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
-    # or_none, not or_create: this is a read, and the created row was thrown away
-    # by the rollback below a few lines later. It bought nothing and cost an
-    # INSERT plus a SAVEPOINT on every call. A site with no review row reads as
-    # never-viewed, which is what the freshly-created row said too.
+    # or_none, not or_create: this is a read, and the rollback below discarded the
+    # created row anyway — an INSERT plus SAVEPOINT per call for nothing. No row
+    # reads as never-viewed, exactly as the fresh one did.
     review = await _fetch_review_or_none(session, site_id=site.id)
     reports = await _fetch_qa_reports(session, site_id=site.id)
     before, after = reports.get("before"), reports.get("after")

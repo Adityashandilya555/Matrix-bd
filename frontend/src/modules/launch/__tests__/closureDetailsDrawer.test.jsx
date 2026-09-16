@@ -407,6 +407,27 @@ describe('ClosureDetailsDrawer — Documents tab', () => {
     expect(getSiteDocuments).toHaveBeenCalledTimes(1);
   });
 
+  it('survives a tab switch while the documents request is still in flight', async () => {
+    // Load-once was first tracked in a ref set BEFORE the request settled, so
+    // switching away tore the effect down (cancelling the load) while the ref
+    // said "already loaded" — coming back skipped the retry and the tab sat on
+    // "Loading documents…" forever. The latch must not cancel an in-flight load.
+    let release;
+    getSiteDocuments.mockReturnValue(new Promise((resolve) => { release = resolve; }));
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+    await screen.findByText(/Loading documents/i);
+
+    await user.click(screen.getByRole('button', { name: /^Closure/ }));
+    release({ documents: [doc()] });
+    await openDocuments(user);
+
+    expect(await screen.findByText('loi-signed.pdf')).toBeTruthy();
+    expect(getSiteDocuments).toHaveBeenCalledTimes(1);
+  });
+
   it('shows an empty state when the site has nothing attached', async () => {
     getSiteDocuments.mockResolvedValue({ documents: [] });
     getClosureQAReports.mockResolvedValue({ before: null, after: null });

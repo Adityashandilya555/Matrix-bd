@@ -32,15 +32,18 @@ const COLS = '0.8fr 1.5fr 0.9fr 1.3fr 0.9fr 0.6fr';
 
 export default function FinancialClosureTab() {
   const [filter, setFilter] = React.useState('pending'); // 'pending' | 'closed'
-  // Both bucket counts come from the server. Deriving them from `items` counted
-  // the loaded page only, so with >50 sites in closure the Closed tab could read
-  // "No sites have completed closure yet" with closed sites on page 2 (#498).
+  // Server-side counts: derived from `items` they covered the loaded page only,
+  // so the Closed tab read "nothing closed yet" with closed sites on page 2 (#498).
   const [counts, setCounts] = React.useState({ pending: 0, closed: 0 });
+  const filterRef = React.useRef(filter);
+  filterRef.current = filter;
   const {
     items, total, status, error, hasMore, loadingMore, loadMore, reload,
   } = usePagedList(async ({ limit, offset }) => {
     const r = await getFCQueue({ limit, offset, closed: filter === 'closed' });
-    setCounts({ pending: r.pendingTotal, closed: r.closedTotal });
+    // Dropped if a newer filter is already in flight — otherwise a slow
+    // superseded response overwrites the current totals with older ones.
+    if (filterRef.current === filter) setCounts({ pending: r.pendingTotal, closed: r.closedTotal });
     return r;
   }, { deps: [filter] });
 

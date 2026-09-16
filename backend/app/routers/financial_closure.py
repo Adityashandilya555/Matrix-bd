@@ -188,16 +188,9 @@ async def fc_qa_reports(
     could otherwise mint by guessing site ids.
 
     The closure check is what keeps it narrow for a SUPERVISOR, who gets no
-    per-site narrowing at all. Dropping require_module here was right — the
-    module claim was barring the Launch Sites supervisor for an unrelated reason,
-    and tenant isolation comes from fetch_site_or_404, not from the gate — but it
-    left this route broader than the two it sits beside: /queue is confined by
-    `financial_closure_status != 'pending'` and /{site_id} by
-    _assert_closure_open, while this one had nothing, so any supervisor in the
-    tenant could mint signed URLs for the quality-audit PDFs of any site,
-    including sites never sent to closure. Confining it to sites the closure
-    summary can already list restores the intended surface without narrowing the
-    supervisor access this route was added for.
+    per-site narrowing at all. Both siblings are already confined to sites in
+    closure (/queue by status, /{site_id} by _assert_closure_open); without it any
+    supervisor could mint signed QA-report URLs for any site in the tenant.
     """
     if _is_executive(current_user):
         ok = await svc_is_delegated(db, tenant_id=tenant_id, site_id=site_id, user_id=current_user["sub"], module=_MODULE)

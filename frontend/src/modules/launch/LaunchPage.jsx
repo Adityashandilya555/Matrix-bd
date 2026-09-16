@@ -124,6 +124,8 @@ export default function LaunchPage() {
   // that is one page of ONE bucket now, and the tab strip shows the pending count
   // even while the Closed tab is the one being paged (#498).
   const [fcCounts, setFcCounts] = React.useState({ pending: 0, closed: 0 });
+  const fcFilterRef = React.useRef(fcFilter);
+  fcFilterRef.current = fcFilter;
   const {
     items: fcItems,
     total: fcTotal,
@@ -134,11 +136,12 @@ export default function LaunchPage() {
   } = usePagedList(async ({ limit, offset }) => {
     if (!isSupervisor) return { items: [], total: 0 };
     const r = await getFCQueue({ limit, offset, closed: fcFilter === 'closed' });
-    setFcCounts({ pending: r.pendingTotal, closed: r.closedTotal });
+    // Dropped if a newer filter is already in flight — otherwise a slow
+    // superseded response overwrites the current totals with older ones.
+    if (fcFilterRef.current === fcFilter) setFcCounts({ pending: r.pendingTotal, closed: r.closedTotal });
     return r;
-  // deps: the fetcher branches on isSupervisor, so a role that resolves after
-  // mount must refetch rather than leave the previous role's list in place; and
-  // on fcFilter, which is now a server filter rather than a client-side split.
+  // Refetch when the role resolves after mount, and when the filter changes —
+  // it is a server filter now, not a client-side split.
   }, { deps: [isSupervisor, fcFilter] });
 
   const [review, setReview] = React.useState(null); // { siteId, role: 'exec' | 'supervisor' }

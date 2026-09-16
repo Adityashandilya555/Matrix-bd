@@ -78,6 +78,30 @@ describe('usePagedList', () => {
     expect(fetchPage).toHaveBeenCalledTimes(1);
   });
 
+  it('clears loadingMore when a reload supersedes the in-flight page', async () => {
+    // setLoadingMore(false) used to be gated on the reqId check alongside the
+    // data writes, so a reload landing mid-page (a filter switch, a refresh)
+    // left the superseded request unable to clear the flag — the "View more"
+    // button then sat on "Loading…" for good.
+    let releaseSecond;
+    const fetchPage = vi.fn(({ offset }) => {
+      if (offset === 0) return Promise.resolve({ items: [{ id: 'a' }], total: 10 });
+      return new Promise((resolve) => {
+        releaseSecond = () => resolve({ items: [{ id: 'b' }], total: 10 });
+      });
+    });
+    const { result } = renderHook(() => usePagedList(fetchPage, { pageSize: 1 }));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    await act(async () => { result.current.loadMore(); });
+    await waitFor(() => expect(result.current.loadingMore).toBe(true));
+
+    await act(async () => { result.current.reload(); });
+    await act(async () => { releaseSecond(); });
+
+    await waitFor(() => expect(result.current.loadingMore).toBe(false));
+  });
+
   it('surfaces a load error as status "error"', async () => {
     const fetchPage = makeFetchPage(10, { failOnOffset: 0 });
     const { result } = renderHook(() => usePagedList(fetchPage, { pageSize: 50 }));

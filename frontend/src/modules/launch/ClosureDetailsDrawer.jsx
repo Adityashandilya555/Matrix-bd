@@ -166,27 +166,16 @@ export default function ClosureDetailsDrawer({
     return () => { alive = false; };
   }, [siteId, fetchDocuments, fetchQAReports]);
 
-  // Loaded the first time the Documents tab is opened, and not again on a tab
-  // switch. Listing signs one storage object per file, so keying this on `tab`
-  // re-signed the whole set every time the reader flicked back (#499). Staleness
-  // is handled where it shows up instead: the lightbox re-signs on a load error,
-  // and Retry re-runs this by hand.
-  // Tracked in a ref, not read off docs.status: status is state, so gating on it
-  // puts it in the dep array, the effect re-runs the moment loadDocs flips to
-  // 'loading', and the previous run's cleanup sets alive=false — killing the
-  // request it just started and leaving the tab on "Loading documents…" forever.
-  // The ref holds the site it loaded for, so a drawer reused for another site
-  // still fetches.
-  const docsLoadedForRef = React.useRef(null);
-  React.useEffect(() => {
-    if (tab !== 'documents' || docsLoadedForRef.current === siteId) return undefined;
-    docsLoadedForRef.current = siteId;
-    return loadDocs();
-  }, [tab, siteId, loadDocs]);
+  // Load once per site, the first time Documents is opened. Keyed on a latch
+  // rather than `tab`: listing signs one storage object per file, so re-running
+  // on every tab switch re-signed the whole set (#499) — and tearing the effect
+  // down mid-request cancelled the load, leaving the tab stuck on "Loading".
+  const [docsOpened, setDocsOpened] = React.useState(false);
+  React.useEffect(() => { if (tab === 'documents') setDocsOpened(true); }, [tab]);
+  React.useEffect(() => (docsOpened ? loadDocs() : undefined), [docsOpened, loadDocs]);
 
-  // Re-fetching the list is the only way to get a fresh URL, since signing is
-  // server-side and keyed by storage path. Called only from the lightbox's error
-  // path, so this costs nothing until a URL has actually expired.
+  // Re-signing is server-side and keyed by storage path, so the whole list has
+  // to be re-fetched. Called only from the lightbox's error path.
   const refreshUrl = React.useCallback(async (photo) => {
     const r = await fetchDocuments(siteId);
     return (r?.documents || []).find((x) => x.id === photo?.id)?.url || null;

@@ -29,26 +29,19 @@ export default function ImageLightbox({ open, photo, onClose, onRefreshUrl }) {
   const [src, setSrc] = React.useState(photo?.url || null);
   const [failed, setFailed] = React.useState(false);
 
-  // Start from the URL the list was fetched with, and reset the one-shot retry
-  // for each newly previewed file.
-  //
-  // It does NOT re-sign here. Signed URLs live 300s and every caller's
-  // onRefreshUrl re-signs the site's WHOLE document list to recover one of them
-  // — one storage round-trip per file, capped at 8 concurrent, so a site with 25
-  // documents paid 25 of them every time a preview was opened (#499). The URL is
-  // usually still valid, and onImgError below already recovers the case where it
-  // is not, so the expiry is handled on the path where it actually happens.
+  // Reset to the URL the list was fetched with, and re-arm the one-shot retry.
+  // Deliberately no re-sign here: onRefreshUrl re-signs the site's WHOLE document
+  // list to recover one URL, a storage round-trip per file on every open (#499).
+  // onImgError handles the rarer expired URL instead.
   React.useEffect(() => {
     retriedRef.current = false;
     setFailed(false);
     setSrc(photo?.url || null);
   }, [open, photo]);
 
-  // Escape, the Tab trap, focus-in and focus-restore, shared with every other
-  // dialog. Using the hook rather than a private copy is what makes the lightbox
-  // participate in the overlay stack: opened over a drawer that also uses it,
-  // the lightbox is topmost and takes the keys, instead of the drawer behind it
-  // closing on an Escape meant for the preview (#497).
+  // Escape, Tab trap, focus-in and focus-restore. Sharing the hook rather than
+  // keeping a private copy is what puts the lightbox on the overlay stack, so it
+  // takes the keys from the drawer it was opened over (#497).
   useDialogFocus(open && Boolean(photo), panelRef, onClose);
 
   // Counted, so the order overlays close in does not matter: save/restore of a

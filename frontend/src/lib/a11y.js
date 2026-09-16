@@ -23,28 +23,19 @@ export const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:no
 // `onEscape` is captured in a ref so a caller passing an inline arrow does not
 // tear down and rebuild the listener on every render.
 //
-// The keydown listener is CAPTURE-phase and stops propagation, because the
-// surfaces these dialogs sit on (Drawer, LaunchReviewModal) register their own
-// Escape handlers on window. Without capturing, one press would dismiss the
-// dialog and the surface behind it together.
+// The keydown listener is CAPTURE-phase and stops propagation: the surfaces
+// these dialogs sit on (Drawer, LaunchReviewModal) register their own Escape
+// handlers on window, and one press must not dismiss both.
 //
-// But capture+stopPropagation ALONE is positional, not semantic: whoever
-// registered in the earliest phase wins, which is not the same as "the overlay
-// on top". An overlay opened INSIDE a consumer of this hook (ImageLightbox
-// inside ClosureDetailsDrawer) is the topmost thing on screen yet loses every
-// key to the drawer behind it — Escape closed the drawer instead of the preview,
-// and Tab was confined to the drawer's panel while a lightbox was over it (#497).
+// But phase alone is positional, not semantic — earliest registrant wins, which
+// is not "the overlay on top". An overlay opened INSIDE a consumer (ImageLightbox
+// inside ClosureDetailsDrawer) lost every key to the drawer behind it (#497). So
+// ownership is explicit: each active dialog pushes onto a shared stack and a
+// handler acts only while its entry is on top. Same shape as lib/scrollLock.js.
 //
-// So ownership is tracked explicitly. Every active dialog pushes onto a shared
-// stack, and a handler acts only while its own entry is on top. Same counted-
-// module shape as lib/scrollLock.js, and for the same reason: with two overlays
-// open at once, the correct answer depends on the pair, not on either alone.
-//
-// Order is registration order, which is opening order — an overlay opened from
-// inside another arms this hook later and therefore wins. Two overlays armed in
-// the SAME commit would register inner-first (React runs child effects before
-// parent ones); nothing opens that way today, since an overlay renders nothing
-// and arms nothing until it is actually opened.
+// Order is opening order. Two dialogs armed in the same commit would register
+// inner-first (child effects run before parent), but nothing opens that way — an
+// overlay arms nothing until it is actually opened.
 const stack = [];
 
 export function useDialogFocus(active, panelRef, onEscape) {

@@ -37,8 +37,8 @@ def _queue(session, **kw):
 
 def _counted(make_session, fake_result):
     return make_session(
-        fake_result(scalar=40),      # COUNT(*) of the closed bucket
-        fake_result(scalar=60),      # COUNT(*) of everything still moving
+        # One aggregate pass returns both buckets as (closed, pending).
+        fake_result(all_rows=[(40, 60)]),
         fake_result(all_rows=[]),    # the page itself
     )
 
@@ -70,8 +70,18 @@ def test_unfiltered_totals_the_whole_queue(make_session, fake_result):
 
 
 def _page_sql(session) -> str:
-    """The third statement: the two counts run first, then the page."""
-    return session.executed[2]
+    """The second statement: the combined count runs first, then the page."""
+    return session.executed[1]
+
+
+def test_both_buckets_are_counted_in_a_single_query(make_session, fake_result):
+    # Two separate count_rows calls meant two scans of the joined queue per
+    # request. COUNT(*) FILTER gets both buckets in one pass, so a paginated
+    # read costs the same one count it did before the split was added.
+    session = _counted(make_session, fake_result)
+    _queue(session, closed=True)
+
+    assert len(session.executed) == 2   # the count, then the page
 
 
 # The base predicate (financial_closure_status != 'pending') binds ..._1, so the

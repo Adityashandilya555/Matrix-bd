@@ -91,8 +91,7 @@ export async function getFCQueue({ limit, offset, closed } = {}) {
   const params = {};
   if (limit != null) params.limit = limit;
   if (offset != null) params.offset = offset;
-  // The Pending/Closed split is a server filter, so each tab pages independently
-  // and its total counts the whole bucket rather than the loaded page (#498).
+  // Server-side split: each tab pages independently with its own total (#498).
   if (closed != null) params.closed = closed;
   const data = await client.get('/financial-closure/queue', { params }).then((r) => r.data);
   return {
