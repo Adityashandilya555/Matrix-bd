@@ -28,7 +28,8 @@ import ApprovalCenter from './approval/ApprovalCenter.jsx';
 import DepartmentsTab from './departments/DepartmentsTab.jsx';
 import { mergePending } from './departments/pendingQueue.js';
 import SitesTab, { classifyCounts } from './sites/SitesTab.jsx';
-import LaunchApprovalTab from './launch/LaunchApprovalTab.jsx';
+import LaunchApprovalTab, { LAUNCH_ACTIONABLE_STATUSES } from './launch/LaunchApprovalTab.jsx';
+import { getLaunchQueue } from '../../services/api/launchApprovalApi.js';
 import FinancialClosureTab from './closure/FinancialClosureTab.jsx';
 import WorkspaceSwitcherPanel from './WorkspaceSwitcherPanel.jsx';
 
@@ -66,6 +67,7 @@ export const REAL_FETCHERS = {
   removeOrgUser,
   rotateDeptCode,
   listOrg:           getOrg,
+  listLaunchQueue:   getLaunchQueue,
   listSites:         getAllSites,
   fetchSiteHistory:  getSiteHistory,
 };
@@ -128,6 +130,19 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     try { setObserverCode(await fetchers.getObserverCode()); } catch { /* section still renders */ }
   }, [fetchers]);
   React.useEffect(() => { loadObserverCode(); }, [loadObserverCode]);
+  // Launch approvals — fetched here too, so the sidebar can carry a badge for
+  // work waiting on the admin without the tab having to be open. The tab keeps
+  // its own copy: it needs the full queue for its filters either way.
+  // Defaulted so an injected fetcher set without this key (the dev preview,
+  // tests) renders a badge-less item instead of erroring; memoized because
+  // useQueue re-runs whenever the fetcher identity changes.
+  const listLaunchQueue = React.useMemo(
+    () => fetchers.listLaunchQueue || (async () => ({ items: [] })),
+    [fetchers],
+  );
+  const [launchQueue, loadLaunchQueue] = useQueue(listLaunchQueue);
+  const launchActionable = (launchQueue.items || [])
+    .filter((i) => LAUNCH_ACTIONABLE_STATUSES.includes(i.status)).length;
   // Sites
   const [sites, loadSites] = useQueue(fetchers.listSites);
 
@@ -279,7 +294,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
 
   const refreshAll = async (silent = false) => {
     if (!silent) setRefreshingAll(true);
-    try { await Promise.all([reloadApprovals(true), loadSupervisors(true), loadExecutiveRequests(true), loadOrg(true), loadSites(true)]); }
+    try { await Promise.all([reloadApprovals(true), loadSupervisors(true), loadExecutiveRequests(true), loadOrg(true), loadSites(true), loadLaunchQueue(true)]); }
     finally { if (!silent) setRefreshingAll(false); }
   };
 
@@ -290,11 +305,11 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
       if (document.visibilityState !== 'hidden') refreshAll(true);
     }, 30000);
     return () => window.clearInterval(pollId);
-  }, [reloadApprovals, loadSupervisors, loadExecutiveRequests, loadOrg, loadSites]);
+  }, [reloadApprovals, loadSupervisors, loadExecutiveRequests, loadOrg, loadSites, loadLaunchQueue]);
 
   const navItems = [
     { ...TABS[0], count: approvalSites.length },
-    { ...TABS[1] }, // Launch Approvals — count fetched inside the tab
+    { ...TABS[1], count: launchActionable },
     { ...TABS[2] }, // Financial Closure — count fetched inside the tab
     { ...TABS[3], count: pendingAccessCount + executiveRequests.items.length },
     { ...TABS[4] },

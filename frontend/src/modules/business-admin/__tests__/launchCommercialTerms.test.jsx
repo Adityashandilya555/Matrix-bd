@@ -6,7 +6,7 @@
 // Scaffolding mirrors launchApprovalRentV2.test.jsx — the feature flag is read at
 // module load, so the tab is imported dynamically after resetModules.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const { getLaunchApproval, saveLaunchRentFields, finalConfirm, state } = vi.hoisted(() => ({
@@ -137,10 +137,33 @@ describe('LaunchApprovalTab — commercial terms', () => {
     await openDrawer(user);
     await user.click(await screen.findByRole('button', { name: /Confirm & commit/i }));
 
-    expect(await screen.findByText(/Rent start date is required/i)).toBeTruthy();
+    // The guard is a dialog listing what is missing, not an inline message.
+    const dialog = await screen.findByRole('alertdialog', { name: /Required field missing/i });
+    expect(within(dialog).getByText(/Rent start date/i)).toBeTruthy();
     expect(finalConfirm).not.toHaveBeenCalled();
+    // A required field has no override — the backend refuses that commit anyway.
+    expect(within(dialog).queryByRole('button', { name: /Commit anyway/i })).toBeNull();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Back' }));
     // The guard opens the section holding the field it is asking for.
     expect(screen.getByRole('button', { name: 'Save commercial changes' })).toBeTruthy();
+  });
+
+  it('lists unset commercial terms but lets the admin commit past them', async () => {
+    state.queueStatus = 'pending_admin_final';
+    getLaunchApproval.mockResolvedValue(record({ rent_start_date: '2026-05-01', brokerage: null }));
+    finalConfirm.mockResolvedValue(record({ rent_start_date: '2026-05-01', status: 'ready_to_launch' }));
+    const user = userEvent.setup();
+    await renderTab();
+    await openDrawer(user);
+    await user.click(await screen.findByRole('button', { name: /Confirm & commit/i }));
+
+    const dialog = await screen.findByRole('alertdialog', { name: /Some terms are not set/i });
+    expect(within(dialog).getByText('Brokerage')).toBeTruthy();
+    expect(finalConfirm).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole('button', { name: /Commit anyway/i }));
+    await waitFor(() => expect(finalConfirm).toHaveBeenCalled());
   });
 
   it('allows Confirm & commit once a rent start date is set', async () => {
