@@ -195,9 +195,8 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   // same user coming back, who then sees a warning about edits already gone.
   React.useEffect(() => { setTab('review'); setPendingAction(null); }, [siteId]);
 
-  // aria-modal is a promise that focus is contained; the hook keeps it. It also
-  // takes Escape in the capture phase, because Drawer registers its own Escape
-  // handler on window and one press would otherwise close both.
+  // aria-modal promises focus containment; the hook keeps it and, as the topmost
+  // overlay, owns Escape — so one press does not also close the Drawer beneath.
   const unsavedRef = React.useRef(null);
   const dismissPending = React.useCallback(() => setPendingAction(null), []);
   useDialogFocus(Boolean(pendingAction), unsavedRef, dismissPending);
@@ -524,7 +523,10 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
 
       {siteId && pendingAction && (
         <ModalPortal>
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(8,10,14,0.62)', backdropFilter: 'blur(3px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          {/* pointerEvents is explicit: .ac-portal-root is pointer-events:none and
+              the value inherits, so without this every button here is dead to the
+              mouse and clicks fall through to the Drawer (#495). */}
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(8,10,14,0.62)', backdropFilter: 'blur(3px)', zIndex: 200, pointerEvents: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
             <div ref={unsavedRef} role="dialog" aria-modal="true" aria-labelledby="ac-unsaved-title" tabIndex={-1}
               style={{ width: 430, maxWidth: '100%', outline: 'none' }}>
             <Card style={{ padding: '20px 22px' }}>

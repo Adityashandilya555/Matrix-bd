@@ -16,7 +16,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -68,6 +68,20 @@ def _assert_closure_open(site: models.Site) -> None:
             status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Financial Closure has not been opened for this site yet.",
         )
+
+
+async def svc_assert_in_closure(
+    session: AsyncSession, *, tenant_id: str | UUID, site_id: str | UUID,
+) -> None:
+    """404/422 unless the site has actually been sent to financial closure.
+
+    Public form of ``_assert_closure_open``. ``svc_qa_reports_for_site`` is shared
+    with the project and project_excellence routes, which legitimately read
+    reports for non-closure sites, so the check cannot live inside it.
+    """
+    _assert_closure_open(
+        await fetch_site_or_404(session, site_id=site_id, tenant_id=tenant_id)
+    )
 
 
 async def _active_fc_delegate(
@@ -314,12 +328,18 @@ async def svc_fc_queue(  # skipcq: PY-R1000
     restrict_to_site_ids: Optional[list[str]] = None,
     limit: int = 500,
     offset: int = 0,
+    closed: Optional[bool] = None,
 ) -> FCQueueResponse:
     """Return one page of the Financial Closure queue, newest-launched first.
 
     Paginated (``limit``/``offset``) so the queue and its per-row budget lookups
-    are bounded by page size (#230). Executive scoping is applied before
-    pagination. ``total`` is the page row count.
+    are bounded by page size (#230). ``total`` is the true count of the filtered
+    set, not the page.
+
+    ``closed`` selects the bucket the UI shows as a tab: True for completed
+    closures, False for everything still moving, None for both. Filtered here
+    rather than over the loaded page because ``launched_at DESC`` has no relation
+    to closure state, so a page can legitimately be all one bucket (#498).
     """
     async with transaction(session):
         stmt = (
@@ -337,13 +357,37 @@ async def svc_fc_queue(  # skipcq: PY-R1000
             if not restrict_to_site_ids:
                 return FCQueueResponse(items=[], total=0)
             stmt = stmt.where(models.Site.id.in_(restrict_to_site_ids))
-        total = await count_rows(session, stmt)
+
+        # Both bucket counts in ONE pass, before the bucket filter narrows the
+        # statement: each tab shows a count, so the one not being paged needs a
+        # number too. FILTER keeps that to a single scan. The base already
+        # excludes 'pending', so "not closed" is open/allocated/budgeting.
+        counted = stmt.order_by(None).subquery()
+        is_closed_col = counted.c.financial_closure_status == "closed"
+        row = (await session.execute(
+            select(
+                func.count().filter(is_closed_col),
+                func.count().filter(~is_closed_col),
+            ).select_from(counted)
+        )).first()
+        closed_total, pending_total = (int(row[0]), int(row[1])) if row else (0, 0)
+
+        if closed is not None:
+            is_closed = models.Site.financial_closure_status == "closed"
+            stmt = stmt.where(is_closed if closed else ~is_closed)
+        total = (
+            closed_total if closed is True
+            else pending_total if closed is False
+            else closed_total + pending_total
+        )
+        counts = {"pending_total": pending_total, "closed_total": closed_total}
+
         rows = (await session.execute(
             stmt.order_by(models.Site.launched_at.desc(), models.Site.id).limit(limit).offset(offset)
         )).all()
 
         if not rows:
-            return FCQueueResponse(items=[], total=total)
+            return FCQueueResponse(items=[], total=total, **counts)
 
         gfc_by_site, gfc_items_by_budget, closure_items_by_budget, delegates_by_site, names = (
             await _batch_fc_prefetch(session, rows=rows, tenant_id=tenant_id)
@@ -372,7 +416,7 @@ async def svc_fc_queue(  # skipcq: PY-R1000
                 closure_budget_total=closure_total,
                 variation_total=_variation_total(sum(variation.values()), gfc_total, closure_total),
             ))
-        return FCQueueResponse(items=items, total=total)
+        return FCQueueResponse(items=items, total=total, **counts)
 
 
 async def svc_get_fc(

@@ -34,6 +34,21 @@ const row = (over = {}) => ({
   variationTotal: null, ...over,
 });
 
+// Mirrors the server: /financial-closure/queue filters by `closed` and returns
+// BOTH bucket counts, so one page is one bucket while the tabs still show two
+// numbers (#498). A mock that ignored `closed` would let a client-side split
+// over the loaded page keep passing, which is precisely the bug.
+const queue = (all) => async ({ closed } = {}) => {
+  const done = (r) => r.financialClosureStatus === 'closed';
+  const items = all.filter((r) => (closed ? done(r) : !done(r)));
+  return {
+    items,
+    total: items.length,
+    pendingTotal: all.filter((r) => !done(r)).length,
+    closedTotal: all.filter(done).length,
+  };
+};
+
 async function renderTab() {
   vi.resetModules();
   const { default: FinancialClosureTab } = await import('../closure/FinancialClosureTab.jsx');
@@ -45,7 +60,7 @@ beforeEach(() => {
   getFCAdminDetail.mockReset();
   getFCQueue.mockReset();
   getFC.mockReset();
-  getFCQueue.mockResolvedValue({ items: [row()], total: 1 });
+  getFCQueue.mockImplementation(queue([row()]));
   getFCAdminQueue.mockResolvedValue({ items: [], total: 0 });
   getFCAdminDetail.mockResolvedValue({
     siteId: 'f1', siteCode: 'CA-301', siteName: 'Powai', city: 'Mumbai',
@@ -80,23 +95,42 @@ describe('Business Admin — Financial Closure tab', () => {
     expect(screen.getByText('Business Admin')).toBeTruthy();
   });
 
-  it('splits Pending from Closed', async () => {
-    getFCQueue.mockResolvedValue({
-      items: [
-        row({ siteId: 'f1', siteName: 'Open one', financialClosureStatus: 'open' }),
-        row({ siteId: 'f2', siteName: 'Done one', financialClosureStatus: 'closed', closureStatus: 'approved' }),
-      ],
-      total: 2,
-    });
+  it('splits Pending from Closed ON THE SERVER, not over the loaded page', async () => {
+    // launched_at DESC has no relation to closure state, so the first page can
+    // legitimately be all-open. Bucketing client-side made the Closed tab read
+    // "No sites have completed closure yet" with closed sites on page 2 (#498).
+    getFCQueue.mockImplementation(queue([
+      row({ siteId: 'f1', siteName: 'Open one', financialClosureStatus: 'open' }),
+      row({ siteId: 'f2', siteName: 'Done one', financialClosureStatus: 'closed', closureStatus: 'approved' }),
+    ]));
     const user = userEvent.setup();
     await renderTab();
     await screen.findByText('Open one');
     expect(screen.queryByText('Done one')).toBeNull();
+    expect(getFCQueue).toHaveBeenLastCalledWith(expect.objectContaining({ closed: false }));
 
     await user.click(screen.getByRole('button', { name: /^Closed/ }));
 
     await waitFor(() => expect(screen.getByText('Done one')).toBeTruthy());
     expect(screen.queryByText('Open one')).toBeNull();
+    // Re-fetched for the other bucket rather than re-filtering what was loaded.
+    expect(getFCQueue).toHaveBeenLastCalledWith(expect.objectContaining({ closed: true }));
+  });
+
+  it('counts both buckets from the server, not from the loaded page', async () => {
+    // The inactive tab's number has to be right too, and it cannot be derived
+    // from rows that were never fetched.
+    getFCQueue.mockImplementation(async ({ closed } = {}) => ({
+      items: closed ? [] : [row({ siteName: 'Open one', financialClosureStatus: 'open' })],
+      total: closed ? 40 : 60,
+      pendingTotal: 60,
+      closedTotal: 40,
+    }));
+    await renderTab();
+    await screen.findByText('Open one');
+
+    expect(screen.getByRole('button', { name: /^Pending/ })).toHaveTextContent('60');
+    expect(screen.getByRole('button', { name: /^Closed/ })).toHaveTextContent('40');
   });
 
   it('searches across code, site and pending with', async () => {
@@ -141,7 +175,7 @@ describe('Business Admin — Financial Closure tab', () => {
   });
 
   it('shows an empty state when nothing is in closure', async () => {
-    getFCQueue.mockResolvedValue({ items: [], total: 0 });
+    getFCQueue.mockImplementation(queue([]));
     await renderTab();
     expect(await screen.findByText('No sites are in financial closure.')).toBeTruthy();
   });

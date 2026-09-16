@@ -83,6 +83,25 @@ describe('LaunchApprovalTab — unsaved changes guard', () => {
     expect(sendForReview).not.toHaveBeenCalled();
   });
 
+  it('keeps the dialog clickable — .ac-portal-root is pointer-events:none', async () => {
+    // pointer-events inherits, and ModalPortal's wrapper sets it to none so it
+    // never blocks the page while empty. Without an explicit 'auto' on the scrim
+    // every button in this dialog is dead to the mouse and the clicks fall
+    // through to the Drawer behind it (#495). Asserted on the INLINE style,
+    // because jsdom never applies approval-center.css — which is exactly why the
+    // userEvent clicks in the tests above kept passing while the real browser
+    // could not dismiss the dialog at all.
+    getLaunchApproval.mockResolvedValue(record());
+    const user = userEvent.setup();
+    await renderTab();
+    await openDrawer(user);
+    await makeDirty(user);
+    await user.click(screen.getByRole('button', { name: /Send for review/i }));
+
+    const dialog = await screen.findByRole('dialog', { name: /You have unsaved changes/i });
+    expect(dialog.parentElement.style.pointerEvents).toBe('auto');
+  });
+
   it('Back dismisses the dialog and does not advance the stage', async () => {
     getLaunchApproval.mockResolvedValue(record());
     const user = userEvent.setup();
