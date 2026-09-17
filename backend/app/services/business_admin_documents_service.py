@@ -23,7 +23,18 @@ from app.services import storage_service
 from app.services._common import fetch_site_or_404
 
 # Coarse module label per site_files type, for the admin's at-a-glance grouping.
-_SITE_FILE_MODULE = {"loi": "BD", "photo": "BD", "quality_audit": "Project"}
+# Every file_type the CHECK constraint allows is listed: an unmapped type used to
+# fall back to "BD", which filed Project Excellence and Financial Closure
+# attachments under BD — three unrelated uploads read as one section of
+# duplicates. "Quality audit" matches the label the closure drawer gives the QA
+# reports it merges in, so both land in one section instead of two.
+_SITE_FILE_MODULE = {
+    "loi": "BD",
+    "photo": "BD",
+    "quality_audit": "Quality audit",
+    "excellence": "Project Excellence",
+    "closure": "Financial Closure",
+}
 
 
 def deliverable_storage_path(file_url: Optional[str]) -> Optional[str]:
@@ -90,7 +101,7 @@ async def list_site_documents(
             "id": str(f.id),
             "file_name": f.file_name,
             "file_type": f.file_type,
-            "module": _SITE_FILE_MODULE.get(f.file_type, "BD"),
+            "module": _SITE_FILE_MODULE.get(f.file_type, "Other"),
             "uploaded_at": f.uploaded_at.isoformat() if f.uploaded_at else None,
             "uploaded_by": str(f.uploaded_by) if f.uploaded_by else None,
             "url": url,

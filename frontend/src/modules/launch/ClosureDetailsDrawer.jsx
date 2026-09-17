@@ -15,6 +15,8 @@ import ThemedPortal from '../shared/primitives/ThemedPortal.jsx';
 import { getFC, getClosureQAReports } from '../../services/api/financialClosureApi.js';
 import { getSiteDocuments } from '../../services/api/siteService.js';
 import ImageLightbox from '../shared/media/ImageLightbox.jsx';
+import { ScheduleTable } from '../shared/rent/RentScheduleDialog.jsx';
+import { ZM_TOKENS } from '../shared/rent/RentTermsForm.jsx';
 import { formatINR, formatVariation, variationTone, computeRatio } from '../../lib/budgetMetrics.js';
 import { CLOSURE_BUDGET_LABELS, CLOSURE_BUDGET_TONES } from '../financial_closure/closureStatus.js';
 import { useDialogFocus } from '../../lib/a11y.js';
@@ -52,15 +54,23 @@ function SectionLabel({ children }) {
   return <div style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)', marginBottom: 10 }}>{children}</div>;
 }
 
+// Rows of a staggered schedule, or [] for every other rent type. A staggered
+// rent is rendered as the shared Year / Escalation / Dine-in / Delivery table
+// (the same one the schedule dialog uses) rather than crammed onto one line.
+const scheduleRows = (d) => (
+  d?.rentType === 'staggered' && Array.isArray(d.staggeredEscalation)
+    ? d.staggeredEscalation.filter((e) => e && e.percent != null)
+    : []
+);
+
 function rentSummary(d) {
   if (!d?.rentType) return 'No rent type set';
   if (d.rentType === 'revshare') return `Revenue share · ${pct(d.expectedRevsharePct)} of sales`;
   if (d.rentType === 'mg_revshare') return `MG ${money(d.expectedRent)}/mo + ${pct(d.expectedRevsharePct)} above MG`;
   if (d.rentType === 'staggered') {
-    const sched = Array.isArray(d.staggeredEscalation) ? d.staggeredEscalation : [];
-    const years = sched.filter((e) => e && e.percent != null)
-      .map((e, i) => `Yr${e.year ?? i + 1} ${pct(e.percent)}`).join(' · ');
-    return `Staggered · base ${money(d.expectedRent)}/mo${years ? ` · ${years}` : ''}`;
+    // The per-year steps are in the table below, so this line carries only the
+    // base rent the schedule steps up from.
+    return `Base rent ${money(d.expectedRent)}/mo · steps up each year of the term`;
   }
   return `Fixed · ${money(d.expectedRent)}/mo · ${pct(d.expectedEscalationPct)} every ${d.expectedEscalationYears || '—'} yr`;
 }
@@ -70,8 +80,12 @@ function rentSummary(d) {
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i;
 const isImageDoc = (d) => IMAGE_EXT.test(d.fileName || '') || d.fileType === 'photo';
 
+// Fallback grouping for the shared documents endpoint, which sends no `module`.
+// Kept in step with the admin endpoint's own map (business_admin_documents_service)
+// so a file lands in the same section whichever surface opened the drawer.
 const MODULE_FOR_TYPE = {
   loi: 'BD', photo: 'BD', excellence: 'Project Excellence', closure: 'Financial Closure',
+  quality_audit: 'Quality audit',
 };
 const docModule = (d) => d.module
   || MODULE_FOR_TYPE[d.fileType]
@@ -161,7 +175,19 @@ export default function ClosureDetailsDrawer({
         setDocs({ status: 'error', items: [] });
         return;
       }
-      setDocs({ status: 'ready', items: [...qa, ...files] });
+      // A quality-audit report can reach the tab from both sources at once —
+      // its own endpoint and, on surfaces whose documents endpoint includes
+      // them, as a site_files row. Keyed on the storage object rather than the
+      // row id, since the two sources give the same file different ids; two
+      // genuinely separate uploads have separate objects and both survive.
+      const seen = new Set();
+      const items = [...qa, ...files].filter((doc) => {
+        const key = String(doc.url || '').split('?')[0] || `id:${doc.id}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      setDocs({ status: 'ready', items });
     });
     return () => { alive = false; };
   }, [siteId, fetchDocuments, fetchQAReports]);
@@ -339,6 +365,11 @@ export default function ClosureDetailsDrawer({
                     {RENT_TYPE_LABEL[d.rentType] || d.rentType || 'Rent'}
                   </div>
                   <div style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 600, color: 'var(--zm-fg)', marginTop: 3 }}>{rentSummary(d)}</div>
+                  {scheduleRows(d).length > 0 && (
+                    <div style={{ marginTop: 10 }}>
+                      <ScheduleTable rows={scheduleRows(d)} tokens={ZM_TOKENS} />
+                    </div>
+                  )}
                 </div>
               </div>
 

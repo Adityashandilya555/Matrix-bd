@@ -68,6 +68,23 @@ const TILE_STAGES = {
   complete: ['complete'],
 };
 
+// Stage options for the NSO stage dropdown, in pipeline order. Keyed on the
+// canonical buckets stageOf() returns, so a row matches the option it displays.
+const STAGE_OPTIONS = [
+  ['pending', 'Pending'],
+  ['stage_one', 'Property'],
+  ['stage_two', 'Licenses'],
+  ['stage_three', 'Launch'],
+  ['final_review', 'Final review'],
+  ['complete', 'Complete'],
+];
+
+const selectStyle = {
+  height: 36, padding: '0 10px', minWidth: 0,
+  background: 'var(--zm-bg)', border: '1px solid var(--zm-line)', borderRadius: 6,
+  fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', outline: 'none',
+};
+
 // Map a `?filter=<stage>` query value to the tile that covers that stage.
 // Accepts the backend aliases (final/done) as well as the canonical keys.
 const STAGE_TO_TILE = {
@@ -88,6 +105,12 @@ export default function NsoQueuePage() {
     usePagedList(({ limit, offset }) => getNsoQueue({ limit, offset }));
   // 'all' | 'property' | 'licenses' | 'complete' — KPI tile filter.
   const [filter, setFilter] = React.useState('all');
+  // Search + filter bar above the table. Client-side over the loaded rows, the
+  // same way the KPI tiles and the other modules' filter bars work.
+  const [query, setQuery] = React.useState('');
+  const [cityFilter, setCityFilter] = React.useState('all');
+  const [projectFilter, setProjectFilter] = React.useState('all');
+  const [stageFilter, setStageFilter] = React.useState('all');
   const focusId = useFocusSite();
 
   // HashRouter: query params live in the hash — always read via useLocation.
@@ -133,12 +156,35 @@ export default function NsoQueuePage() {
   }, [items]);
   const countFor = (tile) => counts[tile];
   const toggleTile = (tile) => setFilter((f) => (f === tile ? 'all' : tile));
+
+  // Options come from the loaded rows, so the dropdowns can only offer values
+  // that actually match something.
+  const cities = React.useMemo(
+    () => Array.from(new Set(items.map((i) => i.city).filter(Boolean))).sort(),
+    [items],
+  );
+  const projectStatuses = React.useMemo(
+    () => Array.from(new Set(items.map((i) => i.projectStatus).filter(Boolean))).sort(),
+    [items],
+  );
+
+  const needle = query.trim().toLowerCase();
+  const filtersActive = Boolean(needle) || cityFilter !== 'all' || projectFilter !== 'all' || stageFilter !== 'all';
+  const clearFilters = () => {
+    setQuery(''); setCityFilter('all'); setProjectFilter('all'); setStageFilter('all');
+  };
+
   // Memoized so the filtered list isn't recomputed on unrelated re-renders.
-  const visibleItems = React.useMemo(() => (
-    filter === 'all'
-      ? items
-      : items.filter((item) => TILE_STAGES[filter].includes(stageOf(item)))
-  ), [items, filter]);
+  // The KPI tile filter and the dropdowns narrow together (AND), so a tile stays
+  // meaningful while a search is running.
+  const visibleItems = React.useMemo(() => items.filter((item) => {
+    if (filter !== 'all' && !TILE_STAGES[filter].includes(stageOf(item))) return false;
+    if (cityFilter !== 'all' && item.city !== cityFilter) return false;
+    if (projectFilter !== 'all' && item.projectStatus !== projectFilter) return false;
+    if (stageFilter !== 'all' && stageOf(item) !== stageFilter) return false;
+    if (!needle) return true;
+    return `${item.siteCode || ''} ${item.siteName || ''} ${item.city || ''}`.toLowerCase().includes(needle);
+  }), [items, filter, cityFilter, projectFilter, stageFilter, needle]);
   const COLS = '120px minmax(220px, 1fr) 130px 150px 160px 110px';
 
   return (
@@ -158,6 +204,55 @@ export default function NsoQueuePage() {
         <StateKpiTile label="Licenses / launch" value={countFor('licenses')} sub="Active downstream checks" color="var(--zm-copper)" active={filter === 'licenses'} onClick={() => toggleTile('licenses')}/>
         <StateKpiTile label="Completed" value={countFor('complete')} sub="Final sign-off done" color="var(--zm-success)" active={filter === 'complete'} onClick={() => toggleTile('complete')}/>
       </div>
+
+      {items.length > 0 && (
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr 1fr auto', gap: 10, alignItems: 'center',
+          padding: 14, background: 'var(--zm-surface)', border: '1px solid var(--zm-line)',
+          borderRadius: 12, boxShadow: 'var(--zm-shadow-1)',
+        }}>
+          <div style={{ position: 'relative', minWidth: 0 }}>
+            <Icon name="search" size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--zm-fg-3)', pointerEvents: 'none' }}/>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by site name, code, or city…"
+              aria-label="Search by site name, code, or city"
+              style={{
+                width: '100%', minWidth: 0, boxSizing: 'border-box', height: 36, padding: '0 10px 0 32px',
+                background: 'var(--zm-bg)', border: '1px solid var(--zm-line)', borderRadius: 6,
+                fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)', outline: 'none',
+              }}
+            />
+          </div>
+          <select value={cityFilter} onChange={(e) => setCityFilter(e.target.value)} aria-label="Filter by city" style={selectStyle}>
+            <option value="all">City · all</option>
+            {cities.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} aria-label="Filter by project status" style={selectStyle}>
+            <option value="all">Project · all</option>
+            {projectStatuses.map((s) => <option key={s} value={s}>{pretty(s)}</option>)}
+          </select>
+          <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} aria-label="Filter by NSO stage" style={selectStyle}>
+            <option value="all">NSO stage · all</option>
+            {STAGE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <button
+            type="button"
+            onClick={clearFilters}
+            disabled={!filtersActive}
+            style={{
+              height: 36, padding: '0 14px', borderRadius: 6,
+              border: '1px solid var(--zm-line)', background: 'var(--zm-bg)',
+              color: filtersActive ? 'var(--zm-fg-2)' : 'var(--zm-fg-4)',
+              fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600,
+              cursor: filtersActive ? 'pointer' : 'default', whiteSpace: 'nowrap',
+            }}
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       {status === 'loading' && (
         <div className="zm-glass" style={{ padding: 24, textAlign: 'center', color: 'var(--zm-fg-3)' }}>

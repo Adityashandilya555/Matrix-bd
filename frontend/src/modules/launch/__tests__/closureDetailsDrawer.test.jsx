@@ -155,6 +155,25 @@ describe('ClosureDetailsDrawer', () => {
     expect(await screen.findByText(/Fixed · ₹2,05,000\/mo · 15% every 3 yr/)).toBeTruthy();
   });
 
+  it('renders a staggered rent as the shared schedule table, not a crammed line', async () => {
+    getFC.mockResolvedValue(record({
+      rentType: 'staggered', expectedRent: 6000,
+      staggeredEscalation: [
+        { year: 1, percent: 3, dine_in_pct: 6, delivery_pct: 3 },
+        { year: 2, percent: 4, dine_in_pct: 2, delivery_pct: 4 },
+      ],
+    }));
+    renderDrawer();
+
+    expect(await screen.findByText(/Base rent ₹6,000\/mo/)).toBeTruthy();
+    // One row per year, with the rev-share split in its own columns.
+    expect(screen.getByRole('columnheader', { name: 'Escalation' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'Dine-in' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'Delivery' })).toBeTruthy();
+    expect(screen.getByRole('cell', { name: 'Year 1' })).toBeTruthy();
+    expect(screen.getByRole('cell', { name: 'Year 2' })).toBeTruthy();
+  });
+
   it('shows a missing amount as a dash, never as zero rupees', async () => {
     getFC.mockResolvedValue(record({
       gfcBudgetTotal: null, closureBudgetTotal: null, variationTotal: null,
@@ -219,6 +238,27 @@ describe('ClosureDetailsDrawer — Documents tab', () => {
     expect(await screen.findByText('loi-signed.pdf')).toBeTruthy();
     expect(screen.getByText(/Before — before\.pdf/)).toBeTruthy();
     expect(screen.getByText(/After — after\.pdf/)).toBeTruthy();
+    expect(screen.getByText(/Quality audit · 2/)).toBeTruthy();
+  });
+
+  it('lists a file once when both sources return it', async () => {
+    // A QA report can arrive from its own endpoint AND as a site_files row on
+    // surfaces whose documents endpoint includes them. The two carry different
+    // ids for one stored object, so the row would otherwise render twice and
+    // inflate the group count.
+    getSiteDocuments.mockResolvedValue({
+      documents: [
+        doc(),
+        doc({ id: 'other-id', fileName: 'before.pdf', fileType: 'quality_audit', url: 'https://x/before.pdf?sig=second' }),
+      ],
+    });
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText('Powai', { exact: false });
+    await openDocuments(user);
+
+    await screen.findByText('loi-signed.pdf');
+    expect(screen.getAllByText(/before\.pdf/)).toHaveLength(1);
     expect(screen.getByText(/Quality audit · 2/)).toBeTruthy();
   });
 

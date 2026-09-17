@@ -103,3 +103,35 @@ describe('budget dirty-guard', () => {
     expect(screen.getByDisplayValue('500')).toBeInTheDocument();
   });
 });
+
+// The session mock above is an executive, id u1.
+describe('budget form after allocation', () => {
+  it('shades out the fields once the site is allocated to someone else', async () => {
+    getPE.mockResolvedValue(draft({ allocatedTo: 'u2', allocatedToName: 'Priya S.' }));
+    render(<ProjectExcellenceReviewPage/>);
+
+    const inputs = await screen.findAllByPlaceholderText('0');
+    expect(inputs.every((i) => i.disabled)).toBe(true);
+    // And says why, rather than leaving the shaded fields unexplained.
+    expect(screen.getByText(/Allocated to Priya S\./)).toBeInTheDocument();
+    // Read-only means no save/submit either.
+    expect(screen.queryByRole('button', { name: /save draft/i })).toBeNull();
+  });
+
+  it('leaves the form editable for the executive it is allocated to', async () => {
+    getPE.mockResolvedValue(draft({ allocatedTo: 'u1', allocatedToName: 'Me' }));
+    render(<ProjectExcellenceReviewPage/>);
+
+    const inputs = await screen.findAllByPlaceholderText('0');
+    expect(inputs.every((i) => i.disabled)).toBe(false);
+    expect(screen.getByRole('button', { name: /save draft/i })).toBeInTheDocument();
+  });
+
+  it('stays editable while the site is unallocated', async () => {
+    getPE.mockResolvedValue(draft());
+    render(<ProjectExcellenceReviewPage/>);
+
+    const inputs = await screen.findAllByPlaceholderText('0');
+    expect(inputs.every((i) => i.disabled)).toBe(false);
+  });
+});

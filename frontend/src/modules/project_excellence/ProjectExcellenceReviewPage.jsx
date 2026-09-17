@@ -315,7 +315,17 @@ export default function ProjectExcellenceReviewPage() {
   const budgetTotal = budgetItems.reduce((s, item) => s + (Number(item.amount) || 0), 0);
   const civilMepSum = sumByIdx(budgetItems, CIVIL_MEP_IDX);
   const fitoutFurnitureSum = sumByIdx(budgetItems, FITOUT_FURNITURE_IDX);
-  const canEditBudget = !isBusinessAdmin && state?.budgetStatus && ['draft', 'rejected'].includes(state.budgetStatus);
+  // Once the site is allocated, the allocated executive owns data entry. The
+  // form was left live for everyone else, so a supervisor who had just allocated
+  // could still type into fields whose values the allocatee would overwrite —
+  // the inputs now shade out instead. The supervisor's escape hatch is Revoke,
+  // right above: taking the allocation back re-opens the form.
+  // Guarded on knowing who we are: with no id to compare, nothing is locked.
+  const allocatedTo = state?.allocatedTo || allocation?.delegateUserId || null;
+  const allocatedElsewhere = Boolean(allocatedTo) && Boolean(myUserId)
+    && String(allocatedTo) !== String(myUserId);
+  const canEditBudget = !isBusinessAdmin && !allocatedElsewhere
+    && state?.budgetStatus && ['draft', 'rejected'].includes(state.budgetStatus);
   const canSupervisorReview = isSupervisor && state?.budgetStatus === 'pending_supervisor';
   const canAdminReview = isBusinessAdmin && state?.budgetStatus === 'pending_admin';
 
@@ -420,6 +430,20 @@ export default function ProjectExcellenceReviewPage() {
 
       {/* Budget form */}
       <SectionCard title={`Budget (total: ${formatINR(budgetTotal)})`}>
+        {/* Say why the form is read-only, rather than leaving shaded fields
+            unexplained. Only the allocation case — the other read-only states
+            (submitted / approved) are already legible from Budget status. */}
+        {allocatedElsewhere && (
+          <div style={{
+            marginBottom: 14, padding: '10px 12px', borderRadius: 8,
+            background: 'var(--zm-surface-2)', border: '1px solid var(--zm-line)',
+            color: 'var(--zm-fg-2)', fontFamily: 'var(--zm-font-body)', fontSize: 12.5,
+          }}>
+            Allocated to {state?.allocatedToName || 'an executive'} — they fill in the budget.
+            {isSupervisor && ' Revoke the allocation above to edit it yourself.'}
+          </div>
+        )}
+
         {/* Area inputs */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 18 }}>
           {[

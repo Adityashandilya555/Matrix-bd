@@ -118,11 +118,37 @@ function ModeToggle({ mode, onChange, group }) {
   );
 }
 
+// The statuses where the ball is in the business admin's court. Exported so the
+// portal's sidebar badge counts exactly what this tab's own header counts —
+// two copies of this list would drift the first time a status is added.
+export const LAUNCH_ACTIONABLE_STATUSES = ['pending_admin_review', 'pending_admin_final', 'ready_to_launch'];
+
 const ACTION_LABEL = {
   send: 'Send for review',
   final: 'Confirm & commit',
   launch: 'Launch Site',
 };
+
+// Checked before the final commit, which is what makes the staged terms
+// canonical — the last point at which a gap can still be filled in.
+//
+// Rent start date is `required` because the backend 422s the commit without it;
+// the rest are commercial terms a committed site is expected to carry, so they
+// are listed but can be confirmed past. Read off the STAGED form, which is what
+// the reviewer is looking at, not the last-hydrated record.
+const COMMIT_FIELDS = [
+  { key: 'rent_start_date', label: 'Rent start date', required: true },
+  { key: 'carpet_area_sqft', label: 'Carpet area' },
+  { key: 'cam_charges', label: 'CAM' },
+  { key: 'capex', label: 'Capex' },
+  { key: 'security_deposit', label: 'Security deposit' },
+  { key: 'brokerage', label: 'Brokerage' },
+];
+
+const missingCommitFields = (form) => COMMIT_FIELDS.filter(({ key }) => {
+  const v = form?.[key];
+  return v == null || v === '';
+});
 
 function VerdictChip({ verdict }) {
   if (!verdict) return <span style={{ fontSize: 11, color: T.textFaint }}>Not reviewed</span>;
@@ -169,6 +195,8 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   // way back to save.
   const [dirty, setDirty] = React.useState(false);
   const [pendingAction, setPendingAction] = React.useState(null);
+  // Non-empty while the pre-commit check is holding back a final confirm.
+  const [missingFields, setMissingFields] = React.useState(null);
   const [tab, setTab] = React.useState('review');
 
   const hydrate = React.useCallback((d) => {
@@ -193,13 +221,17 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   // the last one was left. The unsaved-changes dialog is cleared for the same
   // reason: left armed, it greets whoever opens the drawer next — including the
   // same user coming back, who then sees a warning about edits already gone.
-  React.useEffect(() => { setTab('review'); setPendingAction(null); }, [siteId]);
+  React.useEffect(() => { setTab('review'); setPendingAction(null); setMissingFields(null); }, [siteId]);
 
   // aria-modal promises focus containment; the hook keeps it and, as the topmost
   // overlay, owns Escape — so one press does not also close the Drawer beneath.
   const unsavedRef = React.useRef(null);
   const dismissPending = React.useCallback(() => setPendingAction(null), []);
   useDialogFocus(Boolean(pendingAction), unsavedRef, dismissPending);
+
+  const missingRef = React.useRef(null);
+  const dismissMissing = React.useCallback(() => setMissingFields(null), []);
+  useDialogFocus(Boolean(missingFields), missingRef, dismissMissing);
 
   const status = data?.status;
   // Closure is one-way (pending → open) and the backend 409s a re-send, so the
@@ -216,10 +248,17 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   // back to the launch staging keys the form state + PATCH body use.
   const handleRentV2Change = (key, val) => handleRentChange(fromV2Key(key), val);
 
-  const handleSaveRent = async () => {
+  // `section` is the one whose Save button was pressed. On success its toggle
+  // returns to "Keep same" and its fields collapse back to the read-only
+  // summary: the edit is committed to staging, so leaving the form open read as
+  // though it were still unsaved. The other section keeps whatever mode it was
+  // in — the reviewer may still be working in it.
+  const handleSaveRent = async (section) => {
     setSaving(true); setErr(null); setSavedFlash(false);
     try {
       hydrate(await saveLaunchRentFields(siteId, buildLaunchRentPayload(form)));
+      if (section === 'commercial') setCommercialMode('keep');
+      else setRentMode('keep');
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2200);
     } catch (e) {
@@ -237,15 +276,23 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
     handleAction(action);
   };
 
-  const handleAction = async (action) => {
+  // `skipFieldCheck` is set only by the missing-fields dialog's own confirm, and
+  // only when nothing REQUIRED is missing — it can never wave through a commit
+  // the backend would 422 anyway.
+  const handleAction = async (action, { skipFieldCheck = false } = {}) => {
     setPendingAction(null);
-    // Rent start date is required before the terms become canonical. The backend
-    // 422s a final confirm without it; catching it here keeps the reviewer in the
-    // drawer with the field they need to fill rather than round-tripping an error.
-    if (action === 'final' && !form.rent_start_date) {
-      setErr('Rent start date is required before the final confirm. Open Commercial terms → Edit to set it.');
-      setCommercialMode('edit');
-      return;
+    setMissingFields(null);
+    // The commit makes the staged terms canonical, so this is the last point at
+    // which a gap can still be filled. Catching it here keeps the reviewer in
+    // the drawer with the fields they need rather than round-tripping an error.
+    if (action === 'final' && !skipFieldCheck) {
+      const missing = missingCommitFields(form);
+      if (missing.length) {
+        setMissingFields(missing);
+        // Open the section that holds them, so "Back" lands on the inputs.
+        setCommercialMode('edit');
+        return;
+      }
     }
     setActing(true); setErr(null);
     try {
@@ -432,7 +479,7 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
                     style={{ width: '100%', padding: '10px 12px', borderRadius: T.radiusSm, border: `1px solid ${T.lineStrong}`, background: T.chip, color: T.text, fontFamily: 'inherit', fontSize: 12.5, lineHeight: 1.55, resize: 'vertical', boxSizing: 'border-box' }} />
                 </div>
                 <div>
-                  <Button variant="solid" size="sm" loading={saving} onClick={handleSaveRent}>Save rent changes</Button>
+                  <Button variant="solid" size="sm" loading={saving} onClick={() => handleSaveRent('rent')}>Save rent changes</Button>
                 </div>
               </div>
             )}
@@ -457,7 +504,7 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <CommercialTermsForm value={form} onChange={handleRentChange} tokens={AC_TOKENS} />
                 <div>
-                  <Button variant="solid" size="sm" loading={saving} onClick={handleSaveRent}>Save commercial changes</Button>
+                  <Button variant="solid" size="sm" loading={saving} onClick={() => handleSaveRent('commercial')}>Save commercial changes</Button>
                 </div>
               </div>
             )}
@@ -548,6 +595,50 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
           </div>
         </ModalPortal>
       )}
+
+      {siteId && missingFields && missingFields.length > 0 && (
+        <ModalPortal>
+          {/* pointerEvents is explicit, exactly as on the dialog above:
+              .ac-portal-root is pointer-events:none and the value inherits, so
+              without this both buttons here are dead to the mouse and the clicks
+              fall through to the Drawer (#495). jsdom never applies
+              approval-center.css, so only an inline-style assertion catches it. */}
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(8,10,14,0.62)', backdropFilter: 'blur(3px)', zIndex: 200, pointerEvents: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <div ref={missingRef} role="alertdialog" aria-modal="true" aria-labelledby="ac-missing-title" tabIndex={-1}
+              style={{ width: 430, maxWidth: '100%', outline: 'none' }}>
+            <Card style={{ padding: '20px 22px' }}>
+              <h3 id="ac-missing-title" style={{ margin: 0, fontSize: 16.5, fontWeight: 700, color: T.text }}>
+                {missingFields.some((f) => f.required) ? 'Required field missing' : 'Some terms are not set'}
+              </h3>
+              <p style={{ margin: '8px 0 0', fontSize: 13, lineHeight: 1.6, color: T.textMuted }}>
+                {missingFields.some((f) => f.required)
+                  ? 'This site cannot be committed until every required field is filled in. Open Commercial terms → Edit to complete them.'
+                  : 'These terms have no value. You can go back and fill them in, or commit the site as it stands.'}
+              </p>
+              <ul style={{ margin: '12px 0 0', padding: '0 0 0 18px', fontSize: 13, lineHeight: 1.7, color: T.text }}>
+                {missingFields.map((f) => (
+                  <li key={f.key}>
+                    {f.label}
+                    {f.required && <span style={{ color: T.dangerText, fontWeight: 700 }}> · required</span>}
+                  </li>
+                ))}
+              </ul>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+                <Button variant="subtle" size="md" onClick={() => setMissingFields(null)}>Back</Button>
+                {/* Offered only when nothing REQUIRED is missing — the backend
+                    refuses that commit, so an override here would just surface
+                    the same rejection a step later. */}
+                {!missingFields.some((f) => f.required) && (
+                  <Button variant="danger" size="md" onClick={() => handleAction('final', { skipFieldCheck: true })}>
+                    Commit anyway
+                  </Button>
+                )}
+              </div>
+            </Card>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
     </>
   );
 }
@@ -612,7 +703,7 @@ export default function LaunchApprovalTab() {
     return `${i.ca_code || ''} ${i.site_code || ''} ${i.site_name || ''} ${i.city || ''}`
       .toLowerCase().includes(needle);
   });
-  const actionableCount = queue.items.filter((i) => ['pending_admin_review', 'pending_admin_final', 'ready_to_launch'].includes(i.status)).length;
+  const actionableCount = queue.items.filter((i) => LAUNCH_ACTIONABLE_STATUSES.includes(i.status)).length;
 
   return (
     <div>
