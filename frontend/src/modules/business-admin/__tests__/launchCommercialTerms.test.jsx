@@ -149,6 +149,25 @@ describe('LaunchApprovalTab — commercial terms', () => {
     expect(screen.getByRole('button', { name: 'Save commercial changes' })).toBeTruthy();
   });
 
+  it('keeps the missing-fields dialog clickable — .ac-portal-root is pointer-events:none', async () => {
+    // The same trap as the unsaved-changes dialog beside it (#495): ModalPortal's
+    // wrapper is pointer-events:none and the value inherits, so a scrim without an
+    // explicit 'auto' leaves Back and "Commit anyway" dead to the mouse, with the
+    // clicks falling through to the Drawer underneath. Asserted on the INLINE
+    // style because jsdom never applies approval-center.css — which is precisely
+    // why the userEvent clicks in the tests either side of this one pass whether
+    // or not the scrim is actually clickable in a browser.
+    state.queueStatus = 'pending_admin_final';
+    getLaunchApproval.mockResolvedValue(record({ rent_start_date: null }));
+    const user = userEvent.setup();
+    await renderTab();
+    await openDrawer(user);
+    await user.click(await screen.findByRole('button', { name: /Confirm & commit/i }));
+
+    const dialog = await screen.findByRole('alertdialog', { name: /Required field missing/i });
+    expect(dialog.parentElement.style.pointerEvents).toBe('auto');
+  });
+
   it('lists unset commercial terms but lets the admin commit past them', async () => {
     state.queueStatus = 'pending_admin_final';
     getLaunchApproval.mockResolvedValue(record({ rent_start_date: '2026-05-01', brokerage: null }));

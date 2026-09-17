@@ -598,7 +598,12 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
 
       {siteId && missingFields && missingFields.length > 0 && (
         <ModalPortal>
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(8,10,14,0.62)', backdropFilter: 'blur(3px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          {/* pointerEvents is explicit, exactly as on the dialog above:
+              .ac-portal-root is pointer-events:none and the value inherits, so
+              without this both buttons here are dead to the mouse and the clicks
+              fall through to the Drawer (#495). jsdom never applies
+              approval-center.css, so only an inline-style assertion catches it. */}
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(8,10,14,0.62)', backdropFilter: 'blur(3px)', zIndex: 200, pointerEvents: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
             <div ref={missingRef} role="alertdialog" aria-modal="true" aria-labelledby="ac-missing-title" tabIndex={-1}
               style={{ width: 430, maxWidth: '100%', outline: 'none' }}>
             <Card style={{ padding: '20px 22px' }}>
