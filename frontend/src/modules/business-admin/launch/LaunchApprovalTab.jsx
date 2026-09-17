@@ -205,6 +205,13 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
     setDirty(false);
   }, []);
 
+  // The live form, readable from inside an in-flight request's continuation.
+  // hydrate() replaces the form wholesale, so a save resolving after the reviewer
+  // has typed again would discard those keystrokes AND clear `dirty`, disarming
+  // the unsaved-changes guard that exists to protect them.
+  const formRef = React.useRef(form);
+  formRef.current = form;
+
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
@@ -255,10 +262,25 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
   // in — the reviewer may still be working in it.
   const handleSaveRent = async (section) => {
     setSaving(true); setErr(null); setSavedFlash(false);
+    // What is actually being submitted, so the response can tell whether the
+    // reviewer has typed since it went out.
+    const sent = formRef.current;
     try {
-      hydrate(await saveLaunchRentFields(siteId, buildLaunchRentPayload(form)));
-      if (section === 'commercial') setCommercialMode('keep');
-      else setRentMode('keep');
+      const saved = await saveLaunchRentFields(siteId, buildLaunchRentPayload(sent));
+      setData(saved);
+      // Adopt the server copy only while the form is untouched since the request
+      // left. Otherwise keep the newer edits and stay dirty: silently dropping
+      // keystrokes — and clearing the guard that would have warned about them —
+      // is worse than showing a staged value one save behind.
+      if (formRef.current === sent) {
+        setForm(pickLaunchRentFields(saved));
+        setDirty(false);
+        // Collapsing the section back to its summary is only right when the form
+        // is in sync; over newer keystrokes it would hide them behind a
+        // read-only view.
+        if (section === 'commercial') setCommercialMode('keep');
+        else setRentMode('keep');
+      }
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2200);
     } catch (e) {

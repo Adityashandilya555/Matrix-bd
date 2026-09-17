@@ -87,6 +87,13 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
     setDirty(false);
   }, []);
 
+  // The live form, readable from inside an in-flight request's continuation —
+  // see handleSaveRent. hydrate() replaces the form wholesale, so a save that
+  // resolves after the reviewer has typed again would drop those keystrokes and
+  // clear `dirty`, disarming the unsaved-changes guard.
+  const formRef = React.useRef(form);
+  formRef.current = form;
+
   React.useEffect(() => {
     if (!siteId) return;
     setLoading(true);
@@ -111,10 +118,19 @@ export default function LaunchReviewModal({ siteId, role, onClose, onDone }) {
       // buildLaunchRentPayload normalises rather than echoes (it nulls
       // rev_share_pct for a fixed rent), and those rewrites 422 as edits to
       // fields the exec may not touch — blocking the final confirm (#496).
+      const sent = formRef.current;
       const payload = isSupervisor
-        ? buildLaunchRentPayload(form)
-        : { rent_start_date: form.rent_start_date ?? null };
-      hydrate(await saveLaunchRentFields(siteId, payload));
+        ? buildLaunchRentPayload(sent)
+        : { rent_start_date: sent.rent_start_date ?? null };
+      const saved = await saveLaunchRentFields(siteId, payload);
+      setData(saved);
+      // Only adopt the server copy while the form is untouched since the request
+      // left; otherwise keep the newer edits and stay dirty, so the verdict guard
+      // still warns about them.
+      if (formRef.current === sent) {
+        setForm(pickLaunchRentFields(saved));
+        setDirty(false);
+      }
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2200);
     } catch (e) {

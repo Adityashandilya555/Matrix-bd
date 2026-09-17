@@ -13,6 +13,7 @@ vi.mock('../../../services/api/authToken.js', () => ({ getAuthToken: () => 'a.to
 vi.mock('../jwt.js', () => ({ decodeJwtPayload: () => ({ workspace_name: 'Acme' }) }));
 
 const TeamDashboard = (await import('../TeamDashboard.jsx')).default;
+const { LAUNCH_ACTIONABLE_STATUSES } = await import('../launch/LaunchApprovalTab.jsx');
 
 const emptyList = () => Promise.resolve([]);
 
@@ -21,8 +22,15 @@ const item = (over = {}) => ({
   status: 'pending_admin_review', ...over,
 });
 
+// Mirrors the endpoint the badge actually calls: it asks for the actionable
+// statuses only, with limit 1, and the backend counts the FILTERED set before
+// paging. Handing back the whole queue instead would let a client-side count
+// keep passing — which is the thing the server count replaced.
 const mount = (launchItems) => {
-  const listLaunchQueue = vi.fn(() => Promise.resolve({ items: launchItems }));
+  const actionable = launchItems.filter((i) => LAUNCH_ACTIONABLE_STATUSES.includes(i.status));
+  const listLaunchQueue = vi.fn(
+    () => Promise.resolve({ items: actionable.slice(0, 1), total: actionable.length }),
+  );
   const fetchers = {
     listDeliverables: emptyList, listGfc: emptyList, listFinance: emptyList,
     listBudget: emptyList, listQualityAudit: emptyList, listClosure: emptyList,
@@ -60,6 +68,24 @@ describe('Launch Approvals sidebar badge', () => {
     // Nothing actionable — the item renders without a badge at all.
     await waitFor(() => expect(listLaunchQueue).toHaveBeenCalled());
     expect(within(await navItem()).queryByText(/^[0-9]+$/)).toBeNull();
+  });
+
+  it('reads the server count, so it stays exact past one page of the queue', async () => {
+    // The endpoint pages at 500 by default. Counting the rows it returned
+    // undercounted any queue longer than that — and the badge exists precisely
+    // to be trusted without opening the tab. `total` is counted server-side,
+    // before paging, so one row is enough to carry a count of 620.
+    const listLaunchQueue = vi.fn(() => Promise.resolve({ items: [item()], total: 620 }));
+    render(<TeamDashboard onLogout={vi.fn()} workspaceName="Acme" fetchers={{
+      listDeliverables: emptyList, listGfc: emptyList, listFinance: emptyList,
+      listBudget: emptyList, listQualityAudit: emptyList, listClosure: emptyList,
+      listExecutiveReqs: emptyList, listOrg: emptyList, listSites: emptyList,
+      listSupervisors: emptyList, listPendingObservers: emptyList, listActiveObservers: emptyList,
+      getObserverCode: () => Promise.resolve('ABC12345'),
+      listLaunchQueue,
+    }} />);
+
+    await waitFor(async () => expect(within(await navItem()).getByText('620')).toBeTruthy());
   });
 
   it('renders the item without a badge when the queue cannot be read', async () => {

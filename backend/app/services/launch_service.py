@@ -518,7 +518,12 @@ async def svc_get_launch_queue(
     Paginated (``limit``/``offset``) so the queue can't grow unbounded with
     tenant lifetime (#230). The queue previously had no ``ORDER BY``; a
     deterministic ``created_at DESC`` order is added so paging is stable.
-    ``total`` is the page row count.
+
+    ``total`` is the true count of the filtered set — ``status_filter`` is
+    applied BEFORE the count — not the number of rows on this page. The admin
+    sidebar's badge relies on that: it asks for the actionable statuses with
+    ``limit=1`` and reads ``total``, rather than counting rows it would have to
+    page through.
     """
     q = select(models.LaunchApproval, models.Site, models.User.name).join(
         models.Site, models.Site.id == models.LaunchApproval.site_id
