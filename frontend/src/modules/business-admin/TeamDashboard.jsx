@@ -67,7 +67,10 @@ export const REAL_FETCHERS = {
   removeOrgUser,
   rotateDeptCode,
   listOrg:           getOrg,
-  listLaunchQueue:   getLaunchQueue,
+  // A COUNT, not a page of rows: the badge asks for the actionable statuses with
+  // limit 1 and reads `total`, which the backend counts before paging. Counting
+  // loaded rows undercounted every queue longer than the endpoint's 500 default.
+  listLaunchQueue:   () => getLaunchQueue({ statusFilter: LAUNCH_ACTIONABLE_STATUSES.join(','), limit: 1 }),
   listSites:         getAllSites,
   fetchSiteHistory:  getSiteHistory,
 };
@@ -137,12 +140,14 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   // tests) renders a badge-less item instead of erroring; memoized because
   // useQueue re-runs whenever the fetcher identity changes.
   const listLaunchQueue = React.useMemo(
-    () => fetchers.listLaunchQueue || (async () => ({ items: [] })),
+    () => fetchers.listLaunchQueue || (async () => ({ items: [], total: 0 })),
     [fetchers],
   );
   const [launchQueue, loadLaunchQueue] = useQueue(listLaunchQueue);
-  const launchActionable = (launchQueue.items || [])
-    .filter((i) => LAUNCH_ACTIONABLE_STATUSES.includes(i.status)).length;
+  // The server's count of the actionable statuses, so the badge stays exact
+  // however long the queue grows — filtering a loaded page could only ever see
+  // the first 500 rows.
+  const launchActionable = launchQueue.total;
   // Sites
   const [sites, loadSites] = useQueue(fetchers.listSites);
 

@@ -70,6 +70,31 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe('LaunchApprovalTab — unsaved changes guard', () => {
+  it('keeps edits typed while a save is in flight, and stays dirty', async () => {
+    // hydrate() replaces the whole form with the server copy. A save resolving
+    // after the reviewer has typed again used to discard those keystrokes AND
+    // clear `dirty` — so the guard that exists to protect unsaved work was
+    // disarmed by the very thing that lost it, and nothing warned.
+    getLaunchApproval.mockResolvedValue(record({ carpet_area_sqft: 1200 }));
+    let release;
+    saveLaunchRentFields.mockReturnValue(new Promise((resolve) => { release = resolve; }));
+    const user = userEvent.setup();
+    await renderTab();
+    await openDrawer(user);
+    const carpet = await makeDirty(user);              // 1200 -> 12005
+
+    await user.click(screen.getByRole('button', { name: 'Save commercial changes' }));
+    await user.type(carpet, '7');                       // typed WHILE the PATCH is open
+    release(record({ carpet_area_sqft: 1200 }));        // server echoes the pre-edit value
+    await waitFor(() => expect(saveLaunchRentFields).toHaveBeenCalled());
+
+    // The newer keystrokes survive the response...
+    await waitFor(() => expect(carpet.value).toBe('120057'));
+    // ...and the drawer still knows it is holding unsaved work.
+    await user.click(screen.getByRole('button', { name: /Send for review/i }));
+    expect(await screen.findByText(/You have unsaved changes/i)).toBeTruthy();
+  });
+
   it('warns before an action that would discard an unsaved edit', async () => {
     getLaunchApproval.mockResolvedValue(record());
     const user = userEvent.setup();
