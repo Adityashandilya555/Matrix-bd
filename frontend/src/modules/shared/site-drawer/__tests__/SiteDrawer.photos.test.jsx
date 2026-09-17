@@ -10,7 +10,7 @@
 // onClick={onClose}. If the lightbox rendered inside it, opening a photo would
 // also close the drawer underneath.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const getSiteDocuments = vi.fn();
@@ -81,22 +81,36 @@ describe('photo tiles', () => {
     expect(screen.queryByRole('img', { name: 'scan.pdf' })).toBeNull();
   });
 
-  it('re-signs the URL when the lightbox opens', async () => {
+  it('opens the lightbox without re-signing the whole photo list', async () => {
+    // Re-signing means re-fetching the list, and the list signs one storage
+    // object per file. Paying that on every open cost a round-trip per photo to
+    // look at one of them (#499); the URL already in hand is used instead.
     const user = userEvent.setup();
     render(<SiteDrawer site={site} onClose={vi.fn()}/>);
     await screen.findByRole('button', { name: /view photo/i });
     const callsAfterLoad = getSiteDocuments.mock.calls.length;
 
-    // Signed URLs expire after 300s, so opening must fetch a fresh one rather
-    // than trusting the URL captured when the drawer first loaded.
+    await user.click(screen.getByRole('button', { name: /view photo/i }));
+
+    expect(await screen.findByRole('img', { name: 'storefront.jpg' }))
+      .toHaveAttribute('src', 'https://storage/signed?token=AAA');
+    expect(getSiteDocuments.mock.calls.length).toBe(callsAfterLoad);
+  });
+
+  it('re-signs once the image actually fails to load', async () => {
+    // Signed URLs do expire after 300s, so a drawer left sitting holds a dead
+    // link — recovered on the error path, which is where the expiry surfaces.
+    const user = userEvent.setup();
+    render(<SiteDrawer site={site} onClose={vi.fn()}/>);
+    await screen.findByRole('button', { name: /view photo/i });
+    await user.click(screen.getByRole('button', { name: /view photo/i }));
+    const img = await screen.findByRole('img', { name: 'storefront.jpg' });
+
     getSiteDocuments.mockResolvedValue({
       documents: [doc({ url: 'https://storage/signed?token=FRESH' })],
     });
-    await user.click(screen.getByRole('button', { name: /view photo/i }));
+    fireEvent.error(img);
 
-    await vi.waitFor(() => {
-      expect(getSiteDocuments.mock.calls.length).toBeGreaterThan(callsAfterLoad);
-    });
     await vi.waitFor(() => {
       expect(screen.getByRole('img', { name: 'storefront.jpg' }))
         .toHaveAttribute('src', 'https://storage/signed?token=FRESH');

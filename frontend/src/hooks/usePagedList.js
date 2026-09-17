@@ -62,7 +62,10 @@ export function usePagedList(fetchPage, { pageSize = 50, deps = [] } = {}) {
       })
       .finally(() => {
         loadingMoreRef.current = false;
-        if (aliveRef.current && reqId === reqIdRef.current) setLoadingMore(false);
+        // Not gated on reqId: that guard is for the DATA. Gating the flag too
+        // left the pager spinning forever when a reload (filter switch) landed
+        // mid-page — the superseded request could never clear it.
+        if (aliveRef.current) setLoadingMore(false);
       });
   }, [pageSize, total]);
 

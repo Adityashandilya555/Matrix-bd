@@ -120,8 +120,8 @@ export default function ClosureDetailsDrawer({
   }, [siteId, fetchDetail]);
 
   // aria-modal is a promise that focus is contained. The hook moves focus in,
-  // keeps Tab inside the panel, restores it on close, and takes Escape in the
-  // capture phase — which is also what the local Escape handler used to do.
+  // keeps Tab inside the panel, restores it on close, and owns Escape while this
+  // is the topmost overlay — it yields both to the image preview opened over it.
   const panelRef = React.useRef(null);
   const dismiss = React.useCallback(() => onClose?.(), [onClose]);
   useDialogFocus(true, panelRef, dismiss);
@@ -166,15 +166,16 @@ export default function ClosureDetailsDrawer({
     return () => { alive = false; };
   }, [siteId, fetchDocuments, fetchQAReports]);
 
-  // Loaded when the tab is opened, and again on each open: signed URLs expire
-  // after 300s, so a drawer left sitting would otherwise hand out dead links.
-  React.useEffect(() => {
-    if (tab !== 'documents') return undefined;
-    return loadDocs();
-  }, [tab, loadDocs]);
+  // Load once per site, the first time Documents is opened. Keyed on a latch
+  // rather than `tab`: listing signs one storage object per file, so re-running
+  // on every tab switch re-signed the whole set (#499) — and tearing the effect
+  // down mid-request cancelled the load, leaving the tab stuck on "Loading".
+  const [docsOpened, setDocsOpened] = React.useState(false);
+  React.useEffect(() => { if (tab === 'documents') setDocsOpened(true); }, [tab]);
+  React.useEffect(() => (docsOpened ? loadDocs() : undefined), [docsOpened, loadDocs]);
 
-  // The lightbox re-signs on open. Re-fetching the list is the only way to get a
-  // fresh URL, since signing is server-side and keyed by storage path.
+  // Re-signing is server-side and keyed by storage path, so the whole list has
+  // to be re-fetched. Called only from the lightbox's error path.
   const refreshUrl = React.useCallback(async (photo) => {
     const r = await fetchDocuments(siteId);
     return (r?.documents || []).find((x) => x.id === photo?.id)?.url || null;
