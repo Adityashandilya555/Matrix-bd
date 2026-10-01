@@ -9,8 +9,10 @@ from sqlalchemy import select, text
 
 from app.core.deps import CurrentUser, DbDep, TenantId
 from app.db import models
+from app.domain.schemas.module_access import ModuleAccessRequestIn, ModuleAccessStateOut
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
+from app.services import module_access_service as module_access_svc
 from app.services.audit_service import write_audit_event
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -254,6 +256,40 @@ async def assign_role(
     )
 
 
+def _home_module(current_user: dict) -> Optional[str]:
+    """The caller's OWN module.
+
+    Never ``current_user["module"]``: that claim is rewritten to the borrowed
+    module while a supervisor is inside another workspace, so reading it here
+    would file a request — or render the access page — against someone else's
+    module.
+
+    There is deliberately no fallback to it. get_current_user sets home_module
+    unconditionally, so a fallback could only fire when the JWT carries no
+    module claim — and for that user `module` is precisely the header-supplied
+    borrowed one, which is the value this helper exists to avoid. Callers
+    already handle None.
+    """
+    return current_user.get("home_module")
+
+
+def _assert_real_supervisor(current_user: dict) -> None:
+    """The real guard on the supervisor self-service routes.
+
+    ``require_role`` on the route sees the POST-override role, so a business
+    admin simulating a supervisor would satisfy it and could request workspace
+    grants for themselves. ``real_role`` is set from the DB and no header can
+    rewrite it. The dependency is still declared on each route so the
+    route-enumeration test in tests/test_observer_readonly.py needs no
+    exception.
+    """
+    if current_user.get("real_role") != Role.SUPERVISOR.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only supervisors can use workspace access.",
+        )
+
+
 @router.post(
     "/me/request-executive-access",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -278,7 +314,7 @@ async def request_executive_access(
             detail="Only supervisors can request executive access.",
         )
     
-    module = current_user.get("module")
+    module = _home_module(current_user)
     if not module:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -302,3 +338,51 @@ async def request_executive_access(
         "mod": module,
     })
     await db.commit()
+
+
+# ── Cross-module workspace access (migration 20260930) ───────────────────────
+#
+# A supervisor asks a business admin for supervisor access to another module.
+# Approval writes no membership row — see module_access_service for why.
+
+@router.get(
+    "/me/module-access",
+    response_model=list[ModuleAccessStateOut],
+    summary="Modules this supervisor owns, holds access to, or may request",
+)
+async def list_my_module_access(
+    db: DbDep,
+    current_user: CurrentUser,
+    tenant_id: TenantId,
+    _auth: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
+) -> list[dict]:
+    _assert_real_supervisor(current_user)
+    return await module_access_svc.list_my_module_access(
+        db,
+        supervisor_id=current_user["sub"],
+        tenant_id=tenant_id,
+        home_module=_home_module(current_user),
+    )
+
+
+@router.post(
+    "/me/module-access/requests",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Request supervisor access to another module",
+)
+async def request_module_access(
+    body: ModuleAccessRequestIn,
+    db: DbDep,
+    current_user: CurrentUser,
+    tenant_id: TenantId,
+    _auth: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
+) -> None:
+    _assert_real_supervisor(current_user)
+    await module_access_svc.request_module_access(
+        db,
+        supervisor_id=current_user["sub"],
+        tenant_id=tenant_id,
+        home_module=_home_module(current_user),
+        module=body.module,
+        actor_name=current_user.get("name"),
+    )

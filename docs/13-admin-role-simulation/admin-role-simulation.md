@@ -125,12 +125,29 @@ if user_role == Role.BUSINESS_ADMIN.value:
     return current_user   # bypass; BA can call any module-gated route
 ```
 
-The `X-Override-Role` and `X-Override-Module` headers are informational for logging; the backend does not use them for access decisions. The bypass is based solely on the verified JWT role claim.
+**The `X-Override-*` headers ARE access decisions.** They were informational when this document was written; that stopped being true when the observer role shipped, and it is now the mechanism behind four distinct paths. `app/core/deps.py::_apply_workspace_override` is the only place any of them is decided:
 
-Non-admin tokens that include `X-Override-Role` or `X-Override-Module` headers are unaffected: the header is ignored and normal guards apply.
+| Real DB role | May set `role` to | May set `module` to | Checked against |
+|---|---|---|---|
+| `business_admin` | anything | anything | nothing — unrestricted, the original feature |
+| `observer` | `supervisor` or `executive` only | anything | `_OBSERVER_OVERRIDE_ROLES` |
+| `supervisor` with an approved grant | nothing — forced to `supervisor` | the granted module only | `supervisor_module_access_grants`, re-read every request |
+| `supervisor` with `has_executive_access` | `executive`, inside their own module only | nothing | the membership row |
+
+Two rules make the supervisor path safe:
+
+- **Own-module facts are computed against the JWT's own module** (`:own`), never the requested one (`:mod`). `has_executive_access` therefore cannot be sourced from one module and applied to another.
+- **An override without a grant is refused, not ignored.** `_assert_workspace_access` raises 403 after the `db.rollback()`. `/auth/whoami` is exempt and reports `workspace_access_refused` instead, because the client treats a 403 there as an auth rejection and would sign the user out rather than drop a stale override.
+
+A plain `executive`'s override headers are still inert.
+
+**Not recorded:** which actions were taken under a borrowed or simulated identity. `audit_logs` stores the real `actor_id` but ignores `actor_role`, and `stage_events.actor_role` stores the *simulated* role. Attribution is reconstructable after the fact from the grant's `created_at` / `revoked_at` window, not from the event itself.
 
 > **Source of Truth**
-> - `backend/app/rbac/guards.py:20-24,54-56` — `BUSINESS_ADMIN` bypass in `require_role` and `require_module`.
+> - `backend/app/core/deps.py` — `_apply_workspace_override`, `_assert_workspace_access`, the `:own` / `:mod` split.
+> - `backend/database/migrations/20260930_supervisor_module_access_grants.sql` — the grant table.
+> - `backend/tests/test_supervisor_module_access.py` — the branch, the refusal, and the whoami exemption.
+> - `backend/app/rbac/guards.py` — the `READ_ALL_ROLES` bypass in `require_role` and `require_module`.
 
 ## Simulation flow end-to-end
 

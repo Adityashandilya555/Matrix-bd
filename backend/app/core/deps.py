@@ -45,6 +45,32 @@ _READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 _OBSERVER_OVERRIDE_ROLES = frozenset({Role.SUPERVISOR.value, Role.EXECUTIVE.value})
 
 
+# Marker left on the claims when a supervisor sends an X-Override-Module it holds
+# no approved grant for. A marker rather than a raise because
+# _apply_workspace_override runs BEFORE the db.rollback() below, and raising
+# there leaves the read transaction open — the #103 savepoint regression.
+# _assert_workspace_access pops it after the rollback.
+_OVERRIDE_REFUSED = "_override_refused"
+
+
+# /auth/whoami is exempt from that refusal on purpose. It is the bootstrap probe,
+# and SessionContext treats a 403 there as an auth rejection — on first load it
+# CLEARS THE TOKEN. So 403-ing a stale override would sign a supervisor out
+# instead of merely dropping the override. Reporting the refusal in the claims
+# instead is what lets the client self-correct. /auth/refresh and /auth/logout
+# need no entry: neither reaches this dependency.
+#
+# Matched with `in`, never endswith: a suffix test would exempt ANY path ending
+# in /auth/whoami, turning the refusal back into the silent drop it exists to
+# prevent. No route ends that way today, which is exactly the kind of thing that
+# stops being true without anyone noticing. Both forms are listed because the
+# routers are mounted under settings.api_prefix while tests address the bare path.
+_OVERRIDE_EXEMPT_PATHS = frozenset({
+    f"{settings.api_prefix}/auth/whoami",
+    "/auth/whoami",
+})
+
+
 def _assert_may_write(claims: dict, request: Request) -> None:
     """Refuse any state-changing request from a read-only `observer`.
 
@@ -71,17 +97,43 @@ def _assert_may_write(claims: dict, request: Request) -> None:
         )
 
 
+def _assert_workspace_access(claims: dict, request: Request) -> None:
+    """Refuse a supervisor whose X-Override-Module has no approved grant.
+
+    MUST stay AFTER the db.rollback() in get_current_user, exactly like
+    _assert_may_write — the membership SELECT autobegins a transaction and
+    raising before it is released is the #103 savepoint regression, where every
+    later write was silently rolled back.
+
+    The private marker is popped, not read, so it never reaches a response body;
+    only the public `workspace_access_refused` survives, and only on the exempt
+    path.
+    """
+    refused = claims.pop(_OVERRIDE_REFUSED, None)
+    if not refused:
+        return
+    if request.url.path in _OVERRIDE_EXEMPT_PATHS:
+        claims["workspace_access_refused"] = refused
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=f"You do not have approved workspace access to '{refused}'.",
+    )
+
+
 def _apply_workspace_override(
     claims: dict,
     *,
     db_role: str,
     has_executive_access: bool,
+    has_module_grant: bool,
+    home_module: Optional[str],
     override_role: Optional[str],
     override_module: Optional[str],
 ) -> None:
     """Rewrite the EFFECTIVE role/module from the X-Override-* headers.
 
-    Three callers may drive another role, each for a different reason:
+    Four callers may drive another role or module, each for a different reason:
 
     * ``business_admin`` — workspace access, unrestricted, the original feature.
     * ``observer`` — read-only module switching. It already reads every module
@@ -91,7 +143,22 @@ def _apply_workspace_override(
       ``module`` is what scopes the module queries at all — an observer's token
       carries no module claim of its own. Its role is allowlisted, never
       business_admin (see _OBSERVER_OVERRIDE_ROLES).
+    * a ``supervisor`` holding an APPROVED grant — may enter another module as
+      that module's supervisor. The grant is re-read from
+      supervisor_module_access_grants on every request, so a revoke lands on the
+      next one rather than at token expiry. ``override_role`` is deliberately
+      NOT read there: inside a borrowed module the caller is that module's
+      supervisor and nothing else, and ``has_executive_access`` is a fact about
+      their OWN module (it is computed against :own), so honouring an executive
+      override here would hand out an identity nobody approved.
     * a dual-role ``supervisor`` — may drop to executive inside its own module.
+
+    A supervisor who sends an override module WITHOUT a grant is refused, not
+    silently ignored: the request would otherwise run against their own module
+    while the UI believed it was in the other one, so a write the user thinks
+    lands in Legal lands in BD — and the BD routes carry no module guard. The
+    refusal is only FLAGGED here; _assert_workspace_access raises it after the
+    db.rollback(), because raising from here is the #103 regression.
 
     Only ``role`` and ``module`` move here. ``real_role`` is set by the caller
     before this runs and is never touched, which is what keeps _assert_may_write
@@ -110,8 +177,17 @@ def _apply_workspace_override(
             claims["role"] = override_role
         if override_module:
             claims["module"] = override_module
-    elif db_role == "supervisor" and has_executive_access and override_role == "executive":
-        claims["role"] = "executive"
+    elif db_role == Role.SUPERVISOR.value:
+        if override_module and override_module != home_module:
+            # Borrowed supervision of another module. claims["role"] is already
+            # "supervisor" from db_role, so only the module moves.
+            if has_module_grant:
+                claims["module"] = override_module
+                claims["borrowed_module"] = override_module
+            else:
+                claims[_OVERRIDE_REFUSED] = override_module
+        elif has_executive_access and override_role == Role.EXECUTIVE.value:
+            claims["role"] = Role.EXECUTIVE.value
 
 
 async def get_current_user(
@@ -158,12 +234,19 @@ async def get_current_user(
 
     claims = decode_token(token)
 
-    module_to_check = x_override_module or claims.get("module")
+    # The JWT's OWN module, never rewritten by a header. Every fact about this
+    # user as themselves — their membership row, their executive-access flag and
+    # pending request — is keyed on it, so entering another module cannot move
+    # them. `module_to_check` is the module being ASKED for, which is what the
+    # grant is checked against.
+    home_module = claims.get("module")
+    claims["home_module"] = home_module
+    module_to_check = x_override_module or home_module
 
-    # Full query including supervisor executive access fields.
-    # Falls back to a simpler query if the migration adding
-    # supervisor_executive_requests / has_executive_access hasn't been
-    # applied yet — prevents 500s during the migration window.
+    # :own answers "what is true of this user in their own module"; :mod answers
+    # "may they act in the module this request is for". Keeping them separate is
+    # what stops an override header sourcing the dual-role flag from one module
+    # and applying it to another.
     _FULL_QUERY = """\
         SELECT u.role, u.is_active,
                COALESCE(umm.has_executive_access, false) AS has_executive_access,
@@ -171,13 +254,20 @@ async def get_current_user(
                  SELECT 1 FROM supervisor_executive_requests req
                  WHERE req.supervisor_id = u.id
                    AND req.tenant_id = :tid
-                   AND req.module = :mod
+                   AND req.module = :own
                    AND req.status = 'pending'
-               ) AS has_pending_executive_request
+               ) AS has_pending_executive_request,
+               EXISTS(
+                 SELECT 1 FROM supervisor_module_access_grants g
+                 WHERE g.supervisor_id = u.id
+                   AND g.tenant_id = :tid
+                   AND g.module = :mod
+                   AND g.status = 'approved'
+               ) AS has_module_grant
         FROM users u
         LEFT JOIN user_module_memberships umm
           ON u.id = umm.user_id
-         AND umm.module = :mod
+         AND umm.module = :own
          AND umm.tenant_id = :tid
         WHERE u.id = :uid
         -- An executive can hold several membership rows in one module (one per
@@ -189,7 +279,10 @@ async def get_current_user(
         ORDER BY COALESCE(umm.has_executive_access, false) DESC
         LIMIT 1
     """
-    params = {"uid": claims["sub"], "mod": module_to_check, "tid": claims["tenant_id"]}
+    params = {
+        "uid": claims["sub"], "mod": module_to_check,
+        "own": home_module, "tid": claims["tenant_id"],
+    }
     # The migration adding supervisor_executive_requests / has_executive_access
     # landed long ago (the ledger runner guarantees migrations on boot), so the
     # old try/except fallback only masked genuine DB errors behind a warning +
@@ -208,6 +301,8 @@ async def get_current_user(
         claims,
         db_role=db_role,
         has_executive_access=bool(row.get("has_executive_access")),
+        has_module_grant=bool(row.get("has_module_grant")),
+        home_module=home_module,
         override_role=x_override_role,
         override_module=x_override_module,
     )
@@ -222,6 +317,7 @@ async def get_current_user(
     # opens a real, committing transaction. Rolling back a read discards nothing.
     await db.rollback()
 
+    _assert_workspace_access(claims, request)
     _assert_may_write(claims, request)
 
     return claims

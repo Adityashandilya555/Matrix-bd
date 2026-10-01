@@ -346,3 +346,48 @@ export async function rejectExecutiveRequest(requestId) {
   notifySiteDataChanged({ source: 'businessAdmin', action: 'executive_request_rejected' });
   return result;
 }
+
+// ── Cross-module workspace access (migration 20260930) ───────────────────────
+//
+// Two URL families over one table: requests while pending, grants once
+// approved — mirroring pending-observers vs observers.
+
+export async function getModuleAccessRequests() {
+  const d = await client.get('/business-admin/module-access-requests').then((r) => r.data);
+  return (d || []).map((r) => ({
+    id: r.id,
+    supervisorId: r.supervisor_id,
+    supervisorEmail: r.supervisor_email,
+    supervisorName: r.supervisor_name,
+    homeModule: r.home_module,
+    module: r.module,
+    createdAt: r.created_at,
+  }));
+}
+
+export async function approveModuleAccessRequest(requestId) {
+  return client.post(`/business-admin/module-access-requests/${requestId}/approve`).then((r) => r.data);
+}
+
+export async function rejectModuleAccessRequest(requestId) {
+  return client.post(`/business-admin/module-access-requests/${requestId}/reject`).then((r) => r.data);
+}
+
+export async function getModuleAccessGrants() {
+  const d = await client.get('/business-admin/module-access-grants').then((r) => r.data);
+  return (d || []).map((g) => ({
+    id: g.id,
+    supervisorId: g.supervisor_id,
+    supervisorEmail: g.supervisor_email,
+    supervisorName: g.supervisor_name,
+    module: g.module,
+    decidedAt: g.decided_at,
+    // Revoking leaves these executives active and unassigned, so the UI warns
+    // with this before the admin presses the button.
+    recruitedCount: g.recruited_count ?? 0,
+  }));
+}
+
+export async function revokeModuleAccessGrant(grantId) {
+  return client.post(`/business-admin/module-access-grants/${grantId}/revoke`).then((r) => r.data);
+}

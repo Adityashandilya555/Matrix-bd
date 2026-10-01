@@ -59,6 +59,10 @@ export function SessionProvider({ children }) {
   // Mock mode is ready immediately — the session is the static default.
   const [authReady, setAuthReady] = useState(USE_MOCK);
   const [sessionExpired, setSessionExpired] = useState(null);
+  // Set when whoami reports that the grant behind this tab's override is gone,
+  // so the banner can say so once rather than leaving the user on a page whose
+  // every request 403s.
+  const [workspaceAccessRevoked, setWorkspaceAccessRevoked] = useState(null);
 
   // Auto sign-out after 8h of no user interaction (HTTP mode only). Keyed on
   // real input events, so background queue polling doesn't keep a session alive.
@@ -90,8 +94,19 @@ export function SessionProvider({ children }) {
   const isObserver = session.realRole === ROLE.OBSERVER;
   // isDualRoleSupervisor: true when the user is a supervisor with executive access.
   const isDualRoleSupervisor = session.realRole === 'supervisor' && session.hasExecutiveAccess;
-  // effectiveModule: the module being simulated, or the real session module.
-  const effectiveModule = ((isBusinessAdmin || isObserver || isDualRoleSupervisor) && adminOverride?.module) || session.module;
+  // borrowedModule: a supervisor inside ANOTHER module under an approved grant
+  // (migration 20260930). The dual-role switch never moves module, so an
+  // override module that differs from the JWT's own is always a borrowed
+  // workspace. Mirrors the `borrowing` test in deps.py's
+  // _apply_workspace_override — the two must stay in step.
+  const borrowedModule = (
+    session.realRole === 'supervisor'
+    && adminOverride?.module
+    && adminOverride.module !== session.module
+  ) ? adminOverride.module : null;
+  // effectiveModule: the module being simulated or borrowed, or the real one.
+  const effectiveModule = ((isBusinessAdmin || isObserver || isDualRoleSupervisor) && adminOverride?.module)
+    || borrowedModule || session.module;
   // role: the display/canonical string used by existing components. For business_admin
   // with an active override this returns the simulated role so RequireAuth and all UI
   // adapt automatically. realRole always returns the true JWT role.
@@ -107,8 +122,13 @@ export function SessionProvider({ children }) {
   // carries the override header and echoes the SIMULATED role back — falling
   // back to it would leave `role` stuck at 'supervisor' after the override is
   // dropped, and RequireAuth would keep an observer in a shell it just left.
+  // The borrowed branch sits BEFORE isDualRoleSupervisor, mirroring the backend's
+  // precedence: inside a borrowed module deps.py ignores X-Override-Role and the
+  // caller is that module's supervisor, full stop. Reporting anything else here
+  // would be a lie about what the server actually did.
   const role = isBusinessAdmin ? (adminOverride?.role || session.role)
              : isObserver ? (OBSERVER_VIEW_ROLES.includes(adminOverride?.role) ? adminOverride.role : session.realRole)
+             : borrowedModule ? ROLE.SUPERVISOR
              : isDualRoleSupervisor ? (['supervisor', 'executive'].includes(adminOverride?.role) ? adminOverride.role : session.role)
              : session.role;
 
@@ -121,21 +141,39 @@ export function SessionProvider({ children }) {
   // lets an observer open a module read-only,
   // or lets a dual-role supervisor switch between supervisor/executive in their module. Pass null to reset.
   const switchAs = useCallback((overrideRole, overrideModule) => {
-    const isDualRoleSupervisor = session.realRole === 'supervisor' && session.hasExecutiveAccess;
+    const isSupervisor = session.realRole === 'supervisor';
+    const isDualRoleSupervisor = isSupervisor && session.hasExecutiveAccess;
     const isObserver = session.realRole === ROLE.OBSERVER;
-    if (session.realRole !== 'business_admin' && !isObserver && !isDualRoleSupervisor) return;
+    if (session.realRole !== 'business_admin' && !isObserver && !isSupervisor) return;
     // An observer may only view as a supervisor or an executive. Anything else
     // is dropped rather than stored, so the panel can never persist an override
     // the backend will ignore — which would read as "in a module" here while
     // every request still arrived as a plain observer.
     if (isObserver && overrideRole && !OBSERVER_VIEW_ROLES.includes(overrideRole)) return;
 
-    // Supervisors can only switch their role, not their module
-    const nextModule = isDualRoleSupervisor ? session.module : overrideModule;
-    const next = overrideRole ? { role: overrideRole, module: nextModule } : null;
+    // Clearing sits after the role gate so a plain supervisor can Exit a
+    // borrowed workspace, while an executive still cannot clear anything.
+    if (!overrideRole) { _setAdminOverride(null); deactivateOverride(); return; }
+
+    let next = { role: overrideRole, module: overrideModule };
+    if (isSupervisor) {
+      if (overrideModule && overrideModule !== session.module) {
+        // A borrowed workspace is entered as that module's SUPERVISOR and
+        // nothing else — deps.py ignores X-Override-Role there. A caller asking
+        // for any other role is refused rather than quietly rewritten, so a
+        // stray call can never persist an override the server would ignore.
+        if (overrideRole !== ROLE.SUPERVISOR) return;
+        next = { role: ROLE.SUPERVISOR, module: overrideModule };
+      } else if (isDualRoleSupervisor) {
+        // Unchanged: a dual-role supervisor switches role inside their own module.
+        next = { role: overrideRole, module: session.module };
+      } else {
+        // A plain supervisor has nothing to switch to in their own module.
+        return;
+      }
+    }
     _setAdminOverride(next);
-    if (next) activateOverride(next);
-    else deactivateOverride();
+    activateOverride(next);
   }, [session.realRole, session.hasExecutiveAccess, session.module]);
 
   // Track the override store rather than shadowing it. Workspace Access lives
@@ -174,7 +212,10 @@ export function SessionProvider({ children }) {
     let alive = true;
     const hydrate = async (token) => {
       if (!token) {
-        if (alive) { setSession(INITIAL_SESSION); setAuthReady(true); }
+        // Clear the withdrawn-access notice with the session it belonged to —
+        // the provider does not remount on sign-out, so otherwise it would
+        // greet whoever signs in next in this tab.
+        if (alive) { setSession(INITIAL_SESSION); setAuthReady(true); setWorkspaceAccessRevoked(null); }
         return;
       }
       try {
@@ -190,7 +231,13 @@ export function SessionProvider({ children }) {
           pendingExecutiveRequest: claims.has_pending_executive_request || false,
           tenantId:  claims.tenant_id || INITIAL_SESSION.tenantId,
           cityScope: claims.city || INITIAL_SESSION.cityScope,
-          module:    claims.module || null,
+          // claims.module is the module currently being SIMULATED — whoami is a
+          // GET, so it carries X-Override-Module and echoes back whatever was
+          // asked for. home_module is the JWT's own, which is what "my module"
+          // has to mean everywhere: the access page's "your module" row, the
+          // home to return to on Exit, and the borrow test above. Same trap,
+          // same fix, as realRole.
+          module:    claims.home_module ?? claims.module ?? null,
           // JWT subject id — the DDR licensing tab compares this against the
           // site's legal delegate to decide whether the auto-inherited
           // licensing CTA is unlocked for this user.
@@ -198,6 +245,20 @@ export function SessionProvider({ children }) {
         });
         setSessionExpired(null);
         hadLiveSessionRef.current = true;
+        if (claims.workspace_access_refused) {
+          // sessionStorage survived a reload; the grant did not. Drop the
+          // override here rather than letting every module request 403 against
+          // a page that still believes it is in Legal. whoami is exempt from
+          // that 403 on the server for exactly this handshake — 403-ing it
+          // would clear the token and sign the user out instead.
+          deactivateOverride();
+          _setAdminOverride(null);
+          setWorkspaceAccessRevoked(claims.workspace_access_refused);
+        } else {
+          // Any clean hydration clears it, so the notice cannot outlive the
+          // grant it describes — or the user it was shown to.
+          setWorkspaceAccessRevoked(null);
+        }
       } catch (err) {
         if (isAuthRejection(err)) {
           if (!hadLiveSessionRef.current) {
@@ -283,6 +344,8 @@ export function SessionProvider({ children }) {
 
   const canFn = useCallback((action) => can(role, action), [role]);
 
+  const clearWorkspaceAccessRevoked = useCallback(() => setWorkspaceAccessRevoked(null), []);
+
   const value = useMemo(() => ({
     user,
     role,
@@ -299,6 +362,13 @@ export function SessionProvider({ children }) {
     // that page offers to change anything.
     isReadOnly: isObserver,
     effectiveModule,
+    // The module being borrowed under an approved grant, or null. Derived here
+    // so the banner and TopBar do not each re-derive it (and drift).
+    borrowedModule,
+    // Set once when whoami reports the grant is gone; the banner shows it and
+    // clears it.
+    workspaceAccessRevoked,
+    clearWorkspaceAccessRevoked,
     adminOverride,
     switchAs,
     setRole: USE_MOCK ? setRole : undefined,
@@ -312,7 +382,7 @@ export function SessionProvider({ children }) {
     isMockMode: USE_MOCK,
     signOut,
     sessionExpired,
-  }), [user, role, isBusinessAdmin, isObserver, effectiveModule, adminOverride, switchAs, setRole, session, authReady, permissions, dark, toggleDark, canFn, signOut, sessionExpired]);
+  }), [user, role, isBusinessAdmin, isObserver, effectiveModule, borrowedModule, workspaceAccessRevoked, clearWorkspaceAccessRevoked, adminOverride, switchAs, setRole, session, authReady, permissions, dark, toggleDark, canFn, signOut, sessionExpired]);
 
   return (
     <SessionContext.Provider value={value}>

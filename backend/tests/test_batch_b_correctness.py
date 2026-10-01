@@ -116,9 +116,14 @@ async def test_approve_supervisor_noop_when_already_active(make_session, fake_re
 
 async def test_approve_exec_inserts_with_on_conflict(make_session, fake_result):
     # Post-#86 the pending row must carry the caller's ownership marker.
-    sess = make_session(fake_result(mappings_rows=[{
-        "is_active": False, "role": "executive", "notes": "pending_supervisor:s|module:legal",
-    }]))
+    # First queued row answers the module-authority probe (20260930).
+    sess = make_session(
+        fake_result(all_rows=[(1,)]),
+        fake_result(mappings_rows=[{
+            "is_active": False, "role": "executive",
+            "notes": "pending_supervisor:s|module:legal",
+        }]),
+    )
     await supervisor_code_service.approve_my_pending_exec(
         sess, tenant_id="t", supervisor_id="s", user_id="u", module="legal",
     )
@@ -133,6 +138,7 @@ async def test_approve_exec_noop_when_already_active(make_session, fake_result):
     # Double-click replay: user already active AND already this supervisor's
     # member in this module (second queued row) → silent idempotent return.
     sess = make_session(
+        fake_result(all_rows=[(1,)]),  # module-authority probe (20260930)
         fake_result(mappings_rows=[{"is_active": True, "role": "executive", "notes": None}]),
         fake_result(mappings_rows=[{"?column?": 1}]),
     )

@@ -6,6 +6,7 @@ import { listPendingUsers } from './services/api/adapters/httpAdapter.js';
 import TopBar from './modules/shared/chrome/TopBar.jsx';
 import Sidebar from './modules/shared/chrome/Sidebar.jsx';
 import ReadOnlyBanner from './modules/shared/chrome/ReadOnlyBanner.jsx';
+import BorrowedAccessBanner from './modules/shared/chrome/BorrowedAccessBanner.jsx';
 import SiteDrawer from './modules/shared/site-drawer/SiteDrawer.jsx';
 import { buildDrawerSite } from './lib/buildDrawerSite.js';
 import { safeHref } from './lib/safeHref.js';
@@ -180,6 +181,10 @@ export default function App() {
             the page. */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
           <ReadOnlyBanner onLeave={leaveModule} />
+          {/* Sibling of <main>, like the read-only strip: part of the chrome,
+              so it survives scrolling and navigation within the borrowed
+              module. Renders nothing unless a grant is in use. */}
+          <BorrowedAccessBanner />
 
           <main ref={mainRef} className="zm-app-main" style={{
             flex: 1, overflowY: 'auto', padding: '24px 32px 64px',

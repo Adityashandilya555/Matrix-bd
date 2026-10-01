@@ -14,6 +14,8 @@ import {
   fetchClosureDetail, fetchClosureQAReports,
   getOrg, getAllSites, getSiteHistory,
   getExecutiveRequests, approveExecutiveRequest, rejectExecutiveRequest,
+  getModuleAccessRequests, approveModuleAccessRequest, rejectModuleAccessRequest,
+  getModuleAccessGrants, revokeModuleAccessGrant,
 } from '../../services/api/businessAdminApi.js';
 import {
   rotateDeptCode, listPendingSupervisors, approveSupervisor, rejectSupervisor, removeOrgUser,
@@ -35,6 +37,9 @@ import WorkspaceSwitcherPanel from './WorkspaceSwitcherPanel.jsx';
 
 // Real API wiring. Injectable so the dev preview (and tests) can drive the whole
 // portal with mock data — see ./_preview/ApprovalCenterPreview.jsx.
+// Stable empty fetcher for queues a partial injected map does not cover.
+const NO_ROWS = async () => [];
+
 export const REAL_FETCHERS = {
   // Observer — workspace-wide read-only role
   getObserverCode, rotateObserverCode,
@@ -62,6 +67,11 @@ export const REAL_FETCHERS = {
   approveSupervisor,
   rejectSupervisor,
   listExecutiveReqs: getExecutiveRequests,
+  listModuleAccessReqs: getModuleAccessRequests,
+  approveModuleAccessReq: approveModuleAccessRequest,
+  rejectModuleAccessReq: rejectModuleAccessRequest,
+  listModuleAccessGrants: getModuleAccessGrants,
+  revokeModuleAccessGrant,
   approveExecutiveReq: approveExecutiveRequest,
   rejectExecutiveReq: rejectExecutiveRequest,
   removeOrgUser,
@@ -117,6 +127,15 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   // Departments
   const [supervisors, loadSupervisors] = useQueue(fetchers.listSupervisors);
   const [executiveRequests, loadExecutiveRequests] = useQueue(fetchers.listExecutiveReqs);
+  // Cross-module workspace access: requests awaiting a decision, and the grants
+  // currently live. Two queues over one table (20260930).
+  // `|| NO_ROWS`: injected fetcher maps (the dev preview, tests) carry only the
+  // keys that harness cares about, and useQueue calls whatever it is handed —
+  // so a missing key would render this section in an error state rather than
+  // simply empty. A module-level constant, not an inline arrow, or the
+  // useCallback inside useQueue would see a new function every render.
+  const [moduleAccessRequests, loadModuleAccessRequests] = useQueue(fetchers.listModuleAccessReqs || NO_ROWS);
+  const [moduleAccessGrants, loadModuleAccessGrants] = useQueue(fetchers.listModuleAccessGrants || NO_ROWS);
   const [org, loadOrg] = useQueue(fetchers.listOrg);
   const [observerPending, loadObservers] = useQueue(fetchers.listPendingObservers);
   // The roster of APPROVED observers. Its own queue, not a filter over the
@@ -294,12 +313,28 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     reloadObservers: (silent) => Promise.all([loadObservers(silent), loadObserverRoster(silent)]),
     reloadPendingSupervisors: loadSupervisors,
     reloadExecutiveRequests: loadExecutiveRequests,
+    // Approving or withdrawing changes who may act in a module, so the org tree
+    // is reloaded alongside — the same pairing the supervisor approvals use.
+    onApproveModuleAccess: async (id) => {
+      await fetchers.approveModuleAccessReq(id);
+      await Promise.all([loadModuleAccessRequests(true), loadModuleAccessGrants(true)]);
+    },
+    onRejectModuleAccess: async (id) => {
+      await fetchers.rejectModuleAccessReq(id);
+      await loadModuleAccessRequests(true);
+    },
+    onRevokeModuleAccess: async (id) => {
+      await fetchers.revokeModuleAccessGrant(id);
+      await Promise.all([loadModuleAccessGrants(true), loadOrg(true)]);
+    },
+    reloadModuleAccessRequests: loadModuleAccessRequests,
+    reloadModuleAccessGrants: loadModuleAccessGrants,
     reloadOrg: loadOrg,
   };
 
   const refreshAll = async (silent = false) => {
     if (!silent) setRefreshingAll(true);
-    try { await Promise.all([reloadApprovals(true), loadSupervisors(true), loadExecutiveRequests(true), loadOrg(true), loadSites(true), loadLaunchQueue(true)]); }
+    try { await Promise.all([reloadApprovals(true), loadSupervisors(true), loadExecutiveRequests(true), loadModuleAccessRequests(true), loadModuleAccessGrants(true), loadOrg(true), loadSites(true), loadLaunchQueue(true)]); }
     finally { if (!silent) setRefreshingAll(false); }
   };
 
@@ -394,6 +429,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
             {tab === 'closure' && <FinancialClosureTab />}
             {tab === 'departments' && (
               <DepartmentsTab org={org} pendingSupervisors={supervisors} executiveRequests={executiveRequests}
+              moduleAccess={{ requests: moduleAccessRequests, grants: moduleAccessGrants }}
               observers={{ code: observerCode, pending: observerPending, roster: observerRoster,
                 rotating: observerRotating, busyId: observerBusyId }}
               handlers={handlers} />

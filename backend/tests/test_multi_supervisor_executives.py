@@ -97,9 +97,13 @@ async def test_a_second_supervisors_approval_now_inserts(make_session, fake_resu
     """The old target swallowed it: the row already existed for (user, module),
     so approving the same executive under a second supervisor reported success
     and wrote nothing."""
-    sess = make_session(fake_result(mappings_rows=[{
-        "is_active": False, "role": "executive", "notes": "pending_supervisor:s|module:legal",
-    }]))
+    sess = make_session(
+        _supervises(fake_result),
+        fake_result(mappings_rows=[{
+            "is_active": False, "role": "executive",
+            "notes": "pending_supervisor:s|module:legal",
+        }]),
+    )
     await svc.approve_my_pending_exec(
         sess, tenant_id="t", supervisor_id="s", user_id="u", module="legal",
     )

@@ -7,7 +7,7 @@ import { requestExecutiveAccess } from '../../../services/api/authService.js';
 
 // Render body preserved exactly from Chrome.jsx TopBar component.
 export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, sidebarCollapsed = false, onToggleSidebar }) {
-  const { signOut, session, effectiveModule, switchAs, isReadOnly } = useSession();
+  const { signOut, session, effectiveModule, switchAs, isReadOnly, borrowedModule } = useSession();
   // BD-only action — legal and payment supervisors don't open pipeline drafts.
   // "New pipeline" creates a BD site draft — only the BD surface (or mock/no-module) shows it.
   // effectiveModule reflects any admin role simulation, falling back to the JWT module claim.
@@ -201,7 +201,12 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
                 <span style={{ fontSize: 11, color: 'var(--zm-fg-3)' }}>{user.email}</span>
               </div>
               
-              {session.realRole === 'supervisor' && (
+              {/* Hidden while borrowing another module. hasExecutiveAccess
+                  stays true there (it is a fact about the caller's OWN module),
+                  so without this gate the item still renders and pressing it
+                  calls switchAs('executive', session.module) — silently
+                  dropping the borrow. The banner's Exit is the way out. */}
+              {session.realRole === 'supervisor' && !borrowedModule && (
                 <>
                   {session.hasExecutiveAccess ? (
                     <button
