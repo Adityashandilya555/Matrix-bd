@@ -259,12 +259,18 @@ async def assign_role(
 def _home_module(current_user: dict) -> Optional[str]:
     """The caller's OWN module.
 
-    Never ``current_user["module"]`` on its own: that claim is rewritten to the
-    borrowed module while a supervisor is inside another workspace, so reading
-    it here would file a request — or render the access page — against someone
-    else's module. Falls back for callers and tests that predate the claim.
+    Never ``current_user["module"]``: that claim is rewritten to the borrowed
+    module while a supervisor is inside another workspace, so reading it here
+    would file a request — or render the access page — against someone else's
+    module.
+
+    There is deliberately no fallback to it. get_current_user sets home_module
+    unconditionally, so a fallback could only fire when the JWT carries no
+    module claim — and for that user `module` is precisely the header-supplied
+    borrowed one, which is the value this helper exists to avoid. Callers
+    already handle None.
     """
-    return current_user.get("home_module") or current_user.get("module")
+    return current_user.get("home_module")
 
 
 def _assert_real_supervisor(current_user: dict) -> None:

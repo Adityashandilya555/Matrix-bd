@@ -151,6 +151,24 @@ async def test_whoami_is_exempt_so_a_stale_override_does_not_sign_the_user_out()
     assert deps._OVERRIDE_REFUSED not in claims
 
 
+@pytest.mark.asyncio
+async def test_the_whoami_exemption_is_an_exact_path_not_a_suffix():
+    """A suffix test would exempt any path ending in /auth/whoami, turning the
+    refusal back into the silent drop it exists to prevent."""
+    with pytest.raises(HTTPException) as exc:
+        await _resolve(override_module="legal", path="/api/sites/x/auth/whoami")
+    assert exc.value.status_code == 403
+
+
+def test_the_home_module_never_falls_back_to_the_borrowed_one():
+    """The fallback could only fire when the JWT carries no module claim — and
+    for that caller `module` IS the header-supplied borrowed module."""
+    from app.routers.users import _home_module
+
+    assert _home_module({"home_module": "bd", "module": "legal"}) == "bd"
+    assert _home_module({"home_module": None, "module": "legal"}) is None
+
+
 # ── locks: behaviour that must not move ──────────────────────────────────────
 
 @pytest.mark.asyncio
@@ -291,6 +309,29 @@ async def test_the_lifecycle_is_audited():
         ])
         await fn(s, "t", REQ_ID, "admin-1", "The Admin")
         assert [a.action for a in s.added] == [action]
+
+
+@pytest.mark.asyncio
+async def test_approval_requires_the_requester_to_still_be_an_active_supervisor():
+    """A queue is read at one moment and acted on at another. Approving a row
+    whose requester has since been demoted leaves a grant that is inert now and
+    live again the moment anyone re-promotes them."""
+    sess = RecordingSession(results=[FakeResult(mappings_rows=[])])
+    await access_svc.approve_request(sess, "t", REQ_ID, "admin-1")
+    sql = _sql_containing(sess, "UPDATE supervisor_module_access_grants")
+    assert "u.role = 'supervisor'" in sql
+    assert "u.is_active" in sql
+    assert "u.tenant_id = g.tenant_id" in sql
+
+
+@pytest.mark.asyncio
+async def test_rejection_stays_possible_whatever_became_of_the_requester():
+    """Otherwise a demoted supervisor's request sits in the queue with no way to
+    clear it."""
+    sess = RecordingSession(results=[FakeResult(mappings_rows=[])])
+    await access_svc.reject_request(sess, "t", REQ_ID, "admin-1")
+    sql = _sql_containing(sess, "UPDATE supervisor_module_access_grants")
+    assert "u.role = 'supervisor'" not in sql
 
 
 @pytest.mark.asyncio

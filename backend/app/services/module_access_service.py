@@ -201,7 +201,7 @@ async def list_pending_requests(session: AsyncSession, tenant_id: str) -> list[d
 async def _decide(
     session: AsyncSession, *,
     tenant_id: str, request_id: str, actor_id: str, actor_name: Optional[str],
-    new_status: str, action: str,
+    new_status: str, action: str, require_active_supervisor: bool = False,
 ) -> None:
     """Approve or reject, sharing the guarded UPDATE that makes both idempotent.
 
@@ -214,15 +214,25 @@ async def _decide(
     """
     if not _is_uuid(request_id):
         return
+    # Only approval requires it. A rejection must stay possible whatever became
+    # of the requester, or a demoted supervisor's row sits in the queue forever
+    # with no way to clear it.
+    still_a_supervisor = (
+        "   AND EXISTS (SELECT 1 FROM users u "
+        "                WHERE u.id = g.supervisor_id "
+        "                  AND u.tenant_id = g.tenant_id "
+        "                  AND u.role = 'supervisor' AND u.is_active) "
+    ) if require_active_supervisor else ""
     async with transaction(session):
         row = (await session.execute(
             text(
-                "UPDATE supervisor_module_access_grants "
+                "UPDATE supervisor_module_access_grants AS g "
                 "   SET status = :new_status, decided_at = now(), "
                 "       decided_by = CAST(:aid AS uuid) "
-                " WHERE id = CAST(:rid AS uuid) AND tenant_id = :tid "
-                "   AND status = 'pending' "
-                "RETURNING supervisor_id, module"
+                " WHERE g.id = CAST(:rid AS uuid) AND g.tenant_id = :tid "
+                "   AND g.status = 'pending' "
+                + still_a_supervisor
+                + "RETURNING g.supervisor_id, g.module"
             ),
             {"aid": actor_id, "rid": request_id, "tid": tenant_id,
              "new_status": new_status},
@@ -246,10 +256,18 @@ async def approve_request(
     session: AsyncSession, tenant_id: str, request_id: str,
     actor_id: str, actor_name: Optional[str] = None,
 ) -> None:
-    """Grant the access. Writes no membership row — the grant is this row."""
+    """Grant the access. Writes no membership row — the grant is this row.
+
+    Refuses if the requester is no longer an active supervisor. A queue is read
+    at one moment and acted on at another, and without this an admin who demotes
+    someone *because* of their request — then clears the queue — leaves an
+    approved grant behind. It would be inert while they are an executive and
+    live again the moment anyone re-promotes them, with no second approval.
+    """
     await _decide(
         session, tenant_id=tenant_id, request_id=request_id, actor_id=actor_id,
         actor_name=actor_name, new_status="approved", action="module_access_approved",
+        require_active_supervisor=True,
     )
 
 

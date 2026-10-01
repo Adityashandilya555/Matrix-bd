@@ -59,7 +59,16 @@ _OVERRIDE_REFUSED = "_override_refused"
 # instead of merely dropping the override. Reporting the refusal in the claims
 # instead is what lets the client self-correct. /auth/refresh and /auth/logout
 # need no entry: neither reaches this dependency.
-_OVERRIDE_EXEMPT_PATHS = ("/auth/whoami",)
+#
+# Matched with `in`, never endswith: a suffix test would exempt ANY path ending
+# in /auth/whoami, turning the refusal back into the silent drop it exists to
+# prevent. No route ends that way today, which is exactly the kind of thing that
+# stops being true without anyone noticing. Both forms are listed because the
+# routers are mounted under settings.api_prefix while tests address the bare path.
+_OVERRIDE_EXEMPT_PATHS = frozenset({
+    f"{settings.api_prefix}/auth/whoami",
+    "/auth/whoami",
+})
 
 
 def _assert_may_write(claims: dict, request: Request) -> None:
@@ -103,7 +112,7 @@ def _assert_workspace_access(claims: dict, request: Request) -> None:
     refused = claims.pop(_OVERRIDE_REFUSED, None)
     if not refused:
         return
-    if request.url.path.endswith(_OVERRIDE_EXEMPT_PATHS):
+    if request.url.path in _OVERRIDE_EXEMPT_PATHS:
         claims["workspace_access_refused"] = refused
         return
     raise HTTPException(
