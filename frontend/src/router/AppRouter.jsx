@@ -19,6 +19,7 @@ const ExecStagingPage = lazy(() => import('../modules/staging/exec/ExecStagingPa
 const SupervisorStagingPage = lazy(() => import('../modules/staging/supervisor/SupervisorStagingPage.jsx'));
 const ArchivePage = lazy(() => import('../modules/archive/ArchivePage.jsx'));
 const TeamPage = lazy(() => import('../modules/team/TeamPage.jsx'));
+const ModuleAccessPage = lazy(() => import('../modules/workspace-access/ModuleAccessPage.jsx'));
 const LegalQueuePage = lazy(() => import('../modules/legal/LegalQueuePage.jsx'));
 const ChangeRequestsPage = lazy(() => import('../modules/legal/ChangeRequestsPage.jsx'));
 const DdrPage = lazy(() => import('../modules/legal/ddr/DdrPage.jsx'));
@@ -125,8 +126,12 @@ function LandingRedirectIfAuthed() {
 function IndexRedirect() {
   // The root `/` defaults to the BD overview. Non-BD module members bounce
   // to their own module home on first load.
-  const { session } = useSession();
-  const module = session?.module;
+  // effectiveModule, not session.module: a supervisor who lands on `/` while
+  // inside a borrowed workspace belongs in that module's home, not their own —
+  // every request they make is already carrying the override. Same for a
+  // business admin or observer mid-simulation.
+  const { session, effectiveModule } = useSession();
+  const module = effectiveModule || session?.module;
   if (USE_MOCK) return <OverviewPage/>; // mock mode stays on BD
   if (module === 'legal')   return <Navigate to={ROUTES.LEGAL}   replace/>;
   if (module === 'design')  return <Navigate to={ROUTES.DESIGN}  replace/>;
@@ -196,6 +201,15 @@ export default function AppRouter() {
         <Route path={ROUTES.TEAM} element={
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <TeamPage/>
+          </RequireRole>
+        }/>
+
+        {/* Supervisor-only. `role` reads 'supervisor' while borrowing another
+            module, so the page stays reachable from inside a borrowed
+            workspace — which is where you go to switch or hand it back. */}
+        <Route path={ROUTES.MODULE_ACCESS} element={
+          <RequireRole roles={['supervisor']}>
+            <ModuleAccessPage/>
           </RequireRole>
         }/>
 

@@ -32,8 +32,15 @@ def _generate_code() -> str:
     return secrets.token_urlsafe(8).upper()
 
 
-async def get_my_code(session: AsyncSession, supervisor_id: str, module: str) -> dict | None:
+async def get_my_code(
+    session: AsyncSession, supervisor_id: str, module: str, tenant_id: str,
+) -> dict | None:
     """Return this supervisor's active invite code for the module, or None if none exists."""
+    # An invite code mints members of a module, so reading one needs authority
+    # over that module. The route only proves the caller supervises SOMETHING.
+    await _assert_supervises_module(
+        session, supervisor_id=supervisor_id, module=module, tenant_id=tenant_id,
+    )
     row = (await session.execute(
         text(
             "SELECT module, code, created_at, rotated_at "
@@ -49,6 +56,12 @@ async def rotate_my_code(
     session: AsyncSession, tenant_id: str, supervisor_id: str, module: str,
 ) -> dict:
     """Mint or regenerate this supervisor's invite code for the module and stamp rotated_at."""
+    # The sharpest of the four: without this, revoking a cross-module grant
+    # would not stop the ex-borrower from minting fresh invite codes for that
+    # module and recruiting into it indefinitely.
+    await _assert_supervises_module(
+        session, supervisor_id=supervisor_id, module=module, tenant_id=tenant_id,
+    )
     async with transaction(session):
         row = (await session.execute(
             text(
@@ -64,9 +77,12 @@ async def rotate_my_code(
 
 
 async def list_my_pending_execs(
-    session: AsyncSession, supervisor_id: str, module: str,
+    session: AsyncSession, supervisor_id: str, module: str, tenant_id: str,
 ) -> list[dict]:
     """List inactive executives awaiting this supervisor's approval in the module."""
+    await _assert_supervises_module(
+        session, supervisor_id=supervisor_id, module=module, tenant_id=tenant_id,
+    )
     # The marker is the exact `notes` value at signup time, so we can equality-
     # match in SQL and skip a Python parse pass entirely.
     marker = f"{_PENDING_PREFIX}{supervisor_id}{_MODULE_MARKER}{module}"
@@ -92,6 +108,12 @@ async def approve_my_pending_exec(
     module: str,
 ) -> None:
     """Activate a pending executive and bind them to this supervisor, enforcing ownership."""
+    # Module authority first. The `notes` marker below proves the recruit is
+    # THIS supervisor's, but said nothing about whether they may act in this
+    # module at all — and `module` arrives as a client-supplied query parameter.
+    await _assert_supervises_module(
+        session, supervisor_id=supervisor_id, module=module, tenant_id=tenant_id,
+    )
     # NSO is a supervisor-only module (canonical list:
     # business_admin_service._SUPERVISOR_ONLY_MODULES) — it has no executive role,
     # so refuse to activate one there even if a stray pending row exists.
@@ -178,6 +200,14 @@ async def list_my_team(
             {"m": module, "tid": current_user["tenant_id"]},
         )).mappings().all()
     else:
+        # The admin branch above is tenant-wide by design; this one is a
+        # supervisor reading a module's team, which needs authority over it.
+        # Self-scoping by :sid alone would let a legal supervisor confirm who
+        # reports to them in a module they have no standing in.
+        await _assert_supervises_module(
+            session, supervisor_id=current_user["sub"], module=module,
+            tenant_id=current_user["tenant_id"],
+        )
         rows = (await session.execute(
             text(
                 "SELECT u.id, u.email, u.name, umm.joined_at "
@@ -243,12 +273,30 @@ async def _assert_supervises_module(
     require_role(SUPERVISOR) on the route proves the caller is a supervisor
     somewhere; it says nothing about which module. Without this a legal
     supervisor could rearrange the BD teams.
+
+    Two things count as authority here, and they are deliberately equal:
+
+    * a membership row — this module is theirs;
+    * an APPROVED row in supervisor_module_access_grants — a business admin
+      granted them cross-module workspace access (migration 20260930).
+
+    The grant authorizes on its own, whether or not the request carries an
+    X-Override-Module header: the grant is the authority, the header only
+    decides which module the UI renders. Asking the table rather than
+    current_user["module"] also matters because the claim is precisely what that
+    header rewrote — trusting it here would mean trusting our own input — and
+    because two callers never receive current_user at all.
     """
     row = (await session.execute(
         text(
             "SELECT 1 FROM user_module_memberships "
             " WHERE user_id = :sid AND module = :m AND tenant_id = :tid "
-            "   AND role_in_module = 'supervisor'"
+            "   AND role_in_module = 'supervisor' "
+            " UNION ALL "
+            "SELECT 1 FROM supervisor_module_access_grants "
+            " WHERE supervisor_id = :sid AND module = :m AND tenant_id = :tid "
+            "   AND status = 'approved' "
+            " LIMIT 1"
         ),
         {"sid": supervisor_id, "m": module, "tid": tenant_id},
     )).first()

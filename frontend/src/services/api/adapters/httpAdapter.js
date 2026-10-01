@@ -552,6 +552,27 @@ export async function requestExecutiveAccess() {
   return post('/users/me/request-executive-access');
 }
 
+// ── Cross-module workspace access (migration 20260930) ─────────────────────
+//
+// Keyed server-side on the caller's HOME module, so these stay correct even
+// when the request carries an X-Override-Module for a borrowed workspace.
+
+export async function listMyModuleAccess() {
+  const data = await get('/users/me/module-access');
+  const items = data?.items || data || [];
+  return items.map(r => ({
+    module:       r.module,
+    state:        r.state,
+    lastDecision: r.last_decision || null,
+    requestedAt:  r.requested_at || null,
+    decidedAt:    r.decided_at || null,
+  }));
+}
+
+export async function requestModuleAccess(moduleKey) {
+  return post('/users/me/module-access/requests', { module: moduleKey });
+}
+
 // `login` is intentionally NOT exported. With Supabase the sign-in happens on
 // the client via the Supabase JS SDK; the resulting token is fed to
 // authToken.setAuthToken(token). See frontend/src/services/api/supabaseAuth.js.

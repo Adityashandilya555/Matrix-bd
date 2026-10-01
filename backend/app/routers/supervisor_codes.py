@@ -32,7 +32,7 @@ async def get_my_code(
     current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    return await svc.get_my_code(db, current_user["sub"], module)
+    return await svc.get_my_code(db, current_user["sub"], module, current_user["tenant_id"])
 
 
 @router.post("/me/{module}/rotate", response_model=InviteCodeOut)
@@ -50,7 +50,9 @@ async def list_my_pending_execs(
     current_user: Annotated[dict, Depends(require_role(Role.SUPERVISOR))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    return await svc.list_my_pending_execs(db, current_user["sub"], module)
+    return await svc.list_my_pending_execs(
+        db, current_user["sub"], module, current_user["tenant_id"],
+    )
 
 
 @router.get("/me/{module}/team", response_model=list[TeamMemberOut])

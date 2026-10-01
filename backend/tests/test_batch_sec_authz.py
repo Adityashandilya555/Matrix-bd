@@ -187,6 +187,7 @@ async def test_approve_pending_exec_requires_ownership_marker(session, fake_resu
     from app.services.supervisor_code_service import approve_my_pending_exec
 
     marker = f"pending_supervisor:{SUPERVISOR_ID}|module:bd"
+    session.queue(fake_result(all_rows=[(1,)]))  # module-authority probe (20260930)
     session.queue(
         fake_result(mappings_rows=[{"is_active": False, "role": "executive", "notes": marker}]),
     )
@@ -205,6 +206,7 @@ async def test_approve_pending_exec_rejects_other_supervisors_recruit(session, f
     from app.services.supervisor_code_service import approve_my_pending_exec
 
     other_marker = f"pending_supervisor:{uuid.uuid4()}|module:legal"
+    session.queue(fake_result(all_rows=[(1,)]))  # module-authority probe (20260930)
     session.queue(
         fake_result(mappings_rows=[{"is_active": False, "role": "executive", "notes": other_marker}]),
     )

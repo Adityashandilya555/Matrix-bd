@@ -8,6 +8,7 @@ export const ROUTES = {
   STAGING:                '/staging',
   ARCHIVE:                '/archive',
   TEAM:                   '/team',
+  MODULE_ACCESS:          '/module-access',
   DD_FAILED:              '/dd-failed',
   BD_SITE_STATUS:         '/sites/:siteId/status',
   BD_SITE_FINANCE:        '/sites/:siteId/finance',

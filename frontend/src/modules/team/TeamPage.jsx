@@ -37,14 +37,17 @@ function normalizeRole(role) {
 }
 
 export default function TeamPage() {
-  const { session, role: rawRole } = useSession();
+  const { session, role: rawRole, effectiveModule } = useSession();
   // A business admin viewing as a supervisor gets list_my_team's admin branch —
   // every executive in the module, not a team — and their own id supervises
   // nothing, so add/remove would 403 on every row. realRole is the DB role,
   // which the override cannot rewrite.
   const canManageTeam = session?.realRole === 'supervisor';
   const role = normalizeRole(rawRole);
-  const module = session?.module || DEFAULT_MODULE;
+  // effectiveModule, not session.module: a supervisor inside a borrowed
+  // workspace manages THAT module's team. session.module would render module
+  // A's team while every write went to B.
+  const module = effectiveModule || session?.module || DEFAULT_MODULE;
 
   if (role === 'business_admin') {
     return <Navigate to="/business-admin" replace/>;

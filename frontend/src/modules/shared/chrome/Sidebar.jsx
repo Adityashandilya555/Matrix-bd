@@ -101,6 +101,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
     path === ROUTES.ARCHIVE                              ? 'archive'   :
     path === ROUTES.DD_FAILED                            ? 'dd-failed' :
     path === ROUTES.TEAM                                 ? 'team'      :
+    path === ROUTES.MODULE_ACCESS                        ? 'module-access' :
     path === ROUTES.LEGAL_OVERVIEW                       ? 'legal-overview' :
     path === ROUTES.DESIGN_OVERVIEW                      ? 'design-overview' :
     path === ROUTES.PROJECT_OVERVIEW                     ? 'project-overview' :
@@ -373,6 +374,18 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
             onClick={() => go(ROUTES.TEAM)}
             collapsed={collapsed}
           />
+          {/* Gated on realRole, not the `role` prop: a business admin or an
+              observer viewing as a supervisor must not see this — they have
+              Workspace Access in their own portal, which is unrestricted. */}
+          {session?.realRole === 'supervisor' && (
+            <SidebarItem
+              icon="layers"
+              label="Module access"
+              active={activeView === 'module-access'}
+              onClick={() => go(ROUTES.MODULE_ACCESS)}
+              collapsed={collapsed}
+            />
+          )}
         </>
       )}
 

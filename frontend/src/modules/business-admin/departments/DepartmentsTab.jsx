@@ -2,6 +2,7 @@ import React from 'react';
 import { Icon, SectionHeader, ErrorState, Skeleton } from '../ui/kit.jsx';
 import PendingSupervisorsList from '../PendingSupervisorsList.jsx';
 import ExecutiveRequestsList from '../ExecutiveRequestsList.jsx';
+import ModuleAccessSection from '../ModuleAccessSection.jsx';
 import OrgModuleCard from './OrgModuleCard.jsx';
 import ObserverAccessSection from './ObserverAccessSection.jsx';
 import { mergePending } from './pendingQueue.js';
@@ -13,7 +14,12 @@ import { mergePending } from './pendingQueue.js';
 // which supervisors run them, which executives report to whom — and nothing
 // that acts on it. The approval queues are dropped entirely rather than shown
 // empty, since an empty 'Awaiting approval' implies this role could clear it.
-export default function DepartmentsTab({ org, pendingSupervisors, executiveRequests, observers, handlers, readOnly = false }) {
+const EMPTY_QUEUE = { status: 'ready', items: [], error: null, refreshing: false };
+
+export default function DepartmentsTab({
+  org, pendingSupervisors, executiveRequests, observers, handlers, readOnly = false,
+  moduleAccess = { requests: EMPTY_QUEUE, grants: EMPTY_QUEUE },
+}) {
   const pending = React.useMemo(
     () => mergePending(pendingSupervisors, observers?.pending),
     [pendingSupervisors, observers?.pending],
@@ -51,6 +57,23 @@ export default function DepartmentsTab({ org, pendingSupervisors, executiveReque
           onApprove={handlers.onApproveExecutiveReq}
           onReject={handlers.onRejectExecutiveReq}
           onRetry={() => handlers.reloadExecutiveRequests(false)} />
+      </section>
+      )}
+
+      {!readOnly && (
+      <section>
+        <SectionHeader icon={Icon.external} title="Workspace Access" count={moduleAccess.requests.items?.length || 0} tone="warn"
+          description="Supervisors asking to work in another module, and who currently holds that access."
+          onRefresh={() => handlers.reloadModuleAccessRequests?.(true)}
+          refreshing={moduleAccess.requests.refreshing} />
+        <ModuleAccessSection
+          requests={moduleAccess.requests}
+          grants={moduleAccess.grants}
+          onApprove={handlers.onApproveModuleAccess}
+          onReject={handlers.onRejectModuleAccess}
+          onRevoke={handlers.onRevokeModuleAccess}
+          onRetryRequests={() => handlers.reloadModuleAccessRequests?.(false)}
+          onRetryGrants={() => handlers.reloadModuleAccessGrants?.(false)} />
       </section>
       )}
 

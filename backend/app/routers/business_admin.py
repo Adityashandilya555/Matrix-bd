@@ -29,10 +29,12 @@ from app.domain.schemas.business_admin import (
     SiteDocumentsResponse,
     ExecutiveRequestOut,
 )
+from app.domain.schemas.module_access import ModuleAccessGrantOut, ModuleAccessRequestOut
 from app.rbac.guards import require_real_role, require_role
 from app.rbac.roles import Role
 from app.services import business_admin_documents_service as docs_svc
 from app.services import business_admin_service as svc
+from app.services import module_access_service as module_access_svc
 
 router = APIRouter(prefix="/business-admin", tags=["Business Admin"])
 
@@ -214,6 +216,79 @@ async def reject_executive_request(
     tenant_id: TenantId,
 ) -> None:
     await svc.reject_executive_request(db, tenant_id, request_id, current_user["sub"])
+
+
+# ── Cross-module workspace access (migration 20260930) ───────────────────────
+#
+# Two URL families over one table: `module-access-requests` is its lifecycle
+# while pending, `module-access-grants` once approved — the same split as
+# pending-observers vs observers.
+#
+# require_role, not require_real_role: these return no credential, so an
+# observer may read them and its POSTs are already refused in get_current_user.
+# require_real_role is reserved for the routes that hand back a join code.
+
+@router.get("/module-access-requests", response_model=list[ModuleAccessRequestOut])
+async def list_module_access_requests(
+    db: DbDep,
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> list[dict]:
+    return await module_access_svc.list_pending_requests(db, tenant_id)
+
+
+@router.post(
+    "/module-access-requests/{request_id}/approve",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def approve_module_access_request(
+    request_id: str,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> None:
+    await module_access_svc.approve_request(
+        db, tenant_id, request_id, current_user["sub"], current_user.get("name"),
+    )
+
+
+@router.post(
+    "/module-access-requests/{request_id}/reject",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def reject_module_access_request(
+    request_id: str,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> None:
+    await module_access_svc.reject_request(
+        db, tenant_id, request_id, current_user["sub"], current_user.get("name"),
+    )
+
+
+@router.get("/module-access-grants", response_model=list[ModuleAccessGrantOut])
+async def list_module_access_grants(
+    db: DbDep,
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> list[dict]:
+    return await module_access_svc.list_active_grants(db, tenant_id)
+
+
+@router.post(
+    "/module-access-grants/{grant_id}/revoke",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def revoke_module_access_grant(
+    grant_id: str,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> None:
+    await module_access_svc.revoke_grant(
+        db, tenant_id, grant_id, current_user["sub"], current_user.get("name"),
+    )
 
 
 

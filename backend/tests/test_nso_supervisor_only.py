@@ -51,10 +51,14 @@ async def test_list_org_marks_nso_supervisor_only_and_hides_execs(make_session, 
     assert by_mod["legal"]["executives_enabled"] is True  # other modules unaffected
 
 
-async def test_approve_pending_exec_refuses_nso(make_session):
-    # Defense-in-depth: an executive can never be activated into NSO.
+async def test_approve_pending_exec_refuses_nso(make_session, fake_result):
+    # Defense-in-depth: an executive can never be activated into NSO — not even
+    # by a caller who genuinely supervises NSO. The queued row answers the
+    # module-authority probe (20260930), so the 400 below is the NSO rule and
+    # not an authority refusal standing in for it.
     with pytest.raises(HTTPException) as ei:
         await supervisor_code_service.approve_my_pending_exec(
-            make_session(), tenant_id="t", supervisor_id="s", user_id="u", module="nso",
+            make_session(fake_result(all_rows=[(1,)])),
+            tenant_id="t", supervisor_id="s", user_id="u", module="nso",
         )
     assert ei.value.status_code == 400

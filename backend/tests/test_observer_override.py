@@ -12,6 +12,8 @@ survive a non-GET.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi import HTTPException
 
@@ -26,10 +28,16 @@ USER = "00000000-0000-0000-0000-0000000000bb"
 
 
 class _Req:
-    """Only ``.method`` is read by get_current_user."""
+    """Only ``.method`` and ``.url.path`` are read by get_current_user.
 
-    def __init__(self, method: str = "GET") -> None:
+    The path matters because _assert_workspace_access exempts /auth/whoami from
+    the refusal it raises for an ungranted workspace override; the default here
+    is an ordinary, non-exempt route.
+    """
+
+    def __init__(self, method: str = "GET", path: str = "/api/sites") -> None:
         self.method = method
+        self.url = SimpleNamespace(path=path)
 
 
 def _token(role: str, module: str | None = None) -> str:
@@ -162,12 +170,20 @@ async def test_a_business_admin_override_is_unchanged():
 
 @pytest.mark.asyncio
 async def test_a_plain_supervisor_still_cannot_override_anything():
-    claims = await _resolve(
-        db_role="supervisor", override_role="business_admin",
-        override_module="legal", token_role="supervisor",
-    )
-    assert claims["role"] == "supervisor"
-    assert claims["module"] is None
+    """Still cannot — but now it is an explicit refusal, not a silent drop.
+
+    A supervisor with no approved grant who names another module is 403'd.
+    Proceeding as their own module while the client believes it is in Legal is
+    how a write meant for Legal lands in BD, and the BD routes carry no module
+    guard to catch it. The role override is ignored either way.
+    """
+    with pytest.raises(HTTPException) as exc:
+        await _resolve(
+            db_role="supervisor", override_role="business_admin",
+            override_module="legal", token_role="supervisor",
+        )
+    assert exc.value.status_code == 403
+    assert "workspace access" in exc.value.detail
 
 
 @pytest.mark.asyncio
