@@ -320,7 +320,7 @@ flowchart LR
 | --- | --- | --- |
 | Entities | `GET/POST /v1/entities/{type}` · `GET/PATCH /v1/entities/{type}/{id}` · `POST /v1/entities/{type}/{id}/commands/{command}` · `GET /v1/entities/{type}/{id}/history` | Fields masked per policy; `history` reads the ledger |
 | Relationships and documents | `POST /v1/entities/{type}/{id}/relationships` · `POST /v1/documents` (signed upload) · `POST /v1/entities/{type}/{id}/attachments/{slot}` | |
-| Tasks | `GET /v1/tasks?inbox=me` · `POST /v1/tasks/{id}/claim|complete|delegate|comment` · `POST /v1/tasks` (ad hoc) | Completion runs form validation, SoD and quorum |
+| Tasks | `GET /v1/tasks?inbox=me` · `POST /v1/tasks/{id}/claim` (also `/complete`, `/delegate`, `/comment`) · `POST /v1/tasks` (ad hoc) | Completion runs form validation, SoD and quorum |
 | Processes | `GET /v1/processes/{id}` (timeline, active nodes) · `POST /v1/processes/{id}/migrate` (admin) | The engine is never exposed directly |
 | Views and metrics | `POST /v1/views/{key}/run` · `GET /v1/metrics/{key}?grain=week` · `POST /v1/views/preview` (ad hoc AST) | Policy plan always applied |
 | Organization | `/v1/org/units` · `/v1/org/members` · `/v1/org/import` (CSV pipeline) · `/v1/org/delegations` · `/v1/org/invitations` | |

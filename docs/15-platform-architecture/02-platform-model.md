@@ -391,7 +391,7 @@ This closes the gap the codebase documents itself: a write made under a borrowed
 | `approval` | Quorum state for approval tasks (§11) |
 | `depends_on` | Other tasks that must finish first, for ad hoc dependencies outside the flow |
 | `escalation_level` | 0..n |
-| `created_by` | `{actor, via: workflow|manual|recurring|automation|ai}` |
+| `created_by` | `{actor, via}`, where `via` is `workflow`, `manual`, `recurring`, `automation` or `ai` |
 
 ### 9.2 Lifecycle
 

@@ -105,7 +105,7 @@ flowchart LR
 | `site_files` | `data.documents` + attachments (slot from `file_type`) | Storage objects re-pathed or referenced in place |
 | `legal_dd_checklist`, `site_agreement`, `site_licensing` | Child entity `legal_review` with checklist data | Column items → checklist array items (`other_1_label` → item label) |
 | `design_reviews`, `design_deliverables` | Child entities `design_deliverable` (kind, file, reviews) | `status`/`admin_status` → historical approval task records |
-| `site_budgets` + `site_budget_items` | Entities `budget(phase=gfc|closure)` with `lines[]` | Labels preserved per line |
+| `site_budgets` + `site_budget_items` | Entities `budget` (`phase` = `gfc` or `closure`) with `lines[]` | Labels preserved per line |
 | `project_reviews`, `quality_audit_reports` | Project sub-flow state + `audit_report` documents | Milestone dates → milestone events |
 | `nso_reviews` | NSO sub-flow state + checklist data | Sign-offs → completed approval tasks |
 | `launch_approvals` + `launch_review_events` | Launch review task history + committed site data | |
