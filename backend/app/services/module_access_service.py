@@ -19,7 +19,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import text
+from sqlalchemy import TextClause, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import transaction
@@ -31,6 +31,40 @@ from app.services.audit_service import write_audit_event
 # this order.
 _MODULES: tuple[str, ...] = (
     "bd", "legal", "design", "project", "nso", "project_excellence",
+)
+
+
+# The one guarded UPDATE behind both decisions, written out twice instead of
+# assembled from a conditional fragment. Each text() call takes one literal and
+# is compiled at import: nothing is built at runtime, so there is no SQL for a
+# reader (or a scanner) to reassemble before it can see what executes.
+#
+# `AND status = 'pending'` IS the idempotency — a replay, a wrong tenant and a
+# missing row all come back empty and fall out at the same branch.
+_REJECT_GRANT_STMT = text(
+    "UPDATE supervisor_module_access_grants AS g "
+    "   SET status = :new_status, decided_at = now(), "
+    "       decided_by = CAST(:aid AS uuid) "
+    " WHERE g.id = CAST(:rid AS uuid) AND g.tenant_id = :tid "
+    "   AND g.status = 'pending' "
+    "RETURNING g.supervisor_id, g.module"
+)
+
+# Approval carries one extra condition: the requester must still be an active
+# supervisor. Rejection deliberately does not — it has to stay possible whatever
+# became of them, or a demoted supervisor's row sits in the queue with no way to
+# clear it.
+_APPROVE_GRANT_STMT = text(
+    "UPDATE supervisor_module_access_grants AS g "
+    "   SET status = :new_status, decided_at = now(), "
+    "       decided_by = CAST(:aid AS uuid) "
+    " WHERE g.id = CAST(:rid AS uuid) AND g.tenant_id = :tid "
+    "   AND g.status = 'pending' "
+    "   AND EXISTS (SELECT 1 FROM users u "
+    "                WHERE u.id = g.supervisor_id "
+    "                  AND u.tenant_id = g.tenant_id "
+    "                  AND u.role = 'supervisor' AND u.is_active) "
+    "RETURNING g.supervisor_id, g.module"
 )
 
 
@@ -201,39 +235,23 @@ async def list_pending_requests(session: AsyncSession, tenant_id: str) -> list[d
 async def _decide(
     session: AsyncSession, *,
     tenant_id: str, request_id: str, actor_id: str, actor_name: Optional[str],
-    new_status: str, action: str, require_active_supervisor: bool = False,
+    new_status: str, action: str, stmt: TextClause,
 ) -> None:
     """Approve or reject, sharing the guarded UPDATE that makes both idempotent.
 
-    The `AND status = 'pending'` in the WHERE *is* the idempotency: a replay, a
-    wrong tenant and a missing row all come back empty and fall out at the same
-    branch — the convention from business_admin_service.approve_executive_request.
-    The audit write sits after it, so a replayed decision records nothing.
+    `stmt` is one of the two complete statements above — the caller picks the
+    whole statement rather than passing a flag that reshapes one here. The
+    `AND status = 'pending'` in the WHERE *is* the idempotency, the convention
+    from business_admin_service.approve_executive_request, and the audit write
+    sits after it so a replayed decision records nothing.
 
     A malformed id takes that same branch rather than reaching the cast.
     """
     if not _is_uuid(request_id):
         return
-    # Only approval requires it. A rejection must stay possible whatever became
-    # of the requester, or a demoted supervisor's row sits in the queue forever
-    # with no way to clear it.
-    still_a_supervisor = (
-        "   AND EXISTS (SELECT 1 FROM users u "
-        "                WHERE u.id = g.supervisor_id "
-        "                  AND u.tenant_id = g.tenant_id "
-        "                  AND u.role = 'supervisor' AND u.is_active) "
-    ) if require_active_supervisor else ""
     async with transaction(session):
         row = (await session.execute(
-            text(
-                "UPDATE supervisor_module_access_grants AS g "
-                "   SET status = :new_status, decided_at = now(), "
-                "       decided_by = CAST(:aid AS uuid) "
-                " WHERE g.id = CAST(:rid AS uuid) AND g.tenant_id = :tid "
-                "   AND g.status = 'pending' "
-                + still_a_supervisor
-                + "RETURNING g.supervisor_id, g.module"
-            ),
+            stmt,
             {"aid": actor_id, "rid": request_id, "tid": tenant_id,
              "new_status": new_status},
         )).mappings().first()
@@ -267,7 +285,7 @@ async def approve_request(
     await _decide(
         session, tenant_id=tenant_id, request_id=request_id, actor_id=actor_id,
         actor_name=actor_name, new_status="approved", action="module_access_approved",
-        require_active_supervisor=True,
+        stmt=_APPROVE_GRANT_STMT,
     )
 
 
@@ -279,6 +297,7 @@ async def reject_request(
     await _decide(
         session, tenant_id=tenant_id, request_id=request_id, actor_id=actor_id,
         actor_name=actor_name, new_status="rejected", action="module_access_rejected",
+        stmt=_REJECT_GRANT_STMT,
     )
 
 
