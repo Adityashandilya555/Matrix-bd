@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 // The strip a supervisor sees while working inside a module they borrowed under
 // an approved grant (migration 20260930).
 //

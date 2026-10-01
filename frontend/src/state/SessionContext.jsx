@@ -212,7 +212,10 @@ export function SessionProvider({ children }) {
     let alive = true;
     const hydrate = async (token) => {
       if (!token) {
-        if (alive) { setSession(INITIAL_SESSION); setAuthReady(true); }
+        // Clear the withdrawn-access notice with the session it belonged to —
+        // the provider does not remount on sign-out, so otherwise it would
+        // greet whoever signs in next in this tab.
+        if (alive) { setSession(INITIAL_SESSION); setAuthReady(true); setWorkspaceAccessRevoked(null); }
         return;
       }
       try {
@@ -251,6 +254,10 @@ export function SessionProvider({ children }) {
           deactivateOverride();
           _setAdminOverride(null);
           setWorkspaceAccessRevoked(claims.workspace_access_refused);
+        } else {
+          // Any clean hydration clears it, so the notice cannot outlive the
+          // grant it describes — or the user it was shown to.
+          setWorkspaceAccessRevoked(null);
         }
       } catch (err) {
         if (isAuthRejection(err)) {

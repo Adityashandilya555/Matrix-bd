@@ -37,6 +37,9 @@ import WorkspaceSwitcherPanel from './WorkspaceSwitcherPanel.jsx';
 
 // Real API wiring. Injectable so the dev preview (and tests) can drive the whole
 // portal with mock data — see ./_preview/ApprovalCenterPreview.jsx.
+// Stable empty fetcher for queues a partial injected map does not cover.
+const NO_ROWS = async () => [];
+
 export const REAL_FETCHERS = {
   // Observer — workspace-wide read-only role
   getObserverCode, rotateObserverCode,
@@ -126,8 +129,13 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   const [executiveRequests, loadExecutiveRequests] = useQueue(fetchers.listExecutiveReqs);
   // Cross-module workspace access: requests awaiting a decision, and the grants
   // currently live. Two queues over one table (20260930).
-  const [moduleAccessRequests, loadModuleAccessRequests] = useQueue(fetchers.listModuleAccessReqs);
-  const [moduleAccessGrants, loadModuleAccessGrants] = useQueue(fetchers.listModuleAccessGrants);
+  // `|| NO_ROWS`: injected fetcher maps (the dev preview, tests) carry only the
+  // keys that harness cares about, and useQueue calls whatever it is handed —
+  // so a missing key would render this section in an error state rather than
+  // simply empty. A module-level constant, not an inline arrow, or the
+  // useCallback inside useQueue would see a new function every render.
+  const [moduleAccessRequests, loadModuleAccessRequests] = useQueue(fetchers.listModuleAccessReqs || NO_ROWS);
+  const [moduleAccessGrants, loadModuleAccessGrants] = useQueue(fetchers.listModuleAccessGrants || NO_ROWS);
   const [org, loadOrg] = useQueue(fetchers.listOrg);
   const [observerPending, loadObservers] = useQueue(fetchers.listPendingObservers);
   // The roster of APPROVED observers. Its own queue, not a filter over the

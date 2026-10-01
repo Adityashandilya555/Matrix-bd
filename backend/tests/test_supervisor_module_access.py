@@ -26,6 +26,10 @@ from tests.conftest import FakeResult, RecordingSession
 
 TENANT = "00000000-0000-0000-0000-0000000000aa"
 USER = "00000000-0000-0000-0000-0000000000bb"
+# Real UUIDs: the service no-ops on a malformed id rather than reaching the
+# CAST, so a placeholder like "req-1" would make these tests pass vacuously.
+REQ_ID = "00000000-0000-0000-0000-0000000000c1"
+GRANT_ID = "00000000-0000-0000-0000-0000000000c2"
 
 
 class _Req:
@@ -67,6 +71,19 @@ async def _resolve(
         x_override_role=override_role,
         x_override_module=override_module,
     )
+
+
+def _sql_containing(sess: RecordingSession, needle: str) -> str:
+    """The one emitted statement containing `needle`.
+
+    A bare next() raises StopIteration when nothing matches, which reads as a
+    crashed test rather than a failed assertion and says nothing about what was
+    actually emitted.
+    """
+    for sql in sess.executed:
+        if needle in sql:
+            return sql
+    raise AssertionError(f"no statement containing {needle!r}; emitted: {sess.executed}")
 
 
 # ── entering a borrowed module ───────────────────────────────────────────────
@@ -236,7 +253,7 @@ async def test_the_request_insert_infers_the_partial_index():
     await access_svc.request_module_access(
         sess, supervisor_id="s", tenant_id="t", home_module="bd", module="legal",
     )
-    insert_sql = next(s for s in sess.executed if "INSERT INTO supervisor_module_access_grants" in s)
+    insert_sql = _sql_containing(sess, "INSERT INTO supervisor_module_access_grants")
     assert "ON CONFLICT (supervisor_id, module)" in insert_sql
     assert "WHERE status IN ('pending', 'approved') DO NOTHING" in insert_sql
 
@@ -272,7 +289,7 @@ async def test_the_lifecycle_is_audited():
         s = RecordingSession(results=[
             FakeResult(mappings_rows=[{"supervisor_id": "s", "module": "legal"}]),
         ])
-        await fn(s, "t", "req-1", "admin-1", "The Admin")
+        await fn(s, "t", REQ_ID, "admin-1", "The Admin")
         assert [a.action for a in s.added] == [action]
 
 
@@ -282,14 +299,49 @@ async def test_a_replayed_decision_writes_no_audit_row():
     double-click must record nothing rather than a second event."""
     for fn in (access_svc.approve_request, access_svc.reject_request, access_svc.revoke_grant):
         sess = RecordingSession(results=[FakeResult(mappings_rows=[])])
-        await fn(sess, "t", "req-1", "admin-1", "The Admin")
+        await fn(sess, "t", REQ_ID, "admin-1", "The Admin")
         assert sess.added == []
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_id_is_a_no_op_rather_than_a_500():
+    """The id comes from a path parameter. Reaching `CAST(:id AS uuid)` with a
+    non-UUID surfaces as a driver error, where every other not-found here is a
+    silent no-op."""
+    for fn in (access_svc.approve_request, access_svc.reject_request, access_svc.revoke_grant):
+        sess = RecordingSession()
+        await fn(sess, "t", "not-a-uuid", "admin-1")
+        assert sess.executed == []
+
+
+@pytest.mark.asyncio
+async def test_a_live_row_outranks_an_older_decision_on_the_access_page():
+    """Rows written in one transaction share a created_at, so ordering by time
+    alone could let a rejected row mask the approval that followed it."""
+    sess = RecordingSession(results=[FakeResult(mappings_rows=[
+        {"module": "legal", "status": "approved", "created_at": None, "decided_at": None},
+        {"module": "legal", "status": "rejected", "created_at": None, "decided_at": None},
+    ])])
+    rows = await access_svc.list_my_module_access(
+        sess, supervisor_id="s", tenant_id="t", home_module="bd",
+    )
+    assert {r["module"]: r["state"] for r in rows}["legal"] == "granted"
+    order_sql = _sql_containing(sess, "ORDER BY")
+    assert "(status IN ('pending', 'approved')) DESC" in order_sql
+    assert "id DESC" in order_sql
+
+
+def test_rotating_a_code_checks_authority_inside_the_write_transaction():
+    """Checked before the transaction, a grant withdrawn in between would still
+    mint a code."""
+    src = inspect.getsource(codes_svc.rotate_my_code)
+    assert src.index("async with transaction(session):") < src.index("_assert_supervises_module(")
 
 
 @pytest.mark.asyncio
 async def test_revoke_only_touches_an_approved_grant():
     sess = RecordingSession(results=[FakeResult(mappings_rows=[])])
-    await access_svc.revoke_grant(sess, "t", "grant-1", "admin-1")
+    await access_svc.revoke_grant(sess, "t", GRANT_ID, "admin-1")
     sql = sess.executed[0]
     assert "status = 'revoked'" in sql
     assert "AND status = 'approved'" in sql
@@ -299,7 +351,7 @@ async def test_revoke_only_touches_an_approved_grant():
 @pytest.mark.asyncio
 async def test_the_decision_status_is_bound_not_interpolated():
     sess = RecordingSession(results=[FakeResult(mappings_rows=[])])
-    await access_svc.approve_request(sess, "t", "req-1", "admin-1")
+    await access_svc.approve_request(sess, "t", REQ_ID, "admin-1")
     assert "SET status = :new_status" in sess.executed[0]
     assert sess.execute_params[0]["new_status"] == "approved"
 

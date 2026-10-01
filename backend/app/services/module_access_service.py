@@ -16,6 +16,7 @@ sides of one feature in different layers.
 from __future__ import annotations
 
 from typing import Optional
+from uuid import UUID
 
 from fastapi import HTTPException, status as http_status
 from sqlalchemy import text
@@ -31,6 +32,20 @@ from app.services.audit_service import write_audit_event
 _MODULES: tuple[str, ...] = (
     "bd", "legal", "design", "project", "nso", "project_excellence",
 )
+
+
+def _is_uuid(value: str) -> bool:
+    """Whether a path-supplied id is even a UUID.
+
+    The guarded UPDATEs below cast their id with `CAST(:id AS uuid)`, so a
+    malformed one would reach the driver and surface as a 500 rather than the
+    silent no-op that every other not-found takes here.
+    """
+    try:
+        UUID(str(value))
+    except (ValueError, AttributeError, TypeError):
+        return False
+    return True
 
 
 # ── The supervisor's own side ────────────────────────────────────────────────
@@ -49,7 +64,12 @@ async def list_my_module_access(
             "SELECT module, status, created_at, decided_at "
             "  FROM supervisor_module_access_grants "
             " WHERE supervisor_id = :sid AND tenant_id = :tid "
-            " ORDER BY created_at DESC"
+            # The live row first, then the newest decision, then id as a
+            # deterministic tiebreak — rows created in the same transaction
+            # share a created_at, and without this an older rejected row could
+            # sort ahead of a live one and mask it.
+            " ORDER BY (status IN ('pending', 'approved')) DESC, "
+            "          created_at DESC, id DESC"
         ),
         {"sid": supervisor_id, "tid": tenant_id},
     )).mappings().all()
@@ -189,7 +209,11 @@ async def _decide(
     wrong tenant and a missing row all come back empty and fall out at the same
     branch — the convention from business_admin_service.approve_executive_request.
     The audit write sits after it, so a replayed decision records nothing.
+
+    A malformed id takes that same branch rather than reaching the cast.
     """
+    if not _is_uuid(request_id):
+        return
     async with transaction(session):
         row = (await session.execute(
             text(
@@ -285,7 +309,11 @@ async def revoke_grant(
     every time and nothing is cached in the token. Executives they recruited are
     deliberately left alone; deactivating active people as a side effect of an
     admin toggle would be worse than an orphaned link.
+
+    A malformed id no-ops rather than reaching the cast.
     """
+    if not _is_uuid(grant_id):
+        return
     async with transaction(session):
         row = (await session.execute(
             text(

@@ -56,13 +56,16 @@ async def rotate_my_code(
     session: AsyncSession, tenant_id: str, supervisor_id: str, module: str,
 ) -> dict:
     """Mint or regenerate this supervisor's invite code for the module and stamp rotated_at."""
-    # The sharpest of the four: without this, revoking a cross-module grant
-    # would not stop the ex-borrower from minting fresh invite codes for that
-    # module and recruiting into it indefinitely.
-    await _assert_supervises_module(
-        session, supervisor_id=supervisor_id, module=module, tenant_id=tenant_id,
-    )
     async with transaction(session):
+        # The sharpest of the four: without this, revoking a cross-module grant
+        # would not stop the ex-borrower from minting fresh invite codes for
+        # that module and recruiting into it indefinitely.
+        #
+        # Inside the transaction, not before it: checked outside, a grant
+        # withdrawn between the check and the INSERT would still mint a code.
+        await _assert_supervises_module(
+            session, supervisor_id=supervisor_id, module=module, tenant_id=tenant_id,
+        )
         row = (await session.execute(
             text(
                 "INSERT INTO supervisor_invite_codes (tenant_id, supervisor_id, module, code) "

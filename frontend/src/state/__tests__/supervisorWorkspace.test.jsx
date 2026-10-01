@@ -135,4 +135,11 @@ describe('when the grant is withdrawn', () => {
     expect(stored).toBeNull();
     expect(val('module')).toBe('bd');
   });
+
+  it('does not carry the notice into a session that never lost anything', async () => {
+    // The provider does not remount on sign-out, so a notice left standing
+    // would greet whoever signs in next in this tab.
+    await mount();
+    expect(val('revoked')).toBe('null');
+  });
 });

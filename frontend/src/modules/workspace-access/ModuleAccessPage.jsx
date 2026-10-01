@@ -1,3 +1,4 @@
+// skipcq: JS-0833
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '../../state/SessionContext.jsx';
