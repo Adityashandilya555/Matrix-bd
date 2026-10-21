@@ -98,7 +98,7 @@ def _assert_may_write(claims: dict, request: Request) -> None:
 
 
 def _assert_workspace_access(claims: dict, request: Request) -> None:
-    """Refuse a supervisor whose X-Override-Module has no approved grant.
+    """Refuse a supervisor or executive whose X-Override-Module has no approved grant.
 
     MUST stay AFTER the db.rollback() in get_current_user, exactly like
     _assert_may_write — the membership SELECT autobegins a transaction and
@@ -127,13 +127,14 @@ def _apply_workspace_override(
     db_role: str,
     has_executive_access: bool,
     has_module_grant: bool,
+    has_exec_module_grant: bool,
     home_module: Optional[str],
     override_role: Optional[str],
     override_module: Optional[str],
 ) -> None:
     """Rewrite the EFFECTIVE role/module from the X-Override-* headers.
 
-    Four callers may drive another role or module, each for a different reason:
+    Five callers may drive another role or module, each for a different reason:
 
     * ``business_admin`` — workspace access, unrestricted, the original feature.
     * ``observer`` — read-only module switching. It already reads every module
@@ -152,6 +153,10 @@ def _apply_workspace_override(
       their OWN module (it is computed against :own), so honouring an executive
       override here would hand out an identity nobody approved.
     * a dual-role ``supervisor`` — may drop to executive inside its own module.
+    * an ``executive`` holding an APPROVED grant — may enter another module as
+      an executive (executive_module_access_grants, migration 20261022). Only
+      the module moves; ``override_role`` is ignored for the same reason as the
+      supervisor grant. No grant is refused exactly as for a supervisor.
 
     A supervisor who sends an override module WITHOUT a grant is refused, not
     silently ignored: the request would otherwise run against their own module
@@ -188,6 +193,31 @@ def _apply_workspace_override(
                 claims[_OVERRIDE_REFUSED] = override_module
         elif has_executive_access and override_role == Role.EXECUTIVE.value:
             claims["role"] = Role.EXECUTIVE.value
+    elif db_role == Role.EXECUTIVE.value:
+        _apply_borrowed_module(
+            claims, has_grant=has_exec_module_grant,
+            home_module=home_module, override_module=override_module,
+        )
+
+
+def _apply_borrowed_module(
+    claims: dict, *, has_grant: bool,
+    home_module: Optional[str], override_module: Optional[str],
+) -> None:
+    """Enter a borrowed module on a grant, or flag the override as refused.
+
+    The executive branch of _apply_workspace_override, split out to keep that
+    function under the complexity gate. Same contract as the supervisor branch:
+    only ``module`` moves, and a missing grant is flagged for
+    _assert_workspace_access rather than silently ignored.
+    """
+    if not override_module or override_module == home_module:
+        return
+    if has_grant:
+        claims["module"] = override_module
+        claims["borrowed_module"] = override_module
+    else:
+        claims[_OVERRIDE_REFUSED] = override_module
 
 
 async def get_current_user(
@@ -263,7 +293,25 @@ async def get_current_user(
                    AND g.tenant_id = :tid
                    AND g.module = :mod
                    AND g.status = 'approved'
-               ) AS has_module_grant
+               ) AS has_module_grant,
+               EXISTS(
+                 SELECT 1 FROM executive_module_access_grants eg
+                 WHERE eg.executive_id = u.id
+                   AND eg.tenant_id = :tid
+                   AND eg.module = :mod
+                   AND eg.status = 'approved'
+                   -- The chosen supervisor must still be an active supervisor.
+                   -- target_supervisor_id is ON DELETE SET NULL, and a
+                   -- deactivated supervisor's Team page is unreachable, so in
+                   -- either case the grant has no reporting line left — nobody
+                   -- can delegate to or supervise the executive — and must stop
+                   -- admitting them. (A NULL id matches no users row.)
+                   AND EXISTS (
+                     SELECT 1 FROM users ts
+                     WHERE ts.id = eg.target_supervisor_id
+                       AND ts.role = 'supervisor' AND ts.is_active
+                   )
+               ) AS has_exec_module_grant
         FROM users u
         LEFT JOIN user_module_memberships umm
           ON u.id = umm.user_id
@@ -302,6 +350,7 @@ async def get_current_user(
         db_role=db_role,
         has_executive_access=bool(row.get("has_executive_access")),
         has_module_grant=bool(row.get("has_module_grant")),
+        has_exec_module_grant=bool(row.get("has_exec_module_grant")),
         home_module=home_module,
         override_role=x_override_role,
         override_module=x_override_module,

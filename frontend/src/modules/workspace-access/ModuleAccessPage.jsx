@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSession } from '../../state/SessionContext.jsx';
 import { ROLE } from '../../rbac/roles.js';
 import { WORKSPACE_MODULES, workspaceModuleRoute } from '../shared/workspaceModules.js';
+import ExecutiveModuleAccessPage from './ExecutiveModuleAccessPage.jsx';
 import {
   listMyModuleAccess,
   requestModuleAccess,
@@ -30,7 +31,16 @@ const LABELS = {
   none:    '',
 };
 
+// One route, two flows: an executive asks for executive access under a chosen
+// supervisor (migration 20261022), a supervisor for supervisor access.
 export default function ModuleAccessPage() {
+  const { session } = useSession();
+  return session?.realRole === ROLE.EXECUTIVE
+    ? <ExecutiveModuleAccessPage/>
+    : <SupervisorModuleAccessPage/>;
+}
+
+function SupervisorModuleAccessPage() {
   const { session, switchAs, effectiveModule, borrowedModule } = useSession();
   const navigate = useNavigate();
   const [states, setStates] = useState({});

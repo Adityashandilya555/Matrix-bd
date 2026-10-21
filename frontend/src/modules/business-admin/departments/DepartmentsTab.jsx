@@ -3,6 +3,7 @@ import { Icon, SectionHeader, ErrorState, Skeleton } from '../ui/kit.jsx';
 import PendingSupervisorsList from '../PendingSupervisorsList.jsx';
 import ExecutiveRequestsList from '../ExecutiveRequestsList.jsx';
 import ModuleAccessSection from '../ModuleAccessSection.jsx';
+import ExecModuleAccessSection from '../ExecModuleAccessSection.jsx';
 import OrgModuleCard from './OrgModuleCard.jsx';
 import ObserverAccessSection from './ObserverAccessSection.jsx';
 import { mergePending } from './pendingQueue.js';
@@ -19,6 +20,7 @@ const EMPTY_QUEUE = { status: 'ready', items: [], error: null, refreshing: false
 export default function DepartmentsTab({
   org, pendingSupervisors, executiveRequests, observers, handlers, readOnly = false,
   moduleAccess = { requests: EMPTY_QUEUE, grants: EMPTY_QUEUE },
+  execModuleAccess = { requests: EMPTY_QUEUE, grants: EMPTY_QUEUE },
 }) {
   const pending = React.useMemo(
     () => mergePending(pendingSupervisors, observers?.pending),
@@ -74,6 +76,24 @@ export default function DepartmentsTab({
           onRevoke={handlers.onRevokeModuleAccess}
           onRetryRequests={() => handlers.reloadModuleAccessRequests?.(false)}
           onRetryGrants={() => handlers.reloadModuleAccessGrants?.(false)} />
+      </section>
+      )}
+
+      {!readOnly && (
+      <section>
+        <SectionHeader icon={Icon.external} title="Executive Module Access"
+          count={execModuleAccess.requests.items?.length || 0} tone="warn"
+          description="Executives asking to work in another module under a chosen supervisor, and who currently holds that access."
+          onRefresh={() => handlers.reloadExecModuleAccessRequests?.(true)}
+          refreshing={execModuleAccess.requests.refreshing} />
+        <ExecModuleAccessSection
+          requests={execModuleAccess.requests}
+          grants={execModuleAccess.grants}
+          onApprove={handlers.onApproveExecModuleAccess}
+          onReject={handlers.onRejectExecModuleAccess}
+          onRevoke={handlers.onRevokeExecModuleAccess}
+          onRetryRequests={() => handlers.reloadExecModuleAccessRequests?.(false)}
+          onRetryGrants={() => handlers.reloadExecModuleAccessGrants?.(false)} />
       </section>
       )}
 

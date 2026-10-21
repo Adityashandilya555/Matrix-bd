@@ -204,11 +204,12 @@ export default function AppRouter() {
           </RequireRole>
         }/>
 
-        {/* Supervisor-only. `role` reads 'supervisor' while borrowing another
-            module, so the page stays reachable from inside a borrowed
-            workspace — which is where you go to switch or hand it back. */}
+        {/* Supervisors and executives. `role` keeps reading the same role
+            while borrowing another module, so the page stays reachable from
+            inside a borrowed workspace — which is where you go to switch or
+            hand it back. The page itself branches on realRole. */}
         <Route path={ROUTES.MODULE_ACCESS} element={
-          <RequireRole roles={['supervisor']}>
+          <RequireRole roles={['supervisor', 'executive']}>
             <ModuleAccessPage/>
           </RequireRole>
         }/>

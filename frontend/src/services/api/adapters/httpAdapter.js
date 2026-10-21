@@ -573,6 +573,44 @@ export async function requestModuleAccess(moduleKey) {
   return post('/users/me/module-access/requests', { module: moduleKey });
 }
 
+// ── Executive cross-module workspace access (migration 20261022) ───────────
+//
+// The executive sibling of the two calls above. A request names the supervisor
+// of the target module the executive will work under; NSO is never offered
+// (it has no executive role) and the server refuses it regardless.
+
+export async function listMyExecModuleAccess() {
+  const data = await get('/users/me/executive-module-access');
+  const items = data?.items || data || [];
+  return items.map(r => ({
+    module:         r.module,
+    state:          r.state,
+    lastDecision:   r.last_decision || null,
+    requestId:      r.request_id || null,
+    supervisorId:   r.supervisor_id || null,
+    supervisorName: r.supervisor_name || null,
+    requestedAt:    r.requested_at || null,
+    decidedAt:      r.decided_at || null,
+  }));
+}
+
+export async function listModuleSupervisors(moduleKey) {
+  const data = await get('/users/me/executive-module-access/supervisors', { module: moduleKey });
+  return (data?.items || data || []).map(s => ({ id: s.id, name: s.name, email: s.email }));
+}
+
+export async function requestExecModuleAccess({ module: moduleKey, targetSupervisorId, note }) {
+  return post('/users/me/executive-module-access/requests', {
+    module: moduleKey,
+    target_supervisor_id: targetSupervisorId,
+    note: note || null,
+  });
+}
+
+export async function cancelExecModuleAccessRequest(requestId) {
+  return post(`/users/me/executive-module-access/requests/${requestId}/cancel`);
+}
+
 // `login` is intentionally NOT exported. With Supabase the sign-in happens on
 // the client via the Supabase JS SDK; the resulting token is fed to
 // authToken.setAuthToken(token). See frontend/src/services/api/supabaseAuth.js.
@@ -879,6 +917,10 @@ export async function listMyTeam(module) {
     name:     u.name,
     module:   u.module,
     joinedAt: u.joined_at,
+    // An executive of another module working here on an approved grant
+    // (migration 20261022); homeModule is their own module.
+    borrowed:   Boolean(u.borrowed),
+    homeModule: u.home_module || null,
   }));
 }
 

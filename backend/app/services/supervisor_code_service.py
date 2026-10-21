@@ -181,25 +181,86 @@ async def approve_my_pending_exec(
         )
 
 
+# The two list_my_team reads, each written out whole as one literal rather than
+# assembled from a shared fragment — the convention from module_access_service
+# (#505): nothing is built at runtime, so there is nothing to reassemble before
+# reading what executes. Both UNION in executives from another module working
+# here on an approved executive_module_access_grants row (migration 20261022).
+
+# Business admin: every active executive in the module. DISTINCT ON because an
+# executive holds one membership row per supervisor and this read has no
+# supervisor filter; members sort first, so someone who is both a member and a
+# grantee (not reachable today) reads as a member.
+_TEAM_ALL_SQL = text(
+    "SELECT DISTINCT ON (t.id) t.* FROM ("
+    "SELECT u.id, u.email, u.name, umm.joined_at, "
+    "       false AS borrowed, NULL AS home_module "
+    "FROM user_module_memberships umm "
+    "JOIN users u ON u.id = umm.user_id "
+    "WHERE umm.module = :m "
+    "  AND umm.role_in_module = 'executive' "
+    "  AND umm.tenant_id = :tid "
+    "  AND u.is_active = true "
+    "UNION ALL "
+    "SELECT u.id, u.email, u.name, g.decided_at AS joined_at, "
+    "       true AS borrowed, "
+    "       (SELECT h.module FROM user_module_memberships h "
+    "         WHERE h.user_id = g.executive_id AND h.tenant_id = g.tenant_id "
+    "           AND h.role_in_module = 'executive' "
+    "         ORDER BY h.module LIMIT 1) AS home_module "
+    "FROM executive_module_access_grants g "
+    "JOIN users u ON u.id = g.executive_id "
+    "WHERE g.module = :m AND g.tenant_id = :tid "
+    "  AND g.status = 'approved' AND u.is_active = true "
+    # Same rule as deps.py's has_exec_module_grant: a grant whose supervisor
+    # was deleted (SET NULL) or deactivated no longer admits anyone, so it
+    # lists no one.
+    "  AND EXISTS (SELECT 1 FROM users ts "
+    "               WHERE ts.id = g.target_supervisor_id "
+    "                 AND ts.role = 'supervisor' AND ts.is_active) "
+    ") t ORDER BY t.id, t.borrowed"
+)
+
+# A supervisor: the executives who report to them in the module, by membership
+# or by a grant that names them as the target supervisor.
+_TEAM_MINE_SQL = text(
+    "SELECT u.id, u.email, u.name, umm.joined_at, "
+    "       false AS borrowed, NULL AS home_module "
+    "FROM user_module_memberships umm "
+    "JOIN users u ON u.id = umm.user_id "
+    "WHERE umm.supervisor_id = :sid "
+    "  AND umm.module = :m "
+    "  AND umm.role_in_module = 'executive' "
+    "  AND u.is_active = true "
+    "UNION ALL "
+    "SELECT u.id, u.email, u.name, g.decided_at AS joined_at, "
+    "       true AS borrowed, "
+    "       (SELECT h.module FROM user_module_memberships h "
+    "         WHERE h.user_id = g.executive_id AND h.tenant_id = g.tenant_id "
+    "           AND h.role_in_module = 'executive' "
+    "         ORDER BY h.module LIMIT 1) AS home_module "
+    "FROM executive_module_access_grants g "
+    "JOIN users u ON u.id = g.executive_id "
+    "WHERE g.module = :m AND g.tenant_id = :tid "
+    "  AND g.status = 'approved' AND u.is_active = true "
+    "  AND g.target_supervisor_id = CAST(:sid AS uuid)"
+)
+
+
 async def list_my_team(
     session: AsyncSession, current_user: dict, module: str,
 ) -> list[dict]:
     """Active executives bound to this supervisor in this module.
-    Business admins simulating a supervisor see all active executives in the module."""
+    Business admins simulating a supervisor see all active executives in the module.
+
+    Includes executives from other modules working here on an approved
+    executive_module_access_grants row (migration 20261022). Those carry
+    ``borrowed=True`` and their ``home_module``; there is no membership row for
+    them, so the grant's decided_at stands in for joined_at.
+    """
     if current_user.get("real_role") == "business_admin":
         rows = (await session.execute(
-            text(
-                # DISTINCT ON: an executive now holds one row per supervisor,
-                # and this branch has no supervisor filter — without it the
-                # same person is listed once per supervisor, with duplicate ids.
-                "SELECT DISTINCT ON (u.id) u.id, u.email, u.name, umm.joined_at "
-                "FROM user_module_memberships umm "
-                "JOIN users u ON u.id = umm.user_id "
-                "WHERE umm.module = :m "
-                "  AND umm.role_in_module = 'executive' "
-                "  AND umm.tenant_id = :tid "
-                "  AND u.is_active = true"
-            ),
+            _TEAM_ALL_SQL,
             {"m": module, "tid": current_user["tenant_id"]},
         )).mappings().all()
     else:
@@ -212,16 +273,8 @@ async def list_my_team(
             tenant_id=current_user["tenant_id"],
         )
         rows = (await session.execute(
-            text(
-                "SELECT u.id, u.email, u.name, umm.joined_at "
-                "FROM user_module_memberships umm "
-                "JOIN users u ON u.id = umm.user_id "
-                "WHERE umm.supervisor_id = :sid "
-                "  AND umm.module = :m "
-                "  AND umm.role_in_module = 'executive' "
-                "  AND u.is_active = true"
-            ),
-            {"sid": current_user["sub"], "m": module},
+            _TEAM_MINE_SQL,
+            {"sid": current_user["sub"], "m": module, "tid": current_user["tenant_id"]},
         )).mappings().all()
     return [
         {
@@ -230,6 +283,8 @@ async def list_my_team(
             "name": r["name"],
             "module": module,
             "joined_at": r["joined_at"],
+            "borrowed": bool(r["borrowed"]),
+            "home_module": r["home_module"],
         }
         for r in rows
     ]

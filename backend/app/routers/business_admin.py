@@ -29,11 +29,16 @@ from app.domain.schemas.business_admin import (
     SiteDocumentsResponse,
     ExecutiveRequestOut,
 )
-from app.domain.schemas.module_access import ModuleAccessGrantOut, ModuleAccessRequestOut
+from app.domain.schemas.module_access import (
+    ExecModuleAccessRequestOut,
+    ModuleAccessGrantOut,
+    ModuleAccessRequestOut,
+)
 from app.rbac.guards import require_real_role, require_role
 from app.rbac.roles import Role
 from app.services import business_admin_documents_service as docs_svc
 from app.services import business_admin_service as svc
+from app.services import executive_module_access_service as exec_access_svc
 from app.services import module_access_service as module_access_svc
 
 router = APIRouter(prefix="/business-admin", tags=["Business Admin"])
@@ -287,6 +292,81 @@ async def revoke_module_access_grant(
     tenant_id: TenantId,
 ) -> None:
     await module_access_svc.revoke_grant(
+        db, tenant_id, grant_id, current_user["sub"], current_user.get("name"),
+    )
+
+
+# ── Executive cross-module access (migration 20261022) ───────────────────────
+#
+# The executive sibling of the two families above, over
+# executive_module_access_grants. Same guard choice: require_role, since nothing
+# here returns a credential.
+
+@router.get(
+    "/executive-module-access-requests",
+    response_model=list[ExecModuleAccessRequestOut],
+)
+async def list_executive_module_access_requests(
+    db: DbDep,
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> list[dict]:
+    return await exec_access_svc.list_pending_requests(db, tenant_id)
+
+
+@router.post(
+    "/executive-module-access-requests/{request_id}/approve",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def approve_executive_module_access_request(
+    request_id: str,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> None:
+    await exec_access_svc.approve_request(
+        db, tenant_id, request_id, current_user["sub"], current_user.get("name"),
+    )
+
+
+@router.post(
+    "/executive-module-access-requests/{request_id}/reject",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def reject_executive_module_access_request(
+    request_id: str,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> None:
+    await exec_access_svc.reject_request(
+        db, tenant_id, request_id, current_user["sub"], current_user.get("name"),
+    )
+
+
+@router.get(
+    "/executive-module-access-grants",
+    response_model=list[ExecModuleAccessRequestOut],
+)
+async def list_executive_module_access_grants(
+    db: DbDep,
+    _auth: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> list[dict]:
+    return await exec_access_svc.list_active_grants(db, tenant_id)
+
+
+@router.post(
+    "/executive-module-access-grants/{grant_id}/revoke",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def revoke_executive_module_access_grant(
+    grant_id: str,
+    db: DbDep,
+    current_user: Annotated[dict, Depends(require_role(Role.BUSINESS_ADMIN))],
+    tenant_id: TenantId,
+) -> None:
+    await exec_access_svc.revoke_grant(
         db, tenant_id, grant_id, current_user["sub"], current_user.get("name"),
     )
 

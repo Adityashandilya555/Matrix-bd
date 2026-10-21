@@ -16,6 +16,8 @@ import {
   getExecutiveRequests, approveExecutiveRequest, rejectExecutiveRequest,
   getModuleAccessRequests, approveModuleAccessRequest, rejectModuleAccessRequest,
   getModuleAccessGrants, revokeModuleAccessGrant,
+  getExecModuleAccessRequests, approveExecModuleAccessRequest, rejectExecModuleAccessRequest,
+  getExecModuleAccessGrants, revokeExecModuleAccessGrant,
 } from '../../services/api/businessAdminApi.js';
 import {
   rotateDeptCode, listPendingSupervisors, approveSupervisor, rejectSupervisor, removeOrgUser,
@@ -72,6 +74,11 @@ export const REAL_FETCHERS = {
   rejectModuleAccessReq: rejectModuleAccessRequest,
   listModuleAccessGrants: getModuleAccessGrants,
   revokeModuleAccessGrant,
+  listExecModuleAccessReqs: getExecModuleAccessRequests,
+  approveExecModuleAccessReq: approveExecModuleAccessRequest,
+  rejectExecModuleAccessReq: rejectExecModuleAccessRequest,
+  listExecModuleAccessGrants: getExecModuleAccessGrants,
+  revokeExecModuleAccessGrant,
   approveExecutiveReq: approveExecutiveRequest,
   rejectExecutiveReq: rejectExecutiveRequest,
   removeOrgUser,
@@ -136,6 +143,10 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   // useCallback inside useQueue would see a new function every render.
   const [moduleAccessRequests, loadModuleAccessRequests] = useQueue(fetchers.listModuleAccessReqs || NO_ROWS);
   const [moduleAccessGrants, loadModuleAccessGrants] = useQueue(fetchers.listModuleAccessGrants || NO_ROWS);
+  // The executive sibling (20261022), same two-queue shape and same NO_ROWS
+  // fallback for injected fetcher maps.
+  const [execAccessRequests, loadExecAccessRequests] = useQueue(fetchers.listExecModuleAccessReqs || NO_ROWS);
+  const [execAccessGrants, loadExecAccessGrants] = useQueue(fetchers.listExecModuleAccessGrants || NO_ROWS);
   const [org, loadOrg] = useQueue(fetchers.listOrg);
   const [observerPending, loadObservers] = useQueue(fetchers.listPendingObservers);
   // The roster of APPROVED observers. Its own queue, not a filter over the
@@ -237,6 +248,11 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   // "sits unnoticed" problem the merge removed, one level up.
   const pendingAccess = mergePending(supervisors, observerPending);
   const pendingAccessCount = pendingAccess.items.length;
+  // Executive cross-module requests (20261022) are a third way to be waiting
+  // on this admin. The nav badge counted them, but the attention line and the
+  // tile did not, so a workspace whose only pending work was one of these read
+  // "You're all caught up" with a zero tile.
+  const execAccessCount = execAccessRequests.items.length;
   const sitesCount = sites.total || sites.items.length;
   // Count completed sites with the SAME rule the Sites → Completed tab uses, so
   // the tile and the tab never disagree (they used different definitions before).
@@ -329,12 +345,28 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     },
     reloadModuleAccessRequests: loadModuleAccessRequests,
     reloadModuleAccessGrants: loadModuleAccessGrants,
+    // Approving adds the executive to a supervisor's team, withdrawing ends
+    // their delegations — both change the org tree, so it reloads alongside.
+    onApproveExecModuleAccess: async (id) => {
+      await fetchers.approveExecModuleAccessReq(id);
+      await Promise.all([loadExecAccessRequests(true), loadExecAccessGrants(true), loadOrg(true)]);
+    },
+    onRejectExecModuleAccess: async (id) => {
+      await fetchers.rejectExecModuleAccessReq(id);
+      await loadExecAccessRequests(true);
+    },
+    onRevokeExecModuleAccess: async (id) => {
+      await fetchers.revokeExecModuleAccessGrant(id);
+      await Promise.all([loadExecAccessGrants(true), loadOrg(true)]);
+    },
+    reloadExecModuleAccessRequests: loadExecAccessRequests,
+    reloadExecModuleAccessGrants: loadExecAccessGrants,
     reloadOrg: loadOrg,
   };
 
   const refreshAll = async (silent = false) => {
     if (!silent) setRefreshingAll(true);
-    try { await Promise.all([reloadApprovals(true), loadSupervisors(true), loadExecutiveRequests(true), loadModuleAccessRequests(true), loadModuleAccessGrants(true), loadOrg(true), loadSites(true), loadLaunchQueue(true)]); }
+    try { await Promise.all([reloadApprovals(true), loadSupervisors(true), loadExecutiveRequests(true), loadModuleAccessRequests(true), loadModuleAccessGrants(true), loadExecAccessRequests(true), loadExecAccessGrants(true), loadOrg(true), loadSites(true), loadLaunchQueue(true)]); }
     finally { if (!silent) setRefreshingAll(false); }
   };
 
@@ -351,7 +383,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     { ...TABS[0], count: approvalSites.length },
     { ...TABS[1], count: launchActionable },
     { ...TABS[2] }, // Financial Closure — count fetched inside the tab
-    { ...TABS[3], count: pendingAccessCount + executiveRequests.items.length },
+    { ...TABS[3], count: pendingAccessCount + executiveRequests.items.length + execAccessCount },
     { ...TABS[4] },
     { ...TABS[5] }, // Workspace Access tab
   ];
@@ -403,6 +435,11 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
               · <Icon.doc size={14} style={{ color: T.warnText }} /> <span style={{ color: T.warnText }}>{executiveRequests.items.length} executive {executiveRequests.items.length === 1 ? 'request' : 'requests'}</span>
             </span>
           )}
+          {execAccessCount > 0 && (
+            <span style={{ marginLeft: 10, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              · <Icon.external size={14} style={{ color: T.warnText }} /> <span style={{ color: T.warnText }}>{execAccessCount} module access {execAccessCount === 1 ? 'request' : 'requests'}</span>
+            </span>
+          )}
         </div>
 
         {/* ── Overview tiles ── */}
@@ -414,7 +451,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
             onClick={() => setTab('approvals')} />
           <StatTile icon={Icon.flag} label="Completed sites" count={completedSites} tone="mint"
             loading={sites.status === 'loading'} caption={completedSites ? 'project done' : 'none yet'} onClick={() => openSites('completed')} />
-          <StatTile icon={Icon.users} label="Pending requests" count={pendingAccessCount} tone="blue"
+          <StatTile icon={Icon.users} label="Pending requests" count={pendingAccessCount + execAccessCount} tone="blue"
             loading={pendingAccess.status === 'loading'} caption="workspace access" onClick={() => setTab('departments')} />
         </div>
 
@@ -430,6 +467,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
             {tab === 'departments' && (
               <DepartmentsTab org={org} pendingSupervisors={supervisors} executiveRequests={executiveRequests}
               moduleAccess={{ requests: moduleAccessRequests, grants: moduleAccessGrants }}
+              execModuleAccess={{ requests: execAccessRequests, grants: execAccessGrants }}
               observers={{ code: observerCode, pending: observerPending, roster: observerRoster,
                 rotating: observerRotating, busyId: observerBusyId }}
               handlers={handlers} />

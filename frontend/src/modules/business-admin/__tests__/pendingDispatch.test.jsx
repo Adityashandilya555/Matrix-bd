@@ -31,7 +31,7 @@ let fetchers;
 
 const emptyList = () => Promise.resolve([]);
 
-const mount = async ({ supervisors = [], observers = [] } = {}) => {
+const mount = async ({ supervisors = [], observers = [], execAccess = [] } = {}) => {
   fetchers = {
     listDeliverables: emptyList, listGfc: emptyList, listFinance: emptyList,
     listBudget: emptyList, listQualityAudit: emptyList, listClosure: emptyList,
@@ -39,6 +39,7 @@ const mount = async ({ supervisors = [], observers = [] } = {}) => {
     listSupervisors: () => Promise.resolve(supervisors),
     listPendingObservers: () => Promise.resolve(observers),
     listActiveObservers: emptyList,
+    listExecModuleAccessReqs: () => Promise.resolve(execAccess),
     getObserverCode: () => Promise.resolve('ABC12345'),
     approveSupervisor: vi.fn().mockResolvedValue(undefined),
     rejectSupervisor: vi.fn().mockResolvedValue(undefined),
@@ -134,6 +135,14 @@ describe('the entry points that tell you there is anything to approve', () => {
     await mount({ supervisors: [SUP], observers: [OBS] });
     await waitFor(() => expect(screen.getByText(/2 awaiting approval/i)).toBeInTheDocument());
     await waitFor(() => expect(within(tile()).getByText('2')).toBeInTheDocument());
+  });
+
+  it('counts a lone executive module access request', async () => {
+    // Migration 20261022 added a third queue; the badge counted it but the
+    // attention line and this tile did not.
+    await mount({ execAccess: [{ id: 'r-1', module: 'design' }] });
+    await waitFor(() => expect(screen.getByText(/1 module access request/i)).toBeInTheDocument());
+    await waitFor(() => expect(within(tile()).getByText('1')).toBeInTheDocument());
   });
 
   it('reports zero when genuinely nobody is waiting', async () => {

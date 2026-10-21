@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import models
 from app.db.session import transaction
 from app.domain.schemas.business_admin import Module
+from app.services import executive_module_access_service as exec_access_svc
 from app.services import storage_service
 from app.services._common import display_code, fetch_site_for_update_or_404, fetch_user_names
 from app.services.audit_service import write_audit_event
@@ -625,6 +626,14 @@ async def deactivate_org_user(
             entity_id=user_id,
             entity_type="user",
         )
+        if target["role"] == "supervisor":
+            # Executives working in another module under this supervisor lose
+            # their reporting line with the account, so their grants end in the
+            # same transaction (migration 20261022).
+            await exec_access_svc.revoke_grants_for_supervisor(
+                session, tenant_id=str(tenant_id), supervisor_id=str(user_id),
+                actor_id=actor.get("sub"), actor_name=actor.get("name"),
+            )
 
 
 async def list_finance_approvals(
