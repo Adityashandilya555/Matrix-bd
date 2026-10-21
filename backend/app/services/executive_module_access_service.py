@@ -157,7 +157,8 @@ async def list_my_access(
     rows = (await session.execute(
         text(
             "SELECT g.id, g.module, g.status, g.created_at, g.decided_at, "
-            "       g.target_supervisor_id, s.name AS supervisor_name "
+            "       g.target_supervisor_id, s.name AS supervisor_name, "
+            "       (s.role = 'supervisor' AND s.is_active) AS supervisor_active "
             "  FROM executive_module_access_grants g "
             "  LEFT JOIN users s ON s.id = g.target_supervisor_id "
             " WHERE g.executive_id = :eid AND g.tenant_id = :tid "
@@ -185,7 +186,18 @@ async def list_my_access(
         elif row is not None:
             entry["requested_at"] = row["created_at"]
             entry["decided_at"] = row["decided_at"]
-            if row["status"] in ("approved", "pending"):
+            orphaned = (
+                row["status"] in ("approved", "pending")
+                and not row.get("supervisor_active")
+            )
+            if orphaned:
+                # The chosen supervisor is gone or inactive. deps.py admits
+                # nothing on this row, so it reads as what it is about to be
+                # swept into, and "Request access" is offered again.
+                entry["last_decision"] = (
+                    "revoked" if row["status"] == "approved" else "rejected"
+                )
+            elif row["status"] in ("approved", "pending"):
                 entry["state"] = "granted" if row["status"] == "approved" else "pending"
                 # The id only for a live row: it is what Cancel posts.
                 entry["request_id"] = str(row["id"])
@@ -242,6 +254,11 @@ async def request_access(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="Choose a supervisor of that module.",
             )
+        # A live row whose supervisor has since gone would otherwise make this
+        # a 409 forever. Cleared first, in the same transaction.
+        await _sweep_orphaned(
+            session, tenant_id=tenant_id, executive_id=executive_id, module=module,
+        )
         row = (await session.execute(
             text(
                 "INSERT INTO executive_module_access_grants "
@@ -488,34 +505,176 @@ async def revoke_grant(
         )).mappings().first()
         if not row:
             return
-        # :companion is NULL for modules without one, and `module = NULL`
-        # matches nothing, so one literal serves every module.
-        await session.execute(
-            text(
-                "UPDATE site_delegations "
-                "   SET revoked_at = now(), revoked_by = CAST(:aid AS uuid) "
-                " WHERE tenant_id = :tid AND delegate_user_id = :eid "
-                "   AND (module = :m OR module = :companion) "
-                "   AND revoked_at IS NULL"
-            ),
-            {"aid": actor_id, "tid": tenant_id, "eid": row["executive_id"],
-             "m": row["module"],
-             "companion": _COMPANION_DELEGATION_MODULE.get(row["module"])},
+        await _end_access(
+            session, tenant_id=tenant_id, grant_id=grant_id,
+            executive_id=row["executive_id"], module=row["module"],
+            actor_id=actor_id, actor_name=actor_name,
+            action="executive_module_access_revoked",
         )
+
+
+async def _end_access(
+    session: AsyncSession, *, tenant_id: str, grant_id: str,
+    executive_id, module: str, actor_id: Optional[str], actor_name: Optional[str],
+    action: str,
+) -> None:
+    """Everything a grant ending takes with it, after its row has been flipped.
+
+    Ends the executive's site delegations in the module (and its companion
+    module), audits, and tells the executive. Shared by an admin's Withdraw and
+    the automatic revocations below, so the three cannot drift apart. Runs
+    inside the caller's transaction.
+    """
+    # :companion is NULL for modules without one, and `module = NULL` matches
+    # nothing, so one literal serves every module. :aid may be NULL too, for a
+    # revocation nobody pressed a button for.
+    await session.execute(
+        text(
+            "UPDATE site_delegations "
+            "   SET revoked_at = now(), revoked_by = CAST(:aid AS uuid) "
+            " WHERE tenant_id = :tid AND delegate_user_id = :eid "
+            "   AND (module = :m OR module = :companion) "
+            "   AND revoked_at IS NULL"
+        ),
+        {"aid": actor_id, "tid": tenant_id, "eid": executive_id, "m": module,
+         "companion": _COMPANION_DELEGATION_MODULE.get(module)},
+    )
+    await write_audit_event(
+        session,
+        tenant_id=tenant_id,
+        site_id=None,
+        actor_id=actor_id,
+        actor_name=actor_name,
+        action=action,
+        entity_type=_ENTITY,
+        entity_id=str(grant_id),
+        detail=f"module={module} executive={executive_id}",
+    )
+    await _notify(
+        session, tenant_id=tenant_id, event="executive_module_access_revoked",
+        recipient_ids=[executive_id],
+        subject=f"Your {module} access was withdrawn",
+        payload={"grant_id": str(grant_id), "module": module},
+    )
+
+
+# ── Automatic revocation when the reporting line goes away ───────────────────
+#
+# A grant is only meaningful while its chosen supervisor is an active
+# supervisor: they are the reporting line, the only person whose Team page lists
+# the executive in that module. Two paths end it:
+#
+#   * revoke_grants_for_supervisor — called when a business admin deactivates
+#     the supervisor (business_admin_service.deactivate_org_user), so the grant
+#     ends at the same moment and the executive is told.
+#   * the sweep in request_access — the safety net for any row that went
+#     orphaned another way (the supervisor row deleted, so the FK set
+#     target_supervisor_id to NULL; or deactivated outside that function). It
+#     clears the live row so the executive can ask again instead of hitting the
+#     live-row 409 forever.
+#
+# Between the two, deps.py and list_my_access already treat an orphaned grant as
+# not granted, so nothing is admitted while a row waits to be swept.
+
+_REVOKE_FOR_SUPERVISOR_STMT = text(
+    "UPDATE executive_module_access_grants AS g "
+    "   SET status = 'revoked', revoked_at = now(), "
+    "       revoked_by = CAST(:aid AS uuid) "
+    " WHERE g.tenant_id = :tid "
+    "   AND g.target_supervisor_id = CAST(:sid AS uuid) "
+    "   AND g.status = 'approved' "
+    "RETURNING g.id, g.executive_id, g.module"
+)
+
+# A pending request naming that supervisor can never be approved
+# (_APPROVE_GRANT_STMT requires them active), so it is closed too, as rejected.
+_REJECT_PENDING_FOR_SUPERVISOR_STMT = text(
+    "UPDATE executive_module_access_grants AS g "
+    "   SET status = 'rejected', decided_at = now(), "
+    "       decided_by = CAST(:aid AS uuid) "
+    " WHERE g.tenant_id = :tid "
+    "   AND g.target_supervisor_id = CAST(:sid AS uuid) "
+    "   AND g.status = 'pending' "
+    "RETURNING g.id, g.executive_id, g.module"
+)
+
+# The executive's own live row for a module whose supervisor is gone (NULL) or
+# no longer an active supervisor. Approved rows become revoked, pending ones
+# rejected; revoked_by / decided_by stay NULL — the system did this.
+_SWEEP_ORPHANED_STMT = text(
+    "UPDATE executive_module_access_grants AS g "
+    "   SET status = CASE WHEN g.status = 'approved' "
+    "                     THEN 'revoked' ELSE 'rejected' END, "
+    "       revoked_at = CASE WHEN g.status = 'approved' "
+    "                         THEN now() ELSE g.revoked_at END, "
+    "       decided_at = CASE WHEN g.status = 'pending' "
+    "                         THEN now() ELSE g.decided_at END "
+    " WHERE g.executive_id = :eid AND g.module = :m AND g.tenant_id = :tid "
+    "   AND g.status IN ('pending', 'approved') "
+    "   AND NOT EXISTS (SELECT 1 FROM users s "
+    "                    WHERE s.id = g.target_supervisor_id "
+    "                      AND s.role = 'supervisor' AND s.is_active) "
+    "RETURNING g.id, g.executive_id, g.module, g.status"
+)
+
+
+async def revoke_grants_for_supervisor(
+    session: AsyncSession, *, tenant_id: str, supervisor_id: str,
+    actor_id: Optional[str], actor_name: Optional[str] = None,
+) -> None:
+    """End every grant and pending request that names this supervisor.
+
+    Called inside the caller's transaction when the supervisor is deactivated,
+    so the grant ends with the account rather than outliving it.
+    """
+    if not _is_uuid(supervisor_id):
+        return
+    params = {"aid": actor_id, "tid": tenant_id, "sid": str(supervisor_id)}
+    revoked = (await session.execute(_REVOKE_FOR_SUPERVISOR_STMT, params)).mappings().all()
+    for r in revoked:
+        await _end_access(
+            session, tenant_id=tenant_id, grant_id=r["id"],
+            executive_id=r["executive_id"], module=r["module"],
+            actor_id=actor_id, actor_name=actor_name,
+            action="executive_module_access_auto_revoked",
+        )
+    rejected = (await session.execute(
+        _REJECT_PENDING_FOR_SUPERVISOR_STMT, params,
+    )).mappings().all()
+    for r in rejected:
         await write_audit_event(
             session,
             tenant_id=tenant_id,
             site_id=None,
             actor_id=actor_id,
             actor_name=actor_name,
-            action="executive_module_access_revoked",
+            action="executive_module_access_auto_rejected",
             entity_type=_ENTITY,
-            entity_id=grant_id,
-            detail=f"module={row['module']} executive={row['executive_id']}",
+            entity_id=str(r["id"]),
+            detail=f"module={r['module']} executive={r['executive_id']}",
         )
         await _notify(
-            session, tenant_id=tenant_id, event="executive_module_access_revoked",
-            recipient_ids=[row["executive_id"]],
-            subject=f"Your {row['module']} access was withdrawn",
-            payload={"grant_id": grant_id, "module": row["module"]},
+            session, tenant_id=tenant_id, event="executive_module_access_rejected",
+            recipient_ids=[r["executive_id"]],
+            subject=f"Your {r['module']} access request was closed: "
+                    "the supervisor you chose has left",
+            payload={"request_id": str(r["id"]), "module": r["module"]},
         )
+
+
+async def _sweep_orphaned(
+    session: AsyncSession, *, tenant_id: str, executive_id: str, module: str,
+) -> None:
+    """Clear this executive's orphaned live row for `module`, if there is one."""
+    rows = (await session.execute(
+        _SWEEP_ORPHANED_STMT,
+        {"eid": executive_id, "m": module, "tid": tenant_id},
+    )).mappings().all()
+    for r in rows:
+        if r["status"] == "revoked":
+            await _end_access(
+                session, tenant_id=tenant_id, grant_id=r["id"],
+                executive_id=r["executive_id"], module=r["module"],
+                actor_id=None, actor_name=None,
+                action="executive_module_access_auto_revoked",
+            )

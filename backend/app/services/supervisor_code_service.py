@@ -213,8 +213,11 @@ _TEAM_ALL_SQL = text(
     "WHERE g.module = :m AND g.tenant_id = :tid "
     "  AND g.status = 'approved' AND u.is_active = true "
     # Same rule as deps.py's has_exec_module_grant: a grant whose supervisor
-    # was deleted (SET NULL) no longer admits anyone, so it lists no one.
-    "  AND g.target_supervisor_id IS NOT NULL "
+    # was deleted (SET NULL) or deactivated no longer admits anyone, so it
+    # lists no one.
+    "  AND EXISTS (SELECT 1 FROM users ts "
+    "               WHERE ts.id = g.target_supervisor_id "
+    "                 AND ts.role = 'supervisor' AND ts.is_active) "
     ") t ORDER BY t.id, t.borrowed"
 )
 

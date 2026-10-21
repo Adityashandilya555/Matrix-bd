@@ -29,10 +29,12 @@ CREATE TABLE IF NOT EXISTS public.executive_module_access_grants (
     executive_id         uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     module               text NOT NULL,
     -- SET NULL, not CASCADE: the row is the executive's history as much as the
-    -- supervisor's, and approval refuses a row whose supervisor has gone. An
-    -- APPROVED row that loses its supervisor this way stops granting access:
-    -- deps.py's probe and list_my_team both require target_supervisor_id IS
-    -- NOT NULL, since the grant no longer names anyone to report to.
+    -- supervisor's, and approval refuses a row whose supervisor has gone. A
+    -- live row whose supervisor is deleted (NULL here) or deactivated stops
+    -- granting access: deps.py's probe and list_my_team both require an active
+    -- supervisor behind this id. Deactivation revokes such rows outright
+    -- (executive_module_access_service.revoke_grants_for_supervisor), and any
+    -- left over are swept when the executive next requests that module.
     target_supervisor_id uuid REFERENCES public.users(id) ON DELETE SET NULL,
     status               text NOT NULL DEFAULT 'pending',
     note                 text,

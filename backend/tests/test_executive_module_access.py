@@ -148,12 +148,15 @@ async def test_the_executive_grant_is_probed_for_the_requested_module():
 
 
 @pytest.mark.asyncio
-async def test_a_grant_whose_supervisor_was_deleted_no_longer_admits():
-    """target_supervisor_id is ON DELETE SET NULL; such a row names nobody to
-    report to, so the probe must not count it."""
+async def test_a_grant_whose_supervisor_is_gone_or_inactive_no_longer_admits():
+    """target_supervisor_id is ON DELETE SET NULL, and a deactivated supervisor
+    has no reachable Team page; either way the row names nobody to report to,
+    so the probe must require an active supervisor (a NULL id matches none)."""
     db = _session(grant=True)
     await _resolve(db=db, override_module="design")
-    assert "eg.target_supervisor_id IS NOT NULL" in db.executed[0]
+    sql = db.executed[0]
+    assert "ts.id = eg.target_supervisor_id" in sql
+    assert "ts.role = 'supervisor' AND ts.is_active" in sql
 
 
 # ── the request ──────────────────────────────────────────────────────────────
@@ -212,6 +215,7 @@ async def test_a_malformed_supervisor_id_is_a_400_not_a_500():
 async def test_a_second_live_request_for_the_module_is_a_conflict():
     sess = RecordingSession(results=[
         FakeResult(all_rows=[(1,)]),
+        FakeResult(mappings_rows=[]),   # nothing orphaned to sweep
         FakeResult(mappings_rows=[]),   # ON CONFLICT swallowed the insert
     ])
     with pytest.raises(HTTPException) as exc:
@@ -227,6 +231,7 @@ async def test_a_second_live_request_for_the_module_is_a_conflict():
 async def test_a_request_infers_the_partial_index_and_notifies_admins():
     sess = RecordingSession(results=[
         FakeResult(all_rows=[(1,)]),
+        FakeResult(mappings_rows=[]),   # nothing orphaned to sweep
         FakeResult(mappings_rows=[{"id": REQ_ID}]),
         FakeResult(scalars_list=["00000000-0000-0000-0000-00000000ad01"]),
     ])
@@ -375,7 +380,8 @@ async def test_revoke_also_ends_the_companion_module_delegations(module, compani
 
 @pytest.mark.asyncio
 async def test_the_panel_lists_states_without_nso():
-    row = {"created_at": None, "decided_at": None, "supervisor_name": "Meera"}
+    row = {"created_at": None, "decided_at": None, "supervisor_name": "Meera",
+           "supervisor_active": True}
     sess = RecordingSession(results=[FakeResult(mappings_rows=[
         {**row, "id": GRANT_ID, "module": "design", "status": "approved",
          "target_supervisor_id": SUPERVISOR},
@@ -426,7 +432,8 @@ async def test_the_admin_team_view_skips_grants_whose_supervisor_was_deleted():
     sess = RecordingSession(results=[FakeResult(mappings_rows=[])])
     user = {"sub": "admin-1", "tenant_id": TENANT, "real_role": "business_admin"}
     await codes_svc.list_my_team(sess, user, "design")
-    assert "g.target_supervisor_id IS NOT NULL" in sess.executed[0]
+    assert "ts.id = g.target_supervisor_id" in sess.executed[0]
+    assert "ts.role = 'supervisor' AND ts.is_active" in sess.executed[0]
 
 
 # ── the migration ────────────────────────────────────────────────────────────
@@ -457,3 +464,104 @@ def test_the_migration_excludes_nso_and_keys_one_live_row_per_module():
     assert "(executive_id, module)" in body
     assert "WHERE status IN ('pending', 'approved')" in body
     assert "pg_policy" not in body
+
+
+# ── the reporting line going away (supervisor deactivated or deleted) ─────────
+
+@pytest.mark.asyncio
+async def test_deactivating_a_supervisor_ends_their_grants_and_closes_requests():
+    sess = RecordingSession(results=[
+        FakeResult(mappings_rows=[{"id": GRANT_ID, "executive_id": USER, "module": "design"}]),
+        FakeResult(),   # site_delegations UPDATE
+        FakeResult(mappings_rows=[{"id": REQ_ID, "executive_id": USER, "module": "bd"}]),
+    ])
+    await exec_svc.revoke_grants_for_supervisor(
+        sess, tenant_id=TENANT, supervisor_id=SUPERVISOR, actor_id="admin-1",
+    )
+    revoke_sql = sess.executed[0]
+    assert "status = 'revoked'" in revoke_sql
+    assert "g.target_supervisor_id = CAST(:sid AS uuid)" in revoke_sql
+    assert "g.status = 'approved'" in revoke_sql
+    assert "UPDATE site_delegations" in sess.executed[1]
+    reject_sql = sess.executed[2]
+    assert "status = 'rejected'" in reject_sql
+    assert "g.status = 'pending'" in reject_sql
+    assert _audits(sess) == [
+        "executive_module_access_auto_revoked", "executive_module_access_auto_rejected",
+    ]
+    assert _notifications(sess) == [
+        ("executive_module_access_revoked", USER),
+        ("executive_module_access_rejected", USER),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_deactivate_org_user_revokes_grants_naming_a_supervisor():
+    from app.services import business_admin_service as ba_svc
+
+    sess = RecordingSession(results=[
+        FakeResult(mappings_rows=[{"is_active": True, "role": "supervisor"}]),
+        FakeResult(),   # UPDATE users
+        FakeResult(mappings_rows=[]),   # no approved grants
+        FakeResult(mappings_rows=[]),   # no pending requests
+    ])
+    await ba_svc.deactivate_org_user(sess, TENANT, SUPERVISOR, {"sub": "admin-1"})
+    _sql_containing(sess, "UPDATE executive_module_access_grants AS g")
+    assert sess.execute_params[2]["sid"] == SUPERVISOR
+
+
+@pytest.mark.asyncio
+async def test_deactivating_an_executive_touches_no_grants():
+    from app.services import business_admin_service as ba_svc
+
+    sess = RecordingSession(results=[
+        FakeResult(mappings_rows=[{"is_active": True, "role": "executive"}]),
+    ])
+    await ba_svc.deactivate_org_user(sess, TENANT, USER, {"sub": "admin-1"})
+    assert not any("executive_module_access_grants" in q for q in sess.executed)
+
+
+@pytest.mark.asyncio
+async def test_a_request_first_sweeps_an_orphaned_live_row_so_it_can_be_refiled():
+    """Without the sweep, a grant whose supervisor was deleted keeps the live
+    row and every new request is a 409 forever."""
+    sess = RecordingSession(results=[
+        FakeResult(all_rows=[(1,)]),
+        FakeResult(mappings_rows=[{"id": GRANT_ID, "executive_id": USER,
+                                   "module": "design", "status": "revoked"}]),
+        FakeResult(),   # site_delegations UPDATE for the swept grant
+        FakeResult(mappings_rows=[{"id": REQ_ID}]),
+        FakeResult(scalars_list=[]),
+    ])
+    await exec_svc.request_access(
+        sess, executive_id=USER, tenant_id=TENANT, home_module="legal",
+        module="design", target_supervisor_id=SUPERVISOR,
+    )
+    sweep_sql = sess.executed[1]
+    assert "g.status IN ('pending', 'approved')" in sweep_sql
+    assert "NOT EXISTS (SELECT 1 FROM users s" in sweep_sql
+    order = [q for q in sess.executed if "executive_module_access_grants" in q]
+    assert "INSERT" in order[-1]
+    assert _audits(sess) == [
+        "executive_module_access_auto_revoked", "executive_module_access_requested",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_panel_reads_an_orphaned_grant_as_requestable():
+    base = {"created_at": None, "decided_at": None, "supervisor_name": None,
+            "target_supervisor_id": None, "supervisor_active": None}
+    sess = RecordingSession(results=[FakeResult(mappings_rows=[
+        {**base, "id": GRANT_ID, "module": "design", "status": "approved"},
+        {**base, "id": REQ_ID, "module": "bd", "status": "pending",
+         "target_supervisor_id": SUPERVISOR, "supervisor_active": False},
+    ])])
+    rows = await exec_svc.list_my_access(
+        sess, executive_id=USER, tenant_id=TENANT, home_module="legal",
+    )
+    by_module = {r["module"]: r for r in rows}
+    assert by_module["design"]["state"] == "none"
+    assert by_module["design"]["last_decision"] == "revoked"
+    assert by_module["design"]["request_id"] is None
+    assert by_module["bd"]["state"] == "none"
+    assert by_module["bd"]["last_decision"] == "rejected"
