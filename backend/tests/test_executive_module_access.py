@@ -186,7 +186,7 @@ async def test_the_supervisor_list_refuses_nso():
 
 @pytest.mark.asyncio
 async def test_a_supervisor_who_does_not_supervise_the_module_is_refused():
-    sess = RecordingSession(results=[FakeResult(all_rows=[])])
+    sess = RecordingSession(results=[FakeResult(mappings_rows=[]), FakeResult(all_rows=[])])
     with pytest.raises(HTTPException) as exc:
         await exec_svc.request_access(
             sess, executive_id=USER, tenant_id=TENANT, home_module="legal",
@@ -194,7 +194,7 @@ async def test_a_supervisor_who_does_not_supervise_the_module_is_refused():
         )
     assert exc.value.status_code == 400
     assert not any("INSERT" in s for s in sess.executed)
-    check = sess.executed[0]
+    check = sess.executed[1]
     assert "role_in_module = 'supervisor'" in check
     assert "u.is_active = true" in check
 
@@ -214,6 +214,7 @@ async def test_a_malformed_supervisor_id_is_a_400_not_a_500():
 @pytest.mark.asyncio
 async def test_a_second_live_request_for_the_module_is_a_conflict():
     sess = RecordingSession(results=[
+        FakeResult(mappings_rows=[]),   # no membership in the module
         FakeResult(all_rows=[(1,)]),
         FakeResult(mappings_rows=[]),   # nothing orphaned to sweep
         FakeResult(mappings_rows=[]),   # ON CONFLICT swallowed the insert
@@ -230,6 +231,7 @@ async def test_a_second_live_request_for_the_module_is_a_conflict():
 @pytest.mark.asyncio
 async def test_a_request_infers_the_partial_index_and_notifies_admins():
     sess = RecordingSession(results=[
+        FakeResult(mappings_rows=[]),   # no membership in the module
         FakeResult(all_rows=[(1,)]),
         FakeResult(mappings_rows=[]),   # nothing orphaned to sweep
         FakeResult(mappings_rows=[{"id": REQ_ID}]),
@@ -526,6 +528,7 @@ async def test_a_request_first_sweeps_an_orphaned_live_row_so_it_can_be_refiled(
     """Without the sweep, a grant whose supervisor was deleted keeps the live
     row and every new request is a 409 forever."""
     sess = RecordingSession(results=[
+        FakeResult(mappings_rows=[]),   # no membership in the module
         FakeResult(all_rows=[(1,)]),
         FakeResult(mappings_rows=[{"id": GRANT_ID, "executive_id": USER,
                                    "module": "design", "status": "revoked"}]),
@@ -537,7 +540,7 @@ async def test_a_request_first_sweeps_an_orphaned_live_row_so_it_can_be_refiled(
         sess, executive_id=USER, tenant_id=TENANT, home_module="legal",
         module="design", target_supervisor_id=SUPERVISOR,
     )
-    sweep_sql = sess.executed[1]
+    sweep_sql = sess.executed[2]
     assert "g.status IN ('pending', 'approved')" in sweep_sql
     assert "NOT EXISTS (SELECT 1 FROM users s" in sweep_sql
     order = [q for q in sess.executed if "executive_module_access_grants" in q]
@@ -565,3 +568,32 @@ async def test_the_panel_reads_an_orphaned_grant_as_requestable():
     assert by_module["design"]["request_id"] is None
     assert by_module["bd"]["state"] == "none"
     assert by_module["bd"]["last_decision"] == "rejected"
+
+
+@pytest.mark.asyncio
+async def test_a_module_the_executive_already_belongs_to_is_refused():
+    """Nothing stops an executive holding membership rows in two modules; a
+    grant into the second would list them twice on that supervisor's team."""
+    sess = RecordingSession(results=[FakeResult(mappings_rows=[{"module": "design"}])])
+    with pytest.raises(HTTPException) as exc:
+        await exec_svc.request_access(
+            sess, executive_id=USER, tenant_id=TENANT, home_module="legal",
+            module="design", target_supervisor_id=SUPERVISOR,
+        )
+    assert exc.value.status_code == 400
+    assert not any("INSERT" in q for q in sess.executed)
+
+
+@pytest.mark.asyncio
+async def test_the_panel_marks_every_module_the_executive_belongs_to():
+    sess = RecordingSession(results=[
+        FakeResult(mappings_rows=[]),
+        FakeResult(mappings_rows=[{"module": "legal"}, {"module": "project"}]),
+    ])
+    rows = await exec_svc.list_my_access(
+        sess, executive_id=USER, tenant_id=TENANT, home_module="legal",
+    )
+    by_module = {r["module"]: r["state"] for r in rows}
+    assert by_module["legal"] == "home"
+    assert by_module["project"] == "home"
+    assert by_module["design"] == "none"

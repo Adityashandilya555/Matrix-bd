@@ -108,6 +108,17 @@ _IS_MODULE_SUPERVISOR_STMT = text(
 )
 
 
+# Modules this executive already belongs to by membership. Normally just the
+# home module, but nothing in the schema stops an executive holding membership
+# rows in two modules — and a grant into the second would list them twice on
+# that supervisor's Team page (list_my_team UNIONs both without DISTINCT).
+_MEMBER_MODULES_STMT = text(
+    "SELECT DISTINCT module FROM user_module_memberships "
+    " WHERE user_id = CAST(:eid AS uuid) AND tenant_id = :tid "
+    "   AND role_in_module = 'executive'"
+)
+
+
 def _is_uuid(value: object) -> bool:
     """Whether an id is even a UUID, so a malformed one no-ops instead of a 500."""
     try:
@@ -172,16 +183,21 @@ async def list_my_access(
     newest: dict[str, dict] = {}
     for found in rows:
         newest.setdefault(found["module"], dict(found))
+    member_of = {
+        r["module"] for r in (await session.execute(
+            _MEMBER_MODULES_STMT, {"eid": executive_id, "tid": tenant_id},
+        )).mappings().all()
+    }
 
     out: list[dict] = []
     for module in _MODULES:
-        row = None if module == home_module else newest.get(module)
+        row = newest.get(module)
         entry: dict = {
             "module": module, "state": "none", "last_decision": None,
             "request_id": None, "supervisor_id": None, "supervisor_name": None,
             "requested_at": None, "decided_at": None,
         }
-        if module == home_module:
+        if module == home_module or module in member_of:
             entry["state"] = "home"
         elif row is not None:
             entry["requested_at"] = row["created_at"]
@@ -245,6 +261,14 @@ async def request_access(
             detail="Choose a supervisor of that module.",
         )
     async with transaction(session):
+        member_of = (await session.execute(
+            _MEMBER_MODULES_STMT, {"eid": executive_id, "tid": tenant_id},
+        )).mappings().all()
+        if any(r["module"] == module for r in member_of):
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="You are already an executive of this module.",
+            )
         supervises = (await session.execute(
             _IS_MODULE_SUPERVISOR_STMT,
             {"tid": tenant_id, "m": module, "sid": target_supervisor_id},
