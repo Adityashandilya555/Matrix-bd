@@ -71,16 +71,28 @@ _APPROVE_GRANT_STMT = text(
     "RETURNING g.executive_id, g.module, g.target_supervisor_id"
 )
 
-# Active supervisors of a module: the dropdown's source and the request's check.
-# A membership row, not a borrowed supervisor grant — an executive reports to
-# the module's own supervisors.
-_MODULE_SUPERVISORS_SQL = (
+# Active supervisors of a module: the dropdown's source, and the request's check
+# for one of them. A membership row, not a borrowed supervisor grant — an
+# executive reports to the module's own supervisors. Two whole literals, like
+# every statement here, rather than one fragment with a suffix appended.
+_MODULE_SUPERVISORS_STMT = text(
     "SELECT DISTINCT u.id, u.name, u.email "
     "  FROM user_module_memberships m "
     "  JOIN users u ON u.id = m.user_id "
     " WHERE m.tenant_id = :tid AND m.module = :m "
     "   AND m.role_in_module = 'supervisor' "
     "   AND u.role = 'supervisor' AND u.is_active = true"
+    " ORDER BY u.name"
+)
+
+_IS_MODULE_SUPERVISOR_STMT = text(
+    "SELECT DISTINCT u.id, u.name, u.email "
+    "  FROM user_module_memberships m "
+    "  JOIN users u ON u.id = m.user_id "
+    " WHERE m.tenant_id = :tid AND m.module = :m "
+    "   AND m.role_in_module = 'supervisor' "
+    "   AND u.role = 'supervisor' AND u.is_active = true"
+    "   AND u.id = CAST(:sid AS uuid)"
 )
 
 
@@ -145,38 +157,33 @@ async def list_my_access(
     )).mappings().all()
 
     newest: dict[str, dict] = {}
-    for row in rows:
-        newest.setdefault(row["module"], dict(row))
+    for found in rows:
+        newest.setdefault(found["module"], dict(found))
 
     out: list[dict] = []
     for module in _MODULES:
         row = None if module == home_module else newest.get(module)
+        entry: dict = {
+            "module": module, "state": "none", "last_decision": None,
+            "request_id": None, "supervisor_id": None, "supervisor_name": None,
+            "requested_at": None, "decided_at": None,
+        }
         if module == home_module:
-            state, last_decision = "home", None
-        elif row is None:
-            state, last_decision = "none", None
-        elif row["status"] == "approved":
-            state, last_decision = "granted", None
-        elif row["status"] == "pending":
-            state, last_decision = "pending", None
-        else:
-            # rejected | revoked | cancelled — requestable again.
-            state, last_decision = "none", row["status"]
-        live = state in ("granted", "pending")
-        out.append({
-            "module": module,
-            "state": state,
-            "last_decision": last_decision,
-            # The id only for a live row: it is what Cancel posts.
-            "request_id": str(row["id"]) if live else None,
-            "supervisor_id": (
-                str(row["target_supervisor_id"])
-                if live and row["target_supervisor_id"] else None
-            ),
-            "supervisor_name": row["supervisor_name"] if live else None,
-            "requested_at": row["created_at"] if row else None,
-            "decided_at": row["decided_at"] if row else None,
-        })
+            entry["state"] = "home"
+        elif row is not None:
+            entry["requested_at"] = row["created_at"]
+            entry["decided_at"] = row["decided_at"]
+            if row["status"] in ("approved", "pending"):
+                entry["state"] = "granted" if row["status"] == "approved" else "pending"
+                # The id only for a live row: it is what Cancel posts.
+                entry["request_id"] = str(row["id"])
+                sid = row["target_supervisor_id"]
+                entry["supervisor_id"] = str(sid) if sid else None
+                entry["supervisor_name"] = row["supervisor_name"]
+            else:
+                # rejected | revoked | cancelled — requestable again.
+                entry["last_decision"] = row["status"]
+        out.append(entry)
     return out
 
 
@@ -186,7 +193,7 @@ async def list_module_supervisors(
     """The supervisors an executive may choose to work under in `module`."""
     _assert_target_module(module, home_module)
     rows = (await session.execute(
-        text(_MODULE_SUPERVISORS_SQL + " ORDER BY u.name"),
+        _MODULE_SUPERVISORS_STMT,
         {"tid": tenant_id, "m": module},
     )).mappings().all()
     return [
@@ -215,7 +222,7 @@ async def request_access(
         )
     async with transaction(session):
         supervises = (await session.execute(
-            text(_MODULE_SUPERVISORS_SQL + " AND u.id = CAST(:sid AS uuid)"),
+            _IS_MODULE_SUPERVISOR_STMT,
             {"tid": tenant_id, "m": module, "sid": target_supervisor_id},
         )).first()
         if not supervises:
@@ -300,7 +307,9 @@ async def cancel_my_request(
 
 # ── The business admin's side ────────────────────────────────────────────────
 
-_ADMIN_LIST_SQL = (
+# The admin's two lists: pending requests oldest first, live grants by person.
+# Whole literals; :st is bound, never interpolated.
+_ADMIN_REQUESTS_STMT = text(
     "SELECT g.id, g.executive_id, u.email, u.name, g.module, g.note, "
     "       g.created_at, g.decided_at, "
     "       g.target_supervisor_id, s.name AS supervisor_name, "
@@ -312,6 +321,22 @@ _ADMIN_LIST_SQL = (
     "  JOIN users u ON u.id = g.executive_id "
     "  LEFT JOIN users s ON s.id = g.target_supervisor_id "
     " WHERE g.tenant_id = :tid AND g.status = :st "
+    " ORDER BY g.created_at ASC"
+)
+
+_ADMIN_GRANTS_STMT = text(
+    "SELECT g.id, g.executive_id, u.email, u.name, g.module, g.note, "
+    "       g.created_at, g.decided_at, "
+    "       g.target_supervisor_id, s.name AS supervisor_name, "
+    "       (SELECT m.module FROM user_module_memberships m "
+    "         WHERE m.user_id = g.executive_id AND m.tenant_id = g.tenant_id "
+    "           AND m.role_in_module = 'executive' "
+    "         ORDER BY m.module LIMIT 1) AS home_module "
+    "  FROM executive_module_access_grants g "
+    "  JOIN users u ON u.id = g.executive_id "
+    "  LEFT JOIN users s ON s.id = g.target_supervisor_id "
+    " WHERE g.tenant_id = :tid AND g.status = :st "
+    " ORDER BY u.name, g.module"
 )
 
 
@@ -335,7 +360,7 @@ def _admin_row(r) -> dict:
 async def list_pending_requests(session: AsyncSession, tenant_id: str) -> list[dict]:
     """Requests awaiting a decision, oldest first."""
     rows = (await session.execute(
-        text(_ADMIN_LIST_SQL + " ORDER BY g.created_at ASC"),
+        _ADMIN_REQUESTS_STMT,
         {"tid": tenant_id, "st": "pending"},
     )).mappings().all()
     return [_admin_row(r) for r in rows]
@@ -344,7 +369,7 @@ async def list_pending_requests(session: AsyncSession, tenant_id: str) -> list[d
 async def list_active_grants(session: AsyncSession, tenant_id: str) -> list[dict]:
     """Live grants, by executive then module."""
     rows = (await session.execute(
-        text(_ADMIN_LIST_SQL + " ORDER BY u.name, g.module"),
+        _ADMIN_GRANTS_STMT,
         {"tid": tenant_id, "st": "approved"},
     )).mappings().all()
     return [_admin_row(r) for r in rows]

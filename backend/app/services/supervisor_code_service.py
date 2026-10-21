@@ -181,10 +181,27 @@ async def approve_my_pending_exec(
         )
 
 
-# Executives from another module working in :m on an approved grant. Shared by
-# both list_my_team branches; the supervisor branch appends its own
-# target_supervisor_id filter, which is why this ends on a WHERE clause.
-_BORROWED_EXECUTIVES_SQL = (
+# The two list_my_team reads, each written out whole as one literal rather than
+# assembled from a shared fragment — the convention from module_access_service
+# (#505): nothing is built at runtime, so there is nothing to reassemble before
+# reading what executes. Both UNION in executives from another module working
+# here on an approved executive_module_access_grants row (migration 20261022).
+
+# Business admin: every active executive in the module. DISTINCT ON because an
+# executive holds one membership row per supervisor and this read has no
+# supervisor filter; members sort first, so someone who is both a member and a
+# grantee (not reachable today) reads as a member.
+_TEAM_ALL_SQL = text(
+    "SELECT DISTINCT ON (t.id) t.* FROM ("
+    "SELECT u.id, u.email, u.name, umm.joined_at, "
+    "       false AS borrowed, NULL AS home_module "
+    "FROM user_module_memberships umm "
+    "JOIN users u ON u.id = umm.user_id "
+    "WHERE umm.module = :m "
+    "  AND umm.role_in_module = 'executive' "
+    "  AND umm.tenant_id = :tid "
+    "  AND u.is_active = true "
+    "UNION ALL "
     "SELECT u.id, u.email, u.name, g.decided_at AS joined_at, "
     "       true AS borrowed, "
     "       (SELECT h.module FROM user_module_memberships h "
@@ -195,6 +212,32 @@ _BORROWED_EXECUTIVES_SQL = (
     "JOIN users u ON u.id = g.executive_id "
     "WHERE g.module = :m AND g.tenant_id = :tid "
     "  AND g.status = 'approved' AND u.is_active = true "
+    ") t ORDER BY t.id, t.borrowed"
+)
+
+# A supervisor: the executives who report to them in the module, by membership
+# or by a grant that names them as the target supervisor.
+_TEAM_MINE_SQL = text(
+    "SELECT u.id, u.email, u.name, umm.joined_at, "
+    "       false AS borrowed, NULL AS home_module "
+    "FROM user_module_memberships umm "
+    "JOIN users u ON u.id = umm.user_id "
+    "WHERE umm.supervisor_id = :sid "
+    "  AND umm.module = :m "
+    "  AND umm.role_in_module = 'executive' "
+    "  AND u.is_active = true "
+    "UNION ALL "
+    "SELECT u.id, u.email, u.name, g.decided_at AS joined_at, "
+    "       true AS borrowed, "
+    "       (SELECT h.module FROM user_module_memberships h "
+    "         WHERE h.user_id = g.executive_id AND h.tenant_id = g.tenant_id "
+    "           AND h.role_in_module = 'executive' "
+    "         ORDER BY h.module LIMIT 1) AS home_module "
+    "FROM executive_module_access_grants g "
+    "JOIN users u ON u.id = g.executive_id "
+    "WHERE g.module = :m AND g.tenant_id = :tid "
+    "  AND g.status = 'approved' AND u.is_active = true "
+    "  AND g.target_supervisor_id = CAST(:sid AS uuid)"
 )
 
 
@@ -211,25 +254,7 @@ async def list_my_team(
     """
     if current_user.get("real_role") == "business_admin":
         rows = (await session.execute(
-            text(
-                # DISTINCT ON: an executive now holds one row per supervisor,
-                # and this branch has no supervisor filter — without it the
-                # same person is listed once per supervisor, with duplicate ids.
-                # Members first, so an executive who is both a member and a
-                # grantee (not reachable today) reads as a member.
-                "SELECT DISTINCT ON (t.id) t.* FROM ("
-                "SELECT u.id, u.email, u.name, umm.joined_at, "
-                "       false AS borrowed, NULL AS home_module "
-                "FROM user_module_memberships umm "
-                "JOIN users u ON u.id = umm.user_id "
-                "WHERE umm.module = :m "
-                "  AND umm.role_in_module = 'executive' "
-                "  AND umm.tenant_id = :tid "
-                "  AND u.is_active = true "
-                "UNION ALL "
-                + _BORROWED_EXECUTIVES_SQL +
-                ") t ORDER BY t.id, t.borrowed"
-            ),
+            _TEAM_ALL_SQL,
             {"m": module, "tid": current_user["tenant_id"]},
         )).mappings().all()
     else:
@@ -242,19 +267,7 @@ async def list_my_team(
             tenant_id=current_user["tenant_id"],
         )
         rows = (await session.execute(
-            text(
-                "SELECT u.id, u.email, u.name, umm.joined_at, "
-                "       false AS borrowed, NULL AS home_module "
-                "FROM user_module_memberships umm "
-                "JOIN users u ON u.id = umm.user_id "
-                "WHERE umm.supervisor_id = :sid "
-                "  AND umm.module = :m "
-                "  AND umm.role_in_module = 'executive' "
-                "  AND u.is_active = true "
-                "UNION ALL "
-                + _BORROWED_EXECUTIVES_SQL +
-                "  AND g.target_supervisor_id = CAST(:sid AS uuid)"
-            ),
+            _TEAM_MINE_SQL,
             {"sid": current_user["sub"], "m": module, "tid": current_user["tenant_id"]},
         )).mappings().all()
     return [
