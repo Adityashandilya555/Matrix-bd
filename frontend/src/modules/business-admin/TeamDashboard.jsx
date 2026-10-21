@@ -248,6 +248,11 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   // "sits unnoticed" problem the merge removed, one level up.
   const pendingAccess = mergePending(supervisors, observerPending);
   const pendingAccessCount = pendingAccess.items.length;
+  // Executive cross-module requests (20261022) are a third way to be waiting
+  // on this admin. The nav badge counted them, but the attention line and the
+  // tile did not, so a workspace whose only pending work was one of these read
+  // "You're all caught up" with a zero tile.
+  const execAccessCount = execAccessRequests.items.length;
   const sitesCount = sites.total || sites.items.length;
   // Count completed sites with the SAME rule the Sites → Completed tab uses, so
   // the tile and the tab never disagree (they used different definitions before).
@@ -378,7 +383,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     { ...TABS[0], count: approvalSites.length },
     { ...TABS[1], count: launchActionable },
     { ...TABS[2] }, // Financial Closure — count fetched inside the tab
-    { ...TABS[3], count: pendingAccessCount + executiveRequests.items.length + execAccessRequests.items.length },
+    { ...TABS[3], count: pendingAccessCount + executiveRequests.items.length + execAccessCount },
     { ...TABS[4] },
     { ...TABS[5] }, // Workspace Access tab
   ];
@@ -430,6 +435,11 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
               · <Icon.doc size={14} style={{ color: T.warnText }} /> <span style={{ color: T.warnText }}>{executiveRequests.items.length} executive {executiveRequests.items.length === 1 ? 'request' : 'requests'}</span>
             </span>
           )}
+          {execAccessCount > 0 && (
+            <span style={{ marginLeft: 10, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              · <Icon.external size={14} style={{ color: T.warnText }} /> <span style={{ color: T.warnText }}>{execAccessCount} module access {execAccessCount === 1 ? 'request' : 'requests'}</span>
+            </span>
+          )}
         </div>
 
         {/* ── Overview tiles ── */}
@@ -441,7 +451,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
             onClick={() => setTab('approvals')} />
           <StatTile icon={Icon.flag} label="Completed sites" count={completedSites} tone="mint"
             loading={sites.status === 'loading'} caption={completedSites ? 'project done' : 'none yet'} onClick={() => openSites('completed')} />
-          <StatTile icon={Icon.users} label="Pending requests" count={pendingAccessCount} tone="blue"
+          <StatTile icon={Icon.users} label="Pending requests" count={pendingAccessCount + execAccessCount} tone="blue"
             loading={pendingAccess.status === 'loading'} caption="workspace access" onClick={() => setTab('departments')} />
         </div>
 

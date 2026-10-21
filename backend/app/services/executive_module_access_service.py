@@ -35,6 +35,18 @@ _MODULES: tuple[str, ...] = (
 
 _ENTITY = "executive_module_access_grant"
 
+# site_delegations modules that belong to a grant's module without being named
+# after it. Financial Closure is delegated by Project supervisors to their Project
+# team (financial_closure.py gates every write on require_module("project")), and
+# the quality-audit report task by Project Excellence supervisors to theirs. A
+# revoke that ended only `module = g.module` would leave those rows live — and
+# GET /financial-closure/queue and /{site_id} carry no module gate on purpose, so
+# the ex-grantee would go on reading those closures from their own module.
+_COMPANION_DELEGATION_MODULE: dict[str, str] = {
+    "project": "financial_closure",
+    "project_excellence": "quality_audit",
+}
+
 
 # Both decisions share one guarded UPDATE, written out twice rather than
 # assembled — the same convention as module_access_service. `AND status =
@@ -476,15 +488,19 @@ async def revoke_grant(
         )).mappings().first()
         if not row:
             return
+        # :companion is NULL for modules without one, and `module = NULL`
+        # matches nothing, so one literal serves every module.
         await session.execute(
             text(
                 "UPDATE site_delegations "
                 "   SET revoked_at = now(), revoked_by = CAST(:aid AS uuid) "
                 " WHERE tenant_id = :tid AND delegate_user_id = :eid "
-                "   AND module = :m AND revoked_at IS NULL"
+                "   AND (module = :m OR module = :companion) "
+                "   AND revoked_at IS NULL"
             ),
             {"aid": actor_id, "tid": tenant_id, "eid": row["executive_id"],
-             "m": row["module"]},
+             "m": row["module"],
+             "companion": _COMPANION_DELEGATION_MODULE.get(row["module"])},
         )
         await write_audit_event(
             session,

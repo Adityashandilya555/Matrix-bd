@@ -63,9 +63,17 @@ export default function BorrowedAccessBanner() {
         if (!rows.some((r) => r.module === borrowedModule && r.state === 'granted')) {
           goHome();
         }
-      } catch {
+      } catch (err) {
         // A transient failure must not eject someone mid-task; the backend is
         // the boundary and will refuse anything that actually matters.
+        //
+        // A 403 is not transient, and it is how a withdrawal of THIS module
+        // actually arrives: the poll carries X-Override-Module for the borrowed
+        // module, and deps.py refuses an override with no grant before the
+        // route runs — so the "no longer granted" branch above never sees a
+        // response for the module being withdrawn. Without this the user stays
+        // in a workspace whose every request 403s until a reload.
+        if (alive && err?.status === 403) goHome();
       }
     };
     check();

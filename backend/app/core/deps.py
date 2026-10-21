@@ -300,6 +300,11 @@ async def get_current_user(
                    AND eg.tenant_id = :tid
                    AND eg.module = :mod
                    AND eg.status = 'approved'
+                   -- target_supervisor_id is ON DELETE SET NULL. A grant whose
+                   -- supervisor was deleted has no reporting line left — nobody's
+                   -- Team page lists the executive, so nobody can delegate to or
+                   -- supervise them — and must stop admitting them.
+                   AND eg.target_supervisor_id IS NOT NULL
                ) AS has_exec_module_grant
         FROM users u
         LEFT JOIN user_module_memberships umm

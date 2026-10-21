@@ -147,6 +147,15 @@ async def test_the_executive_grant_is_probed_for_the_requested_module():
     assert db.execute_params[0]["mod"] == "design"
 
 
+@pytest.mark.asyncio
+async def test_a_grant_whose_supervisor_was_deleted_no_longer_admits():
+    """target_supervisor_id is ON DELETE SET NULL; such a row names nobody to
+    report to, so the probe must not count it."""
+    db = _session(grant=True)
+    await _resolve(db=db, override_module="design")
+    assert "eg.target_supervisor_id IS NOT NULL" in db.executed[0]
+
+
 # ── the request ──────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
@@ -342,6 +351,26 @@ async def test_revoke_also_ends_the_executives_delegations_in_that_module():
     assert _notifications(sess) == [("executive_module_access_revoked", USER)]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("module,companion", [
+    ("project", "financial_closure"),
+    ("project_excellence", "quality_audit"),
+    ("design", None),
+])
+async def test_revoke_also_ends_the_companion_module_delegations(module, companion):
+    """Financial Closure is delegated within Project, the QA-report task within
+    Project Excellence, under their own site_delegations module — and the FC
+    queue has no module gate, so a leftover row would keep being read."""
+    sess = RecordingSession(results=[
+        FakeResult(mappings_rows=[{"executive_id": USER, "module": module}]),
+    ])
+    await exec_svc.revoke_grant(sess, TENANT, GRANT_ID, "admin-1")
+    delegations_sql = _sql_containing(sess, "UPDATE site_delegations")
+    assert "(module = :m OR module = :companion)" in delegations_sql
+    assert sess.execute_params[1]["m"] == module
+    assert sess.execute_params[1]["companion"] == companion
+
+
 # ── the executive's panel ────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
@@ -390,6 +419,14 @@ async def test_the_team_includes_executives_working_here_on_a_grant():
     assert "g.status = 'approved'" in sql
     assert team[0]["borrowed"] is True
     assert team[0]["home_module"] == "legal"
+
+
+@pytest.mark.asyncio
+async def test_the_admin_team_view_skips_grants_whose_supervisor_was_deleted():
+    sess = RecordingSession(results=[FakeResult(mappings_rows=[])])
+    user = {"sub": "admin-1", "tenant_id": TENANT, "real_role": "business_admin"}
+    await codes_svc.list_my_team(sess, user, "design")
+    assert "g.target_supervisor_id IS NOT NULL" in sess.executed[0]
 
 
 # ── the migration ────────────────────────────────────────────────────────────

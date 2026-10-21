@@ -103,8 +103,20 @@ export default function ExecModuleAccessSection({
       <div style={{ marginTop: 18 }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
           color: T.textFaint, margin: '0 0 8px' }}>Active executive access</div>
+        {/* useQueue starts at status 'loading' with items [], so the empty
+            line must wait for the first load — otherwise it claims nobody
+            holds access while the list is still on its way. */}
         {grants.status === 'error'
           ? <ErrorState message={grants.error} onRetry={onRetryGrants} />
+          : grants.status === 'loading'
+            ? (
+              <Card style={{ overflow: 'hidden' }}>
+                <div data-testid="exec-access-grants-loading" style={{ display: 'flex', alignItems: 'center',
+                  gap: 12, padding: '13px 18px' }}>
+                  <Skeleton w={200} h={13} /><span style={{ flex: 1 }} /><Skeleton w={84} h={28} r={8} />
+                </div>
+              </Card>
+            )
           : grantItems.length === 0
             ? (
               <div style={{ padding: '14px', textAlign: 'center', fontSize: 12.5, color: T.textFaint,

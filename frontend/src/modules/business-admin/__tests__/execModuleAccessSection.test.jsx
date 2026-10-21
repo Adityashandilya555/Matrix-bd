@@ -65,6 +65,13 @@ describe('executive module access requests', () => {
     expect(props.onRevoke).toHaveBeenCalledWith('g-1');
   });
 
+  it('does not claim nobody holds access while the grants are still loading', () => {
+    // useQueue starts at status 'loading' with items [].
+    renderSection({ grants: { status: 'loading', items: [], error: null, refreshing: false } });
+    expect(screen.queryByText(/No executive is currently working/)).toBeNull();
+    expect(screen.getByTestId('exec-access-grants-loading')).toBeInTheDocument();
+  });
+
   it('shows an empty state when nothing is waiting', () => {
     renderSection({ requests: queue([]), grants: queue([]) });
     expect(screen.getByText('No executive access requests')).toBeInTheDocument();

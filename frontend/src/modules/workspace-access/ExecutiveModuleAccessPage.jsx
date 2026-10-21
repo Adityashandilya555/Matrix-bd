@@ -1,5 +1,5 @@
 // skipcq: JS-0833
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '../../state/SessionContext.jsx';
 import { ROLE } from '../../rbac/roles.js';
@@ -43,6 +43,8 @@ export default function ExecutiveModuleAccessPage() {
   const [supervisors, setSupervisors] = useState({ module: null, status: 'idle', items: [] });
   const [choice, setChoice] = useState('');
   const [note, setNote] = useState('');
+  // Which module's supervisor list a response may still be applied to.
+  const pickingRef = useRef(null);
 
   const load = useCallback(async () => {
     try {
@@ -61,16 +63,23 @@ export default function ExecutiveModuleAccessPage() {
   const openPicker = async (moduleKey) => {
     setPicking(moduleKey); setChoice(''); setNote(''); setError(null);
     setSupervisors({ module: moduleKey, status: 'loading', items: [] });
+    // Applied only while this module is still the one being picked. Opening
+    // another row before this resolves would otherwise let the late answer
+    // overwrite the newer row's state, which the render then reads as not
+    // its own and leaves on "Loading supervisors…" for good.
+    pickingRef.current = moduleKey;
     try {
       const items = await listModuleSupervisors(moduleKey);
+      if (pickingRef.current !== moduleKey) return;
       setSupervisors({ module: moduleKey, status: 'ready', items });
     } catch (e) {
+      if (pickingRef.current !== moduleKey) return;
       setSupervisors({ module: moduleKey, status: 'error', items: [] });
       setError(e?.detail || e?.message || 'Could not load that module’s supervisors.');
     }
   };
 
-  const closePicker = () => { setPicking(null); setChoice(''); setNote(''); };
+  const closePicker = () => { pickingRef.current = null; setPicking(null); setChoice(''); setNote(''); };
 
   const submit = async (moduleKey) => {
     if (!choice) return;

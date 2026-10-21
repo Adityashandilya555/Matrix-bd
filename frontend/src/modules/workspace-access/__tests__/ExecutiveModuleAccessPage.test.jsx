@@ -87,6 +87,23 @@ describe('the executive panel', () => {
     await waitFor(() => expect(api.listMyExecModuleAccess).toHaveBeenCalledTimes(2));
   });
 
+  it('ignores a supervisor list that arrives after another row was opened', async () => {
+    const user = userEvent.setup();
+    let resolveDesign;
+    api.listModuleSupervisors.mockImplementation((m) => (m === 'design'
+      ? new Promise((r) => { resolveDesign = r; })
+      : Promise.resolve([{ id: 'sup-2', name: 'Arun', email: 'arun@example.com' }])));
+    await renderPage([{ module: 'design', state: 'none' }, { module: 'bd', state: 'none' }]);
+    await user.click(within(rowFor('design')).getByRole('button', { name: /request access/i }));
+    await user.click(within(rowFor('bd')).getByRole('button', { name: /request access/i }));
+    expect(await within(rowFor('bd')).findByRole('option', { name: /Arun/ })).toBeInTheDocument();
+
+    // Design's answer lands late; BD's picker must keep its own list.
+    resolveDesign([{ id: 'sup-1', name: 'Meera', email: 'meera@example.com' }]);
+    await waitFor(() => expect(within(rowFor('bd')).getByRole('option', { name: /Arun/ })).toBeInTheDocument());
+    expect(within(rowFor('bd')).queryByText(/loading supervisors/i)).toBeNull();
+  });
+
   it('says so when the module has no supervisor to work under', async () => {
     const user = userEvent.setup();
     api.listModuleSupervisors.mockResolvedValue([]);
