@@ -99,8 +99,11 @@ export function SessionProvider({ children }) {
   // override module that differs from the JWT's own is always a borrowed
   // workspace. Mirrors the `borrowing` test in deps.py's
   // _apply_workspace_override — the two must stay in step.
+  //
+  // An executive borrows the same way under an executive grant (migration
+  // 20261022); deps.py's executive branch applies the identical test.
   const borrowedModule = (
-    session.realRole === 'supervisor'
+    (session.realRole === 'supervisor' || session.realRole === ROLE.EXECUTIVE)
     && adminOverride?.module
     && adminOverride.module !== session.module
   ) ? adminOverride.module : null;
@@ -128,7 +131,7 @@ export function SessionProvider({ children }) {
   // would be a lie about what the server actually did.
   const role = isBusinessAdmin ? (adminOverride?.role || session.role)
              : isObserver ? (OBSERVER_VIEW_ROLES.includes(adminOverride?.role) ? adminOverride.role : session.realRole)
-             : borrowedModule ? ROLE.SUPERVISOR
+             : borrowedModule ? (session.realRole === ROLE.EXECUTIVE ? ROLE.EXECUTIVE : ROLE.SUPERVISOR)
              : isDualRoleSupervisor ? (['supervisor', 'executive'].includes(adminOverride?.role) ? adminOverride.role : session.role)
              : session.role;
 
@@ -139,23 +142,32 @@ export function SessionProvider({ children }) {
 
   // switchAs: lets business_admin simulate a different role+module,
   // lets an observer open a module read-only,
+  // lets a supervisor or an executive enter a module they hold a grant for,
   // or lets a dual-role supervisor switch between supervisor/executive in their module. Pass null to reset.
   const switchAs = useCallback((overrideRole, overrideModule) => {
     const isSupervisor = session.realRole === 'supervisor';
     const isDualRoleSupervisor = isSupervisor && session.hasExecutiveAccess;
     const isObserver = session.realRole === ROLE.OBSERVER;
-    if (session.realRole !== 'business_admin' && !isObserver && !isSupervisor) return;
+    const isExecutive = session.realRole === ROLE.EXECUTIVE;
+    if (session.realRole !== 'business_admin' && !isObserver && !isSupervisor && !isExecutive) return;
     // An observer may only view as a supervisor or an executive. Anything else
     // is dropped rather than stored, so the panel can never persist an override
     // the backend will ignore — which would read as "in a module" here while
     // every request still arrived as a plain observer.
     if (isObserver && overrideRole && !OBSERVER_VIEW_ROLES.includes(overrideRole)) return;
 
-    // Clearing sits after the role gate so a plain supervisor can Exit a
-    // borrowed workspace, while an executive still cannot clear anything.
+    // Clearing sits after the role gate so a plain supervisor or an executive
+    // can Exit a borrowed workspace.
     if (!overrideRole) { _setAdminOverride(null); deactivateOverride(); return; }
 
     let next = { role: overrideRole, module: overrideModule };
+    if (isExecutive) {
+      // An executive only ever enters ANOTHER module, as an executive — the
+      // mirror of deps.py's executive branch, which ignores X-Override-Role.
+      // Anything else is refused rather than stored.
+      if (overrideRole !== ROLE.EXECUTIVE || !overrideModule || overrideModule === session.module) return;
+      next = { role: ROLE.EXECUTIVE, module: overrideModule };
+    }
     if (isSupervisor) {
       if (overrideModule && overrideModule !== session.module) {
         // A borrowed workspace is entered as that module's SUPERVISOR and

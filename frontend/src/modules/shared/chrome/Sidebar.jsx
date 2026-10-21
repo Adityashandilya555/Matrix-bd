@@ -376,8 +376,10 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
           />
           {/* Gated on realRole, not the `role` prop: a business admin or an
               observer viewing as a supervisor must not see this — they have
-              Workspace Access in their own portal, which is unrestricted. */}
-          {session?.realRole === 'supervisor' && (
+              Workspace Access in their own portal, which is unrestricted.
+              Executives get it too (migration 20261022): the page shows them
+              the executive request flow. */}
+          {(session?.realRole === 'supervisor' || session?.realRole === 'executive') && (
             <SidebarItem
               icon="layers"
               label="Module access"

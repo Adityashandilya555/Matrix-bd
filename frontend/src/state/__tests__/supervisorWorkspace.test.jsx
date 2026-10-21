@@ -143,3 +143,49 @@ describe('when the grant is withdrawn', () => {
     expect(val('revoked')).toBe('null');
   });
 });
+
+// ── Executives (migration 20261022) ──────────────────────────────────────────
+
+const execClaims = (over = {}) => claims({
+  email: 'ravi@example.com', role: 'executive', real_role: 'executive',
+  module: 'legal', home_module: 'legal', ...over,
+});
+
+describe('an executive inside a borrowed workspace', () => {
+  it('reports the borrowed module and stays an executive there', async () => {
+    stored = { role: 'executive', module: 'design' };
+    whoami.mockResolvedValue(execClaims({ module: 'design' }));
+    await mount();
+    expect(val('module')).toBe('design');
+    expect(val('borrowed')).toBe('design');
+    expect(val('home')).toBe('legal');
+    expect(val('role')).toBe('executive');
+  });
+
+  it('lets an executive enter another module and exit again', async () => {
+    whoami.mockResolvedValue(execClaims());
+    await mount();
+    act(() => { api.switchAs('executive', 'design'); });
+    expect(stored).toEqual({ role: 'executive', module: 'design' });
+    act(() => { api.switchAs(null, null); });
+    expect(stored).toBeNull();
+  });
+
+  it('refuses any role but executive, and the home module', async () => {
+    whoami.mockResolvedValue(execClaims());
+    await mount();
+    act(() => { api.switchAs('supervisor', 'design'); });
+    expect(stored).toBeNull();
+    act(() => { api.switchAs('executive', 'legal'); });
+    expect(stored).toBeNull();
+  });
+
+  it('drops a withdrawn grant on hydration', async () => {
+    stored = { role: 'executive', module: 'design' };
+    whoami.mockResolvedValue(execClaims({ workspace_access_refused: 'design' }));
+    await mount();
+    await waitFor(() => expect(val('revoked')).toBe('design'));
+    expect(stored).toBeNull();
+    expect(val('module')).toBe('legal');
+  });
+});

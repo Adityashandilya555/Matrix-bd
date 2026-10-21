@@ -47,3 +47,7 @@ class TeamMemberOut(BaseModel):
     name: str | None = None
     module: Module
     joined_at: datetime
+    # True for an executive of another module working here on an approved
+    # executive_module_access_grants row; home_module is their own module.
+    borrowed: bool = False
+    home_module: Module | None = None

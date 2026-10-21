@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Reused rather than re-spelled, so a retired or added module cannot disagree
 # between this surface and the rest of the API.
@@ -62,3 +62,53 @@ class ModuleAccessGrantOut(BaseModel):
     # Executives in the granted module who report to this supervisor. Revoking
     # does not remove them, so the admin needs to see the consequence first.
     recruited_count: int = 0
+
+
+# ── Executive cross-module access (migration 20261022) ───────────────────────
+#
+# NSO never appears: the grant table's CHECK excludes it, and the service
+# refuses it before any SQL runs, so `Module` stays the shared literal.
+
+class ExecModuleAccessStateOut(BaseModel):
+    """One row of the executive's own "Module access" panel.
+
+    Same `state` vocabulary as ModuleAccessStateOut. `request_id` is set only
+    for a live row (pending or granted) and is what Cancel posts; the
+    supervisor fields name who the executive works under there.
+    """
+    module: Module
+    state: Literal["home", "granted", "pending", "none"]
+    last_decision: Optional[Literal["rejected", "revoked", "cancelled"]] = None
+    request_id: Optional[str] = None
+    supervisor_id: Optional[str] = None
+    supervisor_name: Optional[str] = None
+    requested_at: Optional[datetime] = None
+    decided_at: Optional[datetime] = None
+
+
+class ExecModuleAccessRequestIn(BaseModel):
+    module: Module
+    target_supervisor_id: str
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class ModuleSupervisorOut(BaseModel):
+    """A supervisor an executive may choose to work under."""
+    id: str
+    name: str
+    email: str
+
+
+class ExecModuleAccessRequestOut(BaseModel):
+    """A pending request or a live grant, as the business admin sees it."""
+    id: str
+    executive_id: str
+    executive_email: str
+    executive_name: str
+    home_module: Optional[Module] = None
+    module: Module
+    supervisor_id: Optional[str] = None
+    supervisor_name: Optional[str] = None
+    note: Optional[str] = None
+    created_at: datetime
+    decided_at: Optional[datetime] = None

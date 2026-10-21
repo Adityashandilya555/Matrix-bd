@@ -91,6 +91,8 @@ Top-level role answers **what level of authority** a user has. Module membership
 
 The current login selects the first membership ordered by module when a user has multiple memberships. The JWT therefore carries one active module per session.
 
+Working in a second module is a grant, not a second membership, so the login choice above never moves. A supervisor holds a row in `supervisor_module_access_grants` (migration 20260930). An executive holds a row in `executive_module_access_grants` (migration 20261022), which also names the supervisor they report to there. Either one enters the other module by sending `X-Override-Module`. `deps.py` re-checks the grant on every request, and refuses the header with a 403 when there is no grant. See [admin role simulation](../13-admin-role-simulation/admin-role-simulation.md#backend-enforcement).
+
 > **Source of Truth**
 > - `backend/app/routers/auth.py:226-253` — deterministic membership selection.
 > - `frontend/src/router/AppRouter.jsx:67-125` — module home routing.

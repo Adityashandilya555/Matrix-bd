@@ -923,3 +923,58 @@ CREATE UNIQUE INDEX idx_supervisor_executive_requests_pending
 -- Index for querying requests efficiently
 CREATE INDEX idx_supervisor_executive_requests_tenant_status
   ON public.supervisor_executive_requests (tenant_id, status);
+
+-- Cross-module workspace access for supervisors (migration 20260930)
+CREATE TABLE public.supervisor_module_access_grants (
+  id            uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id     uuid NOT NULL,
+  supervisor_id uuid NOT NULL,
+  module        text NOT NULL CHECK (module IN ('bd','legal','design','project','nso','project_excellence')),
+  status        text NOT NULL DEFAULT 'pending'::text CHECK (status IN ('pending','approved','rejected','revoked')),
+  note          text,
+  created_at    timestamp with time zone NOT NULL DEFAULT now(),
+  decided_at    timestamp with time zone,
+  decided_by    uuid,
+  revoked_at    timestamp with time zone,
+  revoked_by    uuid,
+  CONSTRAINT supervisor_module_access_grants_pkey PRIMARY KEY (id),
+  CONSTRAINT supervisor_module_access_grants_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
+  CONSTRAINT supervisor_module_access_grants_supervisor_id_fkey FOREIGN KEY (supervisor_id) REFERENCES public.users(id) ON DELETE CASCADE,
+  CONSTRAINT supervisor_module_access_grants_decided_by_fkey FOREIGN KEY (decided_by) REFERENCES public.users(id) ON DELETE SET NULL,
+  CONSTRAINT supervisor_module_access_grants_revoked_by_fkey FOREIGN KEY (revoked_by) REFERENCES public.users(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX uq_smag_supervisor_module_live
+  ON public.supervisor_module_access_grants (supervisor_id, module)
+  WHERE status IN ('pending','approved');
+CREATE INDEX idx_smag_tenant_status
+  ON public.supervisor_module_access_grants (tenant_id, status);
+
+-- Cross-module workspace access for executives (migration 20261022)
+CREATE TABLE public.executive_module_access_grants (
+  id                   uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id            uuid NOT NULL,
+  executive_id         uuid NOT NULL,
+  module               text NOT NULL CHECK (module IN ('bd','legal','design','project','project_excellence')),
+  target_supervisor_id uuid,
+  status               text NOT NULL DEFAULT 'pending'::text CHECK (status IN ('pending','approved','rejected','revoked','cancelled')),
+  note                 text,
+  created_at           timestamp with time zone NOT NULL DEFAULT now(),
+  decided_at           timestamp with time zone,
+  decided_by           uuid,
+  revoked_at           timestamp with time zone,
+  revoked_by           uuid,
+  CONSTRAINT executive_module_access_grants_pkey PRIMARY KEY (id),
+  CONSTRAINT executive_module_access_grants_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
+  CONSTRAINT executive_module_access_grants_executive_id_fkey FOREIGN KEY (executive_id) REFERENCES public.users(id) ON DELETE CASCADE,
+  CONSTRAINT executive_module_access_grants_target_supervisor_id_fkey FOREIGN KEY (target_supervisor_id) REFERENCES public.users(id) ON DELETE SET NULL,
+  CONSTRAINT executive_module_access_grants_decided_by_fkey FOREIGN KEY (decided_by) REFERENCES public.users(id) ON DELETE SET NULL,
+  CONSTRAINT executive_module_access_grants_revoked_by_fkey FOREIGN KEY (revoked_by) REFERENCES public.users(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX uq_emag_executive_module_live
+  ON public.executive_module_access_grants (executive_id, module)
+  WHERE status IN ('pending','approved');
+CREATE INDEX idx_emag_tenant_status
+  ON public.executive_module_access_grants (tenant_id, status);
+CREATE INDEX idx_emag_target_supervisor_live
+  ON public.executive_module_access_grants (target_supervisor_id, module)
+  WHERE status = 'approved';

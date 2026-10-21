@@ -125,7 +125,7 @@ if user_role == Role.BUSINESS_ADMIN.value:
     return current_user   # bypass; BA can call any module-gated route
 ```
 
-**The `X-Override-*` headers ARE access decisions.** They were informational when this document was written; that stopped being true when the observer role shipped, and it is now the mechanism behind four distinct paths. `app/core/deps.py::_apply_workspace_override` is the only place any of them is decided:
+**The `X-Override-*` headers ARE access decisions.** They were informational when this document was written; that stopped being true when the observer role shipped, and it is now the mechanism behind five distinct paths. `app/core/deps.py::_apply_workspace_override` is the only place any of them is decided:
 
 | Real DB role | May set `role` to | May set `module` to | Checked against |
 |---|---|---|---|
@@ -133,19 +133,25 @@ if user_role == Role.BUSINESS_ADMIN.value:
 | `observer` | `supervisor` or `executive` only | anything | `_OBSERVER_OVERRIDE_ROLES` |
 | `supervisor` with an approved grant | nothing — forced to `supervisor` | the granted module only | `supervisor_module_access_grants`, re-read every request |
 | `supervisor` with `has_executive_access` | `executive`, inside their own module only | nothing | the membership row |
+| `executive` with an approved grant | nothing — stays `executive` | the granted module only (never NSO) | `executive_module_access_grants`, re-read every request |
 
-Two rules make the supervisor path safe:
+Two rules make the supervisor and executive grant paths safe:
 
 - **Own-module facts are computed against the JWT's own module** (`:own`), never the requested one (`:mod`). `has_executive_access` therefore cannot be sourced from one module and applied to another.
 - **An override without a grant is refused, not ignored.** `_assert_workspace_access` raises 403 after the `db.rollback()`. `/auth/whoami` is exempt and reports `workspace_access_refused` instead, because the client treats a 403 there as an auth rejection and would sign the user out rather than drop a stale override.
 
-A plain `executive`'s override headers are still inert.
+An executive without a grant who sends `X-Override-Module` for another module is refused the same way. Their `X-Override-Role` is always ignored.
+
+**Executive grants (migration 20261022).** An executive requests access to another module from the "Module access" sidebar item and names a supervisor of that module. A business admin approves or rejects it under Departments → Executive Module Access. On approval the executive appears on that supervisor's Team page (badged "From <module>"), and the supervisor can delegate sites to them. Withdrawing the grant also revokes the executive's active `site_delegations` in that module. Business admins, the requester and the chosen supervisor get in-app notifications at each step. NSO is excluded because it has no executive role.
 
 **Not recorded:** which actions were taken under a borrowed or simulated identity. `audit_logs` stores the real `actor_id` but ignores `actor_role`, and `stage_events.actor_role` stores the *simulated* role. Attribution is reconstructable after the fact from the grant's `created_at` / `revoked_at` window, not from the event itself.
 
 > **Source of Truth**
 > - `backend/app/core/deps.py` — `_apply_workspace_override`, `_assert_workspace_access`, the `:own` / `:mod` split.
 > - `backend/database/migrations/20260930_supervisor_module_access_grants.sql` — the grant table.
+> - `backend/database/migrations/20261022_executive_module_access_grants.sql` — the executive grant table, with `target_supervisor_id`.
+> - `backend/app/services/executive_module_access_service.py` — request, cancel, decide, revoke, notifications.
+> - `backend/tests/test_executive_module_access.py` — the executive branch, lifecycle and team listing.
 > - `backend/tests/test_supervisor_module_access.py` — the branch, the refusal, and the whoami exemption.
 > - `backend/app/rbac/guards.py` — the `READ_ALL_ROLES` bypass in `require_role` and `require_module`.
 

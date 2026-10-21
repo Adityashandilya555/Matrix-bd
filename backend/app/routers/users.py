@@ -9,9 +9,17 @@ from sqlalchemy import select, text
 
 from app.core.deps import CurrentUser, DbDep, TenantId
 from app.db import models
-from app.domain.schemas.module_access import ModuleAccessRequestIn, ModuleAccessStateOut
+from app.domain.schemas.business_admin import Module
+from app.domain.schemas.module_access import (
+    ExecModuleAccessRequestIn,
+    ExecModuleAccessStateOut,
+    ModuleAccessRequestIn,
+    ModuleAccessStateOut,
+    ModuleSupervisorOut,
+)
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
+from app.services import executive_module_access_service as exec_access_svc
 from app.services import module_access_service as module_access_svc
 from app.services.audit_service import write_audit_event
 
@@ -384,5 +392,111 @@ async def request_module_access(
         tenant_id=tenant_id,
         home_module=_home_module(current_user),
         module=body.module,
+        actor_name=current_user.get("name"),
+    )
+
+
+# ── Executive cross-module workspace access (migration 20261022) ─────────────
+#
+# An executive asks a business admin for executive access to another module,
+# under a supervisor of that module they choose. Same simulation model as the
+# supervisor routes above — see executive_module_access_service.
+
+def _assert_real_executive(current_user: dict) -> None:
+    """The real guard on the executive self-service routes.
+
+    Same reasoning as _assert_real_supervisor: ``require_role`` sees the
+    post-override role, so a business admin or a dual-role supervisor simulating
+    an executive would satisfy it. ``real_role`` comes from the DB.
+    """
+    if current_user.get("real_role") != Role.EXECUTIVE.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only executives can use executive workspace access.",
+        )
+
+
+@router.get(
+    "/me/executive-module-access",
+    response_model=list[ExecModuleAccessStateOut],
+    summary="Modules this executive belongs to, holds access to, or may request",
+)
+async def list_my_executive_module_access(
+    db: DbDep,
+    current_user: CurrentUser,
+    tenant_id: TenantId,
+    _auth: Annotated[dict, Depends(require_role(Role.EXECUTIVE))],
+) -> list[dict]:
+    _assert_real_executive(current_user)
+    return await exec_access_svc.list_my_access(
+        db,
+        executive_id=current_user["sub"],
+        tenant_id=tenant_id,
+        home_module=_home_module(current_user),
+    )
+
+
+@router.get(
+    "/me/executive-module-access/supervisors",
+    response_model=list[ModuleSupervisorOut],
+    summary="Supervisors of a module an executive may request to work under",
+)
+async def list_executive_module_supervisors(
+    db: DbDep,
+    current_user: CurrentUser,
+    tenant_id: TenantId,
+    _auth: Annotated[dict, Depends(require_role(Role.EXECUTIVE))],
+    module: Module = Query(...),
+) -> list[dict]:
+    _assert_real_executive(current_user)
+    return await exec_access_svc.list_module_supervisors(
+        db, tenant_id=tenant_id, module=module,
+        home_module=_home_module(current_user),
+    )
+
+
+@router.post(
+    "/me/executive-module-access/requests",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Request executive access to another module under a chosen supervisor",
+)
+async def request_executive_module_access(
+    body: ExecModuleAccessRequestIn,
+    db: DbDep,
+    current_user: CurrentUser,
+    tenant_id: TenantId,
+    _auth: Annotated[dict, Depends(require_role(Role.EXECUTIVE))],
+) -> None:
+    _assert_real_executive(current_user)
+    await exec_access_svc.request_access(
+        db,
+        executive_id=current_user["sub"],
+        tenant_id=tenant_id,
+        home_module=_home_module(current_user),
+        module=body.module,
+        target_supervisor_id=body.target_supervisor_id,
+        note=body.note,
+        actor_name=current_user.get("name"),
+    )
+
+
+@router.post(
+    "/me/executive-module-access/requests/{request_id}/cancel",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Withdraw one's own pending executive access request",
+)
+async def cancel_executive_module_access_request(
+    request_id: str,
+    db: DbDep,
+    current_user: CurrentUser,
+    tenant_id: TenantId,
+    _auth: Annotated[dict, Depends(require_role(Role.EXECUTIVE))],
+) -> None:
+    _assert_real_executive(current_user)
+    await exec_access_svc.cancel_my_request(
+        db,
+        executive_id=current_user["sub"],
+        tenant_id=tenant_id,
+        request_id=request_id,
         actor_name=current_user.get("name"),
     )

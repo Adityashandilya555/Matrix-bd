@@ -1,6 +1,7 @@
 // skipcq: JS-0833
 // The strip a supervisor sees while working inside a module they borrowed under
-// an approved grant (migration 20260930).
+// an approved grant (migration 20260930) — and an executive under an executive
+// grant (migration 20261022). Only the poll's endpoint and the wording differ.
 //
 // Modelled on ReadOnlyBanner rather than App.jsx's floating "Simulating" chip:
 // that chip is gated on isBusinessAdmin and reads as an admin debugging tool,
@@ -25,7 +26,10 @@ import { useNavigate } from 'react-router-dom';
 import { useSession } from '../../../state/SessionContext.jsx';
 import { ROLE } from '../../../rbac/roles.js';
 import { workspaceModuleLabel, workspaceModuleRoute } from '../workspaceModules.js';
-import { listMyModuleAccess } from '../../../services/api/adapters/httpAdapter.js';
+import {
+  listMyExecModuleAccess,
+  listMyModuleAccess,
+} from '../../../services/api/adapters/httpAdapter.js';
 import Icon from '../primitives/Icon.jsx';
 
 const POLL_MS = 60_000;
@@ -37,6 +41,8 @@ export default function BorrowedAccessBanner() {
   } = useSession();
   const navigate = useNavigate();
   const [granted, setGranted] = useState([]);
+  const isExecutive = session?.realRole === ROLE.EXECUTIVE;
+  const borrowRole = isExecutive ? ROLE.EXECUTIVE : ROLE.SUPERVISOR;
 
   const goHome = useCallback(() => {
     switchAs(null, null);
@@ -51,7 +57,7 @@ export default function BorrowedAccessBanner() {
     const check = async () => {
       if (document.visibilityState === 'hidden') return;
       try {
-        const rows = await listMyModuleAccess();
+        const rows = await (isExecutive ? listMyExecModuleAccess() : listMyModuleAccess());
         if (!alive) return;
         setGranted(rows.filter((r) => r.state === 'granted').map((r) => r.module));
         if (!rows.some((r) => r.module === borrowedModule && r.state === 'granted')) {
@@ -70,7 +76,7 @@ export default function BorrowedAccessBanner() {
       clearInterval(id);
       document.removeEventListener('visibilitychange', check);
     };
-  }, [borrowedModule, goHome]);
+  }, [borrowedModule, goHome, isExecutive]);
 
   if (workspaceAccessRevoked && !borrowedModule) {
     const lost = workspaceModuleLabel(workspaceAccessRevoked) || workspaceAccessRevoked;
@@ -96,7 +102,10 @@ export default function BorrowedAccessBanner() {
   return (
     <Strip tone="accent" testId="borrowed-access-banner">
       <Icon name="layers" size={14} style={{ color: 'var(--zm-accent)', flexShrink: 0 }} />
-      <span>Supervising {here} under approved workspace access. Your own module is {home}.</span>
+      <span>
+        {isExecutive ? 'Working in' : 'Supervising'} {here} under approved workspace access.
+        Your own module is {home}.
+      </span>
       <span style={{ flex: 1 }} />
       {others.length > 0 && (
         <select
@@ -106,7 +115,7 @@ export default function BorrowedAccessBanner() {
           onChange={(e) => {
             const next = e.target.value;
             if (!next || next === borrowedModule) return;
-            switchAs(ROLE.SUPERVISOR, next);
+            switchAs(borrowRole, next);
             navigate(workspaceModuleRoute(next));
           }}
           style={{

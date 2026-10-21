@@ -12,8 +12,9 @@ import {
   addExistingExecutive,
   removeFromMyTeam,
 } from '../../services/api/adapters/httpAdapter.js';
+import { workspaceModuleLabel } from '../shared/workspaceModules.js';
 
-// TeamPage — supervisor surface for the per-supervisor invite-code flow.
+// TeamPage —supervisor surface for the per-supervisor invite-code flow.
 //
 // Sections (supervisor role):
 //   1. My invite code for {module}            (mono code + rotate)
@@ -268,8 +269,15 @@ function SupervisorView({ module, canManageTeam }) {
                   <span style={metaText}>{u.email}{u.assignedCity ? ` · ${u.assignedCity}` : ''}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {u.borrowed && (
+                    <span style={badge} title="Works here on approved workspace access">
+                      From {workspaceModuleLabel(u.homeModule) || 'another module'}
+                    </span>
+                  )}
                   <span style={badge}>executive</span>
-                  {canManageTeam && (
+                  {/* A borrowed executive has no membership row to remove; only a
+                      business admin can withdraw their access. */}
+                  {canManageTeam && !u.borrowed && (
                   <button
                     type="button"
                     onClick={() => unshare(u.id)}

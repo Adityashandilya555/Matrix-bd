@@ -391,3 +391,46 @@ export async function getModuleAccessGrants() {
 export async function revokeModuleAccessGrant(grantId) {
   return client.post(`/business-admin/module-access-grants/${grantId}/revoke`).then((r) => r.data);
 }
+
+// ── Executive cross-module access (migration 20261022) ───────────────────────
+//
+// Same two-family split as above, over executive_module_access_grants. Each
+// row also names the supervisor the executive asked to work under.
+
+function mapExecModuleAccess(r) {
+  return {
+    id: r.id,
+    executiveId: r.executive_id,
+    executiveEmail: r.executive_email,
+    executiveName: r.executive_name,
+    homeModule: r.home_module,
+    module: r.module,
+    supervisorId: r.supervisor_id,
+    supervisorName: r.supervisor_name,
+    note: r.note,
+    createdAt: r.created_at,
+    decidedAt: r.decided_at,
+  };
+}
+
+export async function getExecModuleAccessRequests() {
+  const d = await client.get('/business-admin/executive-module-access-requests').then((r) => r.data);
+  return (d || []).map(mapExecModuleAccess);
+}
+
+export async function approveExecModuleAccessRequest(requestId) {
+  return client.post(`/business-admin/executive-module-access-requests/${requestId}/approve`).then((r) => r.data);
+}
+
+export async function rejectExecModuleAccessRequest(requestId) {
+  return client.post(`/business-admin/executive-module-access-requests/${requestId}/reject`).then((r) => r.data);
+}
+
+export async function getExecModuleAccessGrants() {
+  const d = await client.get('/business-admin/executive-module-access-grants').then((r) => r.data);
+  return (d || []).map(mapExecModuleAccess);
+}
+
+export async function revokeExecModuleAccessGrant(grantId) {
+  return client.post(`/business-admin/executive-module-access-grants/${grantId}/revoke`).then((r) => r.data);
+}
