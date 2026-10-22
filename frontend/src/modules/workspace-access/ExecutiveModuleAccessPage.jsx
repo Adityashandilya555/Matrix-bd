@@ -53,7 +53,9 @@ export default function ExecutiveModuleAccessPage() {
       setStatus('ready');
       setError(null);
     } catch (e) {
-      setStatus('ready');
+      // 'error', not 'ready': with no rows loaded every module would default to
+      // "none" and offer Request access — including the executive's own module.
+      setStatus('error');
       setError(e?.detail || e?.message || 'Could not load your module access.');
     }
   }, []);
@@ -138,6 +140,14 @@ export default function ExecutiveModuleAccessPage() {
 
       {status === 'loading' ? (
         <div style={{ font: '13px var(--zm-font-body)', color: 'var(--zm-fg-muted)' }}>Loading…</div>
+      ) : status === 'error' ? (
+        <button
+          type="button"
+          onClick={() => { setStatus('loading'); load(); }}
+          style={btnStyle(false)}
+        >
+          Try again
+        </button>
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
           {EXECUTIVE_MODULES.map((m) => {
@@ -241,6 +251,10 @@ function SupervisorPicker({
       {supervisors.status === 'loading' ? (
         <div style={{ font: '12.5px var(--zm-font-body)', color: 'var(--zm-fg-muted)' }}>
           Loading supervisors…
+        </div>
+      ) : supervisors.status === 'error' ? (
+        <div style={{ font: '12.5px var(--zm-font-body)', color: 'var(--zm-fg-muted)' }}>
+          Could not load {moduleLabel}’s supervisors. Cancel and try again.
         </div>
       ) : empty ? (
         <div style={{ font: '12.5px var(--zm-font-body)', color: 'var(--zm-fg-muted)' }}>
