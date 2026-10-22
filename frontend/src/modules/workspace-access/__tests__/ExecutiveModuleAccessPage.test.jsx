@@ -132,4 +132,25 @@ describe('the executive panel', () => {
     await renderPage([{ module: 'design', state: 'none', lastDecision: 'cancelled' }]);
     expect(within(rowFor('design')).getByText(/withdrew a previous request/i)).toBeInTheDocument();
   });
+
+  it('shows no rows when the panel fails to load, and retries', async () => {
+    const user = userEvent.setup();
+    api.listMyExecModuleAccess.mockRejectedValueOnce({ detail: 'Not Found' });
+    render(<MemoryRouter><ModuleAccessPage /></MemoryRouter>);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Not Found');
+    // Without this every module would read as requestable, the home one too.
+    expect(screen.queryByTestId('exec-access-legal')).toBeNull();
+    api.listMyExecModuleAccess.mockResolvedValueOnce([{ module: 'legal', state: 'home' }]);
+    await user.click(screen.getByRole('button', { name: /try again/i }));
+    expect(await screen.findByText('Your module')).toBeInTheDocument();
+  });
+
+  it('says so when the supervisor list fails instead of an empty dropdown', async () => {
+    const user = userEvent.setup();
+    api.listModuleSupervisors.mockRejectedValue({ detail: 'Not Found' });
+    await renderPage([{ module: 'design', state: 'none' }]);
+    await user.click(within(rowFor('design')).getByRole('button', { name: /request access/i }));
+    expect(await within(rowFor('design')).findByText(/could not load design/i)).toBeInTheDocument();
+    expect(within(rowFor('design')).queryByRole('combobox')).toBeNull();
+  });
 });
