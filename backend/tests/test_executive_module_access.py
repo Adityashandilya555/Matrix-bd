@@ -619,6 +619,9 @@ async def test_an_nso_grant_makes_the_executive_a_supervisor_on_nso_routes(path)
 @pytest.mark.parametrize("path", [
     "/api/sites", "/api/bd/sites/x/approve", "/api/supervisor-codes/me/nso/team",
     "/api/nsofoo", "/nso/queue", "/api/auth/whoami",
+    # Spellings the router would never dispatch to an NSO route either: the
+    # prefix test must fail closed on them, not normalise them in.
+    "/api//nso/queue", "/API/nso/queue", "/api/NSO/queue", "/api/nso-reports",
 ])
 async def test_the_nso_supervisor_role_never_leaves_the_nso_router(path):
     """The BD routes carry no module guard, so a supervisor role applied to the
@@ -626,6 +629,37 @@ async def test_the_nso_supervisor_role_never_leaves_the_nso_router(path):
     claims = await _resolve(grant=True, override_module="nso", path=path)
     assert claims["role"] == "executive"
     assert claims["module"] == "nso"
+
+
+def test_only_the_nso_router_lives_under_the_nso_prefix():
+    """deps._is_nso_route hands out the supervisor role by PATH, so the rule is
+    only as narrow as the set of routes under that prefix. Every mounted route
+    there must be the NSO router's own and carry both of its guards; a route
+    added under /api/nso by any other router — or an NSO route that dropped
+    InNsoModule — would silently become supervisor-only behaviour this
+    executive can drive."""
+    from fastapi.routing import APIRoute
+
+    from app.core.config import settings
+    from app.main import ROUTERS
+    from app.routers import nso
+
+    # The ROUTER objects, not app.main.app.routes — the assembled app's route
+    # list is lazy here (see tests/test_observer_readonly.py). Mounted paths are
+    # the app prefix plus the router's own.
+    member = nso.NsoMember.__metadata__[0].dependency
+    in_module = nso.InNsoModule.__metadata__[0].dependency
+    under_prefix = [
+        (mod, r) for mod in ROUTERS for r in mod.router.routes
+        if isinstance(r, APIRoute) and deps._is_nso_route(settings.api_prefix + r.path)
+    ]
+    # Not vacuous: the queue, the site read and final approval are all here.
+    paths = {r.path for _, r in under_prefix}
+    assert {"/nso/queue", "/nso/{site_id}", "/nso/{site_id}/final-approval"} <= paths
+    for mod, route in under_prefix:
+        assert mod is nso, route.path
+        calls = {d.call for d in route.dependant.dependencies}
+        assert member in calls and in_module in calls, route.path
 
 
 @pytest.mark.asyncio
