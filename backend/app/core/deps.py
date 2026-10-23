@@ -131,6 +131,7 @@ def _apply_workspace_override(
     home_module: Optional[str],
     override_role: Optional[str],
     override_module: Optional[str],
+    path: str = "",
 ) -> None:
     """Rewrite the EFFECTIVE role/module from the X-Override-* headers.
 
@@ -156,7 +157,10 @@ def _apply_workspace_override(
     * an ``executive`` holding an APPROVED grant — may enter another module as
       an executive (executive_module_access_grants, migration 20261022). Only
       the module moves; ``override_role`` is ignored for the same reason as the
-      supervisor grant. No grant is refused exactly as for a supervisor.
+      supervisor grant. No grant is refused exactly as for a supervisor. An
+      NSO grant is the exception (migration 20261023): NSO has no executive
+      role, so there the executive becomes an NSO SUPERVISOR — but only on the
+      NSO router's own paths. See _apply_borrowed_module.
 
     A supervisor who sends an override module WITHOUT a grant is refused, not
     silently ignored: the request would otherwise run against their own module
@@ -196,26 +200,45 @@ def _apply_workspace_override(
     elif db_role == Role.EXECUTIVE.value:
         _apply_borrowed_module(
             claims, has_grant=has_exec_module_grant,
-            home_module=home_module, override_module=override_module,
+            home_module=home_module, override_module=override_module, path=path,
         )
+
+
+# NSO is supervisor-only, so an executive's NSO grant is NSO supervisor access
+# (migration 20261023). The supervisor role is applied ONLY on the NSO router's
+# own paths: the BD routes carry no module guard (see the note in
+# _apply_workspace_override's docstring), so a supervisor role applied to the
+# whole borrowed session would let this executive drive BD's supervisor-only
+# actions too. Every other path keeps the executive role.
+_NSO_SUPERVISOR_MODULE = "nso"
+_NSO_ROUTE_PREFIX = f"{settings.api_prefix}/nso"
+
+
+def _is_nso_route(path: str) -> bool:
+    """Whether `path` is one of the NSO router's own routes."""
+    return path == _NSO_ROUTE_PREFIX or path.startswith(_NSO_ROUTE_PREFIX + "/")
 
 
 def _apply_borrowed_module(
     claims: dict, *, has_grant: bool,
-    home_module: Optional[str], override_module: Optional[str],
+    home_module: Optional[str], override_module: Optional[str], path: str = "",
 ) -> None:
     """Enter a borrowed module on a grant, or flag the override as refused.
 
     The executive branch of _apply_workspace_override, split out to keep that
     function under the complexity gate. Same contract as the supervisor branch:
     only ``module`` moves, and a missing grant is flagged for
-    _assert_workspace_access rather than silently ignored.
+    _assert_workspace_access rather than silently ignored — except on an NSO
+    route under an NSO grant, where ``role`` becomes supervisor as well.
+    ``real_role`` is never touched, so it still reads executive everywhere.
     """
     if not override_module or override_module == home_module:
         return
     if has_grant:
         claims["module"] = override_module
         claims["borrowed_module"] = override_module
+        if override_module == _NSO_SUPERVISOR_MODULE and _is_nso_route(path):
+            claims["role"] = Role.SUPERVISOR.value
     else:
         claims[_OVERRIDE_REFUSED] = override_module
 
@@ -306,11 +329,13 @@ async def get_current_user(
                    -- either case the grant has no reporting line left — nobody
                    -- can delegate to or supervise the executive — and must stop
                    -- admitting them. (A NULL id matches no users row.)
-                   AND EXISTS (
+                   -- NSO supervisor access (migration 20261023) names no
+                   -- supervisor, so it is exempt.
+                   AND (eg.module = 'nso' OR EXISTS (
                      SELECT 1 FROM users ts
                      WHERE ts.id = eg.target_supervisor_id
                        AND ts.role = 'supervisor' AND ts.is_active
-                   )
+                   ))
                ) AS has_exec_module_grant
         FROM users u
         LEFT JOIN user_module_memberships umm
@@ -354,6 +379,9 @@ async def get_current_user(
         home_module=home_module,
         override_role=x_override_role,
         override_module=x_override_module,
+        # getattr: a stub request with no URL (several auth tests use one)
+        # simply never matches the NSO prefix.
+        path=getattr(getattr(request, "url", None), "path", ""),
     )
 
     # The is_active SELECT above AUTO-BEGAN a transaction on the request-scoped

@@ -56,10 +56,9 @@ describe('the executive panel', () => {
     expect(api.listMyModuleAccess).not.toHaveBeenCalled();
   });
 
-  it('does not list NSO', async () => {
+  it('lists NSO, as supervisor access', async () => {
     await renderPage([{ module: 'legal', state: 'home' }]);
-    expect(screen.queryByTestId('exec-access-nso')).toBeNull();
-    expect(screen.queryByText('NSO')).toBeNull();
+    expect(within(rowFor('nso')).getByText(/work here as its supervisor/i)).toBeInTheDocument();
   });
 
   it('marks the home module and offers nothing to press', async () => {
@@ -152,5 +151,23 @@ describe('the executive panel', () => {
     await user.click(within(rowFor('design')).getByRole('button', { name: /request access/i }));
     expect(await within(rowFor('design')).findByText(/could not load design/i)).toBeInTheDocument();
     expect(within(rowFor('design')).queryByRole('combobox')).toBeNull();
+  });
+
+  it('requests NSO supervisor access without choosing a supervisor', async () => {
+    const user = userEvent.setup();
+    await renderPage([{ module: 'legal', state: 'home' }, { module: 'nso', state: 'none' }]);
+    await user.click(within(rowFor('nso')).getByRole('button', { name: /request access/i }));
+    expect(api.listModuleSupervisors).not.toHaveBeenCalled();
+    expect(within(rowFor('nso')).queryByRole('combobox')).toBeNull();
+    expect(within(rowFor('nso')).getByText(/including final approval/i)).toBeInTheDocument();
+    await user.click(within(rowFor('nso')).getByRole('button', { name: /send request/i }));
+    expect(api.requestExecModuleAccess).toHaveBeenCalledWith({
+      module: 'nso', targetSupervisorId: null, note: '',
+    });
+  });
+
+  it('labels a granted NSO row as supervisor access', async () => {
+    await renderPage([{ module: 'nso', state: 'granted' }]);
+    expect(within(rowFor('nso')).getByText('NSO supervisor access granted')).toBeInTheDocument();
   });
 });
