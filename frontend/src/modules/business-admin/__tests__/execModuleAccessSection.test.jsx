@@ -76,4 +76,28 @@ describe('executive module access requests', () => {
     renderSection({ requests: queue([]), grants: queue([]) });
     expect(screen.getByText('No executive access requests')).toBeInTheDocument();
   });
+
+  it('labels NSO rows as supervisor access and confirms before approving', async () => {
+    const user = userEvent.setup();
+    const nso = { ...request, id: 'r-2', module: 'nso', supervisorName: null, note: null };
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const props = renderSection({ requests: queue([nso]), grants: queue([]) });
+    const row = screen.getByTestId('exec-access-request-r-2');
+    expect(within(row).getByText('as NSO supervisor')).toBeInTheDocument();
+    await user.click(within(row).getByRole('button', { name: 'Approve' }));
+    expect(confirm).toHaveBeenCalled();
+    expect(props.onApprove).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    await user.click(within(row).getByRole('button', { name: 'Approve' }));
+    expect(props.onApprove).toHaveBeenCalledWith('r-2');
+  });
+
+  it('approves other modules without a confirm', async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, 'confirm');
+    const props = renderSection();
+    await user.click(within(screen.getByTestId('exec-access-request-r-1')).getByRole('button', { name: 'Approve' }));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(props.onApprove).toHaveBeenCalledWith('r-1');
+  });
 });

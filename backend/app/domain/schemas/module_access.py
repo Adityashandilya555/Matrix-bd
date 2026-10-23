@@ -66,8 +66,8 @@ class ModuleAccessGrantOut(BaseModel):
 
 # ── Executive cross-module access (migration 20261022) ───────────────────────
 #
-# NSO never appears: the grant table's CHECK excludes it, and the service
-# refuses it before any SQL runs, so `Module` stays the shared literal.
+# NSO is grantable since migration 20261023, as NSO supervisor access: its rows
+# carry no supervisor_id / supervisor_name.
 
 class ExecModuleAccessStateOut(BaseModel):
     """One row of the executive's own "Module access" panel.
@@ -88,7 +88,9 @@ class ExecModuleAccessStateOut(BaseModel):
 
 class ExecModuleAccessRequestIn(BaseModel):
     module: Module
-    target_supervisor_id: str
+    # Required for every module except NSO, whose grant is NSO supervisor access
+    # and names no supervisor (migration 20261023). The service enforces both.
+    target_supervisor_id: Optional[str] = None
     note: Optional[str] = Field(default=None, max_length=500)
 
 

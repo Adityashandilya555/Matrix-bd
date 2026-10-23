@@ -162,13 +162,18 @@ async def test_a_grant_whose_supervisor_is_gone_or_inactive_no_longer_admits():
 # ── the request ──────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("module", ["legal", "nso"])
-async def test_the_home_module_and_nso_are_refused_before_any_sql(module):
+@pytest.mark.parametrize("module,sid", [
+    ("legal", SUPERVISOR),   # the home module
+    ("nso", SUPERVISOR),     # NSO supervisor access names no supervisor
+    ("nso", ""),             # not even an empty one, which would reach the CAST
+    ("design", None),        # every other module requires one
+])
+async def test_bad_requests_are_refused_before_any_sql(module, sid):
     sess = RecordingSession()
     with pytest.raises(HTTPException) as exc:
         await exec_svc.request_access(
             sess, executive_id=USER, tenant_id=TENANT, home_module="legal",
-            module=module, target_supervisor_id=SUPERVISOR,
+            module=module, target_supervisor_id=sid,
         )
     assert exc.value.status_code == 400
     assert sess.executed == []
@@ -381,7 +386,7 @@ async def test_revoke_also_ends_the_companion_module_delegations(module, compani
 # ── the executive's panel ────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_the_panel_lists_states_without_nso():
+async def test_the_panel_lists_states():
     row = {"created_at": None, "decided_at": None, "supervisor_name": "Meera",
            "supervisor_active": True}
     sess = RecordingSession(results=[FakeResult(mappings_rows=[
@@ -396,7 +401,7 @@ async def test_the_panel_lists_states_without_nso():
         sess, executive_id=USER, tenant_id=TENANT, home_module="legal",
     )
     by_module = {r["module"]: r for r in rows}
-    assert "nso" not in by_module
+    assert by_module["nso"]["state"] == "none"
     assert by_module["legal"]["state"] == "home"
     assert by_module["design"]["state"] == "granted"
     assert by_module["design"]["supervisor_name"] == "Meera"
@@ -597,3 +602,160 @@ async def test_the_panel_marks_every_module_the_executive_belongs_to():
     assert by_module["legal"] == "home"
     assert by_module["project"] == "home"
     assert by_module["design"] == "none"
+
+
+# ── NSO supervisor access (migration 20261023) ───────────────────────────────
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/api/nso/queue", "/api/nso/site-1/final-approval", "/api/nso"])
+async def test_an_nso_grant_makes_the_executive_a_supervisor_on_nso_routes(path):
+    claims = await _resolve(grant=True, override_module="nso", path=path)
+    assert claims["role"] == "supervisor"
+    assert claims["module"] == "nso"
+    assert claims["real_role"] == "executive"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", [
+    "/api/sites", "/api/bd/sites/x/approve", "/api/supervisor-codes/me/nso/team",
+    "/api/nsofoo", "/nso/queue", "/api/auth/whoami",
+    # Spellings the router would never dispatch to an NSO route either: the
+    # prefix test must fail closed on them, not normalise them in.
+    "/api//nso/queue", "/API/nso/queue", "/api/NSO/queue", "/api/nso-reports",
+])
+async def test_the_nso_supervisor_role_never_leaves_the_nso_router(path):
+    """The BD routes carry no module guard, so a supervisor role applied to the
+    whole borrowed session would reach BD's supervisor-only actions."""
+    claims = await _resolve(grant=True, override_module="nso", path=path)
+    assert claims["role"] == "executive"
+    assert claims["module"] == "nso"
+
+
+def test_only_the_nso_router_lives_under_the_nso_prefix():
+    """deps._is_nso_route hands out the supervisor role by PATH, so the rule is
+    only as narrow as the set of routes under that prefix. Every mounted route
+    there must be the NSO router's own and carry both of its guards; a route
+    added under /api/nso by any other router — or an NSO route that dropped
+    InNsoModule — would silently become supervisor-only behaviour this
+    executive can drive."""
+    from fastapi.routing import APIRoute
+
+    from app.core.config import settings
+    from app.main import ROUTERS
+    from app.routers import nso
+
+    # The ROUTER objects, not app.main.app.routes — the assembled app's route
+    # list is lazy here (see tests/test_observer_readonly.py). Mounted paths are
+    # the app prefix plus the router's own.
+    member = nso.NsoMember.__metadata__[0].dependency
+    in_module = nso.InNsoModule.__metadata__[0].dependency
+    under_prefix = [
+        (mod, r) for mod in ROUTERS for r in mod.router.routes
+        if isinstance(r, APIRoute) and deps._is_nso_route(settings.api_prefix + r.path)
+    ]
+    # Not vacuous: the queue, the site read and final approval are all here.
+    paths = {r.path for _, r in under_prefix}
+    assert {"/nso/queue", "/nso/{site_id}", "/nso/{site_id}/final-approval"} <= paths
+    for mod, route in under_prefix:
+        assert mod is nso, route.path
+        calls = {d.call for d in route.dependant.dependencies}
+        assert member in calls and in_module in calls, route.path
+
+
+@pytest.mark.asyncio
+async def test_another_modules_grant_never_makes_a_supervisor():
+    claims = await _resolve(grant=True, override_module="design", path="/api/nso/queue")
+    assert claims["role"] == "executive"
+
+
+@pytest.mark.asyncio
+async def test_an_executive_without_an_nso_grant_is_still_refused():
+    with pytest.raises(HTTPException) as exc:
+        await _resolve(grant=False, override_module="nso", path="/api/nso/queue")
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_the_nso_router_admits_the_elevated_executive():
+    from app.routers import nso
+
+    guard = nso.NsoMember.__metadata__[0].dependency
+    claims = await _resolve(grant=True, override_module="nso", path="/api/nso/queue")
+    assert (await guard(current_user=claims))["role"] == "supervisor"
+
+
+@pytest.mark.asyncio
+async def test_the_nso_grant_probe_does_not_require_a_chosen_supervisor():
+    db = _session(grant=True)
+    await _resolve(db=db, override_module="nso", path="/api/nso/queue")
+    assert "eg.module = 'nso' OR EXISTS" in db.executed[0]
+
+
+@pytest.mark.asyncio
+async def test_an_nso_request_names_no_supervisor_and_skips_the_checks():
+    sess = RecordingSession(results=[
+        FakeResult(mappings_rows=[]),            # no membership in NSO
+        FakeResult(mappings_rows=[{"id": REQ_ID}]),
+        FakeResult(scalars_list=[]),
+    ])
+    await exec_svc.request_access(
+        sess, executive_id=USER, tenant_id=TENANT, home_module="legal",
+        module="nso", target_supervisor_id=None, actor_name="Ravi",
+    )
+    assert not any("role_in_module = 'supervisor'" in q for q in sess.executed)
+    assert not any("NOT EXISTS (SELECT 1 FROM users s" in q for q in sess.executed)
+    insert = _sql_containing(sess, "INSERT INTO executive_module_access_grants")
+    assert "target_supervisor_id" in insert
+    params = sess.execute_params[sess.executed.index(insert)]
+    assert params["sid"] is None
+    assert _audits(sess) == ["executive_module_access_requested"]
+
+
+@pytest.mark.asyncio
+async def test_nso_has_no_supervisors_to_choose():
+    with pytest.raises(HTTPException) as exc:
+        await exec_svc.list_module_supervisors(
+            RecordingSession(), tenant_id=TENANT, module="nso", home_module="legal",
+        )
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_approval_exempts_nso_from_the_chosen_supervisor_check():
+    sess = RecordingSession(results=[FakeResult(mappings_rows=[])])
+    await exec_svc.approve_request(sess, TENANT, REQ_ID, "admin-1")
+    sql = _sql_containing(sess, "UPDATE executive_module_access_grants")
+    assert "g.module = 'nso'" in sql
+    assert "u.role = 'executive' AND u.is_active" in sql
+
+
+@pytest.mark.asyncio
+async def test_an_approved_nso_grant_is_not_read_as_orphaned():
+    sess = RecordingSession(results=[FakeResult(mappings_rows=[{
+        "id": GRANT_ID, "module": "nso", "status": "approved",
+        "created_at": None, "decided_at": None, "target_supervisor_id": None,
+        "supervisor_name": None, "supervisor_active": None,
+    }])])
+    rows = await exec_svc.list_my_access(
+        sess, executive_id=USER, tenant_id=TENANT, home_module="legal",
+    )
+    nso_row = {r["module"]: r for r in rows}["nso"]
+    assert nso_row["state"] == "granted"
+    assert nso_row["supervisor_id"] is None
+
+
+def test_the_orphan_sweep_never_touches_nso():
+    assert "g.module <> 'nso'" in str(exec_svc._SWEEP_ORPHANED_STMT)
+
+
+def test_the_nso_migration_parses_and_allows_nso():
+    from app.main import _parse_sql_statements
+
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "database" / "migrations" / "20261023_executive_nso_supervisor_access.sql"
+    )
+    statements = [s for s in _parse_sql_statements(path.read_text()) if s.strip()]
+    assert len(statements) == 2
+    assert "DROP CONSTRAINT IF EXISTS chk_emag_module" in statements[0]
+    assert "'nso'" in statements[1]

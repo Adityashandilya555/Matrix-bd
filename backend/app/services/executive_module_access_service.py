@@ -27,11 +27,17 @@ from app.services import notification_service
 from app.services.audit_service import write_audit_event
 
 
-# Mirrors the CHECK on executive_module_access_grants.module. NSO is absent on
-# purpose: it is supervisor-only, so there is no executive identity to borrow.
+# Mirrors the CHECK on executive_module_access_grants.module.
 _MODULES: tuple[str, ...] = (
-    "bd", "legal", "design", "project", "project_excellence",
+    "bd", "legal", "design", "project", "project_excellence", "nso",
 )
+
+# NSO is supervisor-only, so it has no executive identity to borrow. A grant
+# into it is NSO SUPERVISOR access instead (migration 20261023): deps.py makes
+# the executive an NSO supervisor on /api/nso/* only. It names no target
+# supervisor — a supervisor reports to nobody — so every rule below about the
+# chosen supervisor skips this module.
+_SUPERVISOR_ACCESS_MODULE = "nso"
 
 _ENTITY = "executive_module_access_grant"
 
@@ -73,13 +79,16 @@ _APPROVE_GRANT_STMT = text(
     "                WHERE u.id = g.executive_id "
     "                  AND u.tenant_id = g.tenant_id "
     "                  AND u.role = 'executive' AND u.is_active) "
-    "   AND EXISTS (SELECT 1 FROM users s "
-    "                JOIN user_module_memberships m ON m.user_id = s.id "
-    "                WHERE s.id = g.target_supervisor_id "
-    "                  AND s.tenant_id = g.tenant_id "
-    "                  AND s.role = 'supervisor' AND s.is_active "
-    "                  AND m.module = g.module "
-    "                  AND m.role_in_module = 'supervisor') "
+    # NSO supervisor access names no supervisor, so only the executive check
+    # applies to it.
+    "   AND (g.module = 'nso' "
+    "        OR EXISTS (SELECT 1 FROM users s "
+    "                    JOIN user_module_memberships m ON m.user_id = s.id "
+    "                    WHERE s.id = g.target_supervisor_id "
+    "                      AND s.tenant_id = g.tenant_id "
+    "                      AND s.role = 'supervisor' AND s.is_active "
+    "                      AND m.module = g.module "
+    "                      AND m.role_in_module = 'supervisor')) "
     "RETURNING g.executive_id, g.module, g.target_supervisor_id"
 )
 
@@ -129,11 +138,11 @@ def _is_uuid(value: object) -> bool:
 
 
 def _assert_target_module(module: str, home_module: Optional[str]) -> None:
-    """Refuse the home module and anything without an executive role (NSO)."""
+    """Refuse the home module and anything outside the grantable list."""
     if module not in _MODULES:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail="This module has no executive role.",
+            detail="Access to this module cannot be requested.",
         )
     if module == home_module:
         raise HTTPException(
@@ -203,7 +212,8 @@ async def list_my_access(
             entry["requested_at"] = row["created_at"]
             entry["decided_at"] = row["decided_at"]
             orphaned = (
-                row["status"] in ("approved", "pending")
+                module != _SUPERVISOR_ACCESS_MODULE
+                and row["status"] in ("approved", "pending")
                 and not row.get("supervisor_active")
             )
             if orphaned:
@@ -232,6 +242,11 @@ async def list_module_supervisors(
 ) -> list[dict]:
     """The supervisors an executive may choose to work under in `module`."""
     _assert_target_module(module, home_module)
+    if module == _SUPERVISOR_ACCESS_MODULE:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="NSO access is supervisor access; there is no supervisor to choose.",
+        )
     rows = (await session.execute(
         _MODULE_SUPERVISORS_STMT,
         {"tid": tenant_id, "m": module},
@@ -245,17 +260,29 @@ async def list_module_supervisors(
 async def request_access(
     session: AsyncSession, *,
     executive_id: str, tenant_id: str, home_module: Optional[str],
-    module: str, target_supervisor_id: str,
+    module: str, target_supervisor_id: Optional[str],
     note: Optional[str] = None, actor_name: Optional[str] = None,
 ) -> None:
     """File a request for executive access to `module` under a chosen supervisor.
+
+    For NSO it is a request for NSO supervisor access, which names no supervisor
+    — `target_supervisor_id` must be absent there and is required everywhere
+    else.
 
     A live row for the module — pending or approved — is a 409, not the silent
     no-op module_access_service uses: here the supervisor may differ, and
     keeping the old row quietly would ignore what the executive just chose.
     """
     _assert_target_module(module, home_module)
-    if not _is_uuid(target_supervisor_id):
+    supervisor_access = module == _SUPERVISOR_ACCESS_MODULE
+    # `is not None`, not truthiness: an empty string would otherwise pass as
+    # "no supervisor" and reach CAST('' AS uuid) as a 500 rather than a 400.
+    if supervisor_access and target_supervisor_id is not None:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="NSO access is supervisor access; it names no supervisor.",
+        )
+    if not supervisor_access and not _is_uuid(target_supervisor_id):
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="Choose a supervisor of that module.",
@@ -269,20 +296,21 @@ async def request_access(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="You are already an executive of this module.",
             )
-        supervises = (await session.execute(
-            _IS_MODULE_SUPERVISOR_STMT,
-            {"tid": tenant_id, "m": module, "sid": target_supervisor_id},
-        )).first()
-        if not supervises:
-            raise HTTPException(
-                status_code=http_status.HTTP_400_BAD_REQUEST,
-                detail="Choose a supervisor of that module.",
+        if not supervisor_access:
+            supervises = (await session.execute(
+                _IS_MODULE_SUPERVISOR_STMT,
+                {"tid": tenant_id, "m": module, "sid": target_supervisor_id},
+            )).first()
+            if not supervises:
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail="Choose a supervisor of that module.",
+                )
+            # A live row whose supervisor has since gone would otherwise make
+            # this a 409 forever. Cleared first, in the same transaction.
+            await _sweep_orphaned(
+                session, tenant_id=tenant_id, executive_id=executive_id, module=module,
             )
-        # A live row whose supervisor has since gone would otherwise make this
-        # a 409 forever. Cleared first, in the same transaction.
-        await _sweep_orphaned(
-            session, tenant_id=tenant_id, executive_id=executive_id, module=module,
-        )
         row = (await session.execute(
             text(
                 "INSERT INTO executive_module_access_grants "
@@ -295,7 +323,8 @@ async def request_access(
                 "RETURNING id"
             ),
             {"tid": tenant_id, "eid": executive_id, "m": module,
-             "sid": target_supervisor_id, "note": note},
+             "sid": None if supervisor_access else target_supervisor_id,
+             "note": note},
         )).mappings().first()
         if row is None:
             raise HTTPException(
@@ -319,7 +348,11 @@ async def request_access(
             recipient_ids=await notification_service.recipients_for_business_admins(
                 session, tenant_id=tenant_id,
             ),
-            subject=f"{actor_name or 'An executive'} requested {module} access",
+            subject=(
+                f"{actor_name or 'An executive'} requested NSO supervisor access"
+                if supervisor_access
+                else f"{actor_name or 'An executive'} requested {module} access"
+            ),
             payload={"request_id": str(row["id"]), "module": module,
                      "executive_id": executive_id},
         )
@@ -635,6 +668,8 @@ _SWEEP_ORPHANED_STMT = text(
     "                         THEN now() ELSE g.decided_at END "
     " WHERE g.executive_id = :eid AND g.module = :m AND g.tenant_id = :tid "
     "   AND g.status IN ('pending', 'approved') "
+    # NSO supervisor access names no supervisor, so it is never orphaned.
+    "   AND g.module <> 'nso' "
     "   AND NOT EXISTS (SELECT 1 FROM users s "
     "                    WHERE s.id = g.target_supervisor_id "
     "                      AND s.role = 'supervisor' AND s.is_active) "

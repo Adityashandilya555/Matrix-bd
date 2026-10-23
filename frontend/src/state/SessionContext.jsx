@@ -131,7 +131,11 @@ export function SessionProvider({ children }) {
   // would be a lie about what the server actually did.
   const role = isBusinessAdmin ? (adminOverride?.role || session.role)
              : isObserver ? (OBSERVER_VIEW_ROLES.includes(adminOverride?.role) ? adminOverride.role : session.realRole)
-             : borrowedModule ? (session.realRole === ROLE.EXECUTIVE ? ROLE.EXECUTIVE : ROLE.SUPERVISOR)
+             // An executive's NSO grant is NSO supervisor access (migration
+             // 20261023): NSO has no executive role, so its pages render as
+             // the supervisor's. The server applies that role to /api/nso/*
+             // only; everything else still sees an executive.
+             : borrowedModule ? (session.realRole === ROLE.EXECUTIVE && borrowedModule !== 'nso' ? ROLE.EXECUTIVE : ROLE.SUPERVISOR)
              : isDualRoleSupervisor ? (['supervisor', 'executive'].includes(adminOverride?.role) ? adminOverride.role : session.role)
              : session.role;
 

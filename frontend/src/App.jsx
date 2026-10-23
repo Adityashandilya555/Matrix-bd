@@ -30,7 +30,7 @@ const FEATURE_RENT_V2 = import.meta.env.VITE_FEATURE_RENT_V2 === 'true';
 // All view-specific logic lives in the page components.
 
 export default function App() {
-  const { user, role, setRole, dark, toggleDark, authReady, isBusinessAdmin, isReadOnly, adminOverride, switchAs } = useSession();
+  const { user, role, setRole, dark, toggleDark, authReady, isBusinessAdmin, isReadOnly, adminOverride, switchAs, session } = useSession();
   const { drafts, shortlist, staging, archive, createDraft, error: sitesError, refresh } = useSites();
   const navigate = useNavigate();
   const location = useLocation();
@@ -121,7 +121,12 @@ export default function App() {
   // race fired a spurious 403 on every executive's first page load.
   const [pendingUserCount, setPendingUserCount] = useState(0);
   useEffect(() => {
-    if (!authReady || role !== 'supervisor') { setPendingUserCount(0); return; }
+    // An executive holding NSO supervisor access reads as a supervisor in NSO
+    // (migration 20261023) but the server only grants that on /api/nso/*, so
+    // this supervisor-only poll would just 403 every 30s.
+    if (!authReady || role !== 'supervisor' || session?.realRole === 'executive') {
+      setPendingUserCount(0); return;
+    }
     let alive = true;
     const refresh = () => listPendingUsers()
       .then(arr => alive && setPendingUserCount(arr.length))
@@ -133,7 +138,7 @@ export default function App() {
       if (document.visibilityState !== 'hidden') refresh();
     }, 30_000);
     return () => { alive = false; clearInterval(t); };
-  }, [authReady, role]);
+  }, [authReady, role, session?.realRole]);
 
   // Memoized so the context value identity is stable across renders (both
   // showToast/onOpenSite are already useCallback) — prevents every consumer

@@ -27,6 +27,19 @@ export default function ExecModuleAccessSection({
     finally { setBusyId(null); }
   }
 
+  function confirmApprove(r) {
+    // NSO supervisor access is supervisor power — final approval included —
+    // so the admin confirms it explicitly rather than in one click.
+    if (r.module === 'nso') {
+      const ok = window.confirm(
+        `Make ${r.executiveName} an NSO supervisor? They will be able to act on every NSO `
+        + 'site, including final approval, until you withdraw it.',
+      );
+      if (!ok) return;
+    }
+    act(onApprove, r.id);
+  }
+
   function confirmRevoke(g) {
     const ok = window.confirm(
       `Withdraw ${g.executiveName}'s access to ${g.module}? Any sites delegated to them in `
@@ -81,7 +94,7 @@ export default function ExecModuleAccessSection({
                       </span>
                       <span style={{ fontSize: 11.5, color: T.textMuted, overflow: 'hidden',
                         textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        under {r.supervisorName || 'a supervisor who has since left'}
+                        {reportingLine(r)}
                       </span>
                       <span style={{ fontSize: 11.5, color: T.textFaint, justifySelf: 'end' }}>
                         {r.createdAt
@@ -92,7 +105,7 @@ export default function ExecModuleAccessSection({
                         <Button variant="ghost" size="sm" loading={isBusy} disabled={isBusy}
                           onClick={() => act(onReject, r.id)}>Reject</Button>
                         <Button variant="solid" size="sm" loading={isBusy} disabled={isBusy}
-                          onClick={() => act(onApprove, r.id)}>Approve</Button>
+                          onClick={() => confirmApprove(r)}>Approve</Button>
                       </div>
                     </div>
                   );
@@ -141,7 +154,7 @@ export default function ExecModuleAccessSection({
                       </span>
                       <span style={{ fontSize: 11.5, color: T.textMuted, overflow: 'hidden',
                         textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        under {g.supervisorName || 'a supervisor who has since left'}
+                        {reportingLine(g)}
                       </span>
                       <Button variant="ghost" size="sm" loading={isBusy} disabled={isBusy}
                         onClick={() => confirmRevoke(g)} style={{ justifySelf: 'end' }}>Withdraw</Button>
@@ -168,4 +181,11 @@ function Person({ name, email, note }) {
       )}
     </div>
   );
+}
+
+// An NSO grant is NSO supervisor access and names nobody (migration 20261023);
+// every other grant names the supervisor the executive works under.
+function reportingLine(row) {
+  if (row.module === 'nso') return 'as NSO supervisor';
+  return `under ${row.supervisorName || 'a supervisor who has since left'}`;
 }

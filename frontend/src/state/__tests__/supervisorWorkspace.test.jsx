@@ -189,3 +189,23 @@ describe('an executive inside a borrowed workspace', () => {
     expect(val('module')).toBe('legal');
   });
 });
+
+describe('an executive on NSO supervisor access (migration 20261023)', () => {
+  it('reads as a supervisor inside NSO', async () => {
+    stored = { role: 'executive', module: 'nso' };
+    whoami.mockResolvedValue(execClaims({ module: 'nso' }));
+    await mount();
+    expect(val('module')).toBe('nso');
+    expect(val('borrowed')).toBe('nso');
+    expect(val('role')).toBe('supervisor');
+    expect(val('realRole')).toBe('executive');
+  });
+
+  it('still enters NSO through the executive switch', async () => {
+    whoami.mockResolvedValue(execClaims());
+    await mount();
+    act(() => { api.switchAs('executive', 'nso'); });
+    expect(stored).toEqual({ role: 'executive', module: 'nso' });
+  });
+});
+

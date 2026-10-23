@@ -73,7 +73,7 @@ const SECTION_HEADING_STYLE = {
 export default function Sidebar({ counts, role, onRole, collapsed = false }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { session, effectiveModule } = useSession();
+  const { session, effectiveModule, borrowedModule } = useSession();
   // Prefer the JWT-borne module claim when it exists — that's the authoritative
   // signal of which module a user actually belongs to. Only fall back to the
   // current URL when the session has no module claim (mock-mode previews, where
@@ -366,14 +366,20 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
       {canSeeTeam && (
         <>
           {!collapsed && <div style={SECTION_HEADING_STYLE}>Workspace</div>}
-          <SidebarItem
-            icon="users"
-            label="Team"
-            count={counts.pendingUsers}
-            active={activeView === 'team'}
-            onClick={() => go(ROUTES.TEAM)}
-            collapsed={collapsed}
-          />
+          {/* Hidden for an executive inside NSO on NSO supervisor access
+              (migration 20261023): `role` reads supervisor there, but the
+              server grants that only on /api/nso/*, so the supervisor Team
+              page would 403 throughout. */}
+          {!(session?.realRole === 'executive' && borrowedModule === 'nso') && (
+            <SidebarItem
+              icon="users"
+              label="Team"
+              count={counts.pendingUsers}
+              active={activeView === 'team'}
+              onClick={() => go(ROUTES.TEAM)}
+              collapsed={collapsed}
+            />
+          )}
           {/* Gated on realRole, not the `role` prop: a business admin or an
               observer viewing as a supervisor must not see this — they have
               Workspace Access in their own portal, which is unrestricted.

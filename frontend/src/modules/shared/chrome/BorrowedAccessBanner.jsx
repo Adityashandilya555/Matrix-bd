@@ -111,7 +111,7 @@ export default function BorrowedAccessBanner() {
     <Strip tone="accent" testId="borrowed-access-banner">
       <Icon name="layers" size={14} style={{ color: 'var(--zm-accent)', flexShrink: 0 }} />
       <span>
-        {isExecutive ? 'Working in' : 'Supervising'} {here} under approved workspace access.
+        {isExecutive && borrowedModule !== 'nso' ? 'Working in' : 'Supervising'} {here} under approved workspace access.
         Your own module is {home}.
       </span>
       <span style={{ flex: 1 }} />

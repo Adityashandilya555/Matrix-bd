@@ -14,16 +14,22 @@ import {
 // Module access, executive edition (migration 20261022).
 //
 // The executive's own surface for working in a second module. One row per
-// module that has an executive role — NSO is supervisor-only, so it is not
-// listed. A requestable row expands into a supervisor picker: the request goes
+// module. A requestable row expands into a supervisor picker: the request goes
 // to a business admin and names who the executive will report to there. Once
 // approved, "Enter workspace" makes this session act as an executive of that
 // module; the backend re-checks the grant on every request.
 //
+// NSO is the exception (migration 20261023). It has no executive role, so its
+// grant is NSO supervisor access: no supervisor is chosen, and inside NSO the
+// executive works as its supervisor.
+//
 // Rows come from WORKSPACE_MODULES, like the supervisor page, so the switchers
 // cannot drift from one another.
 
-const EXECUTIVE_MODULES = WORKSPACE_MODULES.filter((m) => m.value !== 'nso');
+const EXECUTIVE_MODULES = WORKSPACE_MODULES;
+
+// The module whose grant is supervisor access and names no supervisor.
+const SUPERVISOR_ACCESS_MODULE = 'nso';
 
 const LAST_DECISION = {
   rejected:  'A previous request was declined',
@@ -64,6 +70,12 @@ export default function ExecutiveModuleAccessPage() {
 
   const openPicker = async (moduleKey) => {
     setPicking(moduleKey); setChoice(''); setNote(''); setError(null);
+    if (moduleKey === SUPERVISOR_ACCESS_MODULE) {
+      // Nobody to choose, so nothing to load.
+      pickingRef.current = moduleKey;
+      setSupervisors({ module: moduleKey, status: 'ready', items: [] });
+      return;
+    }
     setSupervisors({ module: moduleKey, status: 'loading', items: [] });
     // Applied only while this module is still the one being picked. Opening
     // another row before this resolves would otherwise let the late answer
@@ -84,10 +96,15 @@ export default function ExecutiveModuleAccessPage() {
   const closePicker = () => { pickingRef.current = null; setPicking(null); setChoice(''); setNote(''); };
 
   const submit = async (moduleKey) => {
-    if (!choice) return;
+    const supervisorAccess = moduleKey === SUPERVISOR_ACCESS_MODULE;
+    if (!choice && !supervisorAccess) return;
     setBusy(moduleKey); setError(null);
     try {
-      await requestExecModuleAccess({ module: moduleKey, targetSupervisorId: choice, note });
+      await requestExecModuleAccess({
+        module: moduleKey,
+        targetSupervisorId: supervisorAccess ? null : choice,
+        note,
+      });
       closePicker();
       await load();
     } catch (e) {
@@ -165,7 +182,7 @@ export default function ExecutiveModuleAccessPage() {
                       {m.label}
                     </div>
                     <div style={{ font: '12px var(--zm-font-body)', color: 'var(--zm-fg-muted)' }}>
-                      {subLabel(row, isHere)}
+                      {subLabel(row, isHere, m.value)}
                     </div>
                   </div>
                   {row.state === 'home' && (
@@ -203,6 +220,7 @@ export default function ExecutiveModuleAccessPage() {
                 {open && (
                   <SupervisorPicker
                     moduleLabel={m.label}
+                    supervisorAccess={m.value === SUPERVISOR_ACCESS_MODULE}
                     supervisors={supervisors.module === m.value ? supervisors : { status: 'loading', items: [] }}
                     choice={choice}
                     onChoice={setChoice}
@@ -222,8 +240,13 @@ export default function ExecutiveModuleAccessPage() {
   );
 }
 
-function subLabel(row, isHere) {
+function subLabel(row, isHere, moduleKey) {
   if (isHere) return 'You are working here now';
+  if (moduleKey === SUPERVISOR_ACCESS_MODULE) {
+    if (row.state === 'granted') return 'NSO supervisor access granted';
+    if (row.state === 'pending') return 'Awaiting a business admin · NSO supervisor access';
+    if (row.state === 'none') return LAST_DECISION[row.lastDecision] || 'You would work here as its supervisor';
+  }
   if (row.state === 'granted') {
     return row.supervisorName ? `Access granted · under ${row.supervisorName}` : 'Access granted';
   }
@@ -237,18 +260,27 @@ function subLabel(row, isHere) {
 }
 
 function SupervisorPicker({
-  moduleLabel, supervisors, choice, onChoice, note, onNote, busy, onSubmit, onCancel,
+  moduleLabel, supervisorAccess, supervisors, choice, onChoice, note, onNote, busy, onSubmit, onCancel,
 }) {
   const selectId = `exec-access-supervisor-${moduleLabel}`;
   const noteId = `exec-access-note-${moduleLabel}`;
   const empty = supervisors.status === 'ready' && supervisors.items.length === 0;
+  const canSend = (supervisorAccess || Boolean(choice)) && !busy;
   return (
     <div style={{
       marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--zm-line)',
       display: 'flex', flexDirection: 'column', gap: 10,
     }}>
-      <label htmlFor={selectId} style={labelStyle}>Supervisor in {moduleLabel}</label>
-      {supervisors.status === 'loading' ? (
+      {supervisorAccess ? (
+        <p style={{ margin: 0, font: '12.5px/1.5 var(--zm-font-body)', color: 'var(--zm-fg-muted)' }}>
+          {moduleLabel} has no executive role, so this asks for {moduleLabel} supervisor access. Once
+          approved you work there as its supervisor, including final approval. Nobody is chosen to
+          work under.
+        </p>
+      ) : (
+        <label htmlFor={selectId} style={labelStyle}>Supervisor in {moduleLabel}</label>
+      )}
+      {supervisorAccess ? null : supervisors.status === 'loading' ? (
         <div style={{ font: '12.5px var(--zm-font-body)', color: 'var(--zm-fg-muted)' }}>
           Loading supervisors…
         </div>
@@ -287,8 +319,8 @@ function SupervisorPicker({
         <button
           type="button"
           onClick={onSubmit}
-          disabled={!choice || busy}
-          style={{ ...btnStyle(true), opacity: !choice || busy ? 0.6 : 1 }}
+          disabled={!canSend}
+          style={{ ...btnStyle(true), opacity: canSend ? 1 : 0.6 }}
         >
           {busy ? 'Sending…' : 'Send request'}
         </button>

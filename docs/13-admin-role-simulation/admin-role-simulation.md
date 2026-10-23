@@ -133,7 +133,8 @@ if user_role == Role.BUSINESS_ADMIN.value:
 | `observer` | `supervisor` or `executive` only | anything | `_OBSERVER_OVERRIDE_ROLES` |
 | `supervisor` with an approved grant | nothing — forced to `supervisor` | the granted module only | `supervisor_module_access_grants`, re-read every request |
 | `supervisor` with `has_executive_access` | `executive`, inside their own module only | nothing | the membership row |
-| `executive` with an approved grant | nothing — stays `executive` | the granted module only (never NSO) | `executive_module_access_grants`, re-read every request |
+| `executive` with an approved grant | nothing — stays `executive` | the granted module only | `executive_module_access_grants`, re-read every request |
+| `executive` with an approved **NSO** grant | becomes `supervisor`, **on `/api/nso/*` only** | `nso` | same table; no chosen supervisor (migration 20261023) |
 
 Two rules make the supervisor and executive grant paths safe:
 
@@ -142,7 +143,7 @@ Two rules make the supervisor and executive grant paths safe:
 
 An executive without a grant who sends `X-Override-Module` for another module is refused the same way. Their `X-Override-Role` is always ignored.
 
-**Executive grants (migration 20261022).** An executive requests access to another module from the "Module access" sidebar item and names a supervisor of that module. A business admin approves or rejects it under Departments → Executive Module Access. On approval the executive appears on that supervisor's Team page (badged "From <module>"), and the supervisor can delegate sites to them. Withdrawing the grant also revokes the executive's active `site_delegations` in that module. Business admins, the requester and the chosen supervisor get in-app notifications at each step. NSO is excluded because it has no executive role.
+**Executive grants (migration 20261022).** An executive requests access to another module from the "Module access" sidebar item and names a supervisor of that module. A business admin approves or rejects it under Departments → Executive Module Access. On approval the executive appears on that supervisor's Team page (badged "From <module>"), and the supervisor can delegate sites to them. Withdrawing the grant also revokes the executive's active `site_delegations` in that module. Business admins, the requester and the chosen supervisor get in-app notifications at each step. NSO has no executive role, so an NSO grant is **NSO supervisor access** instead (migration 20261023): the request names no supervisor, the admin confirms it as such, and `deps.py` applies the supervisor role only on the NSO router's own paths. Every other route still sees an executive, because the BD routes carry no module guard.
 
 **Not recorded:** which actions were taken under a borrowed or simulated identity. `audit_logs` stores the real `actor_id` but ignores `actor_role`, and `stage_events.actor_role` stores the *simulated* role. Attribution is reconstructable after the fact from the grant's `created_at` / `revoked_at` window, not from the event itself.
 
