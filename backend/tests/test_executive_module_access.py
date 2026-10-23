@@ -165,6 +165,7 @@ async def test_a_grant_whose_supervisor_is_gone_or_inactive_no_longer_admits():
 @pytest.mark.parametrize("module,sid", [
     ("legal", SUPERVISOR),   # the home module
     ("nso", SUPERVISOR),     # NSO supervisor access names no supervisor
+    ("nso", ""),             # not even an empty one, which would reach the CAST
     ("design", None),        # every other module requires one
 ])
 async def test_bad_requests_are_refused_before_any_sql(module, sid):

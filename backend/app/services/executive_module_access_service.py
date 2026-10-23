@@ -275,7 +275,9 @@ async def request_access(
     """
     _assert_target_module(module, home_module)
     supervisor_access = module == _SUPERVISOR_ACCESS_MODULE
-    if supervisor_access and target_supervisor_id:
+    # `is not None`, not truthiness: an empty string would otherwise pass as
+    # "no supervisor" and reach CAST('' AS uuid) as a 500 rather than a 400.
+    if supervisor_access and target_supervisor_id is not None:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="NSO access is supervisor access; it names no supervisor.",
@@ -321,7 +323,8 @@ async def request_access(
                 "RETURNING id"
             ),
             {"tid": tenant_id, "eid": executive_id, "m": module,
-             "sid": target_supervisor_id, "note": note},
+             "sid": None if supervisor_access else target_supervisor_id,
+             "note": note},
         )).mappings().first()
         if row is None:
             raise HTTPException(
