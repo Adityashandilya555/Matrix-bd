@@ -443,10 +443,14 @@ async def join_workspace(payload: JoinIn, db: DbDep) -> JoinOut:
 async def public_branding(code: str, db: DbDep) -> dict:
     row = await get_tenant_by_workspace_code(db, code, columns="name, logo_url")
     if not row:
-        # Default branding instead of a 404 — the status-code split made this
-        # endpoint a valid-code enumeration oracle that also leaked company
-        # names/logos for harvested codes (#84).
-        return {"name": None, "logo_url": None}
+        # `found` lets the first login step refuse a code that doesn't exist,
+        # instead of moving the user on to an email page that can never work.
+        # This was withheld (#84) while codes carried 16 bits and a yes/no
+        # answer made the endpoint an enumeration oracle. The 64-bit random
+        # suffix (tenancy_service._generate_workspace_code) and the 30/min
+        # per-IP limit above make that unusable now. Still a 200 with blank
+        # branding, so nothing about an unknown code is invented.
+        return {"found": False, "name": None, "logo_url": None}
     logo = row["logo_url"]
     # logo_url stores the storage object path; hand back a fresh signed URL so
     # the link never goes stale in the database.
@@ -456,7 +460,7 @@ async def public_branding(code: str, db: DbDep) -> dict:
         except Exception as exc:
             logger.debug("public_branding: could not sign logo for code=%s: %s", code, exc)
             logo = None
-    return {"name": row["name"], "logo_url": logo}
+    return {"found": True, "name": row["name"], "logo_url": logo}
 
 
 @router.post(

@@ -159,10 +159,18 @@ async def login(payload: LoginIn, db: DbDep):
         db, workspace_code=payload.workspace_code, email=payload.email,
     )
     if row is None:
-        # Same soft 202 a valid code + unknown email gets — a 404 here was a
-        # valid-code enumeration oracle (#84). Discriminator logged server-side.
+        # Say so plainly. This used to be a soft 202 because a 404 made the
+        # endpoint a valid-code enumeration oracle (#84) — when codes carried 16
+        # bits. They now carry a 64-bit random suffix
+        # (tenancy_service._generate_workspace_code) and this route is
+        # rate-limited, so the oracle is unusable, while the soft reply left a
+        # mistyped code looking like a pending account. /tenancy/branding makes
+        # the same call for the first login step.
         logger.info("login: unknown workspace_code=%r", payload.workspace_code)
-        return _pending_response(payload.email)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="That workspace code doesn't exist. Check it with your admin.",
+        )
 
     if row["user_id"] is None:
         # The email is not a member of this workspace. We no longer silently

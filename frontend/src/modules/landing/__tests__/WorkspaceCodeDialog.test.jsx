@@ -175,6 +175,32 @@ describe('keyboard navigation', () => {
   });
 });
 
+describe('an unknown workspace code', () => {
+  it('is refused on this step: an error, no navigation, nothing stored', async () => {
+    const user = userEvent.setup();
+    getWorkspaceBranding.mockResolvedValue({ found: false, name: null, logo_url: null });
+    openDialog();
+
+    await user.type(input(), 'NOPE-0000');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+
+    expect(await screen.findByText(/workspace code doesn.t exist/i)).toBeInTheDocument();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(localStorage.getItem('zm_workspace_codes')).toBeNull();
+  });
+
+  it('lets a code that exists through to the sign-in page', async () => {
+    const user = userEvent.setup();
+    getWorkspaceBranding.mockResolvedValue({ found: true, name: 'Blue Tokai', logo_url: null });
+    openDialog();
+
+    await user.type(input(), 'BTOKAI-7X9F');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+
+    expect(navigate).toHaveBeenCalledWith('/login/BTOKAI-7X9F');
+  });
+});
+
 describe('persistence', () => {
   it('stores the code on a successful submit', async () => {
     const user = userEvent.setup();

@@ -147,22 +147,44 @@ def test_workspace_code_suffix_has_at_least_64_bits():
     assert len(suffix) >= 16  # 16 hex chars = 64 bits (was 4 = 16 bits)
 
 
-async def test_login_unknown_code_is_not_an_oracle(make_session, fake_result):
-    """Unknown workspace code must return the same soft 202 'pending' shape a
-    valid-code unknown-email gets — not a distinguishing 404."""
+async def test_login_unknown_code_is_a_clear_404(make_session, fake_result):
+    """An unknown workspace code is now refused plainly rather than with the
+    soft 202 'pending' reply, which made a typo look like a pending account.
+    Safe only because of the 64-bit suffix pinned above and the rate limit."""
     from app.routers.auth import LoginIn, login
 
     sess = make_session(fake_result(mappings_rows=[]))
-    out = await login(LoginIn(email="a@b.co", workspace_code="NOPE-0000"), sess)
-    assert out.status_code == 202
+    with pytest.raises(HTTPException) as exc:
+        await login(LoginIn(email="a@b.co", workspace_code="NOPE-0000"), sess)
+    assert exc.value.status_code == 404
+    assert "workspace code doesn't exist" in exc.value.detail
 
 
-async def test_branding_unknown_code_is_not_an_oracle(make_session, fake_result):
+async def test_branding_says_whether_the_code_exists(make_session, fake_result):
     from app.routers.tenancy import public_branding
 
     sess = make_session(fake_result(mappings_rows=[]))
-    out = await public_branding("NOPE-0000", sess)
-    assert out == {"name": None, "logo_url": None}
+    assert await public_branding("NOPE-0000", sess) == {
+        "found": False, "name": None, "logo_url": None,
+    }
+    sess = make_session(fake_result(mappings_rows=[{"name": "Acme", "logo_url": None}]))
+    assert await public_branding("ACME-0000", sess) == {
+        "found": True, "name": "Acme", "logo_url": None,
+    }
+
+
+@pytest.mark.parametrize("path", ["/tenancy/branding", "/auth/login"])
+def test_the_code_answering_routes_stay_rate_limited(path):
+    """The yes/no answer is only safe while guessing is throttled."""
+    from app.main import ROUTERS
+
+    for mod in ROUTERS:
+        for route in mod.router.routes:
+            if getattr(route, "path", None) == path:
+                calls = [d.call for d in route.dependant.dependencies]
+                assert any(getattr(c, "__qualname__", "").startswith("rate_limit") for c in calls), path
+                return
+    raise AssertionError(f"route {path} not found")
 
 
 # ── #85 — reset completion bound to a single-use token ─────────────────────
