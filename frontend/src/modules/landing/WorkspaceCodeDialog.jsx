@@ -25,6 +25,15 @@ export default function WorkspaceCodeDialog({ open, onClose }) {
   // blurred and came back.
   const [storedCodes, setStoredCodes] = React.useState(getStoredWorkspaceCodes);
   const wrapperRef = React.useRef(null);
+  // Whether the dialog is still open, read after the branding lookup resolves.
+  // Closing it while the lookup is in flight must not then store the code and
+  // navigate anyway — the user cancelled. A ref, not `open`, because the
+  // pending submit closed over the value from before the close.
+  const openRef = React.useRef(open);
+  React.useEffect(() => {
+    openRef.current = open;
+    return () => { openRef.current = false; };
+  }, [open]);
 
   // Pre-fill with the last-used code when the dialog opens.
   React.useEffect(() => {
@@ -124,6 +133,7 @@ export default function WorkspaceCodeDialog({ open, onClose }) {
       // email page that could never work. A thrown error means a network
       // failure, not a bad code.
       const branding = await getWorkspaceBranding(c);
+      if (!openRef.current) return;
       if (branding?.found === false) {
         setError('That workspace code doesn’t exist — check it with your admin.');
         return;

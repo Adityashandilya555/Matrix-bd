@@ -442,14 +442,18 @@ async def join_workspace(payload: JoinIn, db: DbDep) -> JoinOut:
 )
 async def public_branding(code: str, db: DbDep) -> dict:
     row = await get_tenant_by_workspace_code(db, code, columns="name, logo_url")
+    # `found` lets the first login step refuse a code that doesn't exist,
+    # instead of moving the user on to an email page that can never work. It
+    # was withheld (#84) while codes carried 16 bits and a yes/no answer made
+    # this endpoint an enumeration oracle. It is given ONLY for codes of the
+    # current 64-bit shape (tenancy_service.is_full_entropy_code): guessing
+    # one of those under the 30/min per-IP limit above is hopeless. A code of
+    # the old 16-bit shape keeps the pre-#510 reply with no `found` key, so
+    # this answer never helps guess a legacy workspace's code.
+    full_entropy = tenancy_service.is_full_entropy_code(code)
     if not row:
-        # `found` lets the first login step refuse a code that doesn't exist,
-        # instead of moving the user on to an email page that can never work.
-        # This was withheld (#84) while codes carried 16 bits and a yes/no
-        # answer made the endpoint an enumeration oracle. The 64-bit random
-        # suffix (tenancy_service._generate_workspace_code) and the 30/min
-        # per-IP limit above make that unusable now. Still a 200 with blank
-        # branding, so nothing about an unknown code is invented.
+        if not full_entropy:
+            return {"name": None, "logo_url": None}
         return {"found": False, "name": None, "logo_url": None}
     logo = row["logo_url"]
     # logo_url stores the storage object path; hand back a fresh signed URL so
@@ -460,6 +464,8 @@ async def public_branding(code: str, db: DbDep) -> dict:
         except Exception as exc:
             logger.debug("public_branding: could not sign logo for code=%s: %s", code, exc)
             logo = None
+    if not full_entropy:
+        return {"name": row["name"], "logo_url": logo}
     return {"found": True, "name": row["name"], "logo_url": logo}
 
 

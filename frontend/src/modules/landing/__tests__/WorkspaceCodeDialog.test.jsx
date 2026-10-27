@@ -201,6 +201,24 @@ describe('an unknown workspace code', () => {
   });
 });
 
+describe('closing while the lookup is in flight', () => {
+  it('neither stores the code nor navigates', async () => {
+    const user = userEvent.setup();
+    let resolve;
+    getWorkspaceBranding.mockReturnValue(new Promise((r) => { resolve = r; }));
+    const { rerender } = render(<WorkspaceCodeDialog open onClose={vi.fn()}/>);
+
+    await user.type(input(), 'BTOKAI-0123456789ABCDEF');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    rerender(<WorkspaceCodeDialog open={false} onClose={vi.fn()}/>);
+    resolve({ found: true, name: 'Blue Tokai', logo_url: null });
+    await Promise.resolve(); await Promise.resolve();
+
+    expect(navigate).not.toHaveBeenCalled();
+    expect(localStorage.getItem('zm_workspace_codes')).toBeNull();
+  });
+});
+
 describe('persistence', () => {
   it('stores the code on a successful submit', async () => {
     const user = userEvent.setup();

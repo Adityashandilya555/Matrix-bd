@@ -42,7 +42,7 @@ from app.core.security import (
 )
 from app.core.passwords import hash_password_async, verify_password_async
 from app.domain.schemas.common import OkResponse
-from app.services import auth_repo
+from app.services import auth_repo, tenancy_service
 from app.services.auth_repo import get_tenant_by_workspace_code, get_user_by_tenant_email
 
 logger = logging.getLogger("matrix.auth")
@@ -159,14 +159,17 @@ async def login(payload: LoginIn, db: DbDep):
         db, workspace_code=payload.workspace_code, email=payload.email,
     )
     if row is None:
-        # Say so plainly. This used to be a soft 202 because a 404 made the
-        # endpoint a valid-code enumeration oracle (#84) — when codes carried 16
-        # bits. They now carry a 64-bit random suffix
-        # (tenancy_service._generate_workspace_code) and this route is
-        # rate-limited, so the oracle is unusable, while the soft reply left a
-        # mistyped code looking like a pending account. /tenancy/branding makes
-        # the same call for the first login step.
         logger.info("login: unknown workspace_code=%r", payload.workspace_code)
+        # A soft 202 was the only reply here because a 404 made this endpoint
+        # a valid-code enumeration oracle (#84), back when codes carried 16
+        # bits. For a code of today's 64-bit shape that oracle is unusable
+        # under the rate limit, so it is refused plainly — the soft reply left
+        # a mistyped code looking like a pending account. A code of the OLD
+        # shape still gets the soft reply: workspaces created before #84 may
+        # hold one, and naming those as unknown would make them guessable.
+        # /tenancy/branding draws the same line for the first login step.
+        if not tenancy_service.is_full_entropy_code(payload.workspace_code):
+            return _pending_response(payload.email)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="That workspace code doesn't exist. Check it with your admin.",

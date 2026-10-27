@@ -71,6 +71,24 @@ def _generate_workspace_code(slug_hint: Optional[str] = None) -> str:
     return f"{base}-{secrets.token_hex(8).upper()}"
 
 
+# Hex characters in the random suffix _generate_workspace_code produces.
+_FULL_ENTROPY_SUFFIX_LEN = 16
+
+
+def is_full_entropy_code(code: str) -> bool:
+    """Whether `code` has the 64-bit suffix today's generator produces.
+
+    The login step may say "that workspace code doesn't exist" only for codes
+    shaped like this. Workspaces created before #84 can still hold a 4-hex
+    suffix (nothing ever rotated them), and naming those codes as valid or not
+    would make them guessable again. A code of the old shape therefore still
+    gets the uniform soft reply, whether or not it exists.
+    """
+    if "-" not in (code or ""):
+        return False
+    return len(code.rsplit("-", 1)[1]) >= _FULL_ENTROPY_SUFFIX_LEN
+
+
 # ── Simple reads ───────────────────────────────────────────────────────────
 
 async def list_tenants(db: AsyncSession, tenant_id: Any) -> list[models.Tenant]:
