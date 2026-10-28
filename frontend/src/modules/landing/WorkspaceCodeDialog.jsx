@@ -25,6 +25,15 @@ export default function WorkspaceCodeDialog({ open, onClose }) {
   // blurred and came back.
   const [storedCodes, setStoredCodes] = React.useState(getStoredWorkspaceCodes);
   const wrapperRef = React.useRef(null);
+  // Whether the dialog is still open, read after the branding lookup resolves.
+  // Closing it while the lookup is in flight must not then store the code and
+  // navigate anyway — the user cancelled. A ref, not `open`, because the
+  // pending submit closed over the value from before the close.
+  const openRef = React.useRef(open);
+  React.useEffect(() => {
+    openRef.current = open;
+    return () => { openRef.current = false; };
+  }, [open]);
 
   // Pre-fill with the last-used code when the dialog opens.
   React.useEffect(() => {
@@ -118,13 +127,17 @@ export default function WorkspaceCodeDialog({ open, onClose }) {
     }
     setBusy(true); setError('');
     try {
-      // Warm branding for the next page. We no longer treat an unknown code as
-      // a hard error here: /tenancy/branding intentionally returns a uniform
-      // response for known vs unknown codes so it can't be used to enumerate
-      // valid workspaces (#84). Whether the code is real is revealed on the
-      // login page (a wrong code lands on the soft "pending" message), not by
-      // this lookup. A thrown error now means a genuine network failure.
-      await getWorkspaceBranding(c);
+      // /tenancy/branding says whether the code exists. It was withheld (#84)
+      // while codes carried 16 bits; with the 64-bit suffix and its rate limit
+      // that is safe, and without it a mistyped code moved the user on to an
+      // email page that could never work. A thrown error means a network
+      // failure, not a bad code.
+      const branding = await getWorkspaceBranding(c);
+      if (!openRef.current) return;
+      if (branding?.found === false) {
+        setError('That workspace code doesn’t exist — check it with your admin.');
+        return;
+      }
       addWorkspaceCode(c);
       onClose?.();
       navigate(`/login/${encodeURIComponent(c)}`);

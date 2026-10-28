@@ -442,11 +442,19 @@ async def join_workspace(payload: JoinIn, db: DbDep) -> JoinOut:
 )
 async def public_branding(code: str, db: DbDep) -> dict:
     row = await get_tenant_by_workspace_code(db, code, columns="name, logo_url")
+    # `found` lets the first login step refuse a code that doesn't exist,
+    # instead of moving the user on to an email page that can never work. It
+    # was withheld (#84) while codes carried 16 bits and a yes/no answer made
+    # this endpoint an enumeration oracle. It is given ONLY for codes of the
+    # current 64-bit shape (tenancy_service.is_full_entropy_code): guessing
+    # one of those under the 30/min per-IP limit above is hopeless. A code of
+    # the old 16-bit shape keeps the pre-#510 reply with no `found` key, so
+    # this answer never helps guess a legacy workspace's code.
+    full_entropy = tenancy_service.is_full_entropy_code(code)
     if not row:
-        # Default branding instead of a 404 — the status-code split made this
-        # endpoint a valid-code enumeration oracle that also leaked company
-        # names/logos for harvested codes (#84).
-        return {"name": None, "logo_url": None}
+        if not full_entropy:
+            return {"name": None, "logo_url": None}
+        return {"found": False, "name": None, "logo_url": None}
     logo = row["logo_url"]
     # logo_url stores the storage object path; hand back a fresh signed URL so
     # the link never goes stale in the database.
@@ -456,7 +464,9 @@ async def public_branding(code: str, db: DbDep) -> dict:
         except Exception as exc:
             logger.debug("public_branding: could not sign logo for code=%s: %s", code, exc)
             logo = None
-    return {"name": row["name"], "logo_url": logo}
+    if not full_entropy:
+        return {"name": row["name"], "logo_url": logo}
+    return {"found": True, "name": row["name"], "logo_url": logo}
 
 
 @router.post(

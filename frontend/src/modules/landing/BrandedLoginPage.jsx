@@ -284,7 +284,13 @@ export default function BrandedLoginPage() {
     let alive = true;
     if (!CODE_RE.test(code)) { setBrand({ status: 'error', name: '', logo: null }); return undefined; }
     getWorkspaceBranding(code)
-      .then((b) => { if (alive) setBrand({ status: 'ready', name: b?.name || 'Your workspace', logo: b?.logo_url || null }); })
+      .then((b) => {
+        if (!alive) return;
+        // A bookmarked or shared link with a code that doesn't exist lands on
+        // the "Workspace not found" screen below, not on a sign-in form.
+        if (b?.found === false) { setBrand({ status: 'error', name: '', logo: null }); return; }
+        setBrand({ status: 'ready', name: b?.name || 'Your workspace', logo: b?.logo_url || null });
+      })
       .catch(() => { if (alive) setBrand({ status: 'error', name: '', logo: null }); });
     return () => { alive = false; };
   }, [code]);
