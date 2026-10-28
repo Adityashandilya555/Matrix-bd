@@ -210,3 +210,69 @@ def test_upload_clears_the_note_and_supersedes_the_previous_primary():
     # there is no unique constraint, and admin document lists show them all.
     assert "update(models.SiteFile)" in src
     assert "is_primary=False" in src
+
+
+# ── svc_set_loi_timeline ──────────────────────────────────────────────────────
+
+async def test_set_timeline_recomputes_the_loi_deadline(make_session, fake_result, stub):
+    """Changing expected_loi_days must move loi_deadline with it; the stale
+    approve-time deadline would otherwise drive every "LOI overdue" read."""
+    from datetime import date, datetime, timezone
+
+    site = _site(SiteStatus.APPROVED.value)
+    site.approved_at = datetime(2026, 7, 1, 10, 0, tzinfo=timezone.utc)
+    approval = models.Approval(
+        tenant_id=TENANT, site_id=SITE_ID, approver_id=ACTOR["sub"], status="approved",
+        expected_loi_days=30, loi_deadline=date(2026, 7, 31),
+    )
+    sess = make_session(fake_result(scalar=site), fake_result(scalar=approval))
+
+    await loi_service.svc_set_loi_timeline(
+        sess, tenant_id=TENANT, actor=ACTOR, site_id=SITE_ID, expected_loi_days=45,
+    )
+
+    assert approval.expected_loi_days == 45
+    assert approval.loi_deadline == date(2026, 8, 15)   # approved_at + 45 days
+    # Latest approvals row for this site *and* tenant, inside the transaction.
+    approvals_sql = sess.executed[1].lower()
+    assert "from approvals" in approvals_sql
+    assert "approvals.site_id" in approvals_sql and "approvals.tenant_id" in approvals_sql
+    assert "order by approvals.created_at desc" in approvals_sql
+    assert sess.commit_count == 1
+    assert [a["action"] for a in stub["audits"]] == ["set_loi_timeline"]
+
+
+async def test_set_timeline_without_an_approval_row_stores_a_deadline(
+    make_session, fake_result, stub,
+):
+    from datetime import date, datetime, timezone
+
+    site = _site(SiteStatus.APPROVED.value)
+    site.approved_at = datetime(2026, 7, 1, 10, 0, tzinfo=timezone.utc)
+    sess = make_session(fake_result(scalar=site), fake_result(scalar=None))
+
+    await loi_service.svc_set_loi_timeline(
+        sess, tenant_id=TENANT, actor=ACTOR, site_id=SITE_ID, expected_loi_days=10,
+    )
+
+    [created] = [o for o in sess.added if isinstance(o, models.Approval)]
+    assert created.expected_loi_days == 10
+    assert created.loi_deadline == date(2026, 7, 11)
+
+
+async def test_set_timeline_rejects_values_that_overflow_deadline_math(
+    make_session, fake_result, stub,
+):
+    from datetime import datetime, timezone
+
+    site = _site(SiteStatus.APPROVED.value)
+    site.approved_at = datetime(2026, 7, 1, 10, 0, tzinfo=timezone.utc)
+    sess = make_session(fake_result(scalar=site), fake_result(scalar=None))
+
+    with pytest.raises(HTTPException) as exc:
+        await loi_service.svc_set_loi_timeline(
+            sess, tenant_id=TENANT, actor=ACTOR, site_id=SITE_ID, expected_loi_days=1_000_000_000,
+        )
+    assert exc.value.status_code == 422
+    assert "out of supported range" in exc.value.detail
+    assert sess.rollback_count == 1
