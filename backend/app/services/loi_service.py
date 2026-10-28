@@ -259,7 +259,13 @@ async def svc_set_loi_timeline(
         now = datetime.now(timezone.utc)
         # Same derivation as svc_approve_shortlist (a DATE, end-of-day semantics).
         # A site with no approved_at yet has no clock to anchor to, so count from now.
-        loi_deadline = ((site.approved_at or now) + timedelta(days=int(expected_loi_days))).date()
+        try:
+            loi_deadline = ((site.approved_at or now) + timedelta(days=int(expected_loi_days))).date()
+        except (OverflowError, ValueError) as exc:
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="expected_loi_days is out of supported range",
+            ) from exc
         if row is None:
             row = models.Approval(
                 tenant_id=tenant_id,

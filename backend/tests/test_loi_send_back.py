@@ -258,3 +258,21 @@ async def test_set_timeline_without_an_approval_row_stores_a_deadline(
     [created] = [o for o in sess.added if isinstance(o, models.Approval)]
     assert created.expected_loi_days == 10
     assert created.loi_deadline == date(2026, 7, 11)
+
+
+async def test_set_timeline_rejects_values_that_overflow_deadline_math(
+    make_session, fake_result, stub,
+):
+    from datetime import datetime, timezone
+
+    site = _site(SiteStatus.APPROVED.value)
+    site.approved_at = datetime(2026, 7, 1, 10, 0, tzinfo=timezone.utc)
+    sess = make_session(fake_result(scalar=site), fake_result(scalar=None))
+
+    with pytest.raises(HTTPException) as exc:
+        await loi_service.svc_set_loi_timeline(
+            sess, tenant_id=TENANT, actor=ACTOR, site_id=SITE_ID, expected_loi_days=1_000_000_000,
+        )
+    assert exc.value.status_code == 422
+    assert "out of supported range" in exc.value.detail
+    assert sess.rollback_count == 1
