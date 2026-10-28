@@ -147,22 +147,82 @@ def test_workspace_code_suffix_has_at_least_64_bits():
     assert len(suffix) >= 16  # 16 hex chars = 64 bits (was 4 = 16 bits)
 
 
-async def test_login_unknown_code_is_not_an_oracle(make_session, fake_result):
-    """Unknown workspace code must return the same soft 202 'pending' shape a
-    valid-code unknown-email gets — not a distinguishing 404."""
+FULL = "NOPE-0123456789ABCDEF"   # today's 64-bit shape
+LEGACY = "NOPE-0000"             # the pre-#84 16-bit shape
+
+
+async def test_login_unknown_full_entropy_code_is_a_clear_404(make_session, fake_result):
+    """An unknown code of today's shape is refused plainly rather than with the
+    soft 202 'pending' reply, which made a typo look like a pending account.
+    Safe only because of the 64-bit suffix pinned above and the rate limit."""
     from app.routers.auth import LoginIn, login
 
     sess = make_session(fake_result(mappings_rows=[]))
-    out = await login(LoginIn(email="a@b.co", workspace_code="NOPE-0000"), sess)
+    with pytest.raises(HTTPException) as exc:
+        await login(LoginIn(email="a@b.co", workspace_code=FULL), sess)
+    assert exc.value.status_code == 404
+    assert "workspace code doesn't exist" in exc.value.detail
+
+
+async def test_login_unknown_legacy_code_keeps_the_soft_reply(make_session, fake_result):
+    """Workspaces created before #84 may still hold a 16-bit code; naming one as
+    unknown would make those guessable again."""
+    from app.routers.auth import LoginIn, login
+
+    sess = make_session(fake_result(mappings_rows=[]))
+    out = await login(LoginIn(email="a@b.co", workspace_code=LEGACY), sess)
     assert out.status_code == 202
 
 
-async def test_branding_unknown_code_is_not_an_oracle(make_session, fake_result):
+async def test_branding_says_whether_a_full_entropy_code_exists(make_session, fake_result):
     from app.routers.tenancy import public_branding
 
     sess = make_session(fake_result(mappings_rows=[]))
-    out = await public_branding("NOPE-0000", sess)
-    assert out == {"name": None, "logo_url": None}
+    assert await public_branding(FULL, sess) == {
+        "found": False, "name": None, "logo_url": None,
+    }
+    sess = make_session(fake_result(mappings_rows=[{"name": "Acme", "logo_url": None}]))
+    assert await public_branding("ACME-0123456789ABCDEF", sess) == {
+        "found": True, "name": "Acme", "logo_url": None,
+    }
+
+
+async def test_branding_never_answers_found_for_a_legacy_code(make_session, fake_result):
+    """No `found` key either way, so the reply is exactly the pre-#510 one."""
+    from app.routers.tenancy import public_branding
+
+    sess = make_session(fake_result(mappings_rows=[]))
+    assert await public_branding(LEGACY, sess) == {"name": None, "logo_url": None}
+    sess = make_session(fake_result(mappings_rows=[{"name": "Acme", "logo_url": None}]))
+    assert "found" not in await public_branding("ACME-1A2B", sess)
+
+
+@pytest.mark.parametrize("code,full", [
+    ("ACME-0123456789ABCDEF", True),
+    ("A-B-0123456789ABCDEF", True),
+    ("ACME-1A2B", False),
+    ("ACME0123456789ABCDEF", False),   # no dash: not the generator's shape
+    ("", False),
+])
+def test_full_entropy_shape(code, full):
+    from app.services.tenancy_service import _generate_workspace_code, is_full_entropy_code
+
+    assert is_full_entropy_code(code) is full
+    assert is_full_entropy_code(_generate_workspace_code("Blue Tokai"))
+
+
+@pytest.mark.parametrize("path", ["/tenancy/branding", "/auth/login"])
+def test_the_code_answering_routes_stay_rate_limited(path):
+    """The yes/no answer is only safe while guessing is throttled."""
+    from app.main import ROUTERS
+
+    for mod in ROUTERS:
+        for route in mod.router.routes:
+            if getattr(route, "path", None) == path:
+                calls = [d.call for d in route.dependant.dependencies]
+                assert any(getattr(c, "__qualname__", "").startswith("rate_limit") for c in calls), path
+                return
+    raise AssertionError(f"route {path} not found")
 
 
 # ── #85 — reset completion bound to a single-use token ─────────────────────
