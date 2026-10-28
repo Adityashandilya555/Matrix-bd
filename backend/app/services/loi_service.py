@@ -237,19 +237,29 @@ async def svc_set_loi_timeline(
     expected_loi_days: int,
 ) -> OkResponse:
     """Supervisor sets/updates expected LOI days. Persisted on the latest
-    approvals row (since the column lives there), with an audit event."""
+    approvals row (since the column lives there), with an audit event.
+
+    loi_deadline is recomputed alongside it: svc_approve_shortlist stores it as
+    approved_at + expected_loi_days, and leaving it untouched here would keep
+    the old deadline live for every "LOI overdue" read."""
+    from datetime import timedelta
+
     from sqlalchemy import select
 
     async with transaction(session):
         site = await fetch_site_for_update_or_404(session, site_id=site_id, tenant_id=tenant_id)
         stmt = (
             select(models.Approval)
-            .where(models.Approval.site_id == site.id)
+            .where(models.Approval.site_id == site.id, models.Approval.tenant_id == tenant_id)
             .order_by(models.Approval.created_at.desc())
             .limit(1)
         )
         row = (await session.execute(stmt)).scalar_one_or_none()
         old = row.expected_loi_days if row else None
+        now = datetime.now(timezone.utc)
+        # Same derivation as svc_approve_shortlist (a DATE, end-of-day semantics).
+        # A site with no approved_at yet has no clock to anchor to, so count from now.
+        loi_deadline = ((site.approved_at or now) + timedelta(days=int(expected_loi_days))).date()
         if row is None:
             row = models.Approval(
                 tenant_id=tenant_id,
@@ -257,11 +267,13 @@ async def svc_set_loi_timeline(
                 approver_id=actor["sub"],
                 status="approved",
                 expected_loi_days=expected_loi_days,
-                decided_at=datetime.now(timezone.utc),
+                loi_deadline=loi_deadline,
+                decided_at=now,
             )
             session.add(row)
         else:
             row.expected_loi_days = expected_loi_days
+            row.loi_deadline = loi_deadline
 
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=site.id,
