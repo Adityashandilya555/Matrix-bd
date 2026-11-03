@@ -4,6 +4,7 @@ import { ROUTES } from './routes.js';
 import { RequireModule, RequireRole } from './guards.jsx';
 import { useSession } from '../state/SessionContext.jsx';
 import { useAuthToken } from '../state/useAuthToken.js';
+import { roleFromToken } from '../services/api/tokenRole.js';
 
 import App from '../App.jsx';
 // Lazy-load the landing — Three.js is ~600KB minified. Authenticated users
@@ -12,8 +13,6 @@ import App from '../App.jsx';
 const ScaleLandingPage = lazy(() => import('../modules/landing/ScaleLandingPage.jsx'));
 // Per-company customized login page reached via the workspace-code dialog.
 const BrandedLoginPage = lazy(() => import('../modules/landing/BrandedLoginPage.jsx'));
-// Vendor platform hand-off — a vendor code from the same dialog lands here.
-const VendorEntryPage = lazy(() => import('../modules/vendor/VendorEntryPage.jsx'));
 const OverviewPage = lazy(() => import('../modules/bd/overview/OverviewPage.jsx'));
 const DraftsPage = lazy(() => import('../modules/bd/drafts/DraftsPage.jsx'));
 const ShortlistPage = lazy(() => import('../modules/bd/shortlist/ShortlistPage.jsx'));
@@ -47,6 +46,10 @@ const NsoOverviewPage = lazy(() => import('../modules/nso/NsoOverviewPage.jsx'))
 const AdminPortalPage = lazy(() => import('../modules/admin/AdminPortalPage.jsx'));
 const BusinessAdminPortalPage = lazy(() => import('../modules/business-admin/BusinessAdminPortalPage.jsx'));
 const ObserverPortalPage = lazy(() => import('../modules/business-admin/ObserverPortalPage.jsx'));
+// Vendor platform portal (outside fit-out vendor companies) and the Project
+// team's Vendor fit-out page inside the shell.
+const VendorPortalPage = lazy(() => import('../modules/vendor-portal/VendorPortalPage.jsx'));
+const VendorFitoutPage = lazy(() => import('../modules/project/VendorFitoutPage.jsx'));
 const ProjectQueuePage = lazy(() => import('../modules/project/ProjectQueuePage.jsx'));
 
 // Dev-only: Approval Center UI preview with mock data (no backend / no login).
@@ -75,6 +78,7 @@ const LANDING_PATH = '/welcome';
 function homeForRoleModule(role, module) {
   if (role === 'business_admin') return '/business-admin';
   if (role === 'observer')       return '/observer';
+  if (role === 'vendor')         return ROUTES.VENDOR;
   if (module === 'legal')        return ROUTES.LEGAL;
   if (module === 'design')       return ROUTES.DESIGN;
   if (module === 'project')      return ROUTES.PROJECT;
@@ -88,6 +92,10 @@ function RequireAuth({ children }) {
   const { role, authReady } = useSession();
   if (USE_MOCK) return children; // mock mode is always "signed in"
   if (!token)   return <Navigate to={LANDING_PATH} replace/>;
+  // Vendor accounts never enter the tenant shell. Read from the token itself so
+  // the hand-off happens before /auth/whoami resolves; the server confines a
+  // vendor token to /vendor/* regardless (app/core/deps.py).
+  if (roleFromToken(token) === 'vendor') return <Navigate to={ROUTES.VENDOR} replace/>;
   // Block the authed shell until /auth/whoami resolves. This single gate keeps
   // IndexRedirect and every nested module/role guard from evaluating the
   // pre-hydration default session ('supervisor', module=null) on refresh /
@@ -164,20 +172,15 @@ export default function AppRouter() {
         </Suspense>
       }/>
 
-      {/* Vendor code (workspace-code dialog → here → public/vendor page).
-          Outside the auth tree: vendors hold no Matrix account or token. */}
-      <Route path={ROUTES.VENDOR_ENTRY} element={
-        <Suspense fallback={<LandingFallback/>}>
-          <VendorEntryPage/>
-        </Suspense>
-      }/>
-
       {/* Platform admin portal lives OUTSIDE the workspace auth tree — its
           users are platform operators, not tenant members. The page itself
           gates access via X-Platform-Admin-Key. */}
       <Route path="/admin" element={<AdminPortalPage/>}/>
       <Route path="/business-admin" element={<BusinessAdminPortalPage/>}/>
       <Route path="/observer" element={<ObserverPortalPage/>}/>
+      {/* Outside RequireAuth like the two portals above: vendors hold no Matrix
+          module, and the server confines a vendor token to /vendor/*. */}
+      <Route path={`${ROUTES.VENDOR}/*`} element={<VendorPortalPage/>}/>
       {import.meta.env.DEV && (
         <Route path="/business-admin-preview" element={
           <Suspense fallback={null}><ApprovalCenterPreview/></Suspense>
@@ -390,6 +393,13 @@ export default function AppRouter() {
           <RequireRole roles={['supervisor', 'executive', 'exec']}>
             <RequireModule modules={['project']}>
               <ProjectReviewPage/>
+            </RequireModule>
+          </RequireRole>
+        }/>
+        <Route path={ROUTES.PROJECT_VENDOR_FITOUT} element={
+          <RequireRole roles={['supervisor', 'executive', 'exec']}>
+            <RequireModule modules={['project']}>
+              <VendorFitoutPage/>
             </RequireModule>
           </RequireRole>
         }/>

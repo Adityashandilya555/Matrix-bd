@@ -13,6 +13,7 @@ vi.mock('../../../services/api/supabaseAuth.js', () => ({
   signupAsSupervisor: vi.fn(),
   signupAsExecutive: vi.fn(),
   signupAsObserver: vi.fn(),
+  signupAsVendor: vi.fn(),
   passwordStatus: vi.fn(),
   signInBranded: vi.fn(),
   requestPasswordReset: vi.fn(),

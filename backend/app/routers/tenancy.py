@@ -30,6 +30,7 @@ from app.core.uploads import read_upload_capped
 from app.rbac.guards import require_role
 from app.rbac.roles import Role
 from app.services import tenancy_service
+from app.services import vendor_service
 from app.services.auth_repo import get_tenant_by_workspace_code
 from app.services.storage_service import safe_object_name, signed_url
 from app.services.storage_service import upload_bytes as storage_upload
@@ -454,6 +455,12 @@ async def public_branding(code: str, db: DbDep) -> dict:
     if not row:
         if not full_entropy:
             return {"name": None, "logo_url": None}
+        # No tenant owns the code; it may be a vendor platform code (migration
+        # 20261104). Same full-entropy gate as `found`, and checked only after
+        # the tenant lookup misses, so a Matrix workspace always wins.
+        vendor = await vendor_service.public_vendor_branding(db, code)
+        if vendor:
+            return vendor
         return {"found": False, "name": None, "logo_url": None}
     logo = row["logo_url"]
     # logo_url stores the storage object path; hand back a fresh signed URL so
@@ -466,6 +473,8 @@ async def public_branding(code: str, db: DbDep) -> dict:
             logo = None
     if not full_entropy:
         return {"name": row["name"], "logo_url": logo}
+    # Unchanged for Matrix workspaces: no `platform` key means a Matrix workspace
+    # to the login page (only vendor codes carry platform: "vendor").
     return {"found": True, "name": row["name"], "logo_url": logo}
 
 

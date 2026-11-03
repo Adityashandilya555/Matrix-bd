@@ -136,6 +136,13 @@ class ExecutiveSignupIn(BaseModel):
     supervisor_code: str
 
 
+class VendorSignupIn(BaseModel):
+    email: EmailStr
+    # A vendor company's STAFF code, or its ENTRY code where the workspace allows
+    # self-signup (vendor_settings.allow_self_signup).
+    code:  str = Field(min_length=4, max_length=40)
+
+
 class SignupAcceptedOut(BaseModel):
     message: str
     user_id: str
@@ -158,6 +165,15 @@ async def login(payload: LoginIn, db: DbDep):
     row = await auth_repo.get_login_row(
         db, workspace_code=payload.workspace_code, email=payload.email,
     )
+    if row is None and tenancy_service.is_full_entropy_code(payload.workspace_code):
+        # No tenant owns this code — it may be a vendor platform code. Checked
+        # only after the tenant lookup misses, so a Matrix workspace always wins.
+        vendor_row = await auth_repo.get_vendor_login_row(
+            db, code=payload.workspace_code, email=payload.email,
+        )
+        if vendor_row is not None:
+            return await _vendor_login(payload, vendor_row, db)
+
     if row is None:
         logger.info("login: unknown workspace_code=%r", payload.workspace_code)
         # A soft 202 was the only reply here because a 404 made this endpoint
@@ -191,6 +207,14 @@ async def login(payload: LoginIn, db: DbDep):
                 "This email isn't registered in this workspace. "
                 "Ask your admin for an invite, or use the Join tab to request access."
             ),
+        )
+
+    # 2b. A vendor platform account signs in with its vendor code, never with
+    #     the tenant's workspace code — its home is /vendor, not the Matrix shell.
+    if row["role"] == "vendor":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This is a vendor account. Sign in with your vendor code instead.",
         )
 
     # 3. Known user. If still inactive (no role assigned), keep them pending.
@@ -317,10 +341,13 @@ async def login_check(payload: LoginCheckIn, request: Request, db: DbDep) -> dic
     unknown = {"account_state": "unknown", "password_set": False}  # nosec B105 — flags, not a credential
     tenant = await get_tenant_by_workspace_code(db, payload.workspace_code)
     if not tenant:
-        return unknown if _is_internal else {"account_state": "checked"}
-    user = await get_user_by_tenant_email(
-        db, tenant["id"], payload.email, columns="is_active, password_hash"
-    )
+        tenant, user = await _vendor_account(db, payload.workspace_code, payload.email)
+        if not tenant:
+            return unknown if _is_internal else {"account_state": "checked"}
+    else:
+        user = await get_user_by_tenant_email(
+            db, tenant["id"], payload.email, columns="is_active, password_hash"
+        )
     if not user:
         return unknown if _is_internal else {"account_state": "checked"}
 
@@ -352,8 +379,11 @@ async def password_reset_request(payload: ResetRequestIn, db: DbDep) -> dict:
     }
     tenant = await get_tenant_by_workspace_code(db, payload.workspace_code)
     if not tenant:
-        return soft
-    user = await get_user_by_tenant_email(db, tenant["id"], payload.email)
+        tenant, user = await _vendor_account(db, payload.workspace_code, payload.email)
+        if not tenant:
+            return soft
+    else:
+        user = await get_user_by_tenant_email(db, tenant["id"], payload.email)
     if not user:
         return soft
     dup = await auth_repo.get_pending_reset_request(db, tenant_id=tenant["id"], email=payload.email)
@@ -375,8 +405,11 @@ async def password_reset_request(payload: ResetRequestIn, db: DbDep) -> dict:
 async def password_reset_complete(payload: ResetCompleteIn, db: DbDep) -> dict:
     tenant = await get_tenant_by_workspace_code(db, payload.workspace_code)
     if not tenant:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset request.")
-    user = await get_user_by_tenant_email(db, tenant["id"], payload.email)
+        tenant, user = await _vendor_account(db, payload.workspace_code, payload.email)
+        if not tenant:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset request.")
+    else:
+        user = await get_user_by_tenant_email(db, tenant["id"], payload.email)
     if not user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset request.")
     req = await auth_repo.get_approved_reset_request(db, tenant_id=tenant["id"], user_id=user["id"])
@@ -427,10 +460,13 @@ async def password_setup(payload: PasswordSetupIn, db: DbDep) -> dict:
     """
     tenant = await get_tenant_by_workspace_code(db, payload.workspace_code)
     if not tenant:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid request.")
-    user = await get_user_by_tenant_email(
-        db, tenant["id"], payload.email, columns="id, is_active, password_hash"
-    )
+        tenant, user = await _vendor_account(db, payload.workspace_code, payload.email)
+        if not tenant:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid request.")
+    else:
+        user = await get_user_by_tenant_email(
+            db, tenant["id"], payload.email, columns="id, is_active, password_hash"
+        )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -563,6 +599,128 @@ async def signup_executive(
     )
 
 
+@router.post(
+    "/signup/vendor",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(rate_limit(times=5, seconds=300))],
+    summary="Public: request access to a vendor workspace with a vendor staff code",
+    responses={
+        202: {"description": "Pending — the vendor owner or the business admin approves"},
+        404: {"description": "Invalid, revoked or not-joinable code"},
+        409: {"description": "Email already has an account in this workspace"},
+    },
+)
+async def signup_vendor(payload: VendorSignupIn, db: DbDep) -> SignupAcceptedOut:
+    """Queue a vendor site-staff account for approval.
+
+    Same pending-user shape as the other signups (inactive users row + notes
+    marker), plus a vendor_users link written in the same commit so the
+    approver and the vendor portal can see the request. Who approves is the
+    workspace's admission setting (services/vendor_service.py).
+    """
+    code_row = await auth_repo.get_vendor_join_code(db, payload.code.strip())
+    joinable = bool(code_row) and code_row["vendor_status"] == "active" and (
+        code_row["kind"] == "staff" or code_row["allow_self_signup"]
+    )
+    if not joinable:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="That staff code is not valid.")
+    tenant_id, vendor_id = code_row["tenant_id"], code_row["vendor_id"]
+    existing = await get_user_by_tenant_email(db, tenant_id, payload.email, columns="id, is_active, role")
+    if existing:
+        if existing["is_active"] or existing["role"] != "vendor":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="That email already has an account in this workspace.",
+            )
+        return SignupAcceptedOut(message="Signup already pending approval.", user_id=str(existing["id"]))
+    new_id = uuid.uuid4()
+    await auth_repo.insert_pending_signup(
+        db, user_id=new_id, tenant_id=tenant_id, role="vendor",
+        email=payload.email, name=payload.email.split("@")[0],
+        notes=f"pending_vendor:{vendor_id}|vendor_role:site_supervisor",
+    )
+    await auth_repo.insert_vendor_link(
+        db, user_id=new_id, tenant_id=tenant_id, vendor_id=vendor_id, vendor_role="site_supervisor",
+    )
+    await db.commit()
+    logger.info("signup: queued vendor tenant_id=%s vendor_id=%s", tenant_id, vendor_id)
+    return SignupAcceptedOut(message="Signup received. Awaiting approval.", user_id=str(new_id))
+
+
+async def _vendor_account(db, code: str, email: str):
+    """(tenant, user) for a vendor ENTRY code, mirroring the tenant lookups the
+    login-adjacent routes do. Returns (None, None) for an unknown or suspended
+    vendor, and (tenant, None) when the email is not a user of THAT vendor —
+    so callers fall into exactly the branches they take for a tenant code."""
+    if not tenancy_service.is_full_entropy_code(code):
+        return None, None
+    row = await auth_repo.get_vendor_login_row(db, code=code, email=email)
+    if not row or row["vendor_status"] != "active":
+        return None, None
+    tenant = {"id": row["tenant_id"]}
+    if row["user_id"] is None:
+        return tenant, None
+    return tenant, {"id": row["user_id"], "is_active": row["is_active"], "password_hash": row["password_hash"]}
+
+
+async def _vendor_login(payload: "LoginIn", row, db) -> "LoginOut":
+    """Sign a vendor user in from a vendor ENTRY code (see login()).
+
+    Same gates as a Matrix login — unknown email, pending approval, password —
+    plus the vendor company itself must be active. The token carries
+    role 'vendor' and the vendor_id; app/core/deps.py re-reads both from the
+    database on every request.
+    """
+    if row["vendor_status"] != "active":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This vendor workspace is suspended. Contact your client's project team.",
+        )
+    if row["user_id"] is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "This email isn't registered in this vendor workspace. "
+                "Ask your company owner for the staff code, or use the Join tab to request access."
+            ),
+        )
+    if not row["is_active"]:
+        return _pending_response(payload.email)
+    stored_hash = row["password_hash"]
+    provided = (payload.password or "").strip()
+    if not stored_hash:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This account does not have a password yet. Enter your email again to create one.",
+        )
+    if not provided:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=settings.login_missing_password_message)
+    if not await verify_password_async(provided, stored_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password.")
+    token = issue_token(
+        sub=str(row["user_id"]),
+        email=row["email"],
+        name=row["user_name"] or row["email"].split("@")[0],
+        role="vendor",
+        tenant_id=str(row["tenant_id"]),
+        city=row["assigned_city"],
+        vendor_id=str(row["vendor_id"]),
+    )
+    return LoginOut(
+        access_token=token,
+        user={
+            "id":          str(row["user_id"]),
+            "email":       row["email"],
+            "name":        row["user_name"],
+            "role":        "vendor",
+            "tenant_id":   str(row["tenant_id"]),
+            "tenant_name": row["tenant_name"],
+            "vendor_id":   str(row["vendor_id"]),
+            "vendor_name": row["vendor_name"],
+        },
+    )
+
+
 async def _enqueue_signup(
     db,
     *,
@@ -663,9 +821,20 @@ async def refresh(
             detail="Account is inactive or no longer exists. Sign in again.",
         )
 
+    vendor_id = None
+    if row["role"] == "vendor":
+        link = await auth_repo.get_vendor_link(db, row["id"])
+        if not link or link["vendor_status"] != "active":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Your vendor account is suspended or no longer exists. Sign in again.",
+            )
+        vendor_id = str(link["vendor_id"])
+
     membership = await auth_repo.get_primary_membership(db, row["id"])
     supervisor_id = membership.get("supervisor_id")
     token = issue_token(
+        vendor_id=vendor_id,
         sub=str(row["id"]),
         email=row["email"],
         name=row["name"] or row["email"].split("@")[0],

@@ -254,3 +254,97 @@ async def insert_pending_signup(
             "notes": notes,
         },
     )
+
+
+# ── Vendor platform (migration 20261104) ────────────────────────────────────
+# A vendor code is looked up only when no tenant owns the workspace_code, so a
+# Matrix workspace always wins. Every lookup requires a LIVE code
+# (revoked_at IS NULL) and, for sign-in, an active vendor.
+
+async def get_vendor_entry(db: AsyncSession, code: str) -> Optional[Mapping[str, Any]]:
+    """The vendor (and its tenant) behind a live ENTRY code, active or not."""
+    return (await db.execute(
+        text("""
+            SELECT vc.vendor_id, vc.tenant_id, v.name AS vendor_name, v.status AS vendor_status,
+                   t.name AS tenant_name, t.logo_url
+              FROM vendor_codes vc
+              JOIN vendors v ON v.id = vc.vendor_id
+              JOIN tenants t ON t.id = vc.tenant_id
+             WHERE upper(vc.code) = upper(:code) AND vc.kind = 'entry' AND vc.revoked_at IS NULL
+        """),
+        {"code": code},
+    )).mappings().first()
+
+
+async def get_vendor_login_row(
+    db: AsyncSession, *, code: str, email: str,
+) -> Optional[Mapping[str, Any]]:
+    """Resolve a vendor ENTRY code AND the (tenant, email) user in one query.
+
+    Mirrors get_login_row: None only when the code is unknown; a known code
+    with an email that is not a user of THIS vendor yields ``user_id`` NULL.
+    The user must hold role 'vendor' and a vendor_users link to the same
+    vendor, so a Matrix user (or another vendor's user) never matches.
+    """
+    return (await db.execute(
+        text("""
+            SELECT vc.tenant_id, t.name AS tenant_name, vc.vendor_id,
+                   v.name AS vendor_name, v.status AS vendor_status,
+                   u.id AS user_id, u.email, u.name AS user_name, u.role,
+                   u.is_active, u.assigned_city, u.password_hash
+              FROM vendor_codes vc
+              JOIN vendors v ON v.id = vc.vendor_id
+              JOIN tenants t ON t.id = vc.tenant_id
+              LEFT JOIN vendor_users vu ON vu.vendor_id = vc.vendor_id
+              LEFT JOIN users u
+                ON u.id = vu.user_id AND u.tenant_id = vc.tenant_id
+               AND lower(u.email) = lower(:email) AND u.role = 'vendor'
+             WHERE upper(vc.code) = upper(:code) AND vc.kind = 'entry' AND vc.revoked_at IS NULL
+             ORDER BY u.id IS NULL, u.id
+             LIMIT 1
+        """),
+        {"code": code, "email": email},
+    )).mappings().first()
+
+
+async def get_vendor_join_code(db: AsyncSession, code: str) -> Optional[Mapping[str, Any]]:
+    """A live STAFF code, or a live ENTRY code where the tenant allows
+    self-signup, with the vendor's status. Used only by /auth/signup/vendor."""
+    return (await db.execute(
+        text("""
+            SELECT vc.vendor_id, vc.tenant_id, vc.kind, v.status AS vendor_status,
+                   COALESCE(s.allow_self_signup, false) AS allow_self_signup
+              FROM vendor_codes vc
+              JOIN vendors v ON v.id = vc.vendor_id
+              LEFT JOIN vendor_settings s ON s.tenant_id = vc.tenant_id
+             WHERE upper(vc.code) = upper(:code) AND vc.revoked_at IS NULL
+        """),
+        {"code": code},
+    )).mappings().first()
+
+
+async def get_vendor_link(db: AsyncSession, user_id: Any) -> Optional[Mapping[str, Any]]:
+    """The vendor company a vendor user belongs to, with its status."""
+    return (await db.execute(
+        text("""
+            SELECT vu.vendor_id, vu.vendor_role, v.status AS vendor_status
+              FROM vendor_users vu
+              JOIN vendors v ON v.id = vu.vendor_id
+             WHERE vu.user_id = :uid
+        """),
+        {"uid": user_id},
+    )).mappings().first()
+
+
+async def insert_vendor_link(
+    db: AsyncSession, *, user_id: Any, tenant_id: Any, vendor_id: Any, vendor_role: str,
+) -> None:
+    """Link a (pending or active) user to a vendor company (does not commit)."""
+    await db.execute(
+        text("""
+            INSERT INTO vendor_users (user_id, tenant_id, vendor_id, vendor_role)
+            VALUES (:uid, :tid, :vid, :vrole)
+            ON CONFLICT (user_id) DO NOTHING
+        """),
+        {"uid": user_id, "tid": tenant_id, "vid": vendor_id, "vrole": vendor_role},
+    )

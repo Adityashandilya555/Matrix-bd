@@ -11,7 +11,7 @@ import {
   PendingApprovalError,
   InvalidCredentialsError,
 } from '../../services/api/supabaseAuth.js';
-import { JOIN_MODE_KEYS, joinMode as joinModeConfig } from './joinModes.js';
+import { JOIN_MODE_KEYS, VENDOR_JOIN_MODE, joinMode as joinModeConfig } from './joinModes.js';
 import blueTokaiLogo from '../../assets/brands/blue-tokai.png';
 import gotTeaLogo from '../../assets/brands/got-tea.png';
 import suchaliLogo from '../../assets/brands/suchali.png';
@@ -40,6 +40,8 @@ function decodeJwtPayload(token) {
 function routeFromToken(token) {
   const p = decodeJwtPayload(token);
   if (p?.role === 'business_admin') return '/business-admin';
+  // Vendor accounts live in their own portal, never the Matrix shell.
+  if (p?.role === 'vendor') return '/vendor';
   if (p?.module === 'legal') return '/legal';
   if (p?.module === 'design') return '/design';
   if (p?.module === 'project') return '/project';
@@ -220,9 +222,10 @@ function LoginPanel({ code, onAuthed }) {
 }
 
 // ── Join: supervisor / executive / read-only observer self-signup ───────────
-function JoinPanel() {
+function JoinPanel({ vendor = false }) {
   const [joinMode, setJoinMode] = React.useState('supervisor');
-  const cfg = joinModeConfig(joinMode);
+  // A vendor workspace has exactly one way in; a Matrix workspace keeps its three.
+  const cfg = vendor ? VENDOR_JOIN_MODE : joinModeConfig(joinMode);
   const [email, setEmail] = React.useState('');
   const [jcode, setJcode] = React.useState('');
   const [busy, setBusy] = React.useState(false);
@@ -247,12 +250,14 @@ function JoinPanel() {
 
   return (
     <form className="bl-form" onSubmit={submit}>
-      <div className="bl-seg" role="tablist">
-        {JOIN_MODE_KEYS.map((key) => (
-          <button key={key} type="button" data-active={joinMode === key}
-            onClick={() => setJoinMode(key)}>{joinModeConfig(key).short}</button>
-        ))}
-      </div>
+      {!vendor && (
+        <div className="bl-seg" role="tablist">
+          {JOIN_MODE_KEYS.map((key) => (
+            <button key={key} type="button" data-active={joinMode === key}
+              onClick={() => setJoinMode(key)}>{joinModeConfig(key).short}</button>
+          ))}
+        </div>
+      )}
 
       <label className="bl-label" htmlFor="bl-jemail">Work email</label>
       <input id="bl-jemail" className="bl-input" type="email" value={email}
@@ -289,7 +294,14 @@ export default function BrandedLoginPage() {
         // A bookmarked or shared link with a code that doesn't exist lands on
         // the "Workspace not found" screen below, not on a sign-in form.
         if (b?.found === false) { setBrand({ status: 'error', name: '', logo: null }); return; }
-        setBrand({ status: 'ready', name: b?.name || 'Your workspace', logo: b?.logo_url || null });
+        setBrand({
+          status: 'ready', name: b?.name || 'Your workspace', logo: b?.logo_url || null,
+          // Vendor codes come back with platform 'vendor'; anything else
+          // (including an older server with no `platform`) is a Matrix workspace.
+          vendor: b?.platform === 'vendor',
+          parent: b?.brand || null,
+          joinAllowed: Boolean(b?.join_allowed),
+        });
       })
       .catch(() => { if (alive) setBrand({ status: 'error', name: '', logo: null }); });
     return () => { alive = false; };
@@ -316,14 +328,22 @@ export default function BrandedLoginPage() {
           <span className="bl-aurora bl-aurora--3" aria-hidden="true" />
           <span className="bl-dotgrid" aria-hidden="true" />
 
-          <div className="bl-aside-top">
-            <span className="bl-aside-brand">{PRODUCT_NAME}</span>
-            <h2>One platform.<br />Every brand.</h2>
-            <p>From site scouting to store handover — run every location in one place.</p>
-          </div>
+          {brand.vendor ? (
+            <div className="bl-aside-top">
+              <span className="bl-aside-brand">{PRODUCT_NAME} · Vendor platform</span>
+              <h2>Fit-out work,<br />reported daily.</h2>
+              <p>Sites, POs and daily updates for the work {brand.parent || 'your client'} has allocated to you.</p>
+            </div>
+          ) : (
+            <div className="bl-aside-top">
+              <span className="bl-aside-brand">{PRODUCT_NAME}</span>
+              <h2>One platform.<br />Every brand.</h2>
+              <p>From site scouting to store handover — run every location in one place.</p>
+            </div>
+          )}
 
           <div className="bl-aside-bottom">
-            <div className="bl-trust">
+            {!brand.vendor && <div className="bl-trust">
               <span className="bl-trust-label">Powering operations for</span>
               <div className="bl-trust-logos">
                 {BRAND_LOGOS.map((b) => (
@@ -333,7 +353,7 @@ export default function BrandedLoginPage() {
                   </div>
                 ))}
               </div>
-            </div>
+            </div>}
             <p className="bl-aside-tagline">
               Sign in to continue to <b>{brand.status === 'ready' ? brand.name : 'your workspace'}</b>.
             </p>
@@ -346,19 +366,23 @@ export default function BrandedLoginPage() {
               ? <img className="bl-logo" src={brand.logo} alt={brand.name} />
               : <div className="bl-logo bl-logo--ph" aria-hidden>{(brand.name || 'W').slice(0, 1).toUpperCase()}</div>}
             <div className="bl-head-text">
-              <span className="bl-eyebrow">Workspace</span>
+              <span className="bl-eyebrow">{brand.vendor ? 'Vendor workspace' : 'Workspace'}</span>
               <h1 className="bl-brand">{brand.status === 'loading' ? '…' : brand.name}</h1>
             </div>
           </header>
 
-          <div className="bl-tabs" role="tablist">
-            <button type="button" role="tab" aria-selected={tab === 'login'} data-active={tab === 'login'} onClick={() => setTab('login')}>Log in</button>
-            <button type="button" role="tab" aria-selected={tab === 'join'} data-active={tab === 'join'} onClick={() => setTab('join')}>Join</button>
-          </div>
+          {/* A vendor workspace shows Join only when its admission settings let
+              people request access; a Matrix workspace always shows it. */}
+          {(!brand.vendor || brand.joinAllowed) && (
+            <div className="bl-tabs" role="tablist">
+              <button type="button" role="tab" aria-selected={tab === 'login'} data-active={tab === 'login'} onClick={() => setTab('login')}>Log in</button>
+              <button type="button" role="tab" aria-selected={tab === 'join'} data-active={tab === 'join'} onClick={() => setTab('join')}>Join</button>
+            </div>
+          )}
 
-          {tab === 'login'
+          {tab === 'login' || (brand.vendor && !brand.joinAllowed)
             ? <LoginPanel code={code} onAuthed={(token) => navigate(routeFromToken(token))} />
-            : <JoinPanel />}
+            : <JoinPanel vendor={Boolean(brand.vendor)} />}
         </div>
       </div>
       <p className="bl-foot">Powered by {PRODUCT_NAME} &middot; {code}</p>

@@ -94,6 +94,7 @@ def issue_token(
     module: Optional[str] = None,
     module_role: Optional[str] = None,
     supervisor_id: Optional[str] = None,
+    vendor_id: Optional[str] = None,
     ttl_seconds: int = TOKEN_TTL_SECONDS,
 ) -> str:
     """Mint an HS256 JWT with the claim shape `decode_token` expects.
@@ -113,6 +114,11 @@ def issue_token(
         app_md["module_role"] = module_role
     if supervisor_id is not None:
         app_md["supervisor_id"] = supervisor_id
+    if vendor_id is not None:
+        # Vendor platform session (role 'vendor'). A UI routing hint only: the
+        # server re-reads the vendor link from vendor_users on every request.
+        app_md["vendor_id"] = vendor_id
+        app_md["platform"] = "vendor"
     claims = {
         "sub":   sub,
         "aud":   settings.supabase_jwt_audience,
@@ -185,6 +191,8 @@ def _session_from_claims(claims: dict[str, Any]) -> dict[str, Any]:
         "module": app_md.get("module"),
         "module_role": app_md.get("module_role"),
         "supervisor_id": app_md.get("supervisor_id"),
+        "vendor_id": app_md.get("vendor_id"),
+        "platform": app_md.get("platform"),
     }
 
 

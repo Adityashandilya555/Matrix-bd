@@ -61,13 +61,11 @@ export const ROUTES = {
   SITE_TRACKER:           '/staging-flow',
   SITE_TRACKER_DETAIL:    '/staging-flow/:siteId',
   DASHBOARD_MINIMAL_PREVIEW: '/dashboard-minimal-preview',
-  // Vendor platform hand-off from the workspace-code box (lib/vendorAccess.js).
-  VENDOR_ENTRY:           '/vendor/:code',
+  // Vendor platform — its own portal outside the tenant shell (modules/vendor-portal).
+  VENDOR:                 '/vendor',
+  // The Project team's side of the vendor platform, inside the Matrix shell.
+  PROJECT_VENDOR_FITOUT:  '/project/vendor-fitout',
 };
-
-export function vendorEntryRoute(code) {
-  return ROUTES.VENDOR_ENTRY.replace(':code', encodeURIComponent(code));
-}
 
 export function loiTimelineRoute(code) {
   return ROUTES.LOI_TIMELINE.replace(':code', code);

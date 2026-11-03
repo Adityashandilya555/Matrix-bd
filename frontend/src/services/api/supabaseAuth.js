@@ -117,6 +117,13 @@ export function signupAsExecutive(email, supervisorCode) {
   return postSignup('/auth/signup/executive', { email, supervisor_code: supervisorCode });
 }
 
+// Vendor site staff. The code is the vendor company's staff code (or its entry
+// code where the workspace allows self-signup); the vendor owner or the
+// business admin approves, depending on the workspace's admission setting.
+export function signupAsVendor(email, code) {
+  return postSignup('/auth/signup/vendor', { email, code });
+}
+
 // ── Branded login helpers ───────────────────────────────────────────────────
 
 // Does (email, workspace_code) already have a password? Drives the choice
