@@ -100,6 +100,43 @@ class ScheduleResult:
     ref_day: int
 
 
+def _missed_in_row(*, today: date, start_date: date, update_dates: set[date], updated_today: bool,
+                   past_cutoff: bool) -> int:
+    """Consecutive days with no update, counting back from yesterday (or from
+    today once the cutoff has passed without today's update)."""
+    missed = 0
+    d = today if (past_cutoff and not updated_today) else today - timedelta(days=1)
+    while d >= start_date and d not in update_dates and missed < 60:
+        missed += 1
+        d -= timedelta(days=1)
+    return missed
+
+
+def _status(*, handed: bool, cancelled: bool, accepted: bool, day: int, missed: int, projected: int) -> str:
+    """Status, in priority order; see compute()."""
+    if handed:
+        return "handed"
+    if cancelled:
+        return "cancelled"
+    if not accepted:
+        return "po"
+    if day < 1:
+        return "mobilising"
+    if missed >= 2 or projected > 3:
+        return "late"
+    return "risk" if projected >= 1 else "ontrack"
+
+
+def _forecast(*, handed_over_on: Optional[date], cancelled: bool, target: date, projected: int,
+              today: date) -> Optional[date]:
+    """Handover date if done; otherwise never earlier than tomorrow."""
+    if handed_over_on is not None:
+        return handed_over_on
+    if cancelled:
+        return None
+    return max(target + timedelta(days=projected), today + timedelta(days=1))
+
+
 def compute(
     *,
     phases: Sequence[Phase],
@@ -125,52 +162,24 @@ def compute(
     ref_day = int(_clamp(day if updated_today else day - 1, 0, duration))
     target = start_date + timedelta(days=duration - 1)
     earned = earned_day(phases, actual, duration)
-    slip = max(0, _js_round(ref_day - earned))
+    slip = 0 if actual >= 99.9 else max(0, _js_round(ref_day - earned))
     ahead = max(0, _js_round(earned - ref_day))
-    if actual >= 99.9:
-        slip = 0
     handed = handed_over_on is not None
-    days_past = 0 if handed or cancelled else max(0, (today - target).days)
+    closed = handed or cancelled
+    days_past = 0 if closed else max(0, (today - target).days)
     projected = max(slip, days_past)
-
-    missed = 0
-    if not handed and not cancelled and day > 1:
-        d = today if (past_cutoff and not updated_today) else today - timedelta(days=1)
-        while d >= start_date and d not in update_dates and missed < 60:
-            missed += 1
-            d -= timedelta(days=1)
-
-    if handed:
-        status = "handed"
-    elif cancelled:
-        status = "cancelled"
-    elif not accepted:
-        status = "po"
-    elif day < 1:
-        status = "mobilising"
-    elif missed >= 2 or projected > 3:
-        status = "late"
-    elif projected >= 1:
-        status = "risk"
-    else:
-        status = "ontrack"
-
-    if handed:
-        forecast: Optional[date] = handed_over_on
-    elif cancelled:
-        forecast = None
-    else:
-        forecast = max(target + timedelta(days=projected), today + timedelta(days=1))
-
-    if status in ("handed", "po", "mobilising", "cancelled"):
-        signed_slip = 0
-    else:
-        signed_slip = projected if projected > 0 else -ahead
-
+    missed = 0 if closed or day <= 1 else _missed_in_row(
+        today=today, start_date=start_date, update_dates=update_dates,
+        updated_today=updated_today, past_cutoff=past_cutoff,
+    )
+    status = _status(handed=handed, cancelled=cancelled, accepted=accepted, day=day, missed=missed, projected=projected)
+    quiet = status in ("handed", "po", "mobilising", "cancelled")
     return ScheduleResult(
         day=day, duration=duration, actual_pct=round(actual, 2),
         planned_pct=round(planned_pct(phases, ref_day), 2), target_date=target,
-        forecast_date=forecast, schedule_status=status, slip_days=signed_slip,
+        forecast_date=_forecast(handed_over_on=handed_over_on, cancelled=cancelled, target=target,
+                                projected=projected, today=today),
+        schedule_status=status, slip_days=0 if quiet else (projected if projected > 0 else -ahead),
         days_past_target=days_past, missed_in_row=missed, updated_today=updated_today,
         ref_day=ref_day,
     )

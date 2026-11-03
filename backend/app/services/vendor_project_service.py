@@ -242,7 +242,7 @@ async def create_project(session: AsyncSession, *, tenant_id: str | UUID, actor:
     city = vendor_service.clean_text(body.get("city"), 80)
     po_number = vendor_service.clean_text(body.get("po_number"), 60)
     try:
-        po_value = float(body.get("po_value"))
+        po_value = float(body.get("po_value") or 0)
     except (TypeError, ValueError):
         po_value = 0
     if not (name and city and po_number) or po_value <= 0:
@@ -284,6 +284,31 @@ async def create_project(session: AsyncSession, *, tenant_id: str | UUID, actor:
 
 # ── Vendor portal ────────────────────────────────────────────────────────────
 
+def _home_alert(p: dict, *, past_cutoff: bool, cutoff: str) -> Optional[dict]:
+    """The one to-do a site shows on the vendor home, if any."""
+    label = f"{p['ca_code'] or ''} {p['name']}".strip()
+    if p["schedule_status"] == "po":
+        return {"kind": "po", "project_id": p["id"], "tone": "warn", "tab": "init", "action": "Open",
+                "title": f"New PO {p['po_number']}:", "text": f"{label}. Accept it and confirm the start date."}
+    if p["status"] != "active" or p["day"] < 1 or p["updated_today"]:
+        return None
+    missed = p["missed"]
+    tail = f" {missed} day{'s' if missed > 1 else ''} missed in a row." if missed else ""
+    due = "overdue" if past_cutoff else f"due by {cutoff}"
+    return {"kind": "update", "project_id": p["id"], "tone": "bad" if past_cutoff else "", "tab": "update",
+            "action": "Update now", "title": f"Daily update {due}:", "text": f"{label}.{tail}"}
+
+
+def _home_kpis(projects: list[dict], alerts: list[dict]) -> dict:
+    """The four counters at the top of the vendor home."""
+    return {
+        "active_sites": sum(1 for p in projects if p["status"] == "active" and p["schedule_status"] != "po"),
+        "updates_due": sum(1 for a in alerts if a["kind"] == "update"),
+        "pos_to_accept": sum(1 for p in projects if p["schedule_status"] == "po"),
+        "late_sites": sum(1 for p in projects if p["schedule_status"] == "late"),
+    }
+
+
 async def vendor_home(session: AsyncSession, *, tenant_id: str | UUID, vendor_id: str) -> dict:
     """KPIs, today's to-dos and the vendor's allocated sites."""
     ctx = await _ctx(session, tenant_id)
@@ -291,24 +316,8 @@ async def vendor_home(session: AsyncSession, *, tenant_id: str | UUID, vendor_id
     ups = await _updates_for(session, [r["id"] for r in rows])
     projects = [_summary(ctx, r, ups.get(str(r["id"]), [])) for r in rows]
     cutoff = ctx.settings["update_cutoff_local"].strftime("%H:%M")
-    alerts = []
-    for p in projects:
-        if p["schedule_status"] == "po":
-            alerts.append({"kind": "po", "project_id": p["id"], "tone": "warn", "tab": "init", "action": "Open",
-                           "title": f"New PO {p['po_number']}:", "text": f"{p['ca_code'] or ''} {p['name']}. Accept it and confirm the start date."})
-        elif p["status"] == "active" and p["day"] >= 1 and not p["updated_today"]:
-            alerts.append({"kind": "update", "project_id": p["id"], "tone": "bad" if ctx.past_cutoff else "", "tab": "update",
-                           "action": "Update now", "title": f"Daily update {'overdue' if ctx.past_cutoff else f'due by {cutoff}'}:",
-                           "text": f"{p['ca_code'] or ''} {p['name']}." + (f" {p['missed']} day{'s' if p['missed'] > 1 else ''} missed in a row." if p["missed"] else "")})
-    return {
-        "kpis": {
-            "active_sites": sum(1 for p in projects if p["status"] == "active" and p["schedule_status"] != "po"),
-            "updates_due": sum(1 for a in alerts if a["kind"] == "update"),
-            "pos_to_accept": sum(1 for p in projects if p["schedule_status"] == "po"),
-            "late_sites": sum(1 for p in projects if p["schedule_status"] == "late"),
-        },
-        "alerts": alerts, "projects": projects,
-    }
+    alerts = [a for a in (_home_alert(p, past_cutoff=ctx.past_cutoff, cutoff=cutoff) for p in projects) if a]
+    return {"kpis": _home_kpis(projects, alerts), "alerts": alerts, "projects": projects}
 
 
 async def _vendor_project(session: AsyncSession, tenant_id, vendor_id: str, project_id: str) -> Any:
@@ -409,7 +418,7 @@ async def submit_today(session: AsyncSession, *, tenant_id: str | UUID, actor: d
     p = await _vendor_project(session, tenant_id, vendor_id, project_id)
     ctx = await _ctx(session, tenant_id)
     ups = (await _updates_for(session, [p["id"]])).get(str(p["id"]), [])
-    phases, duration, s = _schedule(ctx, p, ups)
+    phases, _, s = _schedule(ctx, p, ups)
     if not (p["accepted_at"] is not None and s.day >= 1 and p["status"] == "active"):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Daily updates are not open for this site.")
     sent = body.get("progress") or {}

@@ -172,7 +172,7 @@ async def login(payload: LoginIn, db: DbDep):
             db, code=payload.workspace_code, email=payload.email,
         )
         if vendor_row is not None:
-            return await _vendor_login(payload, vendor_row, db)
+            return await _vendor_login(payload, vendor_row)
 
     if row is None:
         logger.info("login: unknown workspace_code=%r", payload.workspace_code)
@@ -619,10 +619,9 @@ async def signup_vendor(payload: VendorSignupIn, db: DbDep) -> SignupAcceptedOut
     workspace's admission setting (services/vendor_service.py).
     """
     code_row = await auth_repo.get_vendor_join_code(db, payload.code.strip())
-    joinable = bool(code_row) and code_row["vendor_status"] == "active" and (
+    if code_row is None or code_row["vendor_status"] != "active" or not (
         code_row["kind"] == "staff" or code_row["allow_self_signup"]
-    )
-    if not joinable:
+    ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="That staff code is not valid.")
     tenant_id, vendor_id = code_row["tenant_id"], code_row["vendor_id"]
     existing = await get_user_by_tenant_email(db, tenant_id, payload.email, columns="id, is_active, role")
@@ -663,7 +662,7 @@ async def _vendor_account(db, code: str, email: str):
     return tenant, {"id": row["user_id"], "is_active": row["is_active"], "password_hash": row["password_hash"]}
 
 
-async def _vendor_login(payload: "LoginIn", row, db) -> "LoginOut":
+async def _vendor_login(payload: "LoginIn", row) -> "LoginOut":
     """Sign a vendor user in from a vendor ENTRY code (see login()).
 
     Same gates as a Matrix login — unknown email, pending approval, password —

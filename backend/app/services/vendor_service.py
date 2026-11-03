@@ -119,7 +119,7 @@ async def update_settings(
     durations = {}
     for key in ("mall_duration_days", "non_mall_duration_days"):
         try:
-            durations[key] = int(body.get(key))
+            durations[key] = int(body.get(key) or 0)
         except (TypeError, ValueError):
             raise _unprocessable("Programme durations must be whole numbers of days.") from None
         if not 5 <= durations[key] <= 365:
@@ -235,7 +235,7 @@ async def save_phases(
     try:
         domain = [
             Phase(str(p.get("phase_key") or "").strip()[:24], str(p.get("name") or "").strip()[:80],
-                  int(p.get("start_day")), int(p.get("end_day")), int(p.get("weight")))
+                  int(p.get("start_day") or 0), int(p.get("end_day") or 0), int(p.get("weight") or 0))
             for p in phases
         ]
     except (TypeError, ValueError):
