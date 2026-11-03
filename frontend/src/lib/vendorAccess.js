@@ -23,7 +23,7 @@
 
 const VENDOR_CODE_RE = /^VND-[A-Z0-9]{16,28}$/;
 
-export const VENDOR_PAGE_PATH = 'vendor/fit-out-tracker.html';
+export const VENDOR_PAGE_PATH = 'vendor/fit-out-tracker.html'; // skipcq: JS-0833 — reported on this line (the file's first `export`); the top-of-file marker does not reach it.
 
 /**
  * Parse `CODE=Name;CODE=Name`. Malformed or duplicate entries are skipped
