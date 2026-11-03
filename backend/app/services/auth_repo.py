@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import Any, Mapping, Optional
 
 from sqlalchemy import text
-from sqlalchemy.engine import Result
+from sqlalchemy.engine import Result, RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -261,7 +261,7 @@ async def insert_pending_signup(
 # Matrix workspace always wins. Every lookup requires a LIVE code
 # (revoked_at IS NULL) and, for sign-in, an active vendor.
 
-async def get_vendor_entry(db: AsyncSession, code: str) -> Optional[Mapping[str, Any]]:
+async def get_vendor_entry(db: AsyncSession, code: str) -> Optional[RowMapping]:
     """The vendor (and its tenant) behind a live ENTRY code, active or not."""
     return (await db.execute(
         text("""
@@ -278,7 +278,7 @@ async def get_vendor_entry(db: AsyncSession, code: str) -> Optional[Mapping[str,
 
 async def get_vendor_login_row(
     db: AsyncSession, *, code: str, email: str,
-) -> Optional[Mapping[str, Any]]:
+) -> Optional[RowMapping]:
     """Resolve a vendor ENTRY code AND the (tenant, email) user in one query.
 
     Mirrors get_login_row: None only when the code is unknown; a known code
@@ -307,7 +307,7 @@ async def get_vendor_login_row(
     )).mappings().first()
 
 
-async def get_vendor_join_code(db: AsyncSession, code: str) -> Optional[Mapping[str, Any]]:
+async def get_vendor_join_code(db: AsyncSession, code: str) -> Optional[RowMapping]:
     """A live STAFF code, or a live ENTRY code where the tenant allows
     self-signup, with the vendor's status. Used only by /auth/signup/vendor."""
     return (await db.execute(
@@ -323,7 +323,7 @@ async def get_vendor_join_code(db: AsyncSession, code: str) -> Optional[Mapping[
     )).mappings().first()
 
 
-async def get_vendor_link(db: AsyncSession, user_id: Any) -> Optional[Mapping[str, Any]]:
+async def get_vendor_link(db: AsyncSession, user_id: Any) -> Optional[RowMapping]:
     """The vendor company a vendor user belongs to, with its status."""
     return (await db.execute(
         text("""

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, timedelta
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -51,7 +51,7 @@ def _not_found() -> HTTPException:
 
 
 async def _project_rows(session: AsyncSession, tenant_id, *, vendor_id: Optional[str] = None,
-                        project_id: Optional[str] = None) -> list:
+                        project_id: Optional[str] = None) -> Sequence[Any]:
     if project_id is not None:
         try:
             UUID(str(project_id))
@@ -362,7 +362,7 @@ async def accept_po(session: AsyncSession, *, tenant_id: str | UUID, actor: dict
             """),
             {"start": start, "uid": actor["sub"], "pid": str(p["id"]), "tid": tenant_id},
         )
-        if res.rowcount == 0:
+        if getattr(res, "rowcount", 0) == 0:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This PO is already accepted.")
         await write_audit_event(
             session, tenant_id=tenant_id, site_id=p["site_id"], actor_id=actor["sub"], actor_name=actor.get("name"),

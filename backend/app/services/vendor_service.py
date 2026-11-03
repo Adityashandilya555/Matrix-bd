@@ -16,7 +16,7 @@ import re
 import secrets
 import uuid
 from datetime import time
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -301,7 +301,7 @@ async def save_checklist(session: AsyncSession, *, tenant_id: str | UUID, actor:
                     """),
                     {"k": kind, "l": label, "a": active, "o": order, "id": item_id, "tid": tenant_id},
                 )
-                if res.rowcount:
+                if getattr(res, "rowcount", 0):
                     keep.append(item_id)
                     continue
             new_id = str(uuid.uuid4())
@@ -545,7 +545,7 @@ def approver_for(mode: str, vendor_role: str) -> str:
     return "owner"
 
 
-async def _pending_rows(session: AsyncSession, tenant_id, vendor_id: Optional[str] = None) -> list:
+async def _pending_rows(session: AsyncSession, tenant_id, vendor_id: Optional[str] = None) -> Sequence[Any]:
     return (await session.execute(
         text("""
             SELECT u.id, u.email, u.created_at, vu.vendor_id, vu.vendor_role, v.name AS vendor_name
