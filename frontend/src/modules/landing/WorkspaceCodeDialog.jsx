@@ -1,7 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import LottiePanel from './LottiePanel.jsx';
-import { PRODUCT_NAME } from '../../router/routes.js';
+import { PRODUCT_NAME, vendorEntryRoute } from '../../router/routes.js';
+import { vendorWorkspaceFor } from '../../lib/vendorAccess.js';
 import { getWorkspaceBranding } from '../../services/api/supabaseAuth.js';
 import { getStoredWorkspaceCodes, getLastWorkspaceCode, addWorkspaceCode } from '../../utils/workspaceStorage.js';
 import communityAnim from '../../assets/lottie/workspace-community.json';
@@ -135,6 +136,14 @@ export default function WorkspaceCodeDialog({ open, onClose }) {
       const branding = await getWorkspaceBranding(c);
       if (!openRef.current) return;
       if (branding?.found === false) {
+        // Not a Matrix workspace — it may be a vendor code. Asked only after
+        // the server says no, so a Matrix workspace always wins a collision.
+        if (vendorWorkspaceFor(c)) {
+          addWorkspaceCode(c);
+          onClose?.();
+          navigate(vendorEntryRoute(c));
+          return;
+        }
         setError('That workspace code doesn’t exist — check it with your admin.');
         return;
       }

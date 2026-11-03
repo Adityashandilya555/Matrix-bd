@@ -61,7 +61,13 @@ export const ROUTES = {
   SITE_TRACKER:           '/staging-flow',
   SITE_TRACKER_DETAIL:    '/staging-flow/:siteId',
   DASHBOARD_MINIMAL_PREVIEW: '/dashboard-minimal-preview',
+  // Vendor platform hand-off from the workspace-code box (lib/vendorAccess.js).
+  VENDOR_ENTRY:           '/vendor/:code',
 };
+
+export function vendorEntryRoute(code) {
+  return ROUTES.VENDOR_ENTRY.replace(':code', encodeURIComponent(code));
+}
 
 export function loiTimelineRoute(code) {
   return ROUTES.LOI_TIMELINE.replace(':code', code);

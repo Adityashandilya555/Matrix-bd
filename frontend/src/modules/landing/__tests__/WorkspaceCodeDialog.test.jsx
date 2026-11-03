@@ -201,6 +201,63 @@ describe('an unknown workspace code', () => {
   });
 });
 
+describe('a vendor code', () => {
+  const VENDOR = 'VND-9C2E7A41B03D5F68';
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('opens the vendor hand-off once the server says it is not a workspace', async () => {
+    const user = userEvent.setup();
+    vi.stubEnv('VITE_VENDOR_WORKSPACE_CODES', `${VENDOR}=Shreeji Interiors`);
+    getWorkspaceBranding.mockResolvedValue({ found: false, name: null, logo_url: null });
+    openDialog();
+
+    await user.type(input(), VENDOR.toLowerCase());
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+
+    expect(getWorkspaceBranding).toHaveBeenCalledWith(VENDOR);
+    expect(navigate).toHaveBeenCalledWith(`/vendor/${VENDOR}`);
+    expect(JSON.parse(localStorage.getItem('zm_workspace_codes'))).toEqual([VENDOR]);
+  });
+
+  it('still goes to the Matrix sign-in page when a workspace has the same code', async () => {
+    const user = userEvent.setup();
+    vi.stubEnv('VITE_VENDOR_WORKSPACE_CODES', `${VENDOR}=Shreeji Interiors`);
+    getWorkspaceBranding.mockResolvedValue({ found: true, name: 'Blue Tokai', logo_url: null });
+    openDialog();
+
+    await user.type(input(), VENDOR);
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+
+    expect(navigate).toHaveBeenCalledWith(`/login/${VENDOR}`);
+  });
+
+  it('is refused like any unknown code when vendor entry is not configured', async () => {
+    const user = userEvent.setup();
+    vi.stubEnv('VITE_VENDOR_WORKSPACE_CODES', '');
+    getWorkspaceBranding.mockResolvedValue({ found: false, name: null, logo_url: null });
+    openDialog();
+
+    await user.type(input(), VENDOR);
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+
+    expect(await screen.findByText(/workspace code doesn.t exist/i)).toBeInTheDocument();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('shows the network error, not the vendor page, when the server is unreachable', async () => {
+    const user = userEvent.setup();
+    vi.stubEnv('VITE_VENDOR_WORKSPACE_CODES', `${VENDOR}=Shreeji Interiors`);
+    getWorkspaceBranding.mockRejectedValue(new Error('offline'));
+    openDialog();
+
+    await user.type(input(), VENDOR);
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+
+    expect(await screen.findByText(/could not reach the server/i)).toBeInTheDocument();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+});
+
 describe('closing while the lookup is in flight', () => {
   it('neither stores the code nor navigates', async () => {
     const user = userEvent.setup();

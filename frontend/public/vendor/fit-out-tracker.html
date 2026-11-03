@@ -1,0 +1,861 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Fit-Out Site Tracker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,500..800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: app shell — sticky top bar, site header, scrollable tab strip; cards only for working objects. Mobile-first for site supervisors. */
+:root{
+  --bg:#F3F5F8; --surface:#FFFFFF; --sunk:#E9EDF3; --ink:#152033; --muted:#5A6678; --line:#D8DEE8;
+  --accent:#1D3F8C; --accent-ink:#FFFFFF; --accent-soft:#E4EBF8;
+  --ok:#1C7A4C; --ok-soft:#E1F2E9; --warn:#A86400; --warn-soft:#FBEFD9; --bad:#B8352A; --bad-soft:#F9E3E0;
+  --display:"Archivo","Helvetica Neue",Arial,sans-serif; --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E131A; --surface:#161D27; --sunk:#1C2531; --ink:#E5EAF1; --muted:#97A3B4; --line:#283343;
+  --accent:#86A6EE; --accent-ink:#0E131A; --accent-soft:#1D2A44;
+  --ok:#55C890; --ok-soft:#163327; --warn:#F0B451; --warn-soft:#3A2C12; --bad:#F2786C; --bad-soft:#3D1E1B; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E131A; --surface:#161D27; --sunk:#1C2531; --ink:#E5EAF1; --muted:#97A3B4; --line:#283343;
+  --accent:#86A6EE; --accent-ink:#0E131A; --accent-soft:#1D2A44;
+  --ok:#55C890; --ok-soft:#163327; --warn:#F0B451; --warn-soft:#3A2C12; --bad:#F2786C; --bad-soft:#3D1E1B; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.5}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+h1,h2,h3{font-family:var(--display);font-stretch:92%;text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:24px;font-weight:750} h2{font-size:18px;font-weight:700} h3{font-size:15px;font-weight:650}
+p{margin:0}
+.mono{font-family:var(--mono);font-size:12.5px;letter-spacing:.02em}
+.num{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)} .small{font-size:12.5px}
+.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:600}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:7px 12px;font-weight:500;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.ok{background:var(--ok);color:var(--surface);border-color:var(--ok)}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.btn.sm{padding:4px 9px;font-size:12.5px}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+input[type=text],input[type=number],input[type=date],input[type=password],input[type=tel],select,textarea{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:8px 10px}
+textarea{min-height:64px;resize:vertical}
+label.f{display:grid;gap:4px;font-size:12.5px;color:var(--muted);font-weight:500}
+label.f > span{color:var(--muted)}
+.check{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line)}
+.check:last-child{border-bottom:0}
+.check input{margin-top:3px;width:16px;height:16px;accent-color:var(--accent);flex:none}
+.check .crit{font-size:10.5px;font-weight:600;color:var(--bad);background:var(--bad-soft);border-radius:4px;padding:1px 5px;margin-left:6px;white-space:nowrap}
+
+/* top bar */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;gap:14px;min-height:56px;flex-wrap:wrap;padding-block:6px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:750;font-stretch:88%;font-size:16px}
+.brand .mark{width:26px;height:26px;border-radius:6px;background:var(--accent);display:grid;place-items:center;color:var(--accent-ink);font-size:12px;font-weight:800}
+.nav{display:flex;gap:2px;flex:1;flex-wrap:wrap}
+.nav button{border:0;background:none;padding:7px 10px;border-radius:6px;color:var(--muted);font-weight:500}
+.nav button.on{background:var(--accent-soft);color:var(--accent)}
+.who{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.badge{display:inline-grid;place-items:center;min-width:18px;height:18px;border-radius:9px;background:var(--bad);color:var(--surface);font-size:11px;font-weight:600;padding:0 5px;margin-left:4px}
+
+main{padding-block:22px 60px}
+.stack{display:grid;gap:18px}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+.card > h3 + *{margin-top:10px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.between{justify-content:space-between}
+.kpi{padding:14px 16px}
+.kpi .v{font-family:var(--display);font-size:28px;font-weight:750;font-stretch:90%;line-height:1.1}
+.kpi .l{font-size:12.5px;color:var(--muted)}
+
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.pill.ontrack{color:var(--ok);background:var(--ok-soft)}
+.pill.risk{color:var(--warn);background:var(--warn-soft)}
+.pill.late{color:var(--bad);background:var(--bad-soft)}
+.pill.handed,.pill.neutral{color:var(--accent);background:var(--accent-soft)}
+.pill.po,.pill.mobilising{color:var(--muted);background:var(--sunk)}
+
+.bar{height:8px;border-radius:4px;background:var(--sunk);position:relative;overflow:hidden}
+.bar > i{position:absolute;inset:0 auto 0 0;background:var(--accent);border-radius:4px}
+.bar > b{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink);opacity:.55}
+
+/* site list */
+.sites{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+.site{cursor:pointer;display:grid;gap:10px;text-align:left;width:100%}
+.site:hover{border-color:var(--accent)}
+.site .name{font-family:var(--display);font-weight:700;font-size:16px;font-stretch:92%}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.meta3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12.5px}
+.meta3 b{display:block;font-size:14px;font-variant-numeric:tabular-nums}
+
+/* tables */
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600;background:var(--sunk);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
+tr.click{cursor:pointer} tr.click:hover td{background:var(--accent-soft)}
+
+/* site header + tabs */
+.sitehead{background:var(--surface);border-bottom:1px solid var(--line)}
+.sitehead .wrap{padding-block:16px 0;display:grid;gap:12px}
+.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;margin-bottom:-1px}
+.tabs button{border:0;background:none;padding:10px 12px;border-bottom:2px solid transparent;color:var(--muted);font-weight:500;white-space:nowrap}
+.tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
+.back{border:0;background:none;color:var(--accent);padding:0;font-weight:500;justify-self:start}
+
+/* gantt */
+.gantt{display:grid;gap:8px}
+.grow{display:grid;grid-template-columns:minmax(120px,190px) 1fr 44px;gap:10px;align-items:center;font-size:13px}
+.gtrack{position:relative;height:22px;background:var(--sunk);border-radius:4px}
+.gplan{position:absolute;top:3px;bottom:3px;border:1.5px dashed var(--muted);border-radius:3px}
+.gact{position:absolute;top:3px;bottom:3px;background:var(--accent);border-radius:3px;opacity:.9}
+.gtoday{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--bad)}
+.gaxis{display:grid;grid-template-columns:minmax(120px,190px) 1fr 44px;gap:10px;font-size:11px;color:var(--muted)}
+.gaxis .ticks{position:relative;height:14px}
+.gaxis .ticks span{position:absolute;transform:translateX(-50%)}
+
+/* gates */
+.gates{display:grid;grid-template-columns:minmax(220px,300px) 1fr;gap:14px;align-items:start}
+@media (max-width:760px){.gates{grid-template-columns:1fr}}
+.gatelist{display:grid;gap:6px}
+.gatebtn{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:10px}
+.gatebtn.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.gnum{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-family:var(--display);background:var(--sunk);color:var(--muted)}
+.gnum.passed{background:var(--ok);color:var(--surface)}
+.gnum.submitted{background:var(--warn);color:var(--surface)}
+.gnum.rework{background:var(--bad);color:var(--surface)}
+
+.thumbs{display:flex;gap:6px;flex-wrap:wrap}
+.thumbs img,.ph{width:64px;height:48px;object-fit:cover;border-radius:5px;border:1px solid var(--line)}
+.ph{display:grid;place-items:center;font-size:10px;color:var(--muted);background:repeating-linear-gradient(135deg,var(--sunk) 0 6px,var(--surface) 6px 12px)}
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);padding:10px 12px;border-radius:0 8px 8px 0;font-size:13px}
+.note.warn{border-color:var(--warn);background:var(--warn-soft)}
+.note.bad{border-color:var(--bad);background:var(--bad-soft)}
+.note.ok{border-color:var(--ok);background:var(--ok-soft)}
+.log{display:grid;gap:0}
+.logi{display:grid;grid-template-columns:86px 1fr;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.logi:last-child{border-bottom:0}
+.logi.miss{color:var(--bad)}
+.esc{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+@media (max-width:560px){.esc{grid-template-columns:1fr 1fr}}
+.esc div{background:var(--sunk);border-radius:7px;padding:8px 10px;font-size:12.5px}
+.esc div b{display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+.phaseinp{display:grid;grid-template-columns:1fr 120px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.phaseinp input[type=range]{width:100%;accent-color:var(--accent)}
+.score{font-family:var(--display);font-weight:750;font-size:22px;font-stretch:90%}
+svg text{fill:var(--muted);font-size:11px;font-family:var(--body)}
+
+/* login */
+.login{min-height:100%;display:grid;place-items:center;padding-block:40px;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:28px 28px;background-position:-1px -1px}
+.loginbox{max-width:980px;width:100%;display:grid;grid-template-columns:1.1fr 1fr;gap:0;background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+@media (max-width:820px){.loginbox{grid-template-columns:1fr}}
+.loginbox .l{padding:28px;background:var(--accent);color:var(--accent-ink);display:grid;gap:18px;align-content:start}
+.loginbox .l h1{font-size:34px;font-stretch:85%}
+.loginbox .l .eyebrow{color:inherit;opacity:.8}
+.rules{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.rules div{border:1px solid color-mix(in srgb,var(--accent-ink) 30%,transparent);border-radius:8px;padding:10px}
+.rules b{display:block;font-family:var(--display);font-size:22px;font-stretch:88%}
+.loginbox .r{padding:28px;display:grid;gap:18px;align-content:start}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--sunk);border-radius:8px;padding:3px}
+.seg button{border:0;background:none;padding:8px;border-radius:6px;font-weight:500;color:var(--muted)}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:13px;z-index:20;max-width:calc(100% - 32px)}
+.demo{font-size:11px;font-weight:600;color:var(--warn);background:var(--warn-soft);border-radius:4px;padding:2px 6px}
+@media (prefers-reduced-motion:no-preference){.card,.btn{transition:border-color .15s}}
+</style>
+
+<div id="app"></div>
+
+<script>
+/* ============ Constants from the Fit-Out Vendor Meet 2026 deck ============ */
+const PHASES45=[
+ {k:'mob',n:'Mobilisation & marking',s:1,e:3,w:5},
+ {k:'civ',n:'Civil & MEP first fix',s:4,e:15,w:25},
+ {k:'flr',n:'Ceiling & flooring',s:14,e:25,w:20},
+ {k:'car',n:'Carpentry & finishes',s:22,e:37,w:30},
+ {k:'mep',n:'MEP final & equipment',s:35,e:41,w:12},
+ {k:'hnd',n:'Snags & handover',s:42,e:45,w:8}];
+const dur=t=>t==='Mall'?40:45;
+function phasesFor(t){const D=dur(t);if(D===45)return PHASES45;return PHASES45.map(p=>({...p,s:Math.max(1,Math.round((p.s-1)*D/45)+1),e:Math.round(p.e*D/45)}));}
+const GATES=[
+ {id:'g1',n:'Marking & layout',ph:'mob',items:['Site marking matches the approved design','Key dimensions verified against the drawing','Electrical, plumbing and HVAC points marked','Named supervisor present on site','Material delivery plan shared with PM']},
+ {id:'g2',n:'Before closing',ph:'civ',items:['Concealed conduits and DB location as per layout','Plumbing pressure test done (photo of gauge)','Drain lines laid with slope','HVAC copper and drain lines checked','All points tally with the MEP drawing']},
+ {id:'g3',n:'Flooring',ph:'flr',items:['Straight-edge and level check: lippage 1 mm or less','Even joints with spacers','Tap test done: no hollow tiles','Floor protection laid before next trade starts']},
+ {id:'g4',n:'Carpentry & finishes',ph:'car',items:['Counter and joinery built as per design','Edges sealed, joints tight, shutters aligned, approved hardware','Putty, primer and two coats; side-light check done','Washroom matches the standard spec; no leaks, slope to drain']},
+ {id:'g5',n:'Pre-handover',ph:'hnd',items:['Joint snag walk done with Blue Tokai PM','All critical snags closed','Equipment and MEP tested','Deep clean done','Handover documents ready']}];
+const HANDOVER=[
+ {g:'Flooring & tiles',items:[['fl1','Level checked with straight-edge; lippage 1 mm or less',1],['fl2','Joints even, grouted and cleaned',0],['fl3','Tap test done, no hollow tiles',1]]},
+ {g:'Protection & cleaning',items:[['pr1','Glass, counter tops and edges free of scratches',0],['pr2','Floor protection removed at final clean only',0],['pr3','Debris cleared, deep clean done',0]]},
+ {g:'Walls & paint',items:[['wp1','Putty, primer and two coats complete',0],['wp2','Side-light check: no waviness, patches or marks',1]]},
+ {g:'Counter & carpentry',items:[['cc1','Counter built as per approved design',1],['cc2','Edges sealed, joints tight, shutters aligned',0],['cc3','Approved hardware; all shutters and drawers tested',0]]},
+ {g:'Washroom',items:[['wr1','Fittings match the standard washroom spec sheet',1],['wr2','No leaks; floor slopes to drain',1]]},
+ {g:'MEP & equipment',items:[['me1','DB labelled, circuits tested, earthing report',1],['me2','HVAC commissioned and cooling tested',1],['me3','Bar points (water, drain, power) tested with equipment',1]]},
+ {g:'Documents & keys',items:[['dc1','As-built drawings submitted',0],['dc2','Warranties and test certificates handed over',0],['dc3','Keys, remotes and manuals handed to café team',0]]}];
+const HO_KEYS=HANDOVER.flatMap(g=>g.items.map(i=>i[0]));
+const INIT_V=[['iv1','Approved design, BOQ and spec sheets received'],['iv2','Samples from the approved make list submitted'],['iv3','PPE kits ready for full crew'],['iv4','Floor and edge protection material arranged'],['iv5','Carpentry pre-fabrication booked in workshop']];
+const INIT_B=[['ib1','Approved design, BOQ and spec sheets issued with PO'],['ib2','Site handed over with landlord permissions in place'],['ib3','Named Blue Tokai project manager assigned']];
+const BOQ_HEADS=[['Civil & flooring',.24],['MEP (electrical, plumbing, HVAC)',.26],['Carpentry & counter',.28],['Ceiling & paint',.10],['Washroom kit',.05],['Signage & misc.',.07]];
+const PAY=[
+ {id:'p1',n:'On PO',pct:20,cond:'PO accepted and start date confirmed'},
+ {id:'p2',n:'Civil, plumbing & electrical done',pct:30,cond:'Civil & MEP first fix 100% and Gate 2 passed'},
+ {id:'p3',n:'Handover',pct:20,cond:'Gate 5 passed, critical snags closed, site handed over'},
+ {id:'p4',n:'Billing closure',pct:20,cond:'Final bill certified; all snags and documents closed'},
+ {id:'r1',n:'Retention, part 1',pct:5,cond:'6 months after handover, all reported defects fixed'},
+ {id:'r2',n:'Retention, part 2',pct:5,cond:'12 months after handover, all reported defects fixed'}];
+const ESC=[['Level 1','Site Supervisor'],['Level 2','Project Lead'],['Level 3','Project Head'],['Level 4 · Final','Retail Expansion Head']];
+
+/* ============ Date + format helpers ============ */
+const pad=n=>String(n).padStart(2,'0');
+const iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const parse=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)};
+const addDays=(s,n)=>{const d=parse(s);d.setDate(d.getDate()+n);return iso(d)};
+const diff=(a,b)=>Math.round((parse(b)-parse(a))/864e5);
+const TODAY=iso(new Date());
+const fmtD=s=>s?parse(s).toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'—';
+const fmtDY=s=>s?parse(s).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}):'—';
+const fmtT=ms=>new Date(ms).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'});
+const inr=v=>'₹'+Math.round(v).toLocaleString('en-IN');
+const lakh=v=>'₹'+(v/1e5).toLocaleString('en-IN',{maximumFractionDigits:1})+' L';
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const uid=()=>Math.random().toString(36).slice(2,9);
+const after7=()=>new Date().getHours()>=19;
+
+/* ============ Seed data (sample vendors and sites) ============ */
+const VENDORS=[
+ {id:'v1',name:'Shreeji Interiors',owner:'Owner: Mr. Mehta',pin:'1234'},
+ {id:'v2',name:'Northline Buildtech',owner:'Owner: Mr. Sethi',pin:'1234'},
+ {id:'v3',name:'Kaveri Fit-outs',owner:'Owner: Ms. Rao',pin:'1234'}];
+const PMS={n:'Project Lead · North',s:'Project Lead · South',w:'Project Lead · West'};
+
+function plannedFrac(p,d){return clamp((d-p.s+1)/(p.e-p.s+1),0,1)}
+function planned(P,d){return P.reduce((a,p)=>a+p.w*plannedFrac(p,d),0)}
+function overall(P,prog){return P.reduce((a,p)=>a+p.w*(prog[p.k]||0)/100,0)}
+
+function makeSite(o){
+  const P=phasesFor(o.type),D=dur(o.type);
+  const startDate=o.startDate||addDays(TODAY,-(o.day-1));
+  const s={id:uid(),ca:o.ca,name:o.name,city:o.city,brand:o.brand,type:o.type,vendorId:o.v,pm:o.pm,
+    poNo:'PO/'+o.ca.replace('CA-','')+'/26',poValue:o.po,poDate:o.poDate||addDays(startDate,-4),startDate,
+    supervisor:o.sup||{name:'',phone:''},crew:o.crew||10,deliveryPlan:o.dp||'',
+    initiation:{poAccepted:o.acc!==false,acceptedOn:o.acc!==false?addDays(startDate,-3):null,v:{},b:{ib1:true,ib2:true,ib3:true}},
+    updates:[],gates:GATES.map(g=>({id:g.id,status:'open',checks:{},photos:[],seedPhotos:0,attempts:0,submittedAt:null,inspectedAt:null,remarks:''})),
+    payments:{},snags:[],hindrances:[],handover:{},handedOverOn:o.handedOverOn||null,finalBill:false};
+  if(o.acc!==false) INIT_V.forEach(([k])=>s.initiation.v[k]=true);
+  // daily updates
+  const lastDay=o.handedOverOn?D:Math.min(o.day-1,D);
+  const skip=new Set(o.skip||[]);
+  for(let d=1;d<=lastDay;d++){
+    if(d>lastDay-(o.missed||0)) break;
+    if(skip.has(d)) continue;
+    const eff=o.handedOverOn?d:d*o.f;
+    const prog={};P.forEach(p=>prog[p.k]=Math.round(plannedFrac(p,eff)*100));
+    const act=P.find(p=>eff>=p.s-0.5&&eff<=p.e+0.5)||P[0];
+    const mats={mob:'Marking tools, PPE kits, protection sheets',civ:'Conduits, CPVC pipes, cement lot 1',flr:'Vitrified tiles lot 1 (600×600), gypsum boards',car:'Pre-fab counter carcass from workshop',mep:'Light fixtures, HVAC indoor units',hnd:''};
+    s.updates.push({id:uid(),date:addDays(startDate,d-1),day:d,prog,manpower:Math.round(o.crew*(0.75+((d*7)%5)/10)),
+      sup:true,ppe:!(o.ppeLapse||[]).includes(d),material:d===act.s?mats[act.k]:'',hindrance:'',
+      note:act.n+' in progress',photos:[],seedPhotos:2+(d%3),at:parse(addDays(startDate,d-1)).getTime()+ (17*60+((d*13)%50))*60000});
+  }
+  // gates auto from progress
+  const last=s.updates[s.updates.length-1];
+  const prog=last?last.prog:{};
+  s.gates.forEach(g=>{const def=GATES.find(x=>x.id===g.id);
+    if(g.id!=='g5'&&(prog[def.ph]||0)>=100||(g.id==='g5'&&o.handedOverOn)){g.status='passed';g.attempts=1;def.items.forEach((_,i)=>g.checks[i]=true);g.seedPhotos=3;
+      const pe=P.find(p=>p.k===def.ph).e;g.submittedAt=parse(addDays(startDate,Math.min(pe,D)-1)).getTime()+18*3600e3;g.inspectedAt=g.submittedAt+16*3600e3;}});
+  (o.gateOverrides||[]).forEach(go=>Object.assign(s.gates.find(g=>g.id===go.id),go));
+  return s;
+}
+
+function seed(){
+  const sites=[
+    makeSite({ca:'CA-2187',name:'Koramangala 5th Block',city:'Bengaluru',brand:'Blue Tokai',type:'Non-mall',v:'v1',pm:PMS.s,po:3850000,day:28,f:1.02,crew:12,
+      sup:{name:'Ravi Kumar',phone:'98450 11223'},dp:'Lot 1 (D1): civil + MEP first-fix material\nLot 2 (D13): tiles, gypsum\nLot 3 (D21): pre-fab counter and carpentry\nLot 4 (D34): fixtures, equipment',
+      gateOverrides:[{id:'g3',status:'submitted',attempts:1,checks:{0:true,1:true,2:true,3:true},seedPhotos:4,submittedAt:Date.now()-5*3600e3}]}),
+    makeSite({ca:'CA-2203',name:'Phoenix Palladium, Level 2',city:'Mumbai',brand:'Blue Tokai',type:'Mall',v:'v1',pm:PMS.w,po:4420000,day:12,f:0.84,crew:10,
+      sup:{name:'Sandeep Patil',phone:'99200 44110'},dp:'Mall night-work only. Lots per stage, staged at mall loading bay.'}),
+    makeSite({ca:'CA-2195',name:'Kalyani Nagar',city:'Pune',brand:'Blue Tokai',type:'Non-mall',v:'v3',pm:PMS.w,po:3610000,day:44,f:1,crew:11,
+      sup:{name:'Anil Jadhav',phone:'98220 77881'},dp:'Lots delivered stage-wise per plan.',
+      gateOverrides:[{id:'g5',status:'submitted',attempts:1,checks:{0:true,1:false,2:true,3:true,4:true},seedPhotos:5,submittedAt:Date.now()-27*3600e3}]}),
+    makeSite({ca:'CA-2214',name:'Cyber Hub, Ground Floor',city:'Gurugram',brand:'Gottea',type:'Mall',v:'v2',pm:PMS.n,po:2980000,day:33,f:0.88,missed:2,skip:[9,17],ppeLapse:[20],crew:9,
+      sup:{name:'Manoj Singh',phone:'98110 55002'},dp:'All material delivered on day 2.',
+      gateOverrides:[{id:'g3',status:'rework',attempts:1,checks:{0:false,1:true,2:true,3:true},seedPhotos:2,submittedAt:Date.now()-3*86400e3,inspectedAt:Date.now()-2.5*86400e3,remarks:'Lippage of 2–3 mm near the entrance and in front of the bar. Hollow sound on 4 tiles near the washroom door. Relay and resubmit.'}]}),
+    makeSite({ca:'CA-2210',name:'Banjara Hills Road 12',city:'Hyderabad',brand:'Blue Tokai',type:'Non-mall',v:'v2',pm:PMS.s,po:3320000,day:6,f:1,crew:10,
+      sup:{name:'Srinivas Reddy',phone:'90000 31415'},dp:'Lot 1 on D1, lot 2 on D12.'}),
+    makeSite({ca:'CA-2221',name:'Sector 29 Main Market',city:'Gurugram',brand:'Blue Tokai',type:'Non-mall',v:'v3',pm:PMS.n,po:3480000,acc:false,day:-2,startDate:addDays(TODAY,4),poDate:addDays(TODAY,-1),crew:10}),
+    makeSite({ca:'CA-2172',name:'Anna Nagar 2nd Avenue',city:'Chennai',brand:'Blue Tokai',type:'Non-mall',v:'v1',pm:PMS.s,po:3550000,day:65,f:1,crew:11,startDate:addDays(TODAY,-63),handedOverOn:addDays(TODAY,-20),
+      sup:{name:'Prakash M',phone:'94440 12121'}}),
+  ];
+  const by=ca=>sites.find(s=>s.ca===ca);
+  // payments certified
+  const cert=(ca,ids)=>ids.forEach(id=>by(ca).payments[id]={on:addDays(TODAY,-5)});
+  cert('CA-2187',['p1','p2']);cert('CA-2203',['p1']);cert('CA-2195',['p1','p2']);cert('CA-2214',['p1','p2']);cert('CA-2210',['p1']);cert('CA-2172',['p1','p2','p3']);
+  // Cyber Hub gate 2 passed second time
+  Object.assign(by('CA-2214').gates[1],{attempts:2});
+  // handover checklists
+  HO_KEYS.forEach(k=>{by('CA-2172').handover[k]=true});
+  HO_KEYS.forEach((k,i)=>{if(i<16)by('CA-2195').handover[k]=true});
+  // snags
+  const sn=(ca,text,trade,crit,status,ago)=>by(ca).snags.push({id:uid(),text,trade,crit,status,on:addDays(TODAY,-ago)});
+  sn('CA-2195','Counter top joint visible near POS','Counter & carpentry',true,'open',1);
+  sn('CA-2195','Paint touch-up behind menu board','Walls & paint',false,'fixed',1);
+  sn('CA-2195','Washroom mirror light not working','MEP & equipment',false,'open',1);
+  sn('CA-2214','Tile lippage over 2 mm near entrance','Flooring & tiles',true,'open',2);
+  sn('CA-2172','Hairline crack on washroom wall tile near WC','Washroom',false,'open',6);
+  sn('CA-2172','Back-bar shutter hinge loose','Counter & carpentry',false,'closed',19);
+  sn('CA-2187','Chipped skirting tile near store room','Flooring & tiles',false,'fixed',3);
+  // hindrances
+  const hd=(ca,text,ago,status,ext)=>by(ca).hindrances.push({id:uid(),text,on:addDays(TODAY,-ago),status,ext:ext||0});
+  hd('CA-2187','Landlord electrical load sanction pending; DB shifting on hold',19,'signed',1);
+  hd('CA-2214','Mall permit for night work delayed by mall management',4,'raised');
+  hd('CA-2203','Revised counter drawing awaited from design team',3,'raised');
+  return {v:1,seededOn:TODAY,sites};
+}
+
+/* ============ Storage (per-browser demo) ============ */
+const KEY='bt-fitout-demo-v1';
+let db,ui={user:null,view:'home',siteId:null,tab:'overview',gate:'g1',toast:null,filter:'all',pending:{}};
+function load(){try{const raw=localStorage.getItem(KEY);if(raw){const d=JSON.parse(raw);if(d&&d.v===1)return d}}catch(e){}return seed()}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){toast('Saved for this session only: browser storage is full or blocked.')}}
+function saveUser(){try{localStorage.setItem(KEY+'-user',JSON.stringify(ui.user))}catch(e){}}
+db=load();
+try{ui.user=JSON.parse(localStorage.getItem(KEY+'-user')||'null')}catch(e){}
+
+/* ============ Derived site metrics ============ */
+function calc(s){
+  const P=phasesFor(s.type),D=dur(s.type);
+  const day=diff(s.startDate,TODAY)+1;
+  const ups=s.updates.slice().sort((a,b)=>a.date<b.date?-1:1);
+  const last=ups[ups.length-1];
+  const prog=last?last.prog:{};
+  const actual=overall(P,prog);
+  const updatedToday=!!(last&&last.date===TODAY);
+  const refDay=clamp(updatedToday?day:day-1,0,D);
+  const ext=s.hindrances.filter(h=>h.status==='signed').reduce((a,h)=>a+(+h.ext||0),0);
+  const target=addDays(s.startDate,D-1+ext);
+  let lo=0,hi=D;for(let i=0;i<40;i++){const m=(lo+hi)/2;if(planned(P,m)>=actual-1e-6)hi=m;else lo=m}
+  let variance=hi-refDay+ext; if(actual>=99.9)variance=Math.max(variance,0);
+  const set=new Set(ups.map(u=>u.date));
+  let missed=0;
+  if(!s.handedOverOn&&day>1){let d=(after7()&&!updatedToday)?TODAY:addDays(TODAY,-1);
+    while(diff(s.startDate,d)>=0&&!set.has(d)&&missed<60){missed++;d=addDays(d,-1)}}
+  const expected=s.handedOverOn?Math.min(D,diff(s.startDate,s.handedOverOn)+1):Math.max(0,Math.min(refDay,D));
+  const submitted=ups.filter(u=>u.day<=expected).length;
+  let behind=Math.max(0,Math.round(-variance)),ahead=Math.max(0,Math.round(variance));
+  let status;
+  if(s.handedOverOn)status='handed';
+  else if(!s.initiation.poAccepted)status='po';
+  else if(day<1)status='mobilising';
+  else if(missed>=2||behind>3)status='late';
+  else if(behind>=1)status='risk';
+  else status='ontrack';
+  const forecast=s.handedOverOn||addDays(target,behind);
+  const ldDays=s.handedOverOn?Math.max(0,diff(target,s.handedOverOn)):behind;
+  const ld=Math.min(.005*ldDays,.10)*s.poValue;
+  const plannedNow=planned(P,refDay);
+  return {P,D,day,ups,last,prog,actual,plannedNow,refDay,ext,target,variance,behind,ahead,missed,status,forecast,ldDays,ld,updatedToday,expected,submitted};
+}
+const STATUS_LABEL={ontrack:'On track',risk:'At risk',late:'Late',handed:'Handed over',po:'PO issued',mobilising:'Mobilising'};
+const pill=st=>`<span class="pill ${st}">${STATUS_LABEL[st]}</span>`;
+function varianceText(c){
+  if(c.status==='handed'||c.status==='po'||c.status==='mobilising')return '';
+  if(c.behind)return `${c.behind} day${c.behind>1?'s':''} behind`;
+  if(c.ahead)return `${c.ahead} day${c.ahead>1?'s':''} ahead`;return 'On plan';
+}
+function gateStatus(s,id){return s.gates.find(g=>g.id===id).status}
+function payState(s,p,c){
+  if(s.payments[p.id])return {st:'certified',why:'Certified '+fmtD(s.payments[p.id].on)};
+  const openCrit=s.snags.filter(x=>x.crit&&x.status!=='closed').length;
+  const open=s.snags.filter(x=>x.status!=='closed').length;
+  const ho=s.handedOverOn;
+  let ok=false,why='';
+  if(p.id==='p1'){ok=s.initiation.poAccepted;why=ok?'':'Accept PO and confirm start date'}
+  if(p.id==='p2'){const civ=(c.prog.civ||0)>=100,g2=gateStatus(s,'g2')==='passed';ok=civ&&g2;why=!civ?`Civil & MEP first fix at ${c.prog.civ||0}%`:!g2?'Gate 2 not passed':''}
+  if(p.id==='p3'){ok=!!ho&&gateStatus(s,'g5')==='passed'&&!openCrit;why=gateStatus(s,'g5')!=='passed'?'Gate 5 not passed':openCrit?`${openCrit} critical snag open`:!ho?'Not handed over':''}
+  if(p.id==='p4'){const docs=['dc1','dc2','dc3'].every(k=>s.handover[k]);ok=!!ho&&!open&&docs&&s.finalBill;why=!ho?'After handover':open?`${open} snag${open>1?'s':''} open`:!docs?'Handover documents pending':!s.finalBill?'Final bill not submitted':''}
+  if(p.id==='r1'||p.id==='r2'){const m=p.id==='r1'?6:12;if(!ho){why=`${m} months after handover`}else{const due=addDays(ho,m*30);ok=diff(due,TODAY)>=0&&!open;why=ok?'':`Due ${fmtDY(due)}`}}
+  return {st:ok?'eligible':'locked',why};
+}
+function money(s,c){const cert=PAY.reduce((a,p)=>a+(s.payments[p.id]?p.pct:0),0);return {certPct:cert,cert:cert/100*s.poValue}}
+
+/* ============ Rendering ============ */
+const $app=document.getElementById('app');
+function toast(m){ui.toast=m;renderToast();clearTimeout(toast.t);toast.t=setTimeout(()=>{ui.toast=null;renderToast()},2800)}
+function renderToast(){let el=document.querySelector('.toast');if(!ui.toast){el&&el.remove();return}if(!el){el=document.createElement('div');el.className='toast';el.setAttribute('role','status');document.body.appendChild(el)}el.textContent=ui.toast}
+
+function render(){
+  if(!ui.user){$app.innerHTML=renderLogin();return}
+  const isPM=ui.user.role==='pm';
+  let body='';
+  if(ui.view==='site'&&site())body=renderSite();
+  else if(isPM){body=ui.view==='inspections'?renderQueue():ui.view==='scorecard'?renderScorecard():renderPortfolio()}
+  else body=ui.view==='scorecard'?renderScorecard():renderVendorHome();
+  $app.innerHTML=renderTop()+body;
+}
+function site(){return db.sites.find(s=>s.id===ui.siteId)}
+function mySites(){return ui.user.role==='pm'?db.sites:db.sites.filter(s=>s.vendorId===ui.user.id)}
+function queueCount(){let n=0;db.sites.forEach(s=>{const c=calc(s);n+=s.gates.filter(g=>g.status==='submitted').length+s.hindrances.filter(h=>h.status==='raised').length+PAY.filter(p=>payState(s,p,c).st==='eligible').length});return n}
+
+function renderTop(){
+  const isPM=ui.user.role==='pm';
+  const v=VENDORS.find(x=>x.id===ui.user.id);
+  const items=isPM?[['home','Portfolio'],['inspections','Approvals',queueCount()],['scorecard','Vendor scorecard']]:[['home','My sites'],['scorecard','My scorecard']];
+  const cur=ui.view==='site'?'':ui.view;
+  return `<header class="top"><div class="wrap">
+    <div class="brand"><span class="mark">BT</span><span>Fit-Out Tracker</span></div>
+    <nav class="nav">${items.map(([k,l,b])=>`<button data-act="nav" data-v="${k}" class="${cur===k?'on':''}">${l}${b?`<span class="badge">${b}</span>`:''}</button>`).join('')}</nav>
+    <div class="who"><span class="demo">DEMO</span><span><b>${isPM?'Blue Tokai Project Team':esc(v.name)}</b></span>
+    <button class="btn sm" data-act="reset" title="Restore the sample data">Reset data</button>
+    <button class="btn sm" data-act="logout">Log out</button></div></div></header>`;
+}
+
+function renderLogin(){
+  const role=ui.loginRole||'vendor';
+  return `<div class="login"><div class="wrap" style="width:100%"><div class="loginbox">
+   <div class="l"><div class="eyebrow">Blue Tokai Coffee Roasters · Gottea · Retail Expansion & NSO</div>
+    <h1>Fit-Out Tracker</h1>
+    <p>One system for every site, every vendor, every day. On time. To design. To standard.</p>
+    <div class="rules">
+      <div><b>40 / 45</b>days start to handover (mall / non-mall)</div>
+      <div><b>7 pm</b>daily update. No update = no progress.</div>
+      <div><b>5 gates</b>self-check, photos, inspection within 24 h</div>
+      <div><b>20·30·20·20·10</b>paid as you deliver</div>
+    </div></div>
+   <div class="r">
+    <div><h2>Sign in</h2><p class="muted small">Sample logins for the vendor meet demo. Data stays in this browser.</p></div>
+    <div class="seg"><button data-act="lrole" data-v="vendor" class="${role==='vendor'?'on':''}">Fit-out vendor</button><button data-act="lrole" data-v="pm" class="${role==='pm'?'on':''}">Blue Tokai team</button></div>
+    <form id="loginForm" class="stack" style="gap:12px">
+     ${role==='vendor'?`<label class="f"><span>Vendor</span><select id="lv">${VENDORS.map(v=>`<option value="${v.id}">${esc(v.name)}</option>`).join('')}</select></label>
+      <label class="f"><span>PIN</span><input id="lp" type="password" inputmode="numeric" placeholder="Demo PIN: 1234" value="1234"></label>`
+     :`<label class="f"><span>Login as</span><select id="lpm"><option>Project Lead</option><option>Project Head</option><option>Retail Expansion Head</option></select></label>`}
+     <button class="btn primary" type="submit" style="justify-content:center">Sign in</button>
+     <p id="lerr" class="small" style="color:var(--bad)"></p>
+    </form>
+    <p class="small muted">Each vendor gets their own login and sees only the sites allocated to them through a PO.</p>
+   </div></div></div></div>`;
+}
+
+/* ---------- Vendor home ---------- */
+function renderVendorHome(){
+  const sites=mySites();const cs=sites.map(s=>[s,calc(s)]);
+  const active=cs.filter(([s,c])=>!s.handedOverOn&&s.initiation.poAccepted);
+  const due=active.filter(([s,c])=>c.day>=1&&!c.updatedToday);
+  const newPO=cs.filter(([s,c])=>!s.initiation.poAccepted);
+  const rework=cs.flatMap(([s])=>s.gates.filter(g=>g.status==='rework').map(g=>[s,g]));
+  const eligible=cs.reduce((a,[s,c])=>a+PAY.filter(p=>payState(s,p,c).st==='eligible').reduce((x,p)=>x+p.pct/100*s.poValue,0),0);
+  const v=VENDORS.find(x=>x.id===ui.user.id);
+  const alerts=[];
+  newPO.forEach(([s])=>{const dl=addDays(s.poDate,2);alerts.push(`<div class="note warn"><b>New PO ${esc(s.poNo)}: ${esc(s.ca)} ${esc(s.name)}.</b> Accept and confirm start date by ${fmtD(dl)}. Start does not wait for the advance. <button class="btn sm" data-act="open" data-id="${s.id}" data-tab="init">Open</button></div>`)});
+  due.forEach(([s,c])=>alerts.push(`<div class="note ${after7()?'bad':''}"><b>Daily update ${after7()?'overdue':'due by 7 pm'}: ${esc(s.ca)} ${esc(s.name)}.</b>${c.missed>=1?` ${c.missed} day${c.missed>1?'s':''} missed in a row.`:''} <button class="btn sm primary" data-act="open" data-id="${s.id}" data-tab="update">Update now</button></div>`));
+  rework.forEach(([s,g])=>{const def=GATES.find(x=>x.id===g.id);alerts.push(`<div class="note bad"><b>Rework: Gate ${g.id[1]} ${esc(def.n)} at ${esc(s.ca)}.</b> ${esc(g.remarks)} <button class="btn sm" data-act="open" data-id="${s.id}" data-tab="gates" data-gate="${g.id}">View</button></div>`)});
+  return `<main><div class="wrap stack">
+   <div><div class="eyebrow">${esc(v.owner)}</div><h1>${esc(v.name)}</h1></div>
+   <div class="grid g4">
+    ${kpi(active.length,'Active sites')}${kpi(due.length,'Updates due today')}${kpi(cs.reduce((a,[s])=>a+s.gates.filter(g=>g.status==='submitted').length,0),'Gates awaiting inspection')}${kpi(lakh(eligible),'Ready to certify')}
+   </div>
+   ${alerts.length?`<div class="stack" style="gap:8px">${alerts.join('')}</div>`:''}
+   <h2>Allocated sites</h2>
+   <div class="sites">${cs.map(([s,c])=>siteCard(s,c)).join('')}</div>
+  </div></main>`;
+}
+const kpi=(v,l,cls='')=>`<div class="card kpi"><div class="v num ${cls}">${v}</div><div class="l">${l}</div></div>`;
+function siteCard(s,c){
+  const pct=Math.round(c.actual);
+  return `<button class="card site" data-act="open" data-id="${s.id}">
+   <div class="row between"><span class="mono">${esc(s.ca)}</span>${pill(c.status)}</div>
+   <div><div class="name">${esc(s.name)}</div><div class="small muted">${esc(s.city)} · ${esc(s.brand)} · ${esc(s.type)} (${c.D} days)</div></div>
+   <div><div class="row between small"><span>${s.handedOverOn?'Complete':c.day>=1?`Day ${Math.min(c.day,c.D+99)} of ${c.D}`:'Not started'}</span><span class="num"><b>${pct}%</b> <span class="muted">/ plan ${Math.round(c.plannedNow)}%</span></span></div>
+   <div class="bar" style="margin-top:4px"><i style="width:${pct}%"></i>${c.day>=1&&!s.handedOverOn?`<b style="left:${c.plannedNow}%"></b>`:''}</div></div>
+   <div class="meta3"><div><span class="muted">Budget</span><b>${lakh(s.poValue)}</b></div><div><span class="muted">Handover</span><b>${fmtD(c.target)}</b></div><div><span class="muted">${s.handedOverOn?'Handed over':'Variance'}</span><b>${s.handedOverOn?fmtD(s.handedOverOn):varianceText(c)||'—'}</b></div></div>
+  </button>`;
+}
+
+/* ---------- PM portfolio ---------- */
+function renderPortfolio(){
+  const cs=db.sites.map(s=>[s,calc(s)]);
+  const cnt=st=>cs.filter(([s,c])=>c.status===st).length;
+  const order={late:0,risk:1,ontrack:2,po:3,mobilising:3,handed:4};
+  const f=ui.filter;
+  const rows=cs.filter(([s,c])=>f==='all'||c.status===f).sort((a,b)=>order[a[1].status]-order[b[1].status]||b[1].behind-a[1].behind);
+  const ld=cs.reduce((a,[s,c])=>a+(s.handedOverOn?0:c.ld),0);
+  const flt=[['all','All'],['late','Late'],['risk','At risk'],['ontrack','On track'],['po','PO issued'],['handed','Handed over']];
+  return `<main><div class="wrap stack">
+   <div class="row between"><div><div class="eyebrow">Live portfolio · ${fmtDY(TODAY)}</div><h1>All fit-out sites</h1></div></div>
+   <div class="grid g4">${kpi(cnt('ontrack'),'On track','')}${kpi(cnt('risk'),'At risk · 1–3 days behind')}${kpi(cnt('late'),'Late · over 3 days or 2 missed updates')}${kpi(lakh(ld),'Delay penalty exposure (0.5%/day)')}</div>
+   <div class="row">${flt.map(([k,l])=>`<button class="btn sm ${f===k?'primary':''}" data-act="filter" data-v="${k}">${l}</button>`).join('')}</div>
+   <div class="tbl"><table><thead><tr><th>Site</th><th>Vendor</th><th>Status</th><th class="r">Day</th><th class="r">Actual / plan</th><th class="r">Variance</th><th>Last update</th><th class="r">Target</th><th class="r">Forecast</th><th>Open items</th></tr></thead><tbody>
+   ${rows.map(([s,c])=>{const v=VENDORS.find(x=>x.id===s.vendorId);const gs=s.gates.filter(g=>g.status==='submitted').length,hs=s.hindrances.filter(h=>h.status==='raised').length,sn=s.snags.filter(x=>x.status!=='closed').length;
+    return `<tr class="click" data-act="open" data-id="${s.id}"><td><span class="mono">${esc(s.ca)}</span><br>${esc(s.name)}<div class="small muted">${esc(s.city)} · ${esc(s.brand)}</div></td><td>${esc(v.name)}</td><td>${pill(c.status)}</td>
+    <td class="r">${s.handedOverOn?'—':c.day>=1?c.day+'/'+c.D:'—'}</td><td class="r">${Math.round(c.actual)}% / ${Math.round(c.plannedNow)}%</td><td class="r" style="color:${c.behind>3?'var(--bad)':c.behind?'var(--warn)':'inherit'}">${varianceText(c)||'—'}</td>
+    <td>${c.last?fmtD(c.last.date):'—'}${c.missed>=1&&!s.handedOverOn?`<div class="small" style="color:var(--bad)">${c.missed} missed</div>`:''}</td><td class="r">${fmtD(c.target)}</td><td class="r">${fmtD(c.forecast)}</td>
+    <td class="small">${[gs&&`${gs} gate to inspect`,hs&&`${hs} hindrance to sign`,sn&&`${sn} snag${sn>1?'s':''} open`].filter(Boolean).join('<br>')||'—'}</td></tr>`}).join('')}
+   </tbody></table></div>
+   <p class="small muted">Status rules: at risk when 1–3 days behind plan (call with vendor, catch-up plan within 24 hours); late when over 3 days behind or 2 missed updates (escalated to vendor owner; penalty and opportunity cost apply).</p>
+  </div></main>`;
+}
+
+/* ---------- PM approvals queue ---------- */
+function renderQueue(){
+  const gates=[],hinds=[],pays=[];
+  db.sites.forEach(s=>{const c=calc(s);
+    s.gates.filter(g=>g.status==='submitted').forEach(g=>gates.push([s,g]));
+    s.hindrances.filter(h=>h.status==='raised').forEach(h=>hinds.push([s,h]));
+    PAY.forEach(p=>{if(payState(s,p,c).st==='eligible')pays.push([s,p])});});
+  const sname=s=>`<span class="mono">${esc(s.ca)}</span> ${esc(s.name)}`;
+  return `<main><div class="wrap stack">
+   <div><div class="eyebrow">Our commitment: inspections and decisions within 24 hours</div><h1>Approvals</h1></div>
+   <div class="card"><h3>Gate inspections (${gates.length})</h3>
+    ${gates.length?`<div class="tbl" style="margin-top:10px"><table><thead><tr><th>Site</th><th>Gate</th><th>Submitted</th><th>Inspect by</th><th></th></tr></thead><tbody>${gates.map(([s,g])=>{const due=g.submittedAt+24*3600e3,over=Date.now()>due;
+      return `<tr><td>${sname(s)}</td><td>Gate ${g.id[1]} · ${esc(GATES.find(x=>x.id===g.id).n)}${g.attempts>1?` <span class="small muted">(attempt ${g.attempts})</span>`:''}</td><td>${fmtT(g.submittedAt)}</td><td style="color:${over?'var(--bad)':'inherit'}">${over?'Overdue · ':''}${fmtT(due)}</td><td><button class="btn sm primary" data-act="open" data-id="${s.id}" data-tab="gates" data-gate="${g.id}">Inspect</button></td></tr>`}).join('')}</tbody></table></div>`:'<p class="muted">No gates waiting.</p>'}
+   </div>
+   <div class="card"><h3>Hindrance register (${hinds.length})</h3>
+    ${hinds.length?`<div class="tbl" style="margin-top:10px"><table><thead><tr><th>Site</th><th>Hindrance</th><th>Raised</th><th></th></tr></thead><tbody>${hinds.map(([s,h])=>`<tr><td>${sname(s)}</td><td>${esc(h.text)}</td><td>${fmtD(h.on)}</td><td><button class="btn sm" data-act="open" data-id="${s.id}" data-tab="issues">Review</button></td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">Nothing to sign.</p>'}
+   </div>
+   <div class="card"><h3>Payment milestones ready to certify (${pays.length})</h3>
+    ${pays.length?`<div class="tbl" style="margin-top:10px"><table><thead><tr><th>Site</th><th>Milestone</th><th class="r">Amount</th><th></th></tr></thead><tbody>${pays.map(([s,p])=>`<tr><td>${sname(s)}</td><td>${p.pct}% · ${esc(p.n)}</td><td class="r">${inr(p.pct/100*s.poValue)}</td><td><button class="btn sm ok" data-act="certify" data-id="${s.id}" data-p="${p.id}">Certify</button></td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">Nothing ready.</p>'}
+   </div></div></main>`;
+}
+
+/* ---------- Scorecard ---------- */
+function scoreFor(vid){
+  const sites=db.sites.filter(s=>s.vendorId===vid&&s.initiation.poAccepted&&diff(s.startDate,TODAY)>=0);
+  const cs=sites.map(s=>[s,calc(s)]);
+  const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:1;
+  const ot=avg(cs.map(([s,c])=>Math.max(0,1-c.ldDays/10)));
+  const passed=sites.flatMap(s=>s.gates.filter(g=>g.status==='passed'||g.status==='rework'));
+  const ft=passed.length?passed.filter(g=>g.status==='passed'&&g.attempts===1).length/passed.length:1;
+  const snags=sites.length?sites.reduce((a,s)=>a+s.snags.length,0)/sites.length:0;
+  const q=Math.max(0,ft-Math.max(0,snags-1)*0.05);
+  const lapses=sites.reduce((a,s)=>a+s.updates.filter(u=>u.ppe===false).length,0);
+  const saf=Math.max(0,1-lapses*0.25);
+  let e=0,sub=0;cs.forEach(([s,c])=>{e+=c.expected;sub+=c.submitted});
+  const dis=e?Math.min(1,sub/e):1;
+  return {n:sites.length,ot,q,ft,snags,saf,lapses,dis,sub,e,total:ot*40+q*30+saf*15+dis*15};
+}
+function renderScorecard(){
+  const isPM=ui.user.role==='pm';
+  const list=(isPM?VENDORS:VENDORS.filter(v=>v.id===ui.user.id)).map(v=>[v,scoreFor(v.id)]).sort((a,b)=>b[1].total-a[1].total);
+  const pc=x=>Math.round(x*100)+'%';
+  const cell=(x,w)=>`<td class="r"><b>${(x*w).toFixed(1)}</b><span class="muted"> / ${w}</span></td>`;
+  return `<main><div class="wrap stack">
+   <div><div class="eyebrow">Reviewed every quarter · top scorers get more sites</div><h1>${isPM?'Vendor scorecard':'My scorecard'}</h1></div>
+   <div class="tbl"><table><thead><tr><th>Vendor</th><th class="r">Sites</th><th class="r">On-time handover · 40</th><th class="r">Quality · 30</th><th class="r">Safety · 15</th><th class="r">Update discipline · 15</th><th class="r">Score</th></tr></thead><tbody>
+   ${list.map(([v,s],i)=>`<tr><td><b>${esc(v.name)}</b>${isPM&&i===0?' <span class="pill ontrack">Top</span>':''}</td><td class="r">${s.n}</td>
+    ${cell(s.ot,40)}${cell(s.q,30)}${cell(s.saf,15)}${cell(s.dis,15)}<td class="r"><span class="score num">${s.total.toFixed(0)}</span></td></tr>
+    <tr><td colspan="7" class="small muted">Gates passed first time ${pc(s.ft)} · ${s.snags.toFixed(1)} snags per site · ${s.lapses} PPE lapse${s.lapses===1?'':'s'} · ${s.sub} of ${s.e} daily updates on record</td></tr>`).join('')}
+   </tbody></table></div>
+   <p class="small muted">Weights are the proposed values from the vendor meet. On-time: 10% lost per day of delay. Quality: share of gates passed first time, less 5 points per snag above one per site. Safety: 25% lost per PPE lapse. Discipline: daily updates on record against days worked.</p>
+  </div></main>`;
+}
+
+/* ---------- Site view ---------- */
+const TABS=[['overview','Overview'],['init','Project initiation'],['update','Daily update'],['schedule','Schedule'],['gates','Quality gates'],['pay','Payments'],['handover','Handover'],['issues','Snags & hindrances']];
+function renderSite(){
+  const s=site(),c=calc(s),v=VENDORS.find(x=>x.id===s.vendorId);
+  const t=ui.tab;
+  const body={overview:tabOverview,init:tabInit,update:tabUpdate,schedule:tabSchedule,gates:tabGates,pay:tabPay,handover:tabHandover,issues:tabIssues}[t](s,c);
+  return `<div class="sitehead"><div class="wrap">
+   <button class="back" data-act="nav" data-v="home">← ${ui.user.role==='pm'?'Portfolio':'My sites'}</button>
+   <div class="row between" style="align-items:flex-end">
+    <div><div class="row"><span class="mono">${esc(s.ca)}</span>${pill(c.status)}<span class="small muted">${varianceText(c)}</span></div>
+     <h1>${esc(s.name)}</h1><div class="small muted">${esc(s.city)} · ${esc(s.brand)} · ${esc(s.type)} · ${esc(v.name)} · ${esc(s.poNo)}</div></div>
+    <div class="row" style="gap:22px">
+     <div><div class="eyebrow">Progress</div><div class="num"><b style="font-size:18px">${Math.round(c.actual)}%</b> <span class="muted">plan ${Math.round(c.plannedNow)}%</span></div></div>
+     <div><div class="eyebrow">Day</div><div class="num"><b style="font-size:18px">${s.handedOverOn?'Done':c.day>=1?c.day:'–'}</b> <span class="muted">of ${c.D}</span></div></div>
+     <div><div class="eyebrow">Handover</div><div class="num"><b style="font-size:18px">${fmtD(s.handedOverOn||c.target)}</b></div></div>
+    </div></div>
+   <nav class="tabs">${TABS.map(([k,l])=>`<button data-act="tab" data-v="${k}" class="${t===k?'on':''}">${l}</button>`).join('')}</nav>
+  </div></div><main><div class="wrap stack">${body}</div></main>`;
+}
+
+function scurve(s,c){
+  const W=1000,H=280,L=40,R=14,T=14,B=28,iw=W-L-R,ih=H-T-B,D=c.D;
+  const x=d=>L+d/D*iw,y=v=>T+ih-v/100*ih;
+  let pp='';for(let d=0;d<=D;d+=0.5)pp+=(d?'L':'M')+x(d).toFixed(1)+' '+y(planned(c.P,d)).toFixed(1);
+  const pts=[[0,0]].concat(c.ups.filter(u=>u.day<=D).map(u=>[u.day,overall(c.P,u.prog)]));
+  const ap=pts.map((p,i)=>(i?'L':'M')+x(p[0]).toFixed(1)+' '+y(p[1]).toFixed(1)).join('');
+  const lastp=pts[pts.length-1];
+  let g='';[0,25,50,75,100].forEach(v=>{g+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end">${v}%</text>`});
+  for(let d=0;d<=D;d+=5)g+=`<text x="${x(d)}" y="${H-8}" text-anchor="middle">D${d}</text>`;
+  const td=s.handedOverOn?null:clamp(c.refDay,0,D);
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Planned versus actual progress">${g}
+   ${td!==null&&c.day>=1?`<line x1="${x(td)}" x2="${x(td)}" y1="${T}" y2="${T+ih}" stroke="var(--bad)" stroke-width="1.5"/><text x="${x(td)+4}" y="${T+10}">Today</text>`:''}
+   <path d="${pp}" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="5 4"/>
+   <path d="${ap} L${x(lastp[0])} ${y(0)} L${x(0)} ${y(0)}Z" fill="var(--accent)" opacity=".12"/>
+   <path d="${ap}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>
+   <circle cx="${x(lastp[0])}" cy="${y(lastp[1])}" r="4" fill="var(--accent)"/></svg>
+   <div class="row small muted" style="gap:16px"><span>— — Planned</span><span style="color:var(--accent)">━ Actual (from daily updates)</span></div>`;
+}
+
+function tabOverview(s,c){
+  const m=money(s,c);const v=VENDORS.find(x=>x.id===s.vendorId);
+  const lastU=c.last;
+  return `${c.status==='late'?`<div class="note bad"><b>Late.</b> ${c.behind} days behind plan${c.missed>=2?`, ${c.missed} updates missed`:''}. Escalated to the vendor owner. Delay penalty exposure ${inr(c.ld)} (0.5% of PO per day, max 10%) plus opportunity cost.</div>`:c.status==='risk'?`<div class="note warn"><b>At risk.</b> ${c.behind} day${c.behind>1?'s':''} behind. Call with vendor; catch-up plan due within 24 hours.</div>`:''}
+  <div class="grid g2">
+   <div class="card"><h3>Estimated budget</h3>
+    <div class="row between" style="margin-top:10px"><div><div class="eyebrow">PO value (master rate contract)</div><div class="kpi" style="padding:0"><div class="v num">${inr(s.poValue)}</div></div></div>
+     <div style="text-align:right"><div class="eyebrow">Certified to date</div><b class="num">${inr(m.cert)}</b> <span class="muted">(${m.certPct}%)</span></div></div>
+    <div class="bar" style="margin:10px 0 14px"><i style="width:${m.certPct}%;background:var(--ok)"></i></div>
+    <dl class="kv">${BOQ_HEADS.map(([n,f])=>`<dt>${n}</dt><dd>${inr(s.poValue*f)}</dd>`).join('')}</dl>
+    ${c.ld>0?`<div class="note bad" style="margin-top:12px">Delay penalty exposure: <b>${inr(c.ld)}</b> (${c.ldDays} day${c.ldDays>1?'s':''})</div>`:''}
+   </div>
+   <div class="card"><h3>Key dates</h3>
+    <dl class="kv" style="margin-top:10px">
+     <dt>PO issued</dt><dd>${fmtDY(s.poDate)}</dd>
+     <dt>PO accepted</dt><dd>${s.initiation.poAccepted?fmtDY(s.initiation.acceptedOn):'<span style="color:var(--bad)">Pending · due '+fmtD(addDays(s.poDate,2))+'</span>'}</dd>
+     <dt>Start (as per PO)</dt><dd>${fmtDY(s.startDate)}</dd>
+     <dt>Standard duration</dt><dd>${c.D} days (${s.type})</dd>
+     <dt>Extension (signed hindrances)</dt><dd>${c.ext} day${c.ext===1?'':'s'}</dd>
+     <dt><b>Target handover</b></dt><dd><b>${fmtDY(c.target)}</b></dd>
+     <dt>Forecast</dt><dd style="color:${c.behind?'var(--bad)':'inherit'}">${fmtDY(c.forecast)}</dd>
+     ${s.handedOverOn?`<dt>Handed over</dt><dd>${fmtDY(s.handedOverOn)}</dd>`:''}
+    </dl></div>
+  </div>
+  <div class="card"><div class="row between"><h3>Planned vs actual</h3><button class="btn sm" data-act="tab" data-v="schedule">Phase view</button></div><div style="margin-top:8px">${scurve(s,c)}</div></div>
+  <div class="grid g2">
+   <div class="card"><h3>Latest update</h3>${lastU?`<div class="small muted" style="margin-top:6px">${fmtDY(lastU.date)} · Day ${lastU.day} · ${lastU.manpower} on site</div><p style="margin-top:6px">${esc(lastU.note)}</p>${lastU.material?`<p class="small">Material: ${esc(lastU.material)}</p>`:''}<div style="margin-top:8px">${thumbs(lastU)}</div>`:'<p class="muted">No updates yet.</p>'}</div>
+   <div class="card"><h3>People</h3>
+    <dl class="kv" style="margin-top:10px"><dt>Vendor</dt><dd>${esc(v.name)}</dd><dt>Site supervisor</dt><dd>${s.supervisor.name?esc(s.supervisor.name)+' · '+esc(s.supervisor.phone):'<span style="color:var(--bad)">Not named</span>'}</dd><dt>Blue Tokai PM</dt><dd>${esc(s.pm)}</dd></dl>
+    <div class="eyebrow" style="margin:14px 0 6px">Escalation matrix</div>
+    <div class="esc">${ESC.map(([a,b])=>`<div><b>${a}</b>${b}</div>`).join('')}</div>
+    <p class="small muted" style="margin-top:8px">Move up a level if a query is not resolved in 24 hours. If work has stopped, escalate immediately.</p>
+   </div></div>`;
+}
+function thumbs(u){const n=(u.photos||[]).length;return `<div class="thumbs">${(u.photos||[]).map(p=>`<img src="${p}" alt="Site photo">`).join('')}${Array.from({length:u.seedPhotos||0},()=>`<div class="ph">photo</div>`).join('')}${!n&&!u.seedPhotos?'<span class="small muted">No photos</span>':''}</div>`}
+
+function tabInit(s,c){
+  const isV=ui.user.role==='vendor',I=s.initiation;const dl=addDays(s.poDate,2);
+  const overdue=!I.poAccepted&&diff(dl,TODAY)>0;
+  return `<div class="note">Accept the PO and confirm the start date on your letterhead within 2 days. Start does not wait for the advance. Build exactly to the approved design using approved makes only.</div>
+  <form id="initForm" class="grid g2">
+   <div class="card"><h3>1 · PO acceptance</h3>
+    <dl class="kv" style="margin-top:10px"><dt>PO number</dt><dd class="mono">${esc(s.poNo)}</dd><dt>PO value</dt><dd>${inr(s.poValue)}</dd><dt>PO date</dt><dd>${fmtDY(s.poDate)}</dd><dt>Accept by</dt><dd style="color:${overdue?'var(--bad)':'inherit'}">${fmtDY(dl)}</dd></dl>
+    <label class="f" style="margin-top:12px"><span>Confirmed start date</span><input type="date" id="i_start" value="${s.startDate}" ${!isV||I.poAccepted?'disabled':''}></label>
+    <div style="margin-top:12px">${I.poAccepted?`<div class="note ok">Accepted on ${fmtDY(I.acceptedOn)}. Start date ${fmtDY(s.startDate)}.</div>`:isV?`<button class="btn primary" type="button" data-act="acceptPO">Accept PO and confirm start date</button>`:`<div class="note warn">Waiting for vendor acceptance.</div>`}</div>
+   </div>
+   <div class="card"><h3>2 · People on site</h3>
+    <div class="stack" style="gap:10px;margin-top:10px">
+    <label class="f"><span>Named full-time supervisor</span><input type="text" id="i_sup" value="${esc(s.supervisor.name)}" ${isV?'':'disabled'} placeholder="Full name"></label>
+    <label class="f"><span>Supervisor phone</span><input type="tel" id="i_ph" value="${esc(s.supervisor.phone)}" ${isV?'':'disabled'}></label>
+    <label class="f"><span>Planned crew size</span><input type="number" id="i_crew" min="1" value="${s.crew}" ${isV?'':'disabled'}></label></div>
+   </div>
+   <div class="card"><h3>3 · Material delivery plan</h3><p class="small muted" style="margin-top:4px">Small sites: deliver in lots as each stage needs it. Pre-fabricate carpentry in the workshop.</p>
+    <textarea id="i_dp" style="margin-top:8px;min-height:110px" ${isV?'':'disabled'} placeholder="Lot 1 (D1): …">${esc(s.deliveryPlan)}</textarea></div>
+   <div class="card"><h3>4 · Mobilisation checklist</h3>
+    <div class="eyebrow" style="margin-top:10px">Vendor</div>
+    ${INIT_V.map(([k,l])=>`<label class="check"><input type="checkbox" data-init="v" data-k="${k}" ${I.v[k]?'checked':''} ${isV?'':'disabled'}><span>${l}</span></label>`).join('')}
+    <div class="eyebrow" style="margin-top:12px">Blue Tokai</div>
+    ${INIT_B.map(([k,l])=>`<label class="check"><input type="checkbox" data-init="b" data-k="${k}" ${I.b[k]?'checked':''} ${isV?'disabled':''}><span>${l}</span></label>`).join('')}
+   </div>
+   ${isV?`<div><button class="btn primary" type="submit">Save initiation details</button></div>`:''}
+  </form>`;
+}
+
+function tabUpdate(s,c){
+  const isV=ui.user.role==='vendor';
+  let form='';
+  if(isV&&!s.handedOverOn){
+    if(!s.initiation.poAccepted||c.day<1)form=`<div class="note">Daily updates open on the start date (${fmtDY(s.startDate)}).</div>`;
+    else{
+      const prev=c.last?c.last.prog:{};const tu=c.updatedToday?c.last:null;const base=tu?tu.prog:prev;
+      const dayNow=Math.min(c.day,c.D);
+      const show=c.P.filter(p=>p.s<=dayNow+3||(base[p.k]||0)>0);
+      form=`<form id="updForm" class="card"><div class="row between"><h3>Today · ${fmtDY(TODAY)} · Day ${c.day}</h3>${tu?`<span class="pill ontrack">Submitted ${fmtT(tu.at)}</span>`:`<span class="pill ${after7()?'late':'risk'}">${after7()?'Overdue':'Due by 7 pm'}</span>`}</div>
+       <p class="small muted" style="margin-top:4px">Planned vs actual: move each activity to its cumulative % complete as of today.</p>
+       <div style="margin-top:8px">${show.map(p=>{const pl=Math.round(plannedFrac(p,dayNow)*100),val=base[p.k]||0;return `<div class="phaseinp"><div><b>${p.n}</b><div class="small muted">D${p.s}–${p.e} · plan today ${pl}%</div><input type="range" min="0" max="100" step="5" id="pr_${p.k}" value="${val}" data-out="po_${p.k}"></div><div class="row" style="justify-content:flex-end;gap:6px"><b class="num" id="po_${p.k}" style="font-size:18px">${val}%</b>${val<pl?'<span class="small" style="color:var(--warn)">▼</span>':''}</div></div>`}).join('')}</div>
+       <div class="grid g3" style="margin-top:14px">
+        <label class="f"><span>Manpower on site (plan ${s.crew})</span><input type="number" id="u_mp" min="0" value="${tu?tu.manpower:s.crew}"></label>
+        <label class="f"><span>Material received today</span><input type="text" id="u_mat" value="${esc(tu?tu.material:'')}" placeholder="e.g. Tiles lot 2"></label>
+        <label class="f"><span>Work done today</span><input type="text" id="u_note" value="${esc(tu?tu.note:'')}" placeholder="e.g. Flooring 60% of seating area"></label>
+       </div>
+       <label class="check" style="margin-top:8px"><input type="checkbox" id="u_sup" ${!tu||tu.sup?'checked':''}><span>Named supervisor on site full day</span></label>
+       <label class="check"><input type="checkbox" id="u_ppe" ${!tu||tu.ppe?'checked':''}><span>PPE worn by everyone today</span></label>
+       <label class="f" style="margin-top:10px"><span>Hindrance needing Blue Tokai's help (goes to the hindrance register)</span><textarea id="u_hin" placeholder="Leave blank if none"></textarea></label>
+       <div style="margin-top:10px"><label class="f"><span>Site photos</span><input type="file" accept="image/*" multiple data-photos="upd"></label><div class="thumbs" id="prev-upd" style="margin-top:6px">${(ui.pending.upd||[]).map(p=>`<img src="${p}" alt="">`).join('')}</div></div>
+       <div class="row" style="margin-top:14px"><button class="btn primary" type="submit">${tu?'Update today\'s report':'Submit daily update'}</button><span class="small muted">Simple rule: if it is not on record, the delay is the vendor's.</span></div>
+      </form>`;
+    }
+  }
+  // history
+  const ups=c.ups.slice().reverse();
+  let log='';
+  if(c.day>=1){
+    const map=new Map(ups.map(u=>[u.date,u]));
+    const end=s.handedOverOn?addDays(s.startDate,c.D-1):TODAY;
+    let d=end;let n=0;
+    while(diff(s.startDate,d)>=0&&n<60){const u=map.get(d);const dn=diff(s.startDate,d)+1;
+      if(u){log+=`<div class="logi"><div><b>${fmtD(d)}</b><div class="small muted">Day ${dn}</div></div><div><div class="row between"><span>${esc(u.note)}</span><span class="num small"><b>${Math.round(overall(c.P,u.prog))}%</b> <span class="muted">plan ${Math.round(planned(c.P,Math.min(dn,c.D)))}%</span></span></div>
+        <div class="small muted">${u.manpower} on site${u.sup?'':' · <span style="color:var(--bad)">no supervisor</span>'}${u.ppe?'':' · <span style="color:var(--bad)">PPE lapse</span>'}${u.material?' · Material: '+esc(u.material):''} · submitted ${fmtT(u.at)}</div>${u.hindrance?`<div class="small" style="color:var(--warn)">Hindrance: ${esc(u.hindrance)}</div>`:''}<div style="margin-top:6px">${thumbs(u)}</div></div></div>`}
+      else if(d!==TODAY||after7())log+=`<div class="logi miss"><div><b>${fmtD(d)}</b><div class="small">Day ${dn}</div></div><div><b>No update.</b> Counted as no progress.</div></div>`;
+      d=addDays(d,-1);n++}
+  }
+  return `${form}<div class="card"><div class="row between"><h3>Update log</h3><span class="small muted">${c.submitted} of ${c.expected} days on record</span></div><div class="log" style="margin-top:6px">${log||'<p class="muted">No updates yet.</p>'}</div></div>`;
+}
+
+function tabSchedule(s,c){
+  const D=c.D,td=s.handedOverOn?null:clamp(c.refDay,0,D);
+  const pctX=d=>(d/D*100).toFixed(2)+'%';
+  const ticks=[];for(let d=0;d<=D;d+=5)ticks.push(`<span style="left:${pctX(d)}">D${d}</span>`);
+  return `<div class="card"><div class="row between"><h3>Standard ${D}-day plan · ${esc(s.type)}</h3><span class="small muted">Dashed: planned window · Filled: actual % complete${td!==null?' · Red line: today':''}</span></div>
+   <div class="gantt" style="margin-top:14px">${c.P.map(p=>{const a=c.prog[p.k]||0,pl=Math.round(plannedFrac(p,td??D)*100);
+    return `<div class="grow"><div><b>${p.n}</b><div class="small muted">D${p.s}–${p.e} · weight ${p.w}%</div></div>
+     <div class="gtrack"><div class="gplan" style="left:${pctX(p.s-1)};width:${pctX(p.e-p.s+1)}"></div><div class="gact" style="left:${pctX(p.s-1)};width:calc(${pctX(p.e-p.s+1)} * ${a/100})"></div>${td!==null&&c.day>=1?`<div class="gtoday" style="left:${pctX(td)}"></div>`:''}</div>
+     <div class="num small" style="text-align:right;color:${a<pl?'var(--warn)':'inherit'}"><b>${a}%</b></div></div>`}).join('')}
+    <div class="gaxis"><span></span><div class="ticks">${ticks.join('')}</div><span></span></div></div></div>
+   <div class="card"><h3>Planned vs actual</h3><div style="margin-top:8px">${scurve(s,c)}</div></div>`;
+}
+
+function tabGates(s,c){
+  const isV=ui.user.role==='vendor';
+  const g=s.gates.find(x=>x.id===ui.gate)||s.gates[0];const def=GATES.find(x=>x.id===g.id);
+  const ph=c.P.find(p=>p.k===def.ph);
+  const lbl={open:'Not submitted',submitted:'Awaiting inspection',passed:'Passed',rework:'Rework'};
+  const editable=isV&&(g.status==='open'||g.status==='rework')&&!s.handedOverOn;
+  const allTicked=def.items.every((_,i)=>g.checks[i]);
+  const due=g.submittedAt?g.submittedAt+24*3600e3:null;
+  return `<div class="note">How each gate works: vendor supervisor self-checks and uploads photos → Blue Tokai inspects within 24 hours → sign-off to move to the next stage. Quality checks start with you, not with our snag list.</div>
+  <div class="gates"><div class="gatelist">${s.gates.map(x=>{const d=GATES.find(y=>y.id===x.id);return `<button class="gatebtn ${x.id===g.id?'on':''}" data-act="gate" data-v="${x.id}"><span class="gnum ${x.status}">${x.id[1]}</span><span><b>${d.n}</b><div class="small muted">${lbl[x.status]}</div></span><span class="small muted">${x.status==='passed'&&x.attempts===1?'1st time':''}</span></button>`}).join('')}</div>
+  <div class="card stack" style="gap:12px">
+   <div class="row between"><div><div class="eyebrow">Gate ${g.id[1]} · around day ${ph.e}</div><h2>${def.n}</h2></div><span class="pill ${g.status==='passed'?'ontrack':g.status==='rework'?'late':g.status==='submitted'?'risk':'po'}">${lbl[g.status]}</span></div>
+   ${g.status==='rework'?`<div class="note bad"><b>Inspection remarks:</b> ${esc(g.remarks)}<div class="small" style="margin-top:4px">Rework at vendor's cost. Quality penalty: 1% of PO (first), 2% (repeat).</div></div>`:''}
+   ${g.status==='submitted'?`<div class="note warn">Submitted ${fmtT(g.submittedAt)}. Inspection due by ${fmtT(due)}${Date.now()>due?' (overdue)':''}.</div>`:''}
+   ${g.status==='passed'&&g.inspectedAt?`<div class="note ok">Signed off ${fmtT(g.inspectedAt)}${g.attempts>1?` after ${g.attempts} attempts`:' first time'}.${g.remarks?' '+esc(g.remarks):''}</div>`:''}
+   <div><div class="eyebrow">Vendor self-check</div>${def.items.map((it,i)=>`<label class="check"><input type="checkbox" data-gcheck="${i}" ${g.checks[i]?'checked':''} ${editable?'':'disabled'}><span>${esc(it)}</span></label>`).join('')}</div>
+   <div><div class="eyebrow">Photos</div><div style="margin-top:6px">${thumbs(g)}</div>
+    ${editable?`<input type="file" accept="image/*" multiple data-photos="gate" style="margin-top:8px"><div class="thumbs" id="prev-gate" style="margin-top:6px">${(ui.pending.gate||[]).map(p=>`<img src="${p}" alt="">`).join('')}</div>`:''}</div>
+   ${editable?`<div class="row"><button class="btn primary" data-act="submitGate" ${allTicked?'':'disabled'}>Submit for inspection</button>${allTicked?'':'<span class="small muted">Tick every item to submit.</span>'}</div>`:''}
+   ${!isV&&g.status==='submitted'?`<label class="f"><span>Inspection remarks</span><textarea id="g_rem" placeholder="Required when sending back for rework"></textarea></label>
+     <div class="row"><button class="btn ok" data-act="passGate">Pass and sign off</button><button class="btn danger" data-act="reworkGate">Send back for rework</button></div>`:''}
+  </div></div>`;
+}
+
+function tabPay(s,c){
+  const isPM=ui.user.role==='pm';const m=money(s,c);
+  return `<div class="grid g4">${kpi(inr(s.poValue),'PO value')}${kpi(inr(m.cert),`Certified (${m.certPct}%)`)}${kpi(inr(s.poValue-m.cert),'Balance')}${kpi(inr(c.ld),'Delay penalty exposure')}</div>
+  <div class="tbl"><table><thead><tr><th>Milestone</th><th class="r">%</th><th class="r">Amount</th><th>Linked to</th><th>Status</th><th></th></tr></thead><tbody>
+  ${PAY.map(p=>{const st=payState(s,p,c);return `<tr><td><b>${p.n}</b></td><td class="r">${p.pct}%</td><td class="r">${inr(p.pct/100*s.poValue)}</td><td class="small">${p.cond}</td>
+   <td>${st.st==='certified'?`<span class="pill ontrack">Certified</span><div class="small muted">${st.why.replace('Certified ','')}</div>`:st.st==='eligible'?'<span class="pill risk">Ready to certify</span>':`<span class="pill po">Locked</span><div class="small muted">${esc(st.why)}</div>`}</td>
+   <td>${isPM&&st.st==='eligible'?`<button class="btn sm ok" data-act="certify" data-id="${s.id}" data-p="${p.id}">Certify</button>`:''}${!isPM&&p.id==='p4'&&s.handedOverOn&&!s.finalBill?`<button class="btn sm" data-act="finalBill">Submit final bill</button>`:''}</td></tr>`}).join('')}
+  </tbody></table></div>
+  <div class="card"><h3>Consequences, same for everyone</h3><div class="tbl" style="margin-top:10px"><table><tbody>
+   <tr><td>Delay in handover</td><td>0.5% of PO value per day, up to 10%, plus the brand's opportunity cost</td></tr>
+   <tr><td>Quality issue</td><td>Rework at vendor cost + 1% (first) or 2% (repeat) of PO value; payments held</td></tr>
+   <tr><td>Deviation from design or make</td><td>Demolish and redo at vendor cost + 1% penalty</td></tr>
+   <tr><td>Safety / PPE not followed</td><td>₹50,000 per instance per day</td></tr>
+   <tr><td>Defects after handover</td><td>Attend within 48 hours for 12 months, else recovered from retention</td></tr></tbody></table></div></div>`;
+}
+
+function tabHandover(s,c){
+  const isV=ui.user.role==='vendor';
+  const done=HO_KEYS.filter(k=>s.handover[k]).length;
+  const crit=HANDOVER.flatMap(g=>g.items.filter(i=>i[2]));const critDone=crit.filter(i=>s.handover[i[0]]).length;
+  const openCrit=s.snags.filter(x=>x.crit&&x.status!=='closed').length;
+  const g5=gateStatus(s,'g5');
+  const canHand=!isV&&!s.handedOverOn&&g5==='passed'&&!openCrit;
+  return `<div class="grid g4">${kpi(fmtD(s.handedOverOn||c.target),s.handedOverOn?'Handed over':'Target handover date')}${kpi(fmtD(c.forecast),'Forecast')}${kpi(`${done}/${HO_KEYS.length}`,'Checklist items done')}${kpi(`${critDone}/${crit.length}`,'Critical items done')}</div>
+  ${s.handedOverOn?`<div class="note ok">Handed over on ${fmtDY(s.handedOverOn)}. Defect liability: attend within 48 hours for 12 months.</div>`:
+   `<div class="note ${canHand?'ok':''}">Handover needs Gate 5 passed (now: ${g5==='passed'?'passed':g5==='submitted'?'awaiting inspection':'not passed'}) and no open critical snags (now: ${openCrit}). ${canHand?'<button class="btn sm ok" data-act="handover">Record handover today</button>':''}</div>`}
+  <div class="grid g2">${HANDOVER.map(g=>`<div class="card"><h3>${g.g}</h3><div>${g.items.map(([k,l,cr])=>`<label class="check"><input type="checkbox" data-ho="${k}" ${s.handover[k]?'checked':''} ${isV&&!s.handedOverOn?'':'disabled'}><span>${esc(l)}${cr?'<span class="crit">Critical</span>':''}</span></label>`).join('')}</div></div>`).join('')}</div>`;
+}
+
+function tabIssues(s,c){
+  const isV=ui.user.role==='vendor';
+  const stp={open:'late',fixed:'risk',closed:'ontrack'},stl={open:'Open',fixed:'Fixed · to verify',closed:'Closed'};
+  const hst={raised:['risk','Awaiting PM signature'],signed:['ontrack','Signed'],rejected:['late','Not accepted']};
+  return `<div class="card"><div class="row between"><h3>Snag list</h3><span class="small muted">${s.snags.filter(x=>x.status!=='closed').length} open</span></div>
+   <div class="tbl" style="margin-top:10px"><table><thead><tr><th>Snag</th><th>Trade</th><th>Raised</th><th>Status</th><th></th></tr></thead><tbody>
+   ${s.snags.length?s.snags.map(x=>`<tr><td>${esc(x.text)}${x.crit?'<span class="check"><span class="crit" style="margin:0">Critical</span></span>':''}</td><td class="small">${esc(x.trade)}</td><td>${fmtD(x.on)}</td><td><span class="pill ${stp[x.status]}">${stl[x.status]}</span></td>
+    <td>${isV&&x.status==='open'?`<button class="btn sm" data-act="snag" data-sid="${x.id}" data-v="fixed">Mark fixed</button>`:''}${!isV&&x.status==='fixed'?`<div class="row" style="gap:4px"><button class="btn sm ok" data-act="snag" data-sid="${x.id}" data-v="closed">Close</button><button class="btn sm" data-act="snag" data-sid="${x.id}" data-v="open">Reopen</button></div>`:''}</td></tr>`).join(''):'<tr><td colspan="5" class="muted">No snags.</td></tr>'}
+   </tbody></table></div>
+   ${!isV?`<form id="snagForm" class="grid g3" style="margin-top:12px;align-items:end"><label class="f"><span>New snag</span><input type="text" id="sn_t" required placeholder="What and where"></label>
+    <label class="f"><span>Trade</span><select id="sn_tr">${HANDOVER.map(g=>`<option>${g.g}</option>`).join('')}</select></label>
+    <div class="row"><label class="row small" style="gap:6px"><input type="checkbox" id="sn_c"> Critical</label><button class="btn primary" type="submit">Add snag</button></div></form>`:''}
+  </div>
+  <div class="card"><div class="row between"><h3>Hindrance register</h3><span class="small muted">If it is not on record, the delay is the vendor's.</span></div>
+   <div class="tbl" style="margin-top:10px"><table><thead><tr><th>Hindrance</th><th>Raised</th><th>Status</th><th class="r">Extension</th><th></th></tr></thead><tbody>
+   ${s.hindrances.length?s.hindrances.map(h=>`<tr><td>${esc(h.text)}</td><td>${fmtD(h.on)}</td><td><span class="pill ${hst[h.status][0]}">${hst[h.status][1]}</span></td><td class="r">${h.status==='signed'?h.ext+' d':'—'}</td>
+    <td>${!isV&&h.status==='raised'?`<div class="row" style="gap:4px"><input type="number" min="0" max="15" value="1" id="ext_${h.id}" style="width:64px" aria-label="Extension days"><button class="btn sm ok" data-act="hind" data-hid="${h.id}" data-v="signed">Sign</button><button class="btn sm" data-act="hind" data-hid="${h.id}" data-v="rejected">Reject</button></div>`:''}</td></tr>`).join(''):'<tr><td colspan="5" class="muted">None recorded.</td></tr>'}
+   </tbody></table></div>
+   ${isV&&!s.handedOverOn?`<form id="hindForm" class="row" style="margin-top:12px;align-items:end"><label class="f" style="flex:1;min-width:220px"><span>Raise a hindrance</span><input type="text" id="hn_t" required placeholder="e.g. Drawing revision awaited for back counter"></label><button class="btn primary" type="submit">Raise</button></form>`:''}
+  </div>`;
+}
+
+/* ============ Events ============ */
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-act]');if(!t)return;
+  const a=t.dataset.act;const s=site();
+  if(a==='lrole'){ui.loginRole=t.dataset.v;render();return}
+  if(a==='nav'){ui.view=t.dataset.v;ui.siteId=null;render();scrollTo(0,0);return}
+  if(a==='open'){ui.siteId=t.dataset.id;ui.view='site';ui.tab=t.dataset.tab||'overview';if(t.dataset.gate)ui.gate=t.dataset.gate;else ui.gate=firstGate(site());ui.pending={};render();scrollTo(0,0);return}
+  if(a==='tab'){ui.tab=t.dataset.v;if(ui.tab==='gates')ui.gate=firstGate(s);ui.pending={};render();return}
+  if(a==='gate'){ui.gate=t.dataset.v;ui.pending={};render();return}
+  if(a==='filter'){ui.filter=t.dataset.v;render();return}
+  if(a==='logout'){ui.user=null;saveUser();ui.view='home';ui.siteId=null;render();return}
+  if(a==='reset'){if(t.dataset.confirm){db=seed();save();ui.view='home';ui.siteId=null;render();toast('Sample data restored.')}else{t.dataset.confirm='1';t.textContent='Click again to reset';t.classList.add('danger');setTimeout(()=>{if(t.isConnected){delete t.dataset.confirm;t.textContent='Reset data';t.classList.remove('danger')}},3000)}return}
+  if(a==='acceptPO'){const d=document.getElementById('i_start').value;if(!d){toast('Pick a start date.');return}
+    if(diff(s.poDate,d)<0){toast('Start date cannot be before the PO date.');return}
+    s.startDate=d;s.initiation.poAccepted=true;s.initiation.acceptedOn=TODAY;readInitForm(s);save();render();toast('PO accepted. 20% On-PO milestone is ready for certification.');return}
+  if(a==='submitGate'){const g=s.gates.find(x=>x.id===ui.gate);g.photos=g.photos.concat(ui.pending.gate||[]);ui.pending.gate=[];g.status='submitted';g.attempts++;g.submittedAt=Date.now();save();render();toast('Submitted. Blue Tokai inspects within 24 hours.');return}
+  if(a==='passGate'){const g=s.gates.find(x=>x.id===ui.gate);g.status='passed';g.inspectedAt=Date.now();g.remarks=document.getElementById('g_rem').value.trim();save();render();toast('Gate signed off.');return}
+  if(a==='reworkGate'){const rem=document.getElementById('g_rem').value.trim();if(!rem){toast('Add remarks so the vendor knows what to fix.');return}
+    const g=s.gates.find(x=>x.id===ui.gate);g.status='rework';g.inspectedAt=Date.now();g.remarks=rem;save();render();toast('Sent back for rework.');return}
+  if(a==='certify'){const st=db.sites.find(x=>x.id===t.dataset.id);st.payments[t.dataset.p]={on:TODAY};save();render();toast('Milestone certified for payment.');return}
+  if(a==='finalBill'){s.finalBill=true;save();render();toast('Final bill submitted.');return}
+  if(a==='handover'){s.handedOverOn=TODAY;save();render();toast('Handover recorded.');return}
+  if(a==='snag'){const x=s.snags.find(z=>z.id===t.dataset.sid);x.status=t.dataset.v;save();render();return}
+  if(a==='hind'){const h=s.hindrances.find(z=>z.id===t.dataset.hid);h.status=t.dataset.v;if(h.status==='signed')h.ext=+(document.getElementById('ext_'+h.id).value||0);save();render();toast(h.status==='signed'?`Signed. Handover extended by ${h.ext} day${h.ext===1?'':'s'}.`:'Hindrance not accepted.');return}
+});
+function firstGate(s){if(!s)return 'g1';const g=s.gates.find(x=>x.status==='submitted'||x.status==='rework')||s.gates.find(x=>x.status==='open');return g?g.id:'g5'}
+function readInitForm(s){
+  const v=id=>document.getElementById(id);
+  if(v('i_sup'))s.supervisor={name:v('i_sup').value.trim(),phone:v('i_ph').value.trim()};
+  if(v('i_crew'))s.crew=+v('i_crew').value||s.crew;
+  if(v('i_dp'))s.deliveryPlan=v('i_dp').value;
+}
+document.addEventListener('change',async e=>{
+  const t=e.target;const s=site();
+  if(t.dataset.init){s.initiation[t.dataset.init][t.dataset.k]=t.checked;save();return}
+  if(t.dataset.gcheck!==undefined){const g=s.gates.find(x=>x.id===ui.gate);g.checks[t.dataset.gcheck]=t.checked;save();const keep=ui.pending;render();ui.pending=keep;return}
+  if(t.dataset.ho){s.handover[t.dataset.ho]=t.checked;save();return}
+  if(t.dataset.photos){const key=t.dataset.photos;const out=[];for(const f of t.files){const p=await shrink(f);if(p)out.push(p)}
+    ui.pending[key]=(ui.pending[key]||[]).concat(out);const el=document.getElementById('prev-'+key);if(el)el.innerHTML=ui.pending[key].map(p=>`<img src="${p}" alt="">`).join('');t.value='';}
+});
+document.addEventListener('input',e=>{const t=e.target;if(t.dataset.out){const o=document.getElementById(t.dataset.out);if(o)o.textContent=t.value+'%'}});
+document.addEventListener('submit',e=>{
+  e.preventDefault();const f=e.target;const s=site();
+  if(f.id==='loginForm'){
+    if((ui.loginRole||'vendor')==='vendor'){const id=document.getElementById('lv').value,pin=document.getElementById('lp').value;const v=VENDORS.find(x=>x.id===id);
+      if(pin!==v.pin){document.getElementById('lerr').textContent='Wrong PIN. The demo PIN is 1234.';return}ui.user={role:'vendor',id}}
+    else ui.user={role:'pm',id:document.getElementById('lpm').value};
+    saveUser();ui.view='home';render();return}
+  if(f.id==='initForm'){readInitForm(s);save();render();toast('Initiation details saved.');return}
+  if(f.id==='updForm'){
+    const c=calc(s);const prog={...(c.last?c.last.prog:{})};
+    c.P.forEach(p=>{const el=document.getElementById('pr_'+p.k);if(el)prog[p.k]=+el.value});
+    const hin=document.getElementById('u_hin').value.trim();
+    const existing=s.updates.find(u=>u.date===TODAY);
+    const u={id:existing?existing.id:uid(),date:TODAY,day:c.day,prog,manpower:+document.getElementById('u_mp').value||0,sup:document.getElementById('u_sup').checked,ppe:document.getElementById('u_ppe').checked,
+      material:document.getElementById('u_mat').value.trim(),note:document.getElementById('u_note').value.trim()||'Work in progress',hindrance:hin,
+      photos:(existing?existing.photos:[]).concat(ui.pending.upd||[]),seedPhotos:0,at:Date.now()};
+    if(existing)Object.assign(existing,u);else s.updates.push(u);
+    if(hin)s.hindrances.push({id:uid(),text:hin,on:TODAY,status:'raised',ext:0});
+    ui.pending.upd=[];save();render();toast('Daily update submitted.');return}
+  if(f.id==='snagForm'){s.snags.push({id:uid(),text:document.getElementById('sn_t').value.trim(),trade:document.getElementById('sn_tr').value,crit:document.getElementById('sn_c').checked,status:'open',on:TODAY});save();render();toast('Snag added.');return}
+  if(f.id==='hindForm'){s.hindrances.push({id:uid(),text:document.getElementById('hn_t').value.trim(),on:TODAY,status:'raised',ext:0});save();render();toast('Hindrance raised for PM signature.');return}
+});
+function shrink(file){return new Promise(res=>{const img=new Image();const url=URL.createObjectURL(file);img.onload=()=>{const r=Math.min(1,480/Math.max(img.width,img.height));const cv=document.createElement('canvas');cv.width=Math.round(img.width*r);cv.height=Math.round(img.height*r);cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);URL.revokeObjectURL(url);res(cv.toDataURL('image/jpeg',.6))};img.onerror=()=>res(null);img.src=url})}
+
+render();
+</script>
+
+</body></html>

@@ -12,6 +12,8 @@ import App from '../App.jsx';
 const ScaleLandingPage = lazy(() => import('../modules/landing/ScaleLandingPage.jsx'));
 // Per-company customized login page reached via the workspace-code dialog.
 const BrandedLoginPage = lazy(() => import('../modules/landing/BrandedLoginPage.jsx'));
+// Vendor platform hand-off — a vendor code from the same dialog lands here.
+const VendorEntryPage = lazy(() => import('../modules/vendor/VendorEntryPage.jsx'));
 const OverviewPage = lazy(() => import('../modules/bd/overview/OverviewPage.jsx'));
 const DraftsPage = lazy(() => import('../modules/bd/drafts/DraftsPage.jsx'));
 const ShortlistPage = lazy(() => import('../modules/bd/shortlist/ShortlistPage.jsx'));
@@ -159,6 +161,14 @@ export default function AppRouter() {
       <Route path="/login/:code" element={
         <Suspense fallback={<LandingFallback/>}>
           <BrandedLoginPage/>
+        </Suspense>
+      }/>
+
+      {/* Vendor code (workspace-code dialog → here → public/vendor page).
+          Outside the auth tree: vendors hold no Matrix account or token. */}
+      <Route path={ROUTES.VENDOR_ENTRY} element={
+        <Suspense fallback={<LandingFallback/>}>
+          <VendorEntryPage/>
         </Suspense>
       }/>
 

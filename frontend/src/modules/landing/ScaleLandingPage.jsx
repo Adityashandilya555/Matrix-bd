@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import WorkspaceCodeDialog from './WorkspaceCodeDialog.jsx';
 import { useNavigate } from 'react-router-dom';
-import { PRODUCT_NAME } from '../../router/routes.js';
-import { signInWithWorkspaceCode } from '../../services/api/supabaseAuth.js';
+import { PRODUCT_NAME, vendorEntryRoute } from '../../router/routes.js';
+import { getWorkspaceBranding, signInWithWorkspaceCode } from '../../services/api/supabaseAuth.js';
+import { vendorWorkspaceFor } from '../../lib/vendorAccess.js';
 import { JOIN_MODE_KEYS, joinMode as joinModeConfig } from './joinModes.js';
 import { addWorkspaceCode } from '../../utils/workspaceStorage.js';
 import './ScaleLanding.css';
@@ -695,6 +696,26 @@ function AuthModal({ mode, onMode, onClose, prefillEmail, lockRegister = false }
     if (!email || !code) { showStatus('Enter your work email and workspace code.', 'error'); return; }
     if (!EMAIL_RE.test(email)) { showStatus('Email looks invalid. Use the format you@company.com.', 'error'); return; }
     if (!CODE_RE.test(code)) { showStatus('Workspace code looks invalid. Ask your supervisor for the exact code.', 'error'); return; }
+    // A vendor code typed here goes where the code dialog sends it — but only
+    // once the server confirms it is not a Matrix workspace, so a Matrix
+    // workspace always wins a collision. Non-vendor codes skip this entirely.
+    if (vendorWorkspaceFor(code)) {
+      setBusy(true);
+      try {
+        const branding = await getWorkspaceBranding(code);
+        if (branding?.found === false) {
+          addWorkspaceCode(code);
+          onClose();
+          navigate(vendorEntryRoute(code));
+          return;
+        }
+      } catch {
+        showStatus('Could not reach the server right now. Please try again.', 'error');
+        return;
+      } finally {
+        setBusy(false);
+      }
+    }
     setBusy(true);
     try {
       const data = await signInWithWorkspaceCode(email, code);
