@@ -165,16 +165,12 @@ async def login(payload: LoginIn, db: DbDep):
     row = await auth_repo.get_login_row(
         db, workspace_code=payload.workspace_code, email=payload.email,
     )
-    if row is None and tenancy_service.is_full_entropy_code(payload.workspace_code):
+    if row is None:
         # No tenant owns this code — it may be a vendor platform code. Checked
         # only after the tenant lookup misses, so a Matrix workspace always wins.
-        vendor_row = await auth_repo.get_vendor_login_row(
-            db, code=payload.workspace_code, email=payload.email,
-        )
-        if vendor_row is not None:
-            return await _vendor_login(payload, vendor_row)
-
-    if row is None:
+        vendor_response = await _vendor_login_or_none(payload, db)
+        if vendor_response is not None:
+            return vendor_response
         logger.info("login: unknown workspace_code=%r", payload.workspace_code)
         # A soft 202 was the only reply here because a 404 made this endpoint
         # a valid-code enumeration oracle (#84), back when codes carried 16
@@ -211,11 +207,7 @@ async def login(payload: LoginIn, db: DbDep):
 
     # 2b. A vendor platform account signs in with its vendor code, never with
     #     the tenant's workspace code — its home is /vendor, not the Matrix shell.
-    if row["role"] == "vendor":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This is a vendor account. Sign in with your vendor code instead.",
-        )
+    _refuse_vendor_account(row)
 
     # 3. Known user. If still inactive (no role assigned), keep them pending.
     if not row["is_active"]:
@@ -644,6 +636,30 @@ async def signup_vendor(payload: VendorSignupIn, db: DbDep) -> SignupAcceptedOut
     await db.commit()
     logger.info("signup: queued vendor tenant_id=%s vendor_id=%s", tenant_id, vendor_id)
     return SignupAcceptedOut(message="Signup received. Awaiting approval.", user_id=str(new_id))
+
+
+async def _vendor_login_or_none(payload: "LoginIn", db):
+    """Sign in through a vendor ENTRY code, or None when the code is not one.
+
+    Only full-entropy codes are tried, so the legacy short-code soft reply in
+    login() is unchanged. Split out of login() to keep it under the
+    complexity gate.
+    """
+    if not tenancy_service.is_full_entropy_code(payload.workspace_code):
+        return None
+    vendor_row = await auth_repo.get_vendor_login_row(db, code=payload.workspace_code, email=payload.email)
+    if vendor_row is None:
+        return None
+    return await _vendor_login(payload, vendor_row)
+
+
+def _refuse_vendor_account(row) -> None:
+    """A vendor account may not sign in with the tenant's workspace code."""
+    if row["role"] == "vendor":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This is a vendor account. Sign in with your vendor code instead.",
+        )
 
 
 async def _vendor_account(db, code: str, email: str):
