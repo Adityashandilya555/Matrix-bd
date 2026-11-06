@@ -8,7 +8,7 @@
 //   GET/PUT  /vendor-admin/templates/checklists          mobilisation checklist items
 //   GET/POST /vendor-admin/vendors                       vendor companies
 //   PATCH    /vendor-admin/vendors/{id}                  edit / suspend
-//   POST     /vendor-admin/vendors/{id}/codes/{kind}/rotate   entry | staff code
+//   POST     /vendor-admin/vendors/{id}/codes/staff/rotate    staff code
 //   POST     /vendor-admin/vendors/{id}/invite-owner     owner account
 //   GET      /vendor-admin/pending                       people waiting for approval
 //   POST     /vendor-admin/pending/{userId}/approve|reject
@@ -26,7 +26,6 @@ const id = (v) => encodeURIComponent(v);
 export const getVendorSettings = () => get('/vendor-admin/settings');
 export const updateVendorSettings = (s) => send('put', '/vendor-admin/settings', {
   admission_mode: s.admissionMode,
-  allow_self_signup: s.allowSelfSignup,
   update_cutoff_local: s.updateCutoffLocal,
   timezone: s.timezone,
   mall_duration_days: Number(s.mallDurationDays),

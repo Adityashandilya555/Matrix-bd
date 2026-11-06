@@ -109,7 +109,7 @@ async def update_vendor(vendor_id: str, body: VendorUpdateIn, user: BusinessAdmi
 
 @router.post("/vendors/{vendor_id}/codes/{kind}/rotate")
 async def rotate_code(vendor_id: str, kind: str, user: BusinessAdmin, db: DbDep) -> dict:
-    """Rotate a vendor's entry or staff code."""
+    """Rotate a vendor's staff code (the only code kind; vendors sign in with the workspace code)."""
     return await svc.rotate_code(db, tenant_id=user["tenant_id"], actor=user, vendor_id=vendor_id, kind=kind)
 
 

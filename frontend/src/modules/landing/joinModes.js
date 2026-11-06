@@ -50,7 +50,7 @@ export const JOIN_MODE_KEYS = ['supervisor', 'executive', 'observer'];
 
 // The one way to join a VENDOR workspace. Kept out of JOIN_MODES on purpose:
 // a Matrix workspace code must keep offering exactly the three modes above,
-// and a vendor code offers only this one (see BrandedLoginPage JoinPanel).
+// and the Vendor side of the login fork offers only this one (BrandedLoginPage JoinPanel).
 export const VENDOR_JOIN_MODE = {
   tab: 'As vendor staff',
   short: 'Vendor staff',

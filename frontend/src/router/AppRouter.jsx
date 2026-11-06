@@ -165,8 +165,10 @@ export default function AppRouter() {
         </Suspense>
       }/>
 
-      {/* Per-company customized login page (workspace-code dialog → here). */}
-      <Route path="/login/:code" element={
+      {/* Per-company customized login page (workspace-code dialog → here).
+          No :side → choose Retail or Vendor login; retail = the Matrix
+          sign-in; vendor = the workspace's vendor platform. */}
+      <Route path="/login/:code/:side?" element={
         <Suspense fallback={<LandingFallback/>}>
           <BrandedLoginPage/>
         </Suspense>

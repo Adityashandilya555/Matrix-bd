@@ -71,8 +71,8 @@ describe('BrandedLoginPage — the Join panel', () => {
     // The page reads the workspace code off the route and renders "Workspace
     // not found" without one.
     render(
-      <MemoryRouter initialEntries={['/login/BTOKAI']}>
-        <Routes><Route path="/login/:code" element={<BrandedLoginPage />} /></Routes>
+      <MemoryRouter initialEntries={['/login/BTOKAI/retail']}>
+        <Routes><Route path="/login/:code/:side?" element={<BrandedLoginPage />} /></Routes>
       </MemoryRouter>,
     );
     await userEvent.click(await screen.findByRole('tab', { name: /^join$/i }));

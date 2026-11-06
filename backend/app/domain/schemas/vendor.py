@@ -14,7 +14,6 @@ class VendorSettingsIn(BaseModel):
     """Everything a workspace can customise about its vendor platform."""
 
     admission_mode: Literal["owner_approves_staff", "admin_approves_all"]
-    allow_self_signup: bool = False
     update_cutoff_local: str = "19:00"
     timezone: str = "Asia/Kolkata"
     mall_duration_days: int = 40

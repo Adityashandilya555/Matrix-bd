@@ -1018,14 +1018,15 @@ CREATE TABLE IF NOT EXISTS public.vendor_users (
 );
 CREATE INDEX IF NOT EXISTS idx_vendor_users_vendor ON public.vendor_users (vendor_id);
 
--- entry = the code typed in the welcome page's code box (sign-in);
--- staff = the code site staff use on the Join tab. Revoke-then-insert on
--- rotation, like observer_codes; the old rows stay as history.
+-- staff = the code site staff enter on the Vendor side's Join tab of the
+-- workspace's login page (vendors sign in with the workspace code itself, then
+-- choose Vendor login). `kind` leaves room for other code kinds later.
+-- Revoke-then-insert on rotation, like observer_codes; old rows stay as history.
 CREATE TABLE IF NOT EXISTS public.vendor_codes (
     id          uuid NOT NULL DEFAULT uuid_generate_v4(),
     tenant_id   uuid NOT NULL,
     vendor_id   uuid NOT NULL,
-    kind        text NOT NULL,
+    kind        text NOT NULL DEFAULT 'staff',
     code        text NOT NULL,
     created_by  uuid,
     created_at  timestamp with time zone NOT NULL DEFAULT now(),
@@ -1034,7 +1035,7 @@ CREATE TABLE IF NOT EXISTS public.vendor_codes (
     CONSTRAINT vendor_codes_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
     CONSTRAINT vendor_codes_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id) ON DELETE CASCADE,
     CONSTRAINT vendor_codes_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id) ON DELETE SET NULL,
-    CONSTRAINT chk_vendor_codes_kind CHECK (kind IN ('entry', 'staff'))
+    CONSTRAINT chk_vendor_codes_kind CHECK (kind IN ('staff'))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_vendor_codes_live_per_kind
     ON public.vendor_codes (vendor_id, kind) WHERE revoked_at IS NULL;
@@ -1046,7 +1047,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_vendor_codes_live_code
 CREATE TABLE IF NOT EXISTS public.vendor_settings (
     tenant_id               uuid NOT NULL,
     admission_mode          text NOT NULL DEFAULT 'owner_approves_staff',
-    allow_self_signup       boolean NOT NULL DEFAULT false,
     update_cutoff_local     time NOT NULL DEFAULT '19:00',
     timezone                text NOT NULL DEFAULT 'Asia/Kolkata',
     mall_duration_days      integer NOT NULL DEFAULT 40,

@@ -257,77 +257,30 @@ async def insert_pending_signup(
 
 
 # ── Vendor platform (migration 20261104) ────────────────────────────────────
-# A vendor code is looked up only when no tenant owns the workspace_code, so a
-# Matrix workspace always wins. Every lookup requires a LIVE code
-# (revoked_at IS NULL) and, for sign-in, an active vendor.
+# Vendor accounts are vendor-role users of the tenant; they sign in on the
+# Vendor side of the login fork with the tenant's own workspace code, so the
+# tenant lookups above serve them too. These are the vendor-specific reads.
 
-async def get_vendor_entry(db: AsyncSession, code: str) -> Optional[RowMapping]:
-    """The vendor (and its tenant) behind a live ENTRY code, active or not."""
+async def get_vendor_join_code(db: AsyncSession, code: str, tenant_id: Any) -> Optional[RowMapping]:
+    """A live vendor STAFF code of THIS tenant, with the vendor's status.
+    Used only by /auth/signup/vendor; another tenant's code never matches."""
     return (await db.execute(
         text("""
-            SELECT vc.vendor_id, vc.tenant_id, v.name AS vendor_name, v.status AS vendor_status,
-                   t.name AS tenant_name, t.logo_url
+            SELECT vc.vendor_id, vc.tenant_id, v.status AS vendor_status
               FROM vendor_codes vc
               JOIN vendors v ON v.id = vc.vendor_id
-              JOIN tenants t ON t.id = vc.tenant_id
-             WHERE upper(vc.code) = upper(:code) AND vc.kind = 'entry' AND vc.revoked_at IS NULL
+             WHERE upper(vc.code) = upper(:code) AND vc.kind = 'staff'
+               AND vc.revoked_at IS NULL AND vc.tenant_id = :tid
         """),
-        {"code": code},
-    )).mappings().first()
-
-
-async def get_vendor_login_row(
-    db: AsyncSession, *, code: str, email: str,
-) -> Optional[RowMapping]:
-    """Resolve a vendor ENTRY code AND the (tenant, email) user in one query.
-
-    Mirrors get_login_row: None only when the code is unknown; a known code
-    with an email that is not a user of THIS vendor yields ``user_id`` NULL.
-    The user must hold role 'vendor' and a vendor_users link to the same
-    vendor, so a Matrix user (or another vendor's user) never matches.
-    """
-    return (await db.execute(
-        text("""
-            SELECT vc.tenant_id, t.name AS tenant_name, vc.vendor_id,
-                   v.name AS vendor_name, v.status AS vendor_status,
-                   u.id AS user_id, u.email, u.name AS user_name, u.role,
-                   u.is_active, u.assigned_city, u.password_hash
-              FROM vendor_codes vc
-              JOIN vendors v ON v.id = vc.vendor_id
-              JOIN tenants t ON t.id = vc.tenant_id
-              LEFT JOIN vendor_users vu ON vu.vendor_id = vc.vendor_id
-              LEFT JOIN users u
-                ON u.id = vu.user_id AND u.tenant_id = vc.tenant_id
-               AND lower(u.email) = lower(:email) AND u.role = 'vendor'
-             WHERE upper(vc.code) = upper(:code) AND vc.kind = 'entry' AND vc.revoked_at IS NULL
-             ORDER BY u.id IS NULL, u.id
-             LIMIT 1
-        """),
-        {"code": code, "email": email},
-    )).mappings().first()
-
-
-async def get_vendor_join_code(db: AsyncSession, code: str) -> Optional[RowMapping]:
-    """A live STAFF code, or a live ENTRY code where the tenant allows
-    self-signup, with the vendor's status. Used only by /auth/signup/vendor."""
-    return (await db.execute(
-        text("""
-            SELECT vc.vendor_id, vc.tenant_id, vc.kind, v.status AS vendor_status,
-                   COALESCE(s.allow_self_signup, false) AS allow_self_signup
-              FROM vendor_codes vc
-              JOIN vendors v ON v.id = vc.vendor_id
-              LEFT JOIN vendor_settings s ON s.tenant_id = vc.tenant_id
-             WHERE upper(vc.code) = upper(:code) AND vc.revoked_at IS NULL
-        """),
-        {"code": code},
+        {"code": code, "tid": tenant_id},
     )).mappings().first()
 
 
 async def get_vendor_link(db: AsyncSession, user_id: Any) -> Optional[RowMapping]:
-    """The vendor company a vendor user belongs to, with its status."""
+    """The vendor company a vendor user belongs to, with its name and status."""
     return (await db.execute(
         text("""
-            SELECT vu.vendor_id, vu.vendor_role, v.status AS vendor_status
+            SELECT vu.vendor_id, vu.vendor_role, v.name AS vendor_name, v.status AS vendor_status
               FROM vendor_users vu
               JOIN vendors v ON v.id = vu.vendor_id
              WHERE vu.user_id = :uid

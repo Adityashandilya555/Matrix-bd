@@ -1,7 +1,7 @@
 """Vendor platform — vendor companies, codes, admission and per-tenant settings.
 
 Everything a workspace can customise about its vendor platform lives here:
-the admission rule (who approves new vendor people), self-signup, the daily
+the admission rule (who approves new vendor people), the daily
 update cutoff, programme durations, portal branding, plan phases and the
 mobilisation checklists. Templates are seeded from the demo's values on a
 tenant's first read, so a new workspace starts with a working plan.
@@ -35,7 +35,7 @@ SITE_TYPES = ("mall", "non_mall")
 CHECKLIST_KINDS = ("mobilisation_vendor", "mobilisation_brand")
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 _DEFAULTS: dict[str, Any] = {
-    "admission_mode": "owner_approves_staff", "allow_self_signup": False,
+    "admission_mode": "owner_approves_staff",
     "update_cutoff_local": time(19, 0), "timezone": "Asia/Kolkata",
     "mall_duration_days": 40, "non_mall_duration_days": 45,
     "portal_title": None, "accent_color": None, "welcome_text": None,
@@ -63,7 +63,7 @@ async def get_settings(session: AsyncSession, tenant_id: str | UUID) -> dict[str
     """The tenant's vendor settings, with defaults for a tenant that has none."""
     row = (await session.execute(
         text("""
-            SELECT admission_mode, allow_self_signup, update_cutoff_local, timezone,
+            SELECT admission_mode, update_cutoff_local, timezone,
                    mall_duration_days, non_mall_duration_days, portal_title, accent_color,
                    welcome_text, support_contact, logo_path
               FROM vendor_settings WHERE tenant_id = :tid
@@ -125,7 +125,7 @@ async def update_settings(
         if not 5 <= durations[key] <= 365:
             raise _unprocessable("Programme durations must be between 5 and 365 days.")
     params = {
-        "tid": tenant_id, "mode": mode, "self": bool(body.get("allow_self_signup")),
+        "tid": tenant_id, "mode": mode,
         "cutoff": cutoff, "tz": clean_text(body.get("timezone"), 64) or "Asia/Kolkata",
         "mall": durations["mall_duration_days"], "nonmall": durations["non_mall_duration_days"],
         "title": clean_text(body.get("portal_title"), 80), "accent": accent or None,
@@ -135,12 +135,12 @@ async def update_settings(
     async with transaction(session):
         await session.execute(
             text("""
-                INSERT INTO vendor_settings (tenant_id, admission_mode, allow_self_signup, update_cutoff_local,
+                INSERT INTO vendor_settings (tenant_id, admission_mode, update_cutoff_local,
                     timezone, mall_duration_days, non_mall_duration_days, portal_title, accent_color,
                     welcome_text, support_contact, updated_by, updated_at)
-                VALUES (:tid, :mode, :self, :cutoff, :tz, :mall, :nonmall, :title, :accent, :welcome, :support, :uid, now())
+                VALUES (:tid, :mode, :cutoff, :tz, :mall, :nonmall, :title, :accent, :welcome, :support, :uid, now())
                 ON CONFLICT (tenant_id) DO UPDATE SET
-                    admission_mode = EXCLUDED.admission_mode, allow_self_signup = EXCLUDED.allow_self_signup,
+                    admission_mode = EXCLUDED.admission_mode,
                     update_cutoff_local = EXCLUDED.update_cutoff_local, timezone = EXCLUDED.timezone,
                     mall_duration_days = EXCLUDED.mall_duration_days, non_mall_duration_days = EXCLUDED.non_mall_duration_days,
                     portal_title = EXCLUDED.portal_title, accent_color = EXCLUDED.accent_color,
@@ -327,38 +327,6 @@ async def save_checklist(session: AsyncSession, *, tenant_id: str | UUID, actor:
     return await get_checklist(session, tenant_id)
 
 
-# ── Public branding for a vendor ENTRY code ─────────────────────────────────
-
-async def public_vendor_branding(session: AsyncSession, code: str) -> Optional[dict]:
-    """What /tenancy/branding shows for a live vendor entry code, or None."""
-    row = (await session.execute(
-        text("""
-            SELECT vc.vendor_id, vc.tenant_id, v.name AS vendor_name, v.status AS vendor_status,
-                   t.name AS tenant_name, s.logo_path, COALESCE(s.allow_self_signup, false) AS allow_self_signup,
-                   EXISTS (SELECT 1 FROM vendor_codes sc WHERE sc.vendor_id = vc.vendor_id
-                            AND sc.kind = 'staff' AND sc.revoked_at IS NULL) AS has_staff_code
-              FROM vendor_codes vc
-              JOIN vendors v ON v.id = vc.vendor_id
-              JOIN tenants t ON t.id = vc.tenant_id
-              LEFT JOIN vendor_settings s ON s.tenant_id = vc.tenant_id
-             WHERE upper(vc.code) = upper(:code) AND vc.kind = 'entry' AND vc.revoked_at IS NULL
-        """),
-        {"code": code},
-    )).mappings().first()
-    if not row or row["vendor_status"] != "active":
-        return None
-    logo = None
-    if row["logo_path"]:
-        try:
-            logo = await signed_url(row["logo_path"], expires_in=3600)
-        except Exception:  # noqa: BLE001 — branding must render without a logo
-            logo = None
-    return {
-        "found": True, "name": row["vendor_name"], "logo_url": logo, "platform": "vendor",
-        "brand": row["tenant_name"], "join_allowed": bool(row["has_staff_code"] or row["allow_self_signup"]),
-    }
-
-
 # ── Vendor companies + codes ─────────────────────────────────────────────────
 
 async def _live_codes(session: AsyncSession, tenant_id: str | UUID) -> dict[tuple[str, str], str]:
@@ -386,7 +354,7 @@ async def list_vendors(session: AsyncSession, tenant_id: str | UUID) -> list[dic
     codes = await _live_codes(session, tenant_id)
     return [{
         "id": str(r["id"]), "name": r["name"], "legal_name": r["legal_name"], "gstin": r["gstin"],
-        "status": r["status"], "entry_code": codes.get((str(r["id"]), "entry")),
+        "status": r["status"],
         "staff_code": codes.get((str(r["id"]), "staff")), "user_count": r["user_count"] or 0,
         "pending_count": r["pending_count"] or 0, "project_count": r["project_count"] or 0,
     } for r in rows]
@@ -446,7 +414,7 @@ async def _create_owner(session: AsyncSession, *, tenant_id, vendor_id, email: s
 
 
 async def create_vendor(session: AsyncSession, *, tenant_id: str | UUID, actor: dict, body: dict) -> dict:
-    """Add a vendor company with fresh entry and staff codes (and optionally its owner)."""
+    """Add a vendor company with a fresh staff code (and optionally its owner)."""
     name = clean_text(body.get("name"), 120)
     if not name:
         raise _unprocessable("Enter the vendor company name.")
@@ -463,7 +431,6 @@ async def create_vendor(session: AsyncSession, *, tenant_id: str | UUID, actor: 
             {"id": vendor_id, "tid": tenant_id, "name": name, "legal": clean_text(body.get("legal_name"), 160),
              "gstin": clean_text(body.get("gstin"), 20), "uid": actor["sub"]},
         )
-        await _insert_code(session, tenant_id=tenant_id, vendor_id=vendor_id, kind="entry", actor_id=actor["sub"])
         await _insert_code(session, tenant_id=tenant_id, vendor_id=vendor_id, kind="staff", actor_id=actor["sub"])
         if owner:
             await _create_owner(session, tenant_id=tenant_id, vendor_id=vendor_id, email=owner, name=None, actor=actor)
@@ -500,9 +467,9 @@ async def update_vendor(session: AsyncSession, *, tenant_id: str | UUID, actor: 
 
 
 async def rotate_code(session: AsyncSession, *, tenant_id: str | UUID, actor: dict, vendor_id: str, kind: str) -> dict:
-    """Revoke the live entry/staff code and mint a new one. Existing accounts
+    """Revoke the live staff code and mint a new one. Existing accounts
     are unaffected; the old code simply stops working."""
-    if kind not in ("entry", "staff"):
+    if kind != "staff":
         raise _not_found("Code")
     await fetch_vendor(session, tenant_id, vendor_id)
     async with transaction(session):

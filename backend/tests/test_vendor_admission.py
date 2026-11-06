@@ -32,7 +32,7 @@ def test_approver_rule():
 
 def _settings_row(mode):
     from datetime import time
-    return {"admission_mode": mode, "allow_self_signup": False, "update_cutoff_local": time(19, 0), "timezone": "Asia/Kolkata",
+    return {"admission_mode": mode, "update_cutoff_local": time(19, 0), "timezone": "Asia/Kolkata",
             "mall_duration_days": 40, "non_mall_duration_days": 45, "portal_title": None, "accent_color": None,
             "welcome_text": None, "support_contact": None, "logo_path": None}
 

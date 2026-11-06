@@ -26,7 +26,7 @@ const { default: BrandedLoginPage } = await import('../BrandedLoginPage.jsx');
 
 const renderAt = (code) => render(
   <MemoryRouter initialEntries={[`/login/${code}`]}>
-    <Routes><Route path="/login/:code" element={<BrandedLoginPage />} /></Routes>
+    <Routes><Route path="/login/:code/:side?" element={<BrandedLoginPage />} /></Routes>
   </MemoryRouter>,
 );
 
@@ -40,10 +40,19 @@ describe('BrandedLoginPage — the workspace code', () => {
     expect(screen.queryByRole('tab', { name: /^join$/i })).toBeNull();
   });
 
-  it('shows the sign-in page for a code that exists', async () => {
+  it('shows the Retail/Vendor choice for a code that exists, then the sign-in page', async () => {
     getWorkspaceBranding.mockResolvedValue({ found: true, name: 'Acme', logo_url: null });
     renderAt('ACME-0000');
+    expect(await screen.findByRole('button', { name: 'Retail login' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Vendor login' })).toBeInTheDocument();
+    renderAt('ACME-0000/retail');
     expect(await screen.findByRole('tab', { name: /^join$/i })).toBeInTheDocument();
     expect(screen.queryByText('Workspace not found')).toBeNull();
+  });
+
+  it('shows "Workspace not found" on either side for a code that does not exist', async () => {
+    getWorkspaceBranding.mockResolvedValue({ found: false, name: null, logo_url: null });
+    renderAt('NOPE-0000/vendor');
+    expect(await screen.findByText('Workspace not found')).toBeInTheDocument();
   });
 });

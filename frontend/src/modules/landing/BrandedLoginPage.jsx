@@ -1,5 +1,5 @@
 import React from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Navigate, useParams, useNavigate } from 'react-router-dom';
 import { PRODUCT_NAME } from '../../router/routes.js';
 import {
   signInWithWorkspaceCode,
@@ -54,8 +54,12 @@ function Banner({ msg }) {
 }
 
 // ── Login (email → set-or-enter password → optional reset) ───────────────────
-function LoginPanel({ code, onAuthed }) {
+// `platform` is 'vendor' on the Vendor side of the login fork; the Retail side
+// passes nothing, so its requests are exactly today's. `onSwitch(side)` moves to
+// the other side when the email belongs there.
+function LoginPanel({ code, onAuthed, platform, onSwitch }) {
   const [step, setStep] = React.useState('email'); // email | enter | setup | reset
+  const [switchTo, setSwitchTo] = React.useState(null);
   const [email, setEmail] = React.useState('');
   const [pw, setPw] = React.useState('');
   const [pw2, setPw2] = React.useState('');
@@ -66,19 +70,28 @@ function LoginPanel({ code, onAuthed }) {
 
   const say = (text, tone = 'error') => setMsg({ text, tone });
   const em = () => email.trim().toLowerCase();
+  const isVendor = platform === 'vendor';
+  // Retail calls keep their exact pre-fork arguments (no trailing option).
+  const side = isVendor ? [{ platform: 'vendor' }] : [];
   const resetFields = () => { setPw(''); setPw2(''); setTok(''); };
 
   const continueEmail = async (e) => {
     e.preventDefault();
     if (!EMAIL_RE.test(em())) { say('Enter a valid work email.'); return; }
-    setBusy(true); setMsg(null);
+    setBusy(true); setMsg(null); setSwitchTo(null);
     try {
-      const state = await checkAccountState(em(), code);
+      const state = await checkAccountState(em(), code, ...side);
       resetFields();
-      if (state === 'unknown') {
+      if (state === 'unknown' && isVendor) {
+        say("This email isn't registered as a vendor in this workspace. Ask your client's project team for an invite, or use the Join tab with your company's staff code.", 'error');
+        setSwitchTo('retail');
+      } else if (state === 'unknown') {
         // Not a member of this workspace. Don't push strangers into the reset
         // flow — tell them plainly and point at the Join tab.
         say("This email isn't part of this workspace. If you're joining, switch to the Join tab or ask your admin for an invite.", 'error');
+      } else if (state === 'vendor_account') {
+        say('This is a vendor account. Sign in on the Vendor side instead.', 'info');
+        setSwitchTo('vendor');
       } else if (state === 'pending') {
         say('Your request is still pending admin approval. You can sign in once an admin approves you.', 'info');
       } else if (state === 'needs_password') {
@@ -98,7 +111,7 @@ function LoginPanel({ code, onAuthed }) {
     if (!pw) { say('Enter your password.'); return; }
     setBusy(true); setMsg(null);
     try {
-      const data = await signInWithWorkspaceCode(em(), code, pw);
+      const data = await signInWithWorkspaceCode(em(), code, pw, ...side);
       onAuthed(data?.access_token);
     } catch (err) {
       if (err instanceof PendingApprovalError || err?.isPending) say(err.message || 'Your access is pending approval.', 'info');
@@ -114,7 +127,7 @@ function LoginPanel({ code, onAuthed }) {
     setBusy(true); setMsg(null);
     try {
       await setupPassword(em(), code, pw);
-      const data = await signInWithWorkspaceCode(em(), code, pw);
+      const data = await signInWithWorkspaceCode(em(), code, pw, ...side);
       onAuthed(data?.access_token);
     } catch (err) {
       if (err?.isPending) say(err.message, 'info');
@@ -142,7 +155,7 @@ function LoginPanel({ code, onAuthed }) {
     setBusy(true); setMsg(null);
     try {
       await completePasswordReset(em(), code, pw, tok.trim());
-      const data = await signInWithWorkspaceCode(em(), code, pw);
+      const data = await signInWithWorkspaceCode(em(), code, pw, ...side);
       onAuthed(data?.access_token);
     } catch (err) {
       const text = String(err?.message || '');
@@ -152,7 +165,7 @@ function LoginPanel({ code, onAuthed }) {
     } finally { setBusy(false); }
   };
 
-  const changeEmail = () => { setStep('email'); resetFields(); setMsg(null); setWrong(0); };
+  const changeEmail = () => { setStep('email'); resetFields(); setMsg(null); setWrong(0); setSwitchTo(null); };
 
   if (step === 'email') {
     return (
@@ -162,6 +175,11 @@ function LoginPanel({ code, onAuthed }) {
           onChange={(e) => { setEmail(e.target.value); if (msg) setMsg(null); }}
           placeholder="you@company.com" autoComplete="username" autoFocus />
         <Banner msg={msg} />
+        {switchTo && onSwitch && (
+          <button type="button" className="bl-link bl-link--center" onClick={() => onSwitch(switchTo)}>
+            {switchTo === 'vendor' ? 'Go to Vendor login' : 'Signing in to Matrix? Go to Retail login'}
+          </button>
+        )}
         <button type="submit" className="bl-btn" disabled={busy}>{busy ? 'Checking…' : 'Continue'}</button>
       </form>
     );
@@ -222,7 +240,7 @@ function LoginPanel({ code, onAuthed }) {
 }
 
 // ── Join: supervisor / executive / read-only observer self-signup ───────────
-function JoinPanel({ vendor = false }) {
+function JoinPanel({ vendor = false, code }) {
   const [joinMode, setJoinMode] = React.useState('supervisor');
   // A vendor workspace has exactly one way in; a Matrix workspace keeps its three.
   const cfg = vendor ? VENDOR_JOIN_MODE : joinModeConfig(joinMode);
@@ -239,7 +257,8 @@ function JoinPanel({ vendor = false }) {
     if (!CODE_RE.test(c)) { setMsg({ tone: 'error', text: 'Enter the code your team gave you.' }); return; }
     setBusy(true); setMsg(null);
     try {
-      await cfg.signup(em, c);
+      // Matrix join modes keep their exact two-argument calls.
+      await (vendor ? cfg.signup(em, c, code) : cfg.signup(em, c));
       setMsg({ tone: 'success', text: cfg.submitted });
       setEmail(''); setJcode('');
     } catch (err) {
@@ -277,13 +296,33 @@ function JoinPanel({ vendor = false }) {
   );
 }
 
+// The login fork happens here, after the workspace code:
+//   /login/:code          → choose Retail login or Vendor login
+//   /login/:code/retail   → today's Matrix sign-in, unchanged
+//   /login/:code/vendor   → the workspace's vendor platform (vendor accounts)
+const SIDES = new Set(['retail', 'vendor']);
+
+function SideChooser({ onPick }) {
+  return (
+    <div className="bl-form" role="group" aria-label="How do you want to sign in?">
+      <p className="bl-hint" style={{ marginTop: 0 }}>How do you want to sign in?</p>
+      <button type="button" className="bl-btn" onClick={() => onPick('retail')}>Retail login</button>
+      <p className="bl-hint">For the brand&#39;s own teams: BD, Legal, Design, Project, NSO and admins.</p>
+      <button type="button" className="bl-btn" onClick={() => onPick('vendor')}>Vendor login</button>
+      <p className="bl-hint">For fit-out vendor companies working on this brand&#39;s sites.</p>
+    </div>
+  );
+}
+
 export default function BrandedLoginPage() {
-  const { code: rawCode } = useParams();
+  const { code: rawCode, side } = useParams();
   const code = (rawCode || '').toUpperCase();
   const navigate = useNavigate();
 
   const [brand, setBrand] = React.useState({ status: 'loading', name: '', logo: null });
   const [tab, setTab] = React.useState('login');
+  const isVendor = side === 'vendor';
+  const go = (next) => { setTab('login'); navigate(next ? `/login/${encodeURIComponent(code)}/${next}` : `/login/${encodeURIComponent(code)}`); };
 
   React.useEffect(() => {
     let alive = true;
@@ -294,14 +333,7 @@ export default function BrandedLoginPage() {
         // A bookmarked or shared link with a code that doesn't exist lands on
         // the "Workspace not found" screen below, not on a sign-in form.
         if (b?.found === false) { setBrand({ status: 'error', name: '', logo: null }); return; }
-        setBrand({
-          status: 'ready', name: b?.name || 'Your workspace', logo: b?.logo_url || null,
-          // Vendor codes come back with platform 'vendor'; anything else
-          // (including an older server with no `platform`) is a Matrix workspace.
-          vendor: b?.platform === 'vendor',
-          parent: b?.brand || null,
-          joinAllowed: Boolean(b?.join_allowed),
-        });
+        setBrand({ status: 'ready', name: b?.name || 'Your workspace', logo: b?.logo_url || null });
       })
       .catch(() => { if (alive) setBrand({ status: 'error', name: '', logo: null }); });
     return () => { alive = false; };
@@ -318,6 +350,8 @@ export default function BrandedLoginPage() {
       </div>
     );
   }
+  // An unknown side segment (a typo'd or stale link) goes back to the chooser.
+  if (side && !SIDES.has(side)) return <Navigate to={`/login/${encodeURIComponent(code)}`} replace />;
 
   return (
     <div className="bl-shell">
@@ -328,11 +362,11 @@ export default function BrandedLoginPage() {
           <span className="bl-aurora bl-aurora--3" aria-hidden="true" />
           <span className="bl-dotgrid" aria-hidden="true" />
 
-          {brand.vendor ? (
+          {isVendor ? (
             <div className="bl-aside-top">
               <span className="bl-aside-brand">{PRODUCT_NAME} · Vendor platform</span>
               <h2>Fit-out work,<br />reported daily.</h2>
-              <p>Sites, POs and daily updates for the work {brand.parent || 'your client'} has allocated to you.</p>
+              <p>Sites, POs and daily updates for the work {brand.name || 'your client'} has allocated to you.</p>
             </div>
           ) : (
             <div className="bl-aside-top">
@@ -343,7 +377,7 @@ export default function BrandedLoginPage() {
           )}
 
           <div className="bl-aside-bottom">
-            {!brand.vendor && <div className="bl-trust">
+            {!isVendor && <div className="bl-trust">
               <span className="bl-trust-label">Powering operations for</span>
               <div className="bl-trust-logos">
                 {BRAND_LOGOS.map((b) => (
@@ -366,23 +400,28 @@ export default function BrandedLoginPage() {
               ? <img className="bl-logo" src={brand.logo} alt={brand.name} />
               : <div className="bl-logo bl-logo--ph" aria-hidden>{(brand.name || 'W').slice(0, 1).toUpperCase()}</div>}
             <div className="bl-head-text">
-              <span className="bl-eyebrow">{brand.vendor ? 'Vendor workspace' : 'Workspace'}</span>
+              <span className="bl-eyebrow">{isVendor ? 'Vendor login' : side === 'retail' ? 'Retail login' : 'Workspace'}</span>
               <h1 className="bl-brand">{brand.status === 'loading' ? '…' : brand.name}</h1>
             </div>
           </header>
 
-          {/* A vendor workspace shows Join only when its admission settings let
-              people request access; a Matrix workspace always shows it. */}
-          {(!brand.vendor || brand.joinAllowed) && (
-            <div className="bl-tabs" role="tablist">
-              <button type="button" role="tab" aria-selected={tab === 'login'} data-active={tab === 'login'} onClick={() => setTab('login')}>Log in</button>
-              <button type="button" role="tab" aria-selected={tab === 'join'} data-active={tab === 'join'} onClick={() => setTab('join')}>Join</button>
-            </div>
-          )}
+          {!side ? <SideChooser onPick={go} /> : (
+            <>
+              <div className="bl-tabs" role="tablist">
+                <button type="button" role="tab" aria-selected={tab === 'login'} data-active={tab === 'login'} onClick={() => setTab('login')}>Log in</button>
+                <button type="button" role="tab" aria-selected={tab === 'join'} data-active={tab === 'join'} onClick={() => setTab('join')}>Join</button>
+              </div>
 
-          {tab === 'login' || (brand.vendor && !brand.joinAllowed)
-            ? <LoginPanel code={code} onAuthed={(token) => navigate(routeFromToken(token))} />
-            : <JoinPanel vendor={Boolean(brand.vendor)} />}
+              {tab === 'login'
+                ? <LoginPanel key={side} code={code} platform={isVendor ? 'vendor' : undefined} onSwitch={go}
+                    onAuthed={(token) => navigate(routeFromToken(token))} />
+                : <JoinPanel key={side} vendor={isVendor} code={code} />}
+
+              <button type="button" className="bl-link bl-link--center" onClick={() => go(null)}>
+                {isVendor ? 'Not a vendor? Choose Retail login' : 'Fit-out vendor? Choose Vendor login'}
+              </button>
+            </>
+          )}
         </div>
       </div>
       <p className="bl-foot">Powered by {PRODUCT_NAME} &middot; {code}</p>

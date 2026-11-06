@@ -1,9 +1,9 @@
 // skipcq: JS-0833
 // Business-admin portal → Vendors. Everything about the vendor platform a
 // workspace can customise lives here:
-//   Vendors    — vendor companies, their entry/staff codes, owner invites
+//   Vendors    — vendor companies, their staff codes, owner invites
 //   Approvals  — people waiting to join a vendor workspace
-//   Settings   — admission rule, self-signup, daily cutoff, durations, branding
+//   Settings   — admission rule, daily cutoff, durations, branding
 //   Templates  — plan phases per site type, mobilisation checklists
 import React from 'react';
 import {
@@ -83,7 +83,7 @@ function VendorsPanel() {
   const create = (e) => {
     e.preventDefault();
     if (!form.name.trim()) { setMsg({ tone: 'bad', text: 'Enter the vendor company name.' }); return; }
-    run('create', () => createVendor(form), `${form.name} added with a new vendor code.`)
+    run('create', () => createVendor(form), `${form.name} added with a staff code. Invite its owner next.`)
       .then(() => setForm({ name: '', legalName: '', gstin: '', ownerEmail: '' }));
   };
 
@@ -92,7 +92,7 @@ function VendorsPanel() {
       <Notice msg={msg} />
       <Card style={{ padding: 18 }}>
         <SectionHeader icon={Icon.box} title="Add a vendor company"
-          description="Each vendor gets its own vendor code. They enter it in the same workspace-code box on the welcome page." />
+          description="Vendors sign in with this workspace's code, then choose Vendor login. To onboard one: add the company, invite its owner below, and share the staff code with their site team." />
         <form onSubmit={create} style={grid(200)}>
           <label style={labelStyle} htmlFor="va-name">Company name<input id="va-name" style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
           <label style={labelStyle} htmlFor="va-legal">Legal name<input id="va-legal" style={inputStyle} value={form.legalName} onChange={(e) => setForm({ ...form, legalName: e.target.value })} /></label>
@@ -120,11 +120,9 @@ function VendorsPanel() {
                 </div>
                 {v.status !== 'active' && <div style={{ fontSize: 12.5, color: T.dangerText }}>Suspended: sign-in and joining are blocked.</div>}
                 <div style={grid(220)}>
-                  <CodeCell label="Vendor code (sign-in)" code={v.entryCode} busy={busy === `e-${v.id}`}
-                    onRotate={() => run(`e-${v.id}`, () => rotateVendorCode(v.id, 'entry'), `New vendor code for ${v.name}. The old one stops working.`)} />
                   <CodeCell label="Staff code (join)" code={v.staffCode} busy={busy === `t-${v.id}`}
                     onRotate={() => run(`t-${v.id}`, () => rotateVendorCode(v.id, 'staff'), `New staff code for ${v.name}.`)} />
-                  <form style={{ display: 'grid', gap: 4 }} onSubmit={(e) => { e.preventDefault(); const em = (invite[v.id] || '').trim(); if (!em) return; run(`i-${v.id}`, () => inviteVendorOwner(v.id, em), `${em} invited as owner. They sign in with the vendor code and set a password.`).then(() => setInvite({ ...invite, [v.id]: '' })); }}>
+                  <form style={{ display: 'grid', gap: 4 }} onSubmit={(e) => { e.preventDefault(); const em = (invite[v.id] || '').trim(); if (!em) return; run(`i-${v.id}`, () => inviteVendorOwner(v.id, em), `${em} invited as owner. They sign in with your workspace code, choose Vendor login and set a password.`).then(() => setInvite({ ...invite, [v.id]: '' })); }}>
                     <label style={labelStyle} htmlFor={`va-inv-${v.id}`}>Invite an owner</label>
                     <div style={{ display: 'flex', gap: 6 }}><input id={`va-inv-${v.id}`} type="email" placeholder="owner@vendor.com" style={inputStyle} value={invite[v.id] || ''} onChange={(e) => setInvite({ ...invite, [v.id]: e.target.value })} />
                       <Button type="submit" size="sm" loading={busy === `i-${v.id}`}>Invite</Button></div>
@@ -213,8 +211,6 @@ function SettingsPanel() {
             <span><b>Vendor owners approve their own staff.</b> You approve owners; each owner approves people who join with their company&#39;s staff code.</span></label>
           <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13 }}><input type="radio" name="adm" checked={s.admissionMode === 'admin_approves_all'} onChange={() => setS({ ...s, admissionMode: 'admin_approves_all' })} />
             <span><b>You approve everyone.</b> Every join request, owner or staff, comes to the Approvals list here.</span></label>
-          <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13 }}><input type="checkbox" checked={Boolean(s.allowSelfSignup)} onChange={set('allowSelfSignup')} />
-            <span>Let people request access with the vendor code itself, not only the staff code</span></label>
         </div>
       </Card>
       <Card style={{ padding: 18 }}>
