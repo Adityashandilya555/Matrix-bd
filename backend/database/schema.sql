@@ -1,12 +1,17 @@
 -- Reference schema — regenerated 2026-06-13 to match the live database.
--- WARNING: This file is for documentation / onboarding reference only.
---          It is NOT meant to be executed directly against a blank database.
---          Use the numbered migration files in database/migrations/ in order.
+-- WARNING: This file is for documentation / onboarding reference, and for
+--          building a blank LOCAL database: no migration creates the core
+--          tables, so load this file first. The app then baselines every
+--          migration without running it, so this file must stay in step with
+--          them (tests/test_schema_reference.py). Deployed databases change
+--          only through the numbered files in database/migrations/.
 --
 -- Last sync: covers all 27 live tables as of migration 202606141.
 -- Enum types (site_status, user_role, rent_type, file_type, store_model)
 -- were retired by migration 202606141 — all affected columns are now text
 -- with CHECK constraints.
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ── Functions ─────────────────────────────────────────────────────────────────
 -- Superset validator (20260809): year+percent required; mg / dine_in_pct /
@@ -66,7 +71,7 @@ CREATE TABLE public.users (
   email         text NOT NULL,
   name          text NOT NULL,
   role          text NOT NULL DEFAULT 'executive'::text
-                  CHECK (role IN ('business_admin','observer','supervisor','executive')),
+                  CHECK (role IN ('business_admin','observer','supervisor','executive','vendor')),
   is_active     boolean NOT NULL DEFAULT true,
   assigned_city text,
   notes         text,
@@ -136,7 +141,9 @@ CREATE TABLE public.sites (
   archived_from_status     text,
   is_launched              boolean NOT NULL DEFAULT false,  -- set by Launch Approval workflow (202606094)
   launched_at              timestamp with time zone,
-  area_sqft                integer NOT NULL DEFAULT 0,
+  area_sqft                numeric(12,2) NOT NULL DEFAULT 0,      -- widened from integer (20260801)
+  project_excellence_status text NOT NULL DEFAULT 'pending',      -- (202606134)
+  financial_closure_status text NOT NULL DEFAULT 'pending',       -- (202606144)
   staggered_escalation     jsonb,
   revshare_dinein_pct      numeric(6,2),                          -- revenue-share split: Dine-in % (20260809)
   revshare_delivery_pct    numeric(6,2),                          -- revenue-share split: Delivery % (20260809)
@@ -379,7 +386,7 @@ CREATE TABLE public.site_delegations (
   id               uuid NOT NULL DEFAULT uuid_generate_v4(),
   tenant_id        uuid NOT NULL,
   site_id          uuid NOT NULL,
-  module           text NOT NULL CHECK (module IN ('bd','legal','design','project','nso','project_excellence','financial_closure')),
+  module           text NOT NULL CHECK (module IN ('bd','legal','design','project','nso','project_excellence','financial_closure','quality_audit')),
   delegate_user_id uuid NOT NULL,
   granted_by       uuid NOT NULL,
   granted_at       timestamp with time zone NOT NULL DEFAULT now(),
@@ -518,6 +525,8 @@ CREATE TABLE public.password_reset_requests (
   created_at   timestamp with time zone NOT NULL DEFAULT now(),
   approved_at  timestamp with time zone,
   completed_at timestamp with time zone,
+  reset_token_hash text,                         -- single-use reset token (202606123)
+  token_expires_at timestamp with time zone,
   CONSTRAINT password_reset_requests_pkey PRIMARY KEY (id)
 );
 CREATE INDEX idx_pwd_reset_status ON public.password_reset_requests(status);
@@ -669,17 +678,9 @@ CREATE TABLE public.project_reviews (
   tenant_id                    uuid NOT NULL,
   project_status               text NOT NULL DEFAULT 'pending'
                                  CHECK (project_status IN ('pending','allocated','budgeting','in_progress','done')),
-  current_stage                text NOT NULL DEFAULT 'budget'
-                                 CHECK (current_stage IN ('budget','execution','done')),
+  current_stage                text NOT NULL DEFAULT 'execution'
+                                 CHECK (current_stage IN ('execution','done')),
   allocated_to                 uuid,
-  budget_status                text NOT NULL DEFAULT 'draft'
-                                 CHECK (budget_status IN ('draft','pending_supervisor','pending_admin','approved','rejected')),
-  budget_total                 numeric(14,2),
-  total_indoor_area_sqft       numeric(12,2),
-  total_area_sqft              numeric(12,2),
-  covers                       integer,
-  budget_supervisor_comments   text,
-  budget_admin_comments        text,
   initialization_date          date,
   initialization_status        text NOT NULL DEFAULT 'pending'
                                  CHECK (initialization_status IN ('pending','proposed','submitted','approved','rejected')),
@@ -698,6 +699,7 @@ CREATE TABLE public.project_reviews (
   quality_audit_admin_confirmed_at timestamp with time zone,
   quality_audit_admin_confirmed_by uuid REFERENCES public.users(id),
   quality_audit_admin_notes    text,
+  qa_reports_viewed_by_project_at timestamp with time zone,        -- (20260804)
   final_completion_date        date,
   project_completed_at         timestamp with time zone,
   nso_status                   text NOT NULL DEFAULT 'pending'
@@ -711,7 +713,64 @@ CREATE TABLE public.project_reviews (
   CONSTRAINT project_reviews_allocated_to_fkey FOREIGN KEY (allocated_to) REFERENCES public.users(id)
 );
 CREATE INDEX idx_project_reviews_tenant_status ON public.project_reviews(tenant_id, project_status);
-CREATE INDEX idx_project_reviews_budget_status ON public.project_reviews(tenant_id, budget_status);
+
+-- ── project_excellence (migration 202606134) ──────────────────────────────────
+CREATE TABLE public.project_excellence_reviews (
+  site_id                    uuid PRIMARY KEY REFERENCES public.sites(id) ON DELETE CASCADE,
+  tenant_id                  uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  excellence_status          text NOT NULL DEFAULT 'pending',
+  current_stage              text NOT NULL DEFAULT 'budget',
+  allocated_to               uuid REFERENCES public.users(id),
+  budget_status              text NOT NULL DEFAULT 'draft',
+  budget_total               numeric(14,2),
+  total_indoor_area_sqft     numeric(12,2),
+  total_area_sqft            numeric(12,2),
+  covers                     integer,
+  budget_supervisor_comments text,
+  budget_admin_comments      text,
+  created_at                 timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at                 timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT chk_pe_excellence_status
+    CHECK (excellence_status IN ('pending','allocated','budgeting','approved','done')),
+  CONSTRAINT chk_pe_current_stage CHECK (current_stage IN ('budget','done')),
+  CONSTRAINT chk_pe_budget_status
+    CHECK (budget_status IN ('draft','pending_supervisor','pending_admin','approved','rejected'))
+);
+CREATE INDEX idx_pe_reviews_tenant_status ON public.project_excellence_reviews(tenant_id, excellence_status);
+CREATE INDEX idx_pe_reviews_budget_status ON public.project_excellence_reviews(tenant_id, budget_status);
+
+CREATE TABLE public.project_excellence_items (
+  id         uuid PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+  tenant_id  uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  site_id    uuid NOT NULL REFERENCES public.sites(id) ON DELETE CASCADE,
+  idx        integer NOT NULL,
+  label      text,
+  amount     numeric(14,2),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT uq_pe_item_site_idx UNIQUE (site_id, idx),
+  CONSTRAINT chk_pe_item_idx CHECK (idx BETWEEN 1 AND 11)
+);
+CREATE INDEX idx_pe_items_site ON public.project_excellence_items(site_id);
+CREATE INDEX idx_pe_items_tenant ON public.project_excellence_items(tenant_id);
+
+-- ── quality_audit_reports (migration 20260804) ────────────────────────────────
+CREATE TABLE public.quality_audit_reports (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id   uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  site_id     uuid NOT NULL REFERENCES public.sites(id) ON DELETE CASCADE,
+  kind        text NOT NULL,
+  file_key    text NOT NULL,
+  file_name   text,
+  uploaded_at timestamp with time zone NOT NULL DEFAULT now(),
+  uploaded_by uuid REFERENCES public.users(id),
+  pushed_at   timestamp with time zone,
+  created_at  timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at  timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT chk_qa_report_kind CHECK (kind IN ('before','after')),
+  CONSTRAINT uq_qa_report_site_kind UNIQUE (site_id, kind)
+);
+CREATE INDEX idx_qa_reports_site ON public.quality_audit_reports(site_id);
 
 -- ── site_budgets ───────────────────────────────────────────────────────────────
 CREATE TABLE public.site_budgets (
