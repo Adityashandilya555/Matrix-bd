@@ -27,7 +27,7 @@ import logging
 import re
 import secrets
 import uuid
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -81,10 +81,14 @@ class LoginIn(_WorkspaceCred):
     # account with no password cannot sign in at all (#83) — first-time
     # passwords are set through the admin-approved, token-bound reset flow.
     password: Optional[str] = Field(default=None, max_length=256)
+    # Which side of the login fork the person chose after the workspace code:
+    # absent (the Retail/Matrix page never sends it) or "retail" runs today's
+    # Matrix login unchanged; "vendor" signs a vendor-platform account in.
+    platform: Optional[Literal["retail", "vendor"]] = None
 
 
 class LoginCheckIn(_WorkspaceCred):
-    pass
+    platform: Optional[Literal["retail", "vendor"]] = None
 
 
 class ResetRequestIn(_WorkspaceCred):
@@ -136,6 +140,15 @@ class ExecutiveSignupIn(BaseModel):
     supervisor_code: str
 
 
+class VendorSignupIn(BaseModel):
+    email:          EmailStr
+    # The tenant's workspace code (the person came in through the Vendor side
+    # of that workspace's login page) and a vendor company's STAFF code; the
+    # staff code must belong to that workspace.
+    workspace_code: str = Field(min_length=4, max_length=32)
+    code:           str = Field(min_length=4, max_length=40)
+
+
 class SignupAcceptedOut(BaseModel):
     message: str
     user_id: str
@@ -152,6 +165,10 @@ class SignupAcceptedOut(BaseModel):
     },
 )
 async def login(payload: LoginIn, db: DbDep):
+    # 0. The Vendor side of the login fork is its own flow (_vendor_login);
+    #    without `platform` this is today's Matrix login, unchanged.
+    if payload.platform == "vendor":
+        return await _vendor_login(payload, db)
     # 1+2. Resolve workspace → tenant AND the (tenant, email) user in ONE round
     # trip (#234). The membership lookup (step 4) stays a separate query — it
     # depends on user_id and carries its own ORDER BY.
@@ -159,21 +176,7 @@ async def login(payload: LoginIn, db: DbDep):
         db, workspace_code=payload.workspace_code, email=payload.email,
     )
     if row is None:
-        logger.info("login: unknown workspace_code=%r", payload.workspace_code)
-        # A soft 202 was the only reply here because a 404 made this endpoint
-        # a valid-code enumeration oracle (#84), back when codes carried 16
-        # bits. For a code of today's 64-bit shape that oracle is unusable
-        # under the rate limit, so it is refused plainly — the soft reply left
-        # a mistyped code looking like a pending account. A code of the OLD
-        # shape still gets the soft reply: workspaces created before #84 may
-        # hold one, and naming those as unknown would make them guessable.
-        # /tenancy/branding draws the same line for the first login step.
-        if not tenancy_service.is_full_entropy_code(payload.workspace_code):
-            return _pending_response(payload.email)
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="That workspace code doesn't exist. Check it with your admin.",
-        )
+        return _unknown_code_reply(payload)
 
     if row["user_id"] is None:
         # The email is not a member of this workspace. We no longer silently
@@ -192,6 +195,9 @@ async def login(payload: LoginIn, db: DbDep):
                 "Ask your admin for an invite, or use the Join tab to request access."
             ),
         )
+
+    # 2b. A vendor-platform account belongs on the Vendor side of the fork.
+    _refuse_vendor_account(row)
 
     # 3. Known user. If still inactive (no role assigned), keep them pending.
     if not row["is_active"]:
@@ -319,13 +325,16 @@ async def login_check(payload: LoginCheckIn, request: Request, db: DbDep) -> dic
     if not tenant:
         return unknown if _is_internal else {"account_state": "checked"}
     user = await get_user_by_tenant_email(
-        db, tenant["id"], payload.email, columns="is_active, password_hash"
+        db, tenant["id"], payload.email, columns="is_active, password_hash, role"
     )
-    if not user:
+    side = _side_mismatch(user, payload.platform) if user else None
+    if not user or side == "unknown":
         return unknown if _is_internal else {"account_state": "checked"}
 
     # Build the detailed response (only exposed to internal callers).
-    if not user["is_active"]:
+    if side == "vendor_account":
+        detail = {"account_state": "vendor_account", "password_set": False}
+    elif not user["is_active"]:
         detail = {"account_state": "pending", "password_set": False}
     elif user["password_hash"]:
         detail = {"account_state": "active", "password_set": True}
@@ -563,6 +572,145 @@ async def signup_executive(
     )
 
 
+@router.post(
+    "/signup/vendor",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(rate_limit(times=5, seconds=300))],
+    summary="Public: request access to a workspace's vendor platform with a vendor staff code",
+    responses={
+        202: {"description": "Pending — the vendor owner or the business admin approves"},
+        404: {"description": "Unknown workspace, or a staff code that is not live in it"},
+        409: {"description": "Email already has an account in this workspace"},
+    },
+)
+async def signup_vendor(payload: VendorSignupIn, db: DbDep) -> SignupAcceptedOut:
+    """Queue a vendor site-staff account for approval.
+
+    Same pending-user shape as the other signups (inactive users row + notes
+    marker), plus a vendor_users link written in the same commit. The staff
+    code must be live AND belong to the workspace whose login page the person
+    is on; one uniform 404 covers every mismatch.
+    """
+    invalid = HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="That staff code is not valid for this workspace.")
+    tenant = await get_tenant_by_workspace_code(db, payload.workspace_code.strip())
+    if tenant is None:
+        raise invalid
+    code_row = await auth_repo.get_vendor_join_code(db, payload.code.strip(), tenant["id"])
+    if code_row is None or code_row["vendor_status"] != "active":
+        raise invalid
+    tenant_id, vendor_id = tenant["id"], code_row["vendor_id"]
+    existing = await get_user_by_tenant_email(db, tenant_id, payload.email, columns="id, is_active, role")
+    if existing:
+        if existing["is_active"] or existing["role"] != "vendor":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="That email already has an account in this workspace.",
+            )
+        return SignupAcceptedOut(message="Signup already pending approval.", user_id=str(existing["id"]))
+    new_id = uuid.uuid4()
+    await auth_repo.insert_pending_signup(
+        db, user_id=new_id, tenant_id=tenant_id, role="vendor",
+        email=payload.email, name=payload.email.split("@")[0],
+        notes=f"pending_vendor:{vendor_id}|vendor_role:site_supervisor",
+    )
+    await auth_repo.insert_vendor_link(
+        db, user_id=new_id, tenant_id=tenant_id, vendor_id=vendor_id, vendor_role="site_supervisor",
+    )
+    await db.commit()
+    logger.info("signup: queued vendor tenant_id=%s vendor_id=%s", tenant_id, vendor_id)
+    return SignupAcceptedOut(message="Signup received. Awaiting approval.", user_id=str(new_id))
+
+
+def _unknown_code_reply(payload: "LoginIn"):
+    """No tenant owns the workspace code — shared by both sides of the fork."""
+    logger.info("login: unknown workspace_code=%r", payload.workspace_code)
+    # A soft 202 was the only reply here because a 404 made this endpoint
+    # a valid-code enumeration oracle (#84), back when codes carried 16
+    # bits. For a code of today's 64-bit shape that oracle is unusable
+    # under the rate limit, so it is refused plainly — the soft reply left
+    # a mistyped code looking like a pending account. A code of the OLD
+    # shape still gets the soft reply: workspaces created before #84 may
+    # hold one, and naming those as unknown would make them guessable.
+    # /tenancy/branding draws the same line for the first login step.
+    if not tenancy_service.is_full_entropy_code(payload.workspace_code):
+        return _pending_response(payload.email)
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="That workspace code doesn't exist. Check it with your admin.",
+    )
+
+
+def _side_mismatch(user, platform: Optional[str]) -> Optional[str]:
+    """For /auth/login/check: 'unknown' when a non-vendor asks on the Vendor
+    side, 'vendor_account' when a vendor asks on the Retail side, else None."""
+    is_vendor = user.get("role") == "vendor"
+    if platform == "vendor":
+        return None if is_vendor else "unknown"
+    return "vendor_account" if is_vendor else None
+
+
+def _refuse_vendor_account(row) -> None:
+    """A vendor-platform account signs in on the Vendor side, never Retail."""
+    if row["role"] == "vendor":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This is a vendor account. Go back and choose Vendor login.",
+        )
+
+
+_NOT_A_VENDOR = (
+    "This email isn't registered as a vendor in this workspace. Ask your client's "
+    "project team for an invite, or use the Join tab with your company's staff code."
+)
+
+
+async def _vendor_login(payload: "LoginIn", db) -> "LoginOut":
+    """Vendor side of the login fork: the tenant's workspace code + a vendor
+    account of that tenant.
+
+    Same gates as a Matrix login (unknown code, unknown email, pending,
+    password) plus an active vendor company. The token carries role 'vendor'
+    and the vendor_id; app/core/deps.py re-reads both on every request.
+    """
+    row = await auth_repo.get_login_row(db, workspace_code=payload.workspace_code, email=payload.email)
+    if row is None:
+        return _unknown_code_reply(payload)
+    link = await auth_repo.get_vendor_link(db, row["user_id"]) if row["user_id"] and row["role"] == "vendor" else None
+    if link is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_A_VENDOR)
+    if link["vendor_status"] != "active":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your vendor company's access is suspended. Contact your client's project team.",
+        )
+    if not row["is_active"]:
+        return _pending_response(payload.email)
+    stored_hash = row["password_hash"]
+    provided = (payload.password or "").strip()
+    if not stored_hash:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This account does not have a password yet. Enter your email again to create one.",
+        )
+    if not provided:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=settings.login_missing_password_message)
+    if not await verify_password_async(provided, stored_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password.")
+    token = issue_token(
+        sub=str(row["user_id"]), email=row["email"],
+        name=row["user_name"] or row["email"].split("@")[0], role="vendor",
+        tenant_id=str(row["tenant_id"]), city=row["assigned_city"], vendor_id=str(link["vendor_id"]),
+    )
+    return LoginOut(
+        access_token=token,
+        user={
+            "id": str(row["user_id"]), "email": row["email"], "name": row["user_name"], "role": "vendor",
+            "tenant_id": str(row["tenant_id"]), "tenant_name": row["tenant_name"],
+            "vendor_id": str(link["vendor_id"]), "vendor_name": link["vendor_name"],
+        },
+    )
+
+
 async def _enqueue_signup(
     db,
     *,
@@ -663,9 +811,20 @@ async def refresh(
             detail="Account is inactive or no longer exists. Sign in again.",
         )
 
+    vendor_id = None
+    if row["role"] == "vendor":
+        link = await auth_repo.get_vendor_link(db, row["id"])
+        if link is None or link["vendor_status"] != "active":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Your vendor account is suspended or no longer exists. Sign in again.",
+            )
+        vendor_id = str(link["vendor_id"])
+
     membership = await auth_repo.get_primary_membership(db, row["id"])
     supervisor_id = membership.get("supervisor_id")
     token = issue_token(
+        vendor_id=vendor_id,
         sub=str(row["id"]),
         email=row["email"],
         name=row["name"] or row["email"].split("@")[0],

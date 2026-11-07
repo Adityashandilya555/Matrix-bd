@@ -18,6 +18,7 @@ This documentation explains the codebase in the order a new developer needs it. 
 | 12 | [Change rules](10-change-management/change-rules.md) | Which files must change together? |
 | 13 | [Business admin portal](12-business-admin-portal/business-admin-portal.md) | How does the separate admin portal authenticate and render? |
 | 14 | [Admin role simulation](13-admin-role-simulation/admin-role-simulation.md) | How can a business admin simulate another role and module? |
+| 15 | [Vendor platform](15-vendor-platform/vendor-platform.md) | How do outside fit-out vendors sign in, get admitted, and use their portal? |
 
 ## Documentation rule
 

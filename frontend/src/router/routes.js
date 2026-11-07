@@ -61,6 +61,10 @@ export const ROUTES = {
   SITE_TRACKER:           '/staging-flow',
   SITE_TRACKER_DETAIL:    '/staging-flow/:siteId',
   DASHBOARD_MINIMAL_PREVIEW: '/dashboard-minimal-preview',
+  // Vendor platform — its own portal outside the tenant shell (modules/vendor-portal).
+  VENDOR:                 '/vendor',
+  // The Project team's side of the vendor platform, inside the Matrix shell.
+  PROJECT_VENDOR_FITOUT:  '/project/vendor-fitout',
 };
 
 export function loiTimelineRoute(code) {
