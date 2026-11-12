@@ -47,6 +47,7 @@ function homeForSession(effectiveRole, effectiveModule) {
   // 'supervisor' or 'executive' — route them like that role, not to the
   // admin portal.  Only route to /business-admin when they are NOT simulating.
   if (effectiveRole === 'business_admin') return '/business-admin';
+  if (effectiveRole === 'vendor')         return ROUTES.VENDOR;
   if (effectiveModule === 'legal')        return ROUTES.LEGAL;
   if (effectiveModule === 'design')       return ROUTES.DESIGN;
   if (effectiveModule === 'project')      return ROUTES.PROJECT;

@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import Any, Mapping, Optional
 
 from sqlalchemy import text
-from sqlalchemy.engine import Result
+from sqlalchemy.engine import Result, RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -253,4 +253,51 @@ async def insert_pending_signup(
             "name":  name,
             "notes": notes,
         },
+    )
+
+
+# ── Vendor platform (migration 20261104) ────────────────────────────────────
+# Vendor accounts are vendor-role users of the tenant; they sign in on the
+# Vendor side of the login fork with the tenant's own workspace code, so the
+# tenant lookups above serve them too. These are the vendor-specific reads.
+
+async def get_vendor_join_code(db: AsyncSession, code: str, tenant_id: Any) -> Optional[RowMapping]:
+    """A live vendor STAFF code of THIS tenant, with the vendor's status.
+    Used only by /auth/signup/vendor; another tenant's code never matches."""
+    return (await db.execute(
+        text("""
+            SELECT vc.vendor_id, vc.tenant_id, v.status AS vendor_status
+              FROM vendor_codes vc
+              JOIN vendors v ON v.id = vc.vendor_id
+             WHERE upper(vc.code) = upper(:code) AND vc.kind = 'staff'
+               AND vc.revoked_at IS NULL AND vc.tenant_id = :tid
+        """),
+        {"code": code, "tid": tenant_id},
+    )).mappings().first()
+
+
+async def get_vendor_link(db: AsyncSession, user_id: Any) -> Optional[RowMapping]:
+    """The vendor company a vendor user belongs to, with its name and status."""
+    return (await db.execute(
+        text("""
+            SELECT vu.vendor_id, vu.vendor_role, v.name AS vendor_name, v.status AS vendor_status
+              FROM vendor_users vu
+              JOIN vendors v ON v.id = vu.vendor_id
+             WHERE vu.user_id = :uid
+        """),
+        {"uid": user_id},
+    )).mappings().first()
+
+
+async def insert_vendor_link(
+    db: AsyncSession, *, user_id: Any, tenant_id: Any, vendor_id: Any, vendor_role: str,
+) -> None:
+    """Link a (pending or active) user to a vendor company (does not commit)."""
+    await db.execute(
+        text("""
+            INSERT INTO vendor_users (user_id, tenant_id, vendor_id, vendor_role)
+            VALUES (:uid, :tid, :vid, :vrole)
+            ON CONFLICT (user_id) DO NOTHING
+        """),
+        {"uid": user_id, "tid": tenant_id, "vid": vendor_id, "vrole": vendor_role},
     )

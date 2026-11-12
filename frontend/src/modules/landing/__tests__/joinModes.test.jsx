@@ -15,6 +15,7 @@ vi.mock('../../../services/api/supabaseAuth.js', () => ({
   signupAsSupervisor: (...a) => { calls.push(['supervisor', ...a]); return Promise.resolve(); },
   signupAsExecutive: (...a) => { calls.push(['executive', ...a]); return Promise.resolve(); },
   signupAsObserver: (...a) => { calls.push(['observer', ...a]); return Promise.resolve(); },
+  signupAsVendor: (...a) => { calls.push(['vendor', ...a]); return Promise.resolve(); },
   getWorkspaceBranding: vi.fn().mockResolvedValue({}),
   passwordStatus: vi.fn(),
   signInBranded: vi.fn(),
@@ -70,8 +71,8 @@ describe('BrandedLoginPage — the Join panel', () => {
     // The page reads the workspace code off the route and renders "Workspace
     // not found" without one.
     render(
-      <MemoryRouter initialEntries={['/login/BTOKAI']}>
-        <Routes><Route path="/login/:code" element={<BrandedLoginPage />} /></Routes>
+      <MemoryRouter initialEntries={['/login/BTOKAI/retail']}>
+        <Routes><Route path="/login/:code/:side?" element={<BrandedLoginPage />} /></Routes>
       </MemoryRouter>,
     );
     await userEvent.click(await screen.findByRole('tab', { name: /^join$/i }));

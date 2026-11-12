@@ -36,6 +36,7 @@ import LaunchApprovalTab, { LAUNCH_ACTIONABLE_STATUSES } from './launch/LaunchAp
 import { getLaunchQueue } from '../../services/api/launchApprovalApi.js';
 import FinancialClosureTab from './closure/FinancialClosureTab.jsx';
 import WorkspaceSwitcherPanel from './WorkspaceSwitcherPanel.jsx';
+import VendorsTab from './vendors/VendorsTab.jsx';
 
 // Real API wiring. Injectable so the dev preview (and tests) can drive the whole
 // portal with mock data — see ./_preview/ApprovalCenterPreview.jsx.
@@ -99,6 +100,7 @@ const TABS = [
   { key: 'departments', label: 'Departments',       icon: Icon.key },
   { key: 'sites',       label: 'Sites',             icon: Icon.pin },
   { key: 'workspace',   label: 'Workspace Access',  icon: Icon.external },
+  { key: 'vendors',     label: 'Vendors',           icon: Icon.box },
 ];
 
 export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, workspaceName }) {
@@ -386,6 +388,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     { ...TABS[3], count: pendingAccessCount + executiveRequests.items.length + execAccessCount },
     { ...TABS[4] },
     { ...TABS[5] }, // Workspace Access tab
+    { ...TABS[6] }, // Vendors — vendor platform admin, counts load inside the tab
   ];
 
   return (
@@ -477,6 +480,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
                 filter={sitesFilter} onFilterChange={setSitesFilter} />
             )}
             {tab === 'workspace' && <WorkspaceSwitcherPanel />}
+            {tab === 'vendors' && <VendorsTab />}
           </div>
         </div>
       </main>
