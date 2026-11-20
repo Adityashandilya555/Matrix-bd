@@ -1267,7 +1267,7 @@ CREATE TABLE IF NOT EXISTS public.integration_endpoints (
     CONSTRAINT integration_endpoints_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id) ON DELETE SET NULL,
     CONSTRAINT uq_integration_endpoints_tenant_integration UNIQUE (tenant_id, integration),
     CONSTRAINT chk_integration_endpoints_integration CHECK (integration IN ('nso_platform')),
-    CONSTRAINT chk_integration_endpoints_https CHECK (endpoint_url LIKE 'https://%'),
+    CONSTRAINT chk_integration_endpoints_https CHECK (endpoint_url ~ '^https://[^/?#[:space:]]+'),
     CONSTRAINT chk_integration_endpoints_previous_secret CHECK (
         (previous_secret_ciphertext IS NULL) = (previous_secret_expires_at IS NULL)
     )
