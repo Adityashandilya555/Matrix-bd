@@ -122,6 +122,10 @@ CREATE TABLE IF NOT EXISTS public.integration_deliveries (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_integration_deliveries_outbox
     ON public.integration_deliveries (outbox_id, attempt_no);
 
+-- The admin page's recent deliveries per workspace, and the tenant delete cascade.
+CREATE INDEX IF NOT EXISTS idx_integration_deliveries_tenant
+    ON public.integration_deliveries (tenant_id, attempted_at DESC);
+
 -- ── Block the Supabase public API ────────────────────────────────────────────
 ALTER TABLE public.integration_endpoints ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.integration_outbox ENABLE ROW LEVEL SECURITY;
