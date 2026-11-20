@@ -14,14 +14,17 @@ from datetime import date, datetime
 from typing import ClassVar, Optional
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
+    Identity,
     Index,
     Integer,
     Numeric,
+    SmallInteger,
     Text,
     UniqueConstraint,
     func,
@@ -1164,6 +1167,76 @@ class LaunchReviewEvent(Base):
         Index("idx_launch_review_events_approval", "launch_approval_id", "created_at"),
         Index("idx_launch_review_events_site", "site_id", "created_at"),
     )
+
+
+# ── NSO platform integration (migration 20261120_integration_outbox) ─────────
+
+
+class IntegrationEndpoint(Base):
+    """Per-workspace webhook target. No row, or enabled=False: nothing is queued."""
+    __tablename__ = "integration_endpoints"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    integration: Mapped[str] = mapped_column(Text, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    endpoint_url: Mapped[str] = mapped_column(Text, nullable=False)
+    # Fernet ciphertext only (app/integrations/secrets.py); never plaintext.
+    secret_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    secret_key_version: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default=text("1"))
+    previous_secret_ciphertext: Mapped[Optional[str]] = mapped_column(Text)
+    previous_secret_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    schema_version: Mapped[str] = mapped_column(Text, nullable=False, server_default="1")
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    disabled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "integration", name="uq_integration_endpoints_tenant_integration"),
+    )
+
+
+class IntegrationOutbox(Base):
+    """One queued webhook event. ``id`` is the event id; ``seq`` orders events.
+
+    ``site_id`` deliberately has no foreign key: a site.deleted event must
+    outlive the site it describes.
+    """
+    __tablename__ = "integration_outbox"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    seq: Mapped[int] = mapped_column(BigInteger, Identity(always=True), nullable=False)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    integration: Mapped[str] = mapped_column(Text, nullable=False)
+    site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    event_type: Mapped[str] = mapped_column(Text, nullable=False)
+    schema_version: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    locked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    locked_by: Mapped[Optional[str]] = mapped_column(Text)
+    last_http_status: Mapped[Optional[int]] = mapped_column(Integer)
+    last_error: Mapped[Optional[str]] = mapped_column(Text)
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class IntegrationDelivery(Base):
+    """One HTTP attempt for an outbox row. ``http_status`` is null when no response came back."""
+    __tablename__ = "integration_deliveries"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    outbox_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("integration_outbox.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    attempt_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    http_status: Mapped[Optional[int]] = mapped_column(Integer)
+    duration_ms: Mapped[Optional[int]] = mapped_column(Integer)
+    error: Mapped[Optional[str]] = mapped_column(Text)
+    response_snippet: Mapped[Optional[str]] = mapped_column(Text)
+    attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 # ---------------------------------------------------------------------------
