@@ -19,6 +19,7 @@ import {
 } from '../authToken.js';
 import { notifySiteDataChanged } from '../siteEvents.js';
 import { getActiveOverride } from '../adminOverride.js';
+import { roleFromToken } from '../tokenRole.js';
 import { assertRequestAllowed } from '../readOnlyGuard.js';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
@@ -97,7 +98,9 @@ export async function ensureFreshAuthToken() {
 client.interceptors.request.use(async cfg => {
   const token = await ensureFreshAuthToken();
   if (token) cfg.headers.Authorization = `Bearer ${token}`;
-  const override = getActiveOverride();
+  // A vendor session never carries the workspace-override headers (the server
+  // ignores them for vendors too, app/core/deps.py).
+  const override = roleFromToken(token) === 'vendor' ? null : getActiveOverride();
   if (override?.role) cfg.headers['X-Override-Role'] = override.role;
   if (override?.module) cfg.headers['X-Override-Module'] = override.module;
   return assertRequestAllowed(cfg, ApiError);

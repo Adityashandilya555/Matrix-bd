@@ -43,7 +43,7 @@ function _detailMessage(err, fallback) {
     : detail || err.message || fallback;
 }
 
-export async function signInWithWorkspaceCode(email, workspaceCode, password) {
+export async function signInWithWorkspaceCode(email, workspaceCode, password, { platform } = {}) {
   let res;
   try {
     res = await axios.post(`${API_BASE}/auth/login`, {
@@ -52,6 +52,9 @@ export async function signInWithWorkspaceCode(email, workspaceCode, password) {
       // Only send a password when the branded page collected one; legacy
       // passwordless callers omit it and stay backward-compatible.
       ...(password != null && password !== '' ? { password } : {}),
+      // Vendor side of the login fork only. Retail sends no `platform`, so its
+      // request is exactly what it was before the fork existed.
+      ...(platform === 'vendor' ? { platform } : {}),
     }, {
       // 202 is a success-shaped response (the user is in the queue) — don't
       // let axios throw on it.
@@ -117,6 +120,13 @@ export function signupAsExecutive(email, supervisorCode) {
   return postSignup('/auth/signup/executive', { email, supervisor_code: supervisorCode });
 }
 
+// Vendor site staff, from the Vendor side of a workspace's login page: the
+// vendor company's staff code must belong to that workspace. The vendor owner
+// or the business admin approves, depending on the admission setting.
+export function signupAsVendor(email, code, workspaceCode) {
+  return postSignup('/auth/signup/vendor', { email, code, workspace_code: workspaceCode });
+}
+
 // ── Branded login helpers ───────────────────────────────────────────────────
 
 // Does (email, workspace_code) already have a password? Drives the choice
@@ -134,9 +144,11 @@ export async function checkPasswordSet(email, workspaceCode) {
 //   'needs_password' → approved but no password → self-service setup
 //   'active'         → has a password → ask for it
 // Falls back to deriving from `password_set` for older backends.
-export async function checkAccountState(email, workspaceCode) {
+//   'vendor_account' → (Retail side only) a vendor account; send it to Vendor login
+export async function checkAccountState(email, workspaceCode, { platform } = {}) {
   const res = await axios.post(`${API_BASE}/auth/login/check`, {
     email, workspace_code: workspaceCode,
+    ...(platform === 'vendor' ? { platform } : {}),
   }, { headers: { 'X-Matrix-Internal': '1' } });
 
   if (res.data?.account_state === 'checked') {

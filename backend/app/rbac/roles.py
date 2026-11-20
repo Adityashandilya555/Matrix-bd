@@ -31,6 +31,11 @@ class Role(str, Enum):
     OBSERVER = "observer"
     SUPERVISOR = "supervisor"
     EXECUTIVE = "executive"
+    # Outside fit-out vendor staff (migration 20261104). Deliberately NOT in
+    # READ_ALL_ROLES, and confined to /vendor/* and the auth routes by
+    # _assert_vendor_scope in app/core/deps.py. Vendor routes guard with
+    # require_real_role(Role.VENDOR) so the READ_ALL bypass cannot reach them.
+    VENDOR = "vendor"
 
 
 # Roles that see the whole workspace and therefore bypass the per-route role and

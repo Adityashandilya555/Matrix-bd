@@ -168,6 +168,9 @@ _NO_SESSION_ALLOWLIST = {
     # other two signups and by requiring a live workspace observer code.
     "/auth/signup/observer",
     "/auth/signup/supervisor",
+    # Pre-session like the other signups: a vendor staff member has no account
+    # yet. Same 5/300s rate limit, and requires a live vendor staff code.
+    "/auth/signup/vendor",
     "/tenancy/admin/login",
     "/tenancy/join",
     "/tenancy/password-reset-requests/{request_id}/confirm",
@@ -251,6 +254,8 @@ def test_every_mutating_route_carries_a_role_guard_or_is_public():
     unguarded = sorted(
         r.path for r in _mutating_routes()
         if r.path not in _NO_SESSION_ALLOWLIST
-        and not any(n.startswith("require_role") for n in _dep_names(r.dependant))
+        # require_real_role is the stricter form (no READ_ALL bypass), used by
+        # the vendor portal so a business admin/observer cannot reach it.
+        and not any(n.startswith(("require_role", "require_real_role")) for n in _dep_names(r.dependant))
     )
     assert unguarded == [], f"mutating route(s) with no require_role dependency: {unguarded}"

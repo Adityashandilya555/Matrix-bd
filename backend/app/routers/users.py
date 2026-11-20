@@ -149,6 +149,8 @@ async def list_pending_users(
             # section, not this queue. assign-role refuses them anyway; leaving
             # them listed would just be a row nobody here can action.
             models.User.role != Role.OBSERVER.value,
+            # Vendor platform requests are decided in the vendor admin flow.
+            models.User.role != Role.VENDOR.value,
         )
         .order_by(models.User.email)
         .limit(limit)
@@ -208,6 +210,14 @@ async def assign_role(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Observer access is approved by the business admin, not here.",
+        )
+    # Same for a vendor platform signup: it is approved by the vendor owner or
+    # the business admin (services/vendor_service.py), never activated as a
+    # Matrix module member here.
+    if user_row["role"] == Role.VENDOR.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Vendor access is approved in the vendor platform, not here.",
         )
 
     # 2. Activate the user row; clear the pending-signup marker from notes.

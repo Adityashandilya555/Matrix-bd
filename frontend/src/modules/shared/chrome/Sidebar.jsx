@@ -124,6 +124,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
     path.startsWith('/project/sites')                    ? 'project-sites' :
     path.startsWith('/project/nso-handover')             ? 'project-nso-handover' :
     path.startsWith('/project/financial-closure')        ? 'project-financial-closure' :
+    path.startsWith(ROUTES.PROJECT_VENDOR_FITOUT)        ? 'project-vendor-fitout' :
     path.startsWith('/project')                          ? 'project-home' :
     path.startsWith('/nso/process-flow')                 ? 'nso-process-flow' :
     path.startsWith('/nso/history')                      ? 'nso-history' :
@@ -276,6 +277,13 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
             label="Financial Closure"
             active={activeView === 'project-financial-closure'}
             onClick={() => go(ROUTES.PROJECT_FINANCIAL_CLOSURE)}
+            collapsed={collapsed}
+          />
+          <SidebarItem
+            icon="layers"
+            label="Vendor fit-out"
+            active={activeView === 'project-vendor-fitout'}
+            onClick={() => go(ROUTES.PROJECT_VENDOR_FITOUT)}
             collapsed={collapsed}
           />
           <SidebarItem

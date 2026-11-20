@@ -114,9 +114,11 @@ async def get_workspace_info(db: AsyncSession, tenant_id: Any) -> Optional[Mappi
     return (await db.execute(
         text("""
             SELECT t.id, t.name, t.slug, t.plan, t.workspace_code, t.seat_limit,
-                   (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) AS used_seats,
+                   -- Vendor platform accounts are outside fit-out staff, not
+                   -- workspace seats (migration 20261104).
+                   (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id AND u.role <> 'vendor') AS used_seats,
                    (SELECT COUNT(*) FROM users u
-                      WHERE u.tenant_id = t.id AND u.is_active = false) AS pending_seats
+                      WHERE u.tenant_id = t.id AND u.is_active = false AND u.role <> 'vendor') AS pending_seats
               FROM tenants t WHERE t.id = :tid
         """),
         {"tid": tenant_id},

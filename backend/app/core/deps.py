@@ -121,6 +121,69 @@ def _assert_workspace_access(claims: dict, request: Request) -> None:
     )
 
 
+# ── Vendor platform (migration 20261104) ─────────────────────────────────────
+# A vendor token may reach only its own portal and the auth routes. Everything
+# else in the API was built for Blue Tokai staff, and a few routes check only
+# that the caller is signed in to the tenant, so the rule is default-deny here,
+# at the one dependency every authenticated route passes through, rather than
+# opt-in per route. Matched with startswith on a trailing slash, so
+# /vendor-admin (Blue Tokai's side) is NOT admitted.
+_VENDOR_ALLOWED_PREFIXES = tuple(
+    f"{base}{suffix}"
+    for base in (settings.api_prefix, "")
+    for suffix in ("/vendor/", "/auth/")
+)
+_VENDOR_REFUSED = "_vendor_refused"
+
+
+async def _load_vendor_link(db: AsyncSession, claims: dict, db_role: str) -> None:
+    """Attach the CURRENT vendor link to a vendor's claims, read from the DB.
+
+    The token's vendor_id is only a hint for the UI; this re-read makes
+    suspending a vendor (or moving a user) take effect on the next request.
+    Never raises — a refusal is flagged and raised by _assert_vendor_scope
+    after the db.rollback(), exactly like _OVERRIDE_REFUSED (#103).
+    """
+    if db_role != Role.VENDOR.value:
+        claims["vendor_id"] = None
+        claims["platform"] = None
+        return
+    link = (await db.execute(
+        text("""
+            SELECT vu.vendor_id, vu.vendor_role, v.status
+              FROM vendor_users vu
+              JOIN vendors v ON v.id = vu.vendor_id
+             WHERE vu.user_id = :uid AND vu.tenant_id = :tid
+        """),
+        {"uid": claims["sub"], "tid": claims["tenant_id"]},
+    )).mappings().first()
+    if link and link["status"] == "active":
+        claims["vendor_id"] = str(link["vendor_id"])
+        claims["vendor_role"] = link["vendor_role"]
+        claims["platform"] = "vendor"
+    else:
+        claims["vendor_id"] = None
+        claims[_VENDOR_REFUSED] = True
+
+
+def _assert_vendor_scope(claims: dict, request: Request) -> None:
+    """Confine a vendor session to /vendor/* and the auth routes.
+
+    Keyed on real_role (never role), and must stay AFTER the db.rollback() in
+    get_current_user, like _assert_may_write.
+    """
+    if claims.get("real_role") != Role.VENDOR.value:
+        return
+    if claims.pop(_VENDOR_REFUSED, None):
+        raise AuthError("Your vendor account is suspended or no longer linked. Sign in again.")
+    path = getattr(getattr(request, "url", None), "path", "")
+    if not path.startswith(_VENDOR_ALLOWED_PREFIXES):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Vendor accounts can only use the vendor portal.",
+        )
+
+
 def _apply_workspace_override(
     claims: dict,
     *,
@@ -370,6 +433,7 @@ async def get_current_user(
     claims["real_role"] = db_role
     claims["has_executive_access"] = row.get("has_executive_access", False)
     claims["has_pending_executive_request"] = row.get("has_pending_executive_request", False)
+    await _load_vendor_link(db, claims, db_role)
     _apply_workspace_override(
         claims,
         db_role=db_role,
@@ -396,6 +460,7 @@ async def get_current_user(
 
     _assert_workspace_access(claims, request)
     _assert_may_write(claims, request)
+    _assert_vendor_scope(claims, request)
 
     return claims
 
