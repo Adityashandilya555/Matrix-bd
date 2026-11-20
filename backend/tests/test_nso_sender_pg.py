@@ -33,7 +33,10 @@ def _wire(monkeypatch, maker):  # noqa: F811
 
     async def _public(_url):
         return None
-    monkeypatch.setattr(sender, "assert_public_host", _public)
+
+    async def _addr(_url):
+        return "93.184.216.34"  # never contacted: requests go to MockTransport
+    monkeypatch.setattr(sender, "resolve_public_address", _addr)
     monkeypatch.setattr(svc, "assert_public_host", _public)
 
 
@@ -229,3 +232,61 @@ async def test_rejects_http_and_hostless_urls(engine, maker):  # noqa: F811
             with pytest.raises(HTTPException) as exc:
                 await svc.save_config(db, str(tid), ADMIN, bad, True)
         assert exc.value.status_code == 422
+
+
+# ── Review fixes (PR 515) ────────────────────────────────────────────────
+
+
+async def test_dead_event_does_not_block_backfill(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker)
+    async with _client(lambda r: httpx.Response(401)) as client:
+        await _drain(client)
+    assert (await _status(engine, sid))[0][0] == "dead"
+    async with maker() as db:
+        out = await svc.backfill(db, str(tid), ADMIN)
+        await db.commit()
+    assert out == {"eligible": 1, "queued": 1}
+
+
+async def test_can_switch_off_when_dns_fails_or_key_missing(engine, maker, monkeypatch):  # noqa: F811
+    tid, _, _ = await _setup(engine, maker)
+
+    async def _broken(_url):
+        raise sender.BlockedAddressError("cannot resolve nso.example.com")
+    monkeypatch.setattr(svc, "assert_public_host", _broken)
+    monkeypatch.setattr(settings, "integration_secret_key", "")
+    async with maker() as db:
+        out = await svc.save_config(db, str(tid), ADMIN, "https://nso.example.com/hook", False)
+        await db.commit()
+    assert out["enabled"] is False
+
+
+async def test_enabling_reports_just_enabled(engine, maker):  # noqa: F811
+    tid, _, _ = await _world(engine, endpoint=False)
+    async with maker() as db:
+        off = await svc.save_config(db, str(tid), ADMIN, "https://nso.example.com/hook", False)
+        on = await svc.save_config(db, str(tid), ADMIN, "https://nso.example.com/hook", True)
+        again = await svc.save_config(db, str(tid), ADMIN, "https://nso.example.com/hook", True)
+        await db.commit()
+    assert (off["just_enabled"], on["just_enabled"], again["just_enabled"]) == (False, True, False)
+
+
+async def test_result_after_losing_the_claim_does_not_overwrite(engine, maker, monkeypatch):  # noqa: F811
+    _, sid, _ = await _setup(engine, maker)
+    async with engine.begin() as conn:
+        await conn.execute(text("update integration_outbox set next_attempt_at = now() + interval '1 day' where site_id <> :s"), {"s": sid})
+    (row,) = [r for r in await sender.claim(500) if r.payload["site"]["id"] == str(sid)]
+    # Another worker reclaims and re-claims the row while ours is "in flight".
+    async with engine.begin() as conn:
+        await conn.execute(text(
+            "update integration_outbox set status = 'sending', locked_by = 'other-worker', attempts = attempts + 1 "
+            "where id = :i"), {"i": row.id})
+    await sender._record(row, sender.Outcome(status="failed", http_status=500))
+    async with engine.connect() as conn:
+        status, locked_by = (await conn.execute(text(
+            "select status, locked_by from integration_outbox where id = :i"), {"i": row.id})).one()
+        logged = (await conn.execute(text(
+            "select count(*) from integration_deliveries where outbox_id = :i"), {"i": row.id})).scalar()
+    assert (status, locked_by) == ("sending", "other-worker")
+    assert logged == 1
+    assert not await sender._refresh_claim(row.id)

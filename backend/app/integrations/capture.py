@@ -70,22 +70,19 @@ def _after_flush(session: Session, _flush_context: Any) -> None:
             }
 
 
-def _enabled_tenants(session: Session, tenant_ids: set[uuid.UUID]) -> set[uuid.UUID]:
-    if not tenant_ids:
-        return set()
+def _enabled_filter():
     ep = models.IntegrationEndpoint
-    return set(session.execute(
-        select(ep.tenant_id).where(
-            ep.tenant_id.in_(tenant_ids), ep.integration == nso.INTEGRATION, ep.enabled.is_(True),
-        )
-    ).scalars())
+    return select(ep.tenant_id).where(ep.integration == nso.INTEGRATION, ep.enabled.is_(True))
 
 
 def _last_payload(session: Session, tenant_id: uuid.UUID, site_id: uuid.UUID) -> dict | None:
+    """Last snapshot NSO got or will get. Dead rows don't count: NSO never
+    received them, so a backfill must be able to send that state again."""
     ob = models.IntegrationOutbox
     return session.execute(
         select(ob.payload)
-        .where(ob.tenant_id == tenant_id, ob.integration == nso.INTEGRATION, ob.site_id == site_id)
+        .where(ob.tenant_id == tenant_id, ob.integration == nso.INTEGRATION, ob.site_id == site_id,
+               ob.status != "dead")
         .order_by(ob.seq.desc())
         .limit(1)
     ).scalar_one_or_none()
@@ -138,24 +135,33 @@ def _before_commit(session: Session) -> None:
     session.flush()  # run after_flush for anything still pending
     touched: set[uuid.UUID] = session.info.pop(_TOUCHED, set())
     deleted: dict[uuid.UUID, dict] = session.info.pop(_DELETED, {})
-    touched -= deleted.keys()
     if not touched and not deleted:
         return
 
-    site_tenants = dict(session.execute(
-        select(models.Site.id, models.Site.tenant_id).where(models.Site.id.in_(touched))
-    ).all()) if touched else {}
-    enabled = _enabled_tenants(session, set(site_tenants.values()) | {d["tenant_id"] for d in deleted.values()})
-    if not enabled:
-        return
+    # One query: which noted sites still exist AND belong to an enabled workspace.
+    # A site in `deleted` that still exists had its delete rolled back with a
+    # SAVEPOINT; it is treated as touched, not deleted.
+    site = models.Site
+    live_enabled = set(session.execute(
+        select(site.id).where(site.id.in_(touched | deleted.keys()), site.tenant_id.in_(_enabled_filter()))
+    ).scalars())
+    still_there = set(session.execute(
+        select(site.id).where(site.id.in_(deleted.keys()))
+    ).scalars()) if deleted else set()
+    deleted = {k: v for k, v in deleted.items() if k not in still_there}
+    touched = (touched | still_there) - deleted.keys()
 
     # Sorted so two transactions touching the same sites lock them in one order.
-    for site_id in sorted(touched, key=str):
-        if site_tenants.get(site_id) in enabled:
-            queue_site_snapshot(session, site_id)
+    for site_id in sorted(touched & live_enabled, key=str):
+        queue_site_snapshot(session, site_id)
+    if not deleted:
+        return
+    enabled_tenants = set(session.execute(
+        _enabled_filter().where(models.IntegrationEndpoint.tenant_id.in_({d["tenant_id"] for d in deleted.values()}))
+    ).scalars())
     for site_id, info in deleted.items():
         # NSO only knows sites that were eligible; nothing to tell it otherwise.
-        if info["tenant_id"] in enabled and nso.is_eligible(info["cafe_code"]):
+        if info["tenant_id"] in enabled_tenants and nso.is_eligible(info["cafe_code"]):
             enqueue(session, info["tenant_id"], site_id, nso.EVENT_DELETED,
                     nso.tombstone(info["tenant_id"], site_id, info["cafe_code"], info["name"]))
 

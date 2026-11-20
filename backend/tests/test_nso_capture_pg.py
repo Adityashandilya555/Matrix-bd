@@ -229,3 +229,19 @@ async def test_outbox_rows_have_no_site_fk(engine):
         ))).scalar()
     assert fks == 0
 
+
+
+async def test_rolled_back_savepoint_delete_is_an_update_not_a_tombstone(engine, maker):
+    _, _, sid = await _world(engine)
+    async with maker() as db:
+        site = await db.get(models.Site, sid)
+        site.name = "Renamed"
+        await db.flush()
+        nested = await db.begin_nested()
+        await db.delete(site)
+        await db.flush()
+        await nested.rollback()
+        await db.commit()
+    rows = await _outbox(engine, sid)
+    assert [r.event_type for r in rows] == ["site.updated"]
+    assert rows[0].payload["site"]["name"] == "Renamed"

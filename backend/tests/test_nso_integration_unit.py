@@ -155,6 +155,8 @@ def test_backoff_grows_and_honours_retry_after():
 @pytest.mark.parametrize(("addr", "blocked"), [
     ("10.0.0.5", True), ("127.0.0.1", True), ("169.254.169.254", True), ("192.168.1.1", True),
     ("::1", True), ("fd00::1", True), ("0.0.0.0", True), ("8.8.8.8", False), ("2606:4700::1111", False),
+    ("100.64.0.1", True), ("100.127.255.254", True), ("198.18.0.1", True), ("192.0.0.8", True),
+    ("::ffff:127.0.0.1", True), ("::ffff:100.64.0.1", True), ("224.0.0.1", True),
 ])
 def test_ssrf_guard(addr, blocked):
     assert sender.is_blocked_ip(addr) is blocked
@@ -189,3 +191,10 @@ def test_every_integration_route_requires_real_business_admin():
         annotations = {ast.unparse(a.annotation) for a in fn.args.args if a.annotation}
         assert "AdminUser" in annotations, fn.name
     assert "require_real_role(Role.BUSINESS_ADMIN)" in src
+
+
+def test_pinned_request_keeps_host_and_sni():
+    assert sender.pinned_request("https://nso.example.com/hook?x=1", "93.184.216.34") == (
+        "https://93.184.216.34/hook?x=1", "nso.example.com", "nso.example.com")
+    assert sender.pinned_request("https://nso.example.com:8443/h", "2606:4700::1111") == (
+        "https://[2606:4700::1111]:8443/h", "nso.example.com:8443", "nso.example.com")

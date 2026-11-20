@@ -68,4 +68,27 @@ describe('IntegrationsTab', () => {
     await user.click(await screen.findByRole('button', { name: 'Replay' }));
     await waitFor(() => expect(api.replayNsoEvent).toHaveBeenCalledWith('ev1'));
   });
+
+  it('keeps an unsaved URL edit when another action reloads the page', async () => {
+    api.getNsoIntegration.mockResolvedValue(cfg({ configured: true, enabled: true, endpointUrl: 'https://old.example' }));
+    api.sendNsoTest.mockResolvedValue({ queued: true });
+    const user = userEvent.setup();
+    render(<IntegrationsTab />);
+    const input = await screen.findByLabelText(/endpoint url/i);
+    await user.clear(input);
+    await user.type(input, 'https://new.example');
+    await user.click(screen.getByRole('button', { name: 'Send test' }));
+    await screen.findByText(/test event queued/i);
+    expect(screen.getByLabelText(/endpoint url/i)).toHaveValue('https://new.example');
+  });
+
+  it('prompts for a backfill right after switching on', async () => {
+    api.getNsoIntegration.mockResolvedValue(cfg({ configured: true, enabled: false, endpointUrl: 'https://x.example' }));
+    api.saveNsoIntegration.mockResolvedValue({ enabled: true, endpointUrl: 'https://x.example', secret: null, justEnabled: true });
+    const user = userEvent.setup();
+    render(<IntegrationsTab />);
+    await user.click(await screen.findByLabelText(/send site updates/i));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText(/were not sent/i)).toBeInTheDocument();
+  });
 });

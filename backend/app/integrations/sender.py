@@ -42,10 +42,14 @@ WORKER_ID = f"{socket.gethostname()}:{os.getpid()}"
 STALE_AFTER = timedelta(minutes=5)
 RETENTION = timedelta(days=30)
 MAX_ATTEMPTS = 12
-# Delay after attempt N fails (index N-1). Sums to roughly 2.5 days.
+# Delay after attempt N fails (index N-1). Sums to about 2.15 days.
 BACKOFF_SECS = (30, 120, 600, 1800, 3600, 7200, 14400, 28800, 43200, 43200, 43200)
 DISABLED_RECHECK = timedelta(hours=1)
+# Hard cap on one send (DNS + connect + TLS + body), well under STALE_AFTER so a
+# slow receiver can't keep a claim long enough for another worker to reclaim it.
+SEND_DEADLINE_SECS = 30
 SNIPPET_CHARS = 500
+DNS_TIMEOUT_SECS = 5
 
 _CLAIM_SQL = text("""
 UPDATE integration_outbox o
@@ -106,23 +110,51 @@ def parse_retry_after(value: Optional[str]) -> Optional[int]:
 
 
 def is_blocked_ip(addr: str) -> bool:
-    """Private, loopback, link-local (incl. cloud metadata), multicast, reserved."""
+    """Anything not globally routable: private, loopback, link-local (incl. cloud
+    metadata), CGNAT 100.64/10 (Railway's internal range), benchmarking,
+    reserved, unspecified; plus multicast. IPv4-mapped IPv6 is unwrapped first."""
     ip = ipaddress.ip_address(addr)
-    return (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast
-            or ip.is_reserved or ip.is_unspecified)
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return not ip.is_global or ip.is_multicast
 
 
-async def assert_public_host(url: str) -> None:
-    """Resolve the URL's host and refuse internal addresses (SSRF guard)."""
+async def resolve_public_address(url: str) -> str:
+    """Resolve the URL's host once and return an address it is safe to connect to.
+
+    Every resolved address must be public. The caller connects to the returned
+    address (see ``post_event``), so a second DNS answer can't swap in an
+    internal one between this check and the request (DNS rebinding).
+    """
     host = urlsplit(url).hostname
     if not host:
         raise BlockedAddressError("endpoint URL has no host")
     try:
-        infos = await asyncio.get_running_loop().getaddrinfo(host, None, type=socket.SOCK_STREAM)
-    except socket.gaierror as exc:
+        infos = await asyncio.wait_for(
+            asyncio.get_running_loop().getaddrinfo(host, None, type=socket.SOCK_STREAM), DNS_TIMEOUT_SECS,
+        )
+    except (socket.gaierror, asyncio.TimeoutError) as exc:
         raise BlockedAddressError(f"cannot resolve {host}") from exc
-    if not infos or any(is_blocked_ip(info[4][0]) for info in infos):
+    addrs = [info[4][0] for info in infos]
+    if not addrs or any(is_blocked_ip(a) for a in addrs):
         raise BlockedAddressError(f"{host} resolves to a non-public address")
+    return addrs[0]
+
+
+async def assert_public_host(url: str) -> None:
+    """Refuse URLs whose host is unresolvable or internal (used when saving)."""
+    await resolve_public_address(url)
+
+
+def pinned_request(url: str, address: str) -> tuple[str, str, str]:
+    """``(url_with_ip, host_header, sni_hostname)`` for connecting to ``address``
+    while still sending the right Host header and verifying the certificate
+    against the real hostname."""
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    ip_netloc = f"[{address}]" if ":" in address else address
+    port = f":{parts.port}" if parts.port else ""
+    return parts._replace(netloc=ip_netloc + port).geturl(), host + port, host
 
 
 def envelope(row: Any) -> dict[str, Any]:
@@ -157,10 +189,17 @@ async def post_event(client: httpx.AsyncClient, url: str, row: Any, secrets: lis
     )
     started = time.monotonic()
     try:
-        await assert_public_host(url)
-        resp = await client.post(url, content=body, headers=headers)
+        address = await resolve_public_address(url)
+        pinned_url, headers["Host"], sni = pinned_request(url, address)
+        resp = await asyncio.wait_for(
+            client.post(pinned_url, content=body, headers=headers, extensions={"sni_hostname": sni}),
+            SEND_DEADLINE_SECS,
+        )
     except BlockedAddressError as exc:
         return Outcome(status="dead", error=f"blocked_address: {exc}")
+    except asyncio.TimeoutError:
+        return Outcome(status=classify(None, row.attempts), error="deadline exceeded",
+                       duration_ms=int((time.monotonic() - started) * 1000))
     except httpx.HTTPError as exc:
         return Outcome(status=classify(None, row.attempts), error=f"{type(exc).__name__}: {exc}"[:SNIPPET_CHARS],
                        duration_ms=int((time.monotonic() - started) * 1000))
@@ -169,7 +208,7 @@ async def post_event(client: httpx.AsyncClient, url: str, row: Any, secrets: lis
         http_status=resp.status_code,
         snippet=resp.text[:SNIPPET_CHARS],
         duration_ms=int((time.monotonic() - started) * 1000),
-        retry_after=parse_retry_after(resp.headers.get("retry-after")) if resp.status_code == 429 else None,
+        retry_after=parse_retry_after(resp.headers.get("retry-after")) if resp.status_code in (429, 503) else None,
     )
 
 
@@ -189,6 +228,11 @@ async def _record(row: Any, outcome: Outcome) -> None:
             http_status=outcome.http_status, duration_ms=outcome.duration_ms,
             error=outcome.error, response_snippet=outcome.snippet,
         ))
+        if not _still_ours(ob):
+            # Reclaimed by another worker while this send was in flight: log the
+            # attempt, but leave the row to its current owner.
+            log.warning("integration_sender: lost claim on %s; result logged only", row.id)
+            return
         now = datetime.now(timezone.utc)
         ob.status = outcome.status
         ob.locked_at = None
@@ -205,12 +249,26 @@ async def _park(row_id: uuid.UUID) -> None:
     """Workspace switched off after queueing: put the row back, uncounted, for an hour."""
     async with SessionLocal() as db, db.begin():
         ob = await db.get(models.IntegrationOutbox, row_id, with_for_update=True)
-        if ob is not None:
+        if ob is not None and _still_ours(ob):
             ob.status = "pending"
             ob.attempts = max(0, ob.attempts - 1)
             ob.locked_at = None
             ob.locked_by = None
             ob.next_attempt_at = datetime.now(timezone.utc) + DISABLED_RECHECK
+
+
+def _still_ours(ob: models.IntegrationOutbox) -> bool:
+    return ob.status == "sending" and ob.locked_by == WORKER_ID
+
+
+async def _refresh_claim(row_id: uuid.UUID) -> bool:
+    """Restart the stale clock just before sending; False if we no longer own the row."""
+    async with SessionLocal() as db, db.begin():
+        result = await db.execute(text(
+            "UPDATE integration_outbox SET locked_at = now() "
+            "WHERE id = :id AND status = 'sending' AND locked_by = :w"
+        ), {"id": row_id, "w": WORKER_ID})
+        return bool(result.rowcount)
 
 
 async def _endpoint(tenant_id: uuid.UUID) -> Optional[models.IntegrationEndpoint]:
@@ -223,6 +281,8 @@ async def _endpoint(tenant_id: uuid.UUID) -> Optional[models.IntegrationEndpoint
 
 async def deliver(client: httpx.AsyncClient, row: Any) -> str:
     """Send one claimed row and record the result. Returns the new status."""
+    if not await _refresh_claim(row.id):
+        return "skipped"
     endpoint = await _endpoint(row.tenant_id)
     if endpoint is None or not endpoint.enabled:
         await _park(row.id)
@@ -282,12 +342,12 @@ async def run_once(client: httpx.AsyncClient, batch: int = 20) -> int:
 async def run_forever(interval_secs: int, timeout_secs: float) -> None:
     """The background loop started from app.main's lifespan."""
     log.info("integration_sender: loop started (interval=%ds, worker=%s)", interval_secs, WORKER_ID)
-    last_purge = 0.0
+    last_purge: Optional[float] = None  # None: purge on the first pass
     async with httpx.AsyncClient(timeout=timeout_secs, follow_redirects=False) as client:
         while True:
             try:
                 claimed = await run_once(client)
-                if time.monotonic() - last_purge > 86400:
+                if last_purge is None or time.monotonic() - last_purge > 86400:
                     while await purge_sent() == 1000:
                         pass
                     last_purge = time.monotonic()

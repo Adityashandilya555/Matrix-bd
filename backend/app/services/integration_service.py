@@ -26,6 +26,7 @@ from app.services.audit_service import write_audit_event
 _HTTPS_URL = re.compile(r"^https://[^/?#\s]+")
 ROTATION_OVERLAP = timedelta(hours=24)
 RECENT_DELIVERIES = 20
+BACKFILL_CHUNK = 50
 
 
 def _require_key() -> None:
@@ -96,10 +97,18 @@ async def get_config(db: AsyncSession, tenant_id: str) -> dict[str, Any]:
 
 
 async def save_config(db: AsyncSession, tenant_id: str, actor: dict, endpoint_url: str, enabled: bool) -> dict[str, Any]:
-    """Create or update the endpoint. The first save returns the new secret once."""
-    _require_key()
-    url = await _validate_url(endpoint_url)
+    """Create or update the endpoint. The first save returns the new secret once.
+
+    Switching off never depends on DNS or the server key: when NSO's host is
+    down is exactly when an admin needs to stop queueing.
+    """
     endpoint = await _endpoint(db, tenant_id, lock=True)
+    url = endpoint_url.strip()
+    only_disabling = endpoint is not None and not enabled and url == endpoint.endpoint_url
+    if not only_disabling:
+        _require_key()
+        url = await _validate_url(url)
+    was_enabled = bool(endpoint and endpoint.enabled)
     now = datetime.now(timezone.utc)
     new_secret: Optional[str] = None
     if endpoint is None:
@@ -122,7 +131,10 @@ async def save_config(db: AsyncSession, tenant_id: str, actor: dict, endpoint_ur
         endpoint.updated_at = now
     await _audit(db, tenant_id, actor, "nso_integration_saved", f"enabled={enabled} url={url}")
     await db.flush()
-    return {"enabled": enabled, "endpoint_url": url, "secret": new_secret}
+    # Changes made while switched off were never queued; the UI prompts for a
+    # backfill when this is true (a deliberate click, not an automatic flood).
+    return {"enabled": enabled, "endpoint_url": url, "secret": new_secret,
+            "just_enabled": enabled and not was_enabled}
 
 
 async def rotate_secret(db: AsyncSession, tenant_id: str, actor: dict) -> dict[str, Any]:
@@ -174,10 +186,13 @@ async def backfill(db: AsyncSession, tenant_id: str, actor: dict) -> dict[str, A
         .order_by(models.Site.id)
     )).scalars().all()
 
-    def _queue_all(session: Any) -> int:
-        return sum(capture.queue_site_snapshot(session, sid) for sid in site_ids)
-
-    queued = await db.run_sync(_queue_all)
+    # Committed in chunks so each site's lock is held briefly, not for the whole
+    # backfill: a large workspace must not block everyone's edits meanwhile.
+    queued = 0
+    for start in range(0, len(site_ids), BACKFILL_CHUNK):
+        chunk = site_ids[start:start + BACKFILL_CHUNK]
+        queued += await db.run_sync(lambda s, c=chunk: sum(capture.queue_site_snapshot(s, sid) for sid in c))
+        await db.commit()
     await _audit(db, tenant_id, actor, "nso_integration_backfill", f"queued={queued} eligible={len(site_ids)}")
     return {"eligible": len(site_ids), "queued": queued}
 

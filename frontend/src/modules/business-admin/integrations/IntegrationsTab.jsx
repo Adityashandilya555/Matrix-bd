@@ -128,7 +128,9 @@ export default function IntegrationsTab() {
       const out = await fn();
       if (out?.secret) setSecret(out.secret);
       setMsg({ tone: 'good', text: typeof okText === 'function' ? okText(out) : okText });
-      setForm((f) => ({ ...f, touched: false }));
+      // Only a save makes the server's values the form's; an unsaved edit must
+      // survive "Send test", "Rotate", "Replay"…
+      if (key === 'save') setForm((f) => ({ ...f, touched: false }));
       await load();
     } catch (err) {
       setMsg({ tone: 'bad', text: errText(err, 'That did not work.') });
@@ -172,7 +174,9 @@ export default function IntegrationsTab() {
             </label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <Button variant="solid" loading={busy === 'save'} disabled={!form.endpointUrl}
-                onClick={() => run('save', () => saveNsoIntegration(form), 'Saved.')}>Save</Button>
+                onClick={() => run('save', () => saveNsoIntegration(form), (o) => (o.justEnabled
+                  ? 'Saved and switched on. Changes made while it was off were not sent — click "Send all current sites" below.'
+                  : 'Saved.'))}>Save</Button>
               {cfg.configured && (
                 <Button icon={<Icon.rotate size={14} />} loading={busy === 'rotate'}
                   onClick={() => run('rotate', rotateNsoSecret, 'New secret created. The old one keeps working for 24 hours.')}>
@@ -209,7 +213,7 @@ export default function IntegrationsTab() {
             <Card style={{ padding: 16 }}>
               <div style={{ fontWeight: 700, marginBottom: 8 }}>Gave up</div>
               <div style={{ fontSize: 12.5, color: T.textMuted, marginBottom: 10 }}>
-                Events the NSO platform rejected, or that failed for about 2½ days. Fix the cause, then replay.
+                Events the NSO platform rejected, or that kept failing for about 2 days. Fix the cause, then replay.
               </div>
               <DeadList rows={dead} busyId={busy}
                 onReplay={(id) => run(id, () => replayNsoEvent(id), 'Queued again.')} />
