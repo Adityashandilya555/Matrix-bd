@@ -52,6 +52,10 @@ const ProjectQueuePage = lazy(() => import('../modules/project/ProjectQueuePage.
 const ApprovalCenterPreview = import.meta.env.DEV
   ? lazy(() => import('../modules/business-admin/_preview/ApprovalCenterPreview.jsx'))
   : null;
+// Dev-only: role dashboards with sample payloads (no backend / no login).
+const DashboardPreviewPage = import.meta.env.DEV
+  ? lazy(() => import('../modules/dashboard-preview/DashboardPreviewPage.jsx'))
+  : null;
 const ProjectReviewPage = lazy(() => import('../modules/project/ProjectReviewPage.jsx'));
 const NsoQueuePage = lazy(() => import('../modules/nso/NsoQueuePage.jsx'));
 const NsoReviewPage = lazy(() => import('../modules/nso/NsoReviewPage.jsx'));
@@ -171,6 +175,11 @@ export default function AppRouter() {
       {import.meta.env.DEV && (
         <Route path="/business-admin-preview" element={
           <Suspense fallback={null}><ApprovalCenterPreview/></Suspense>
+        }/>
+      )}
+      {import.meta.env.DEV && (
+        <Route path="/dashboard-preview" element={
+          <Suspense fallback={null}><DashboardPreviewPage/></Suspense>
         }/>
       )}
 
