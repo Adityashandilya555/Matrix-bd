@@ -107,7 +107,17 @@ const TABS = [
   { key: 'integrations', label: 'Integrations',     icon: Icon.external },
 ];
 
+// Injected fetchers (tests) that don't supply the dashboard's own calls get a
+// quiet stand-in, so the Overview tab never reaches for a real server there.
+const QUIET_DASHBOARD = {
+  getDashboardSummary: () => new Promise(() => {}),
+  getDashboardVersion: () => new Promise(() => {}),
+};
+
 export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, workspaceName }) {
+  const dashboardDeps = fetchers === REAL_FETCHERS
+    ? undefined
+    : (fetchers.getDashboardSummary ? { getDashboardSummary: fetchers.getDashboardSummary, getDashboardVersion: fetchers.getDashboardVersion } : QUIET_DASHBOARD);
   const company = workspaceName ?? (() => {
     const p = decodeJwtPayload(getAuthToken());
     return p.workspace_name || p.tenant_name || p.company || '';
@@ -464,7 +474,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
 
           {/* ── Panels ── */}
           <div key={tab} className="ac-fade-in">
-            {tab === 'overview' && <LiveDashboard viewer={decodeJwtPayload(getAuthToken()).user_metadata?.full_name} />}
+            {tab === 'overview' && <LiveDashboard viewer={decodeJwtPayload(getAuthToken()).user_metadata?.full_name} deps={dashboardDeps} />}
             {tab === 'approvals' && (
               <ApprovalCenter data={approvalData} handlers={handlers} onRetry={() => reloadApprovals(false)} />
             )}
