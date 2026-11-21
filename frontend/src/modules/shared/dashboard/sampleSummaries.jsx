@@ -173,7 +173,11 @@ export function legalSupervisor(scope) {
         { code: 'BT-PUN-4FMG', name: 'Hinjewadi Phase 1', city: 'Pune', kind: 'Change request', key: 'change', age: 'today' },
       ],
     },
-    modules: [MODULES[0]],
+    // My team narrows the Legal breakdown too, so it agrees with the tiles above
+    // (51 in legal, 34 positive for the team; 125 and 86 for the module).
+    modules: [team
+      ? { ...MODULES[0], parts: [{ label: 'Pending', value: 6, color: '#C9BBAA' }, { label: 'In review', value: 7, color: '#E8B23A' }, { label: 'Positive', value: 34, color: '#1C7A52' }, { label: 'Negative', value: 4, color: '#C4413A' }] }
+      : MODULES[0]],
     cycle: { sub: 'Median days in Legal', steps: [{ label: 'Review started → DD verdict', days: 12 }, { label: 'DD positive → agreement signed', days: 9 }, { label: 'Signed → registered', days: 14 }, { label: 'Licensing complete', days: 21 }], callout: 'Licensing takes longest: 21 days on average.' },
     compliance: {
       title: 'Legal health', sub: 'Across the module', source: 'legal_dd_status · site_agreement',

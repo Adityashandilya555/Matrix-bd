@@ -2,7 +2,7 @@
 import React from 'react';
 import RoleDashboard from '../shared/dashboard/RoleDashboard.jsx';
 import { Ico } from '../shared/dashboard/kit.jsx';
-import { ADMIN, BD_EXECUTIVE, EMPTY_EXECUTIVE, bdSupervisor, legalSupervisor } from '../shared/dashboard/sampleSummaries.js';
+import { ADMIN, BD_EXECUTIVE, EMPTY_EXECUTIVE, bdSupervisor, legalSupervisor } from '../shared/dashboard/sampleSummaries.jsx';
 
 // Dev-only preview of the role dashboards with sample payloads: no backend and
 // no sign-in. Pick a view in the top bar; the sidebar shows that role's menu.
@@ -41,9 +41,9 @@ export default function DashboardPreviewPage() {
         : view === 'bd-exec' ? BD_EXECUTIVE : EMPTY_EXECUTIVE;
 
   return (
-    <div data-theme={dark ? 'dark' : 'light'} style={{ height: '100vh', overflow: 'hidden', display: 'flex', background: 'var(--zm-bg)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)' }}>
-      <nav aria-label="Main" style={{ flex: '1 1 240px', maxWidth: 280, background: 'var(--zm-sidebar-bg)', padding: '22px 14px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 4, height: '100vh', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '4px 8px 22px' }}>
+    <div data-theme={dark ? 'dark' : 'light'} className="dash-shell" style={{ background: 'var(--zm-bg)', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-body)' }}>
+      <nav aria-label="Main" className="dash-shell-nav" style={{ background: 'var(--zm-sidebar-bg)', padding: '22px 14px', boxSizing: 'border-box', gap: 4 }}>
+        <div className="dash-shell-brand" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '4px 8px 22px' }}>
           <img src="/brand-logo.jpeg" alt="RetailExpansion" width="42" height="42" style={{ borderRadius: 12, objectFit: 'cover' }} />
           <div className="dash-col">
             <span style={{ fontFamily: 'var(--zm-font-display)', fontWeight: 700, color: 'var(--zm-sidebar-fg)', fontSize: 16 }}>RetailExpansion</span>
@@ -55,8 +55,8 @@ export default function DashboardPreviewPage() {
             <Ico name={NAV_ICON[item] || 'doc'} />{item}
           </a>
         ))}
-        <div style={{ flex: 1 }} />
-        <div style={{ borderRadius: 16, overflow: 'hidden', position: 'relative', minHeight: 140, display: 'flex', alignItems: 'flex-end' }}>
+        <div className="dash-shell-phone-hide" style={{ flex: 1 }} />
+        <div className="dash-shell-phone-hide" style={{ borderRadius: 16, overflow: 'hidden', position: 'relative', minHeight: 140, display: 'flex', alignItems: 'flex-end' }}>
           <img src="/dashboard/beans-cup.jpg" alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }} />
           <div style={{ position: 'relative', padding: 14, width: '100%', boxSizing: 'border-box', background: 'linear-gradient(to top, rgba(36,23,15,.95), rgba(36,23,15,0))' }}>
             <p style={{ margin: 0, fontFamily: 'var(--zm-font-display)', fontWeight: 700, color: '#FFF6EC', fontSize: 15 }}>8 cafés open soon</p>
@@ -65,7 +65,7 @@ export default function DashboardPreviewPage() {
         </div>
       </nav>
 
-      <main id="top" style={{ flex: '999 1 560px', minWidth: 0, boxSizing: 'border-box', height: '100vh', overflowY: 'auto' }}>
+      <main id="top" className="dash-shell-main">
         <header style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', padding: '16px 28px', borderBottom: '1px solid var(--zm-line)', background: 'var(--zm-surface)' }}>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} role="group" aria-label="Preview view">
             {VIEWS.map((x) => (

@@ -106,3 +106,16 @@
 @media (prefers-reduced-motion: reduce) {
   .dash-chip, .dash-glass { transition: none; }
 }
+
+/* Preview shell: sidebar beside a scrolling main column; on phones the
+   sidebar stacks above the content and the whole page scrolls instead. */
+.dash-shell { height: 100vh; overflow: hidden; display: flex; }
+.dash-shell-nav { flex: 0 0 260px; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.dash-shell-main { flex: 1 1 auto; min-width: 0; box-sizing: border-box; height: 100vh; overflow-y: auto; }
+@media (max-width: 720px) {
+  .dash-shell { flex-direction: column; height: 100vh; overflow-y: auto; }
+  .dash-shell-nav { flex: none; height: auto; flex-direction: row; flex-wrap: wrap; }
+  .dash-shell-brand { flex-basis: 100%; padding-bottom: 12px !important; }
+  .dash-shell-phone-hide { display: none !important; }
+  .dash-shell-main { height: auto; overflow: visible; }
+}
