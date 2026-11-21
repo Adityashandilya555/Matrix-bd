@@ -234,11 +234,11 @@ def _module_open(module: str):
 # needs_action marks the tiles that make up "Waiting on you" for that role, so
 # the inbox and the tiles always agree. Definitions follow each module's
 # service: who moves the site next, not merely "unfinished". One small
-# function per (module, role), chosen from _TILE_BUILDERS.
+# function per (module, role), chosen from _TILE_BUILDERS; every builder takes
+# (today, uid), and ones that need neither name them with a leading underscore.
 TileDef = tuple[str, str, str, Any, bool]
 
-def _tiles_bd_sup(today, uid: Optional[str]) -> list[TileDef]:
-    del today, uid  # same signature for every builder
+def _tiles_bd_sup(_today, _uid: Optional[str]) -> list[TileDef]:
     return [
         ("shortlist", "To shortlist", "new drafts", S.status == "draft_submitted", True),
         ("approve", "To approve", "details submitted", S.status == "details_submitted", True),
@@ -266,8 +266,7 @@ def _tiles_bd_exec(today, uid: Optional[str]) -> list[TileDef]:
     ]
 
 
-def _tiles_legal_sup(today, uid: Optional[str]) -> list[TileDef]:
-    del today, uid  # same signature for every builder
+def _tiles_legal_sup(_today, _uid: Optional[str]) -> list[TileDef]:
     return [
         ("dd_review", "DD to review", "submitted checklists",
          _rel(models.LegalDdChecklist, lambda c: (c.stage == "pending_review",)), True),
@@ -280,8 +279,7 @@ def _tiles_legal_sup(today, uid: Optional[str]) -> list[TileDef]:
     ]
 
 
-def _tiles_legal_exec(today, uid: Optional[str]) -> list[TileDef]:
-    del today, uid  # same signature for every builder
+def _tiles_legal_exec(_today, _uid: Optional[str]) -> list[TileDef]:
     return [
         ("dd_draft", "DD drafts", "checklists to finish",
          _rel(models.LegalDdChecklist, lambda c: (c.stage == "draft",)), True),
@@ -294,8 +292,7 @@ def _tiles_legal_exec(today, uid: Optional[str]) -> list[TileDef]:
     ]
 
 
-def _tiles_design_sup(today, uid: Optional[str]) -> list[TileDef]:
-    del today, uid  # same signature for every builder
+def _tiles_design_sup(_today, _uid: Optional[str]) -> list[TileDef]:
     return [
         ("allocate", "To allocate", "ready for design", S.design_status == "pending", True),
         ("review", "Deliverables to review", "submitted by executives", _deliverable("submitted"), True),
@@ -306,8 +303,7 @@ def _tiles_design_sup(today, uid: Optional[str]) -> list[TileDef]:
     ]
 
 
-def _tiles_design_exec(today, uid: Optional[str]) -> list[TileDef]:
-    del today, uid  # same signature for every builder
+def _tiles_design_exec(_today, _uid: Optional[str]) -> list[TileDef]:
     return [
         ("upload", "To work on", "no deliverable under review",
          and_(or_(S.design_status.is_(None), S.design_status != "approved"), ~_deliverable("submitted")), True),
@@ -317,8 +313,7 @@ def _tiles_design_exec(today, uid: Optional[str]) -> list[TileDef]:
     ]
 
 
-def _tiles_project_sup(today, uid: Optional[str]) -> list[TileDef]:
-    del uid  # same signature for every builder
+def _tiles_project_sup(today, _uid: Optional[str]) -> list[TileDef]:
     return [
         ("allocate", "To allocate", "design approved", ~_active_delegation("project"), True),
         ("approvals", "Approvals pending", "dates and quality audits",
@@ -330,8 +325,7 @@ def _tiles_project_sup(today, uid: Optional[str]) -> list[TileDef]:
     ]
 
 
-def _tiles_project_exec(today, uid: Optional[str]) -> list[TileDef]:
-    del today, uid  # same signature for every builder
+def _tiles_project_exec(_today, _uid: Optional[str]) -> list[TileDef]:
     return [
         ("init", "Start date to confirm", "proposed by supervisor",
          _project(lambda r: (r.initialization_status == "proposed",)), True),
@@ -343,8 +337,7 @@ def _tiles_project_exec(today, uid: Optional[str]) -> list[TileDef]:
     ]
 
 
-def _tiles_project_excellence_sup(today, uid: Optional[str]) -> list[TileDef]:
-    del today, uid  # same signature for every builder
+def _tiles_project_excellence_sup(_today, _uid: Optional[str]) -> list[TileDef]:
     return [
         ("allocate", "To allocate", "design approved", S.project_excellence_status == "pending", True),
         ("budget_review", "Budgets to review", "submitted by executives", _budget("gfc", "pending_supervisor"), True),
@@ -354,8 +347,7 @@ def _tiles_project_excellence_sup(today, uid: Optional[str]) -> list[TileDef]:
     ]
 
 
-def _tiles_project_excellence_exec(today, uid: Optional[str]) -> list[TileDef]:
-    del today, uid  # same signature for every builder
+def _tiles_project_excellence_exec(_today, _uid: Optional[str]) -> list[TileDef]:
     return [
         ("fill", "Budgets to fill", "draft or sent back", _budget("gfc", "draft", "rejected"), True),
         ("review", "Awaiting review", "with supervisor or admin", _budget("gfc", "pending_supervisor", "pending_admin"), False),
@@ -365,8 +357,7 @@ def _tiles_project_excellence_exec(today, uid: Optional[str]) -> list[TileDef]:
     ]
 
 
-def _tiles_nso_sup(today, uid: Optional[str]) -> list[TileDef]:
-    del uid  # same signature for every builder
+def _tiles_nso_sup(today, _uid: Optional[str]) -> list[TileDef]:
     return [
     ("stage1", "Stage 1 to complete", "property and comms",
      or_(~_nso(lambda r: (true(),)), _nso(lambda r: (r.current_stage == "stage_one",))), True),
