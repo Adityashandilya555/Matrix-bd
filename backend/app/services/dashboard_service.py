@@ -233,7 +233,11 @@ def site_filters(ctx: DashContext) -> list:
     if ctx.scope == "team":
         members = [ctx.user_id, *ctx.team_ids]
         if module == "bd":
-            clauses.append(or_(S.submitted_by.in_(members), S.supervisor_id == ctx.user_id))
+            # Assigned as well as submitted: the same two columns that put a
+            # site on an executive's own dashboard (_common.apply_role_scope).
+            clauses.append(or_(
+                S.submitted_by.in_(members), S.assigned_to.in_(members), S.supervisor_id == ctx.user_id,
+            ))
         else:
             clauses.append(_delegated(
                 ctx, lambda d: or_(d.granted_by == ctx.user_id, d.delegate_user_id.in_(members)),
@@ -706,7 +710,19 @@ _VERSION_SQL = text("""
       (SELECT max(updated_at) FROM nso_reviews WHERE tenant_id = :tid) AS nso_at,
       (SELECT max(updated_at) FROM site_budgets WHERE tenant_id = :tid) AS budgets_at,
       (SELECT max(updated_at) FROM launch_approvals WHERE tenant_id = :tid) AS launch_at,
-      (SELECT count(*) FROM users WHERE tenant_id = :tid AND is_active) AS active_users
+      (SELECT count(*) FROM users WHERE tenant_id = :tid AND is_active) AS active_users,
+      -- Queues the admin and executive inboxes count. Creating or deciding one
+      -- of these writes no audit event, so without them the poll could answer
+      -- 304 while a queue had changed.
+      (SELECT count(*) FROM users WHERE tenant_id = :tid) AS all_users,
+      (SELECT count(*) FROM supervisor_executive_requests WHERE tenant_id = :tid AND status = 'pending') AS exec_requests,
+      (SELECT count(*) FROM supervisor_module_access_grants WHERE tenant_id = :tid AND status = 'pending') AS module_grants,
+      (SELECT count(*) FROM executive_module_access_grants WHERE tenant_id = :tid AND status = 'pending') AS exec_module_grants,
+      (SELECT count(*) FROM legal_change_requests WHERE tenant_id = :tid AND status = 'pending') AS change_requests,
+      (SELECT GREATEST(max(created_at), max(decided_at)) FROM supervisor_executive_requests WHERE tenant_id = :tid) AS exec_requests_at,
+      (SELECT GREATEST(max(created_at), max(decided_at), max(revoked_at)) FROM supervisor_module_access_grants WHERE tenant_id = :tid) AS module_grants_at,
+      (SELECT GREATEST(max(created_at), max(decided_at), max(revoked_at)) FROM executive_module_access_grants WHERE tenant_id = :tid) AS exec_module_grants_at,
+      (SELECT max(updated_at) FROM legal_change_requests WHERE tenant_id = :tid) AS change_requests_at
 """)
 
 

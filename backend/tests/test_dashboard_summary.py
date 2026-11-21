@@ -157,6 +157,8 @@ async def test_bd_team_scope_filters_sites_by_team_or_supervisor_id():
     db, _ = await _run(_user("supervisor", "bd"), "team", results=[FakeResult(all_rows=[(MATE,)])])
     kpi_sql = _sql(db)[1]
     assert "sites.submitted_by IN" in kpi_sql and "sites.supervisor_id =" in kpi_sql
+    # Sites assigned to a team member count even when someone else submitted them.
+    assert "sites.assigned_to IN" in kpi_sql
 
 
 async def test_module_team_scope_goes_through_delegations():
@@ -200,6 +202,10 @@ async def test_version_is_one_statement_and_stable():
     db = RecordingSession([row, row])
     v1 = await svc.get_version(db, TID)
     assert len(db.executed) == 1 and "tenant_id = :tid" in db.executed[0]
+    # Inbox queues that change without an audit event are part of the hash.
+    for table in ("supervisor_executive_requests", "supervisor_module_access_grants",
+                  "executive_module_access_grants", "legal_change_requests"):
+        assert table in db.executed[0]
     assert v1 == await svc.get_version(db, TID)
     assert len(v1) == 16
 

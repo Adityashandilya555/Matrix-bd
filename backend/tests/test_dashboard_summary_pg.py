@@ -158,11 +158,18 @@ async def test_bd_executive_sees_only_their_own_sites(engine, maker):
 async def test_bd_supervisor_team_scope_narrows_to_their_executives(engine, maker):
     ids = await _world(engine)
     async with maker() as db:
+        # Submitted by someone outside the team, assigned to a team executive.
+        await db.execute(text(
+            "insert into sites (tenant_id, name, city, submitted_by, assigned_to, status) "
+            "values (:t, 's_assigned', 'Pune', :by, :to, 'shortlisted')"
+        ), {"t": ids["tenant"], "by": ids["bd_stranger"], "to": ids["bd_exec"]})
+        await db.commit()
         module = await svc.build_summary(db, _user(ids, "bd_sup", "supervisor", "bd"), "module")
         team = await svc.build_summary(db, _user(ids, "bd_sup", "supervisor", "bd"), "team")
-    assert _tile(module, "in_module") == 5
+    assert _tile(module, "in_module") == 6
     assert team["scope"] == "team"
-    assert _tile(team, "in_module") == 4      # the stranger's site drops out
+    # The stranger's own site drops out; the one assigned to the team stays in.
+    assert _tile(team, "in_module") == 5
     assert _tile(team, "team") == 1
     assert {w["name"] for w in team["workload"]["items"]} <= {"bd_exec", "bd_sup"}
 
@@ -205,4 +212,13 @@ async def test_nso_summary_and_version(engine, maker):
     async with engine.begin() as c:
         await c.execute(_INSERT_AUDIT, {"t": ids["tenant"], "s": ids["s_draft"], "a": ids["bd_exec"]})
     async with maker() as db:
-        assert await svc.get_version(db, str(ids["tenant"])) != v1
+        v2 = await svc.get_version(db, str(ids["tenant"]))
+    assert v2 != v1
+    # A new access request writes no audit event but still moves the version.
+    async with engine.begin() as c:
+        await c.execute(text(
+            "insert into supervisor_executive_requests (tenant_id, supervisor_id, module, status) "
+            "values (:t, :u, 'bd', 'pending')"
+        ), {"t": ids["tenant"], "u": ids["bd_sup"]})
+    async with maker() as db:
+        assert await svc.get_version(db, str(ids["tenant"])) != v2
