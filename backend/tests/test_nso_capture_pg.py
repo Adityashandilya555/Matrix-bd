@@ -351,3 +351,17 @@ async def test_inactive_capture_runs_no_queries(engine, maker):
         site.name = "Off"
         await db.commit()
     assert await _outbox(engine, sid) == []
+
+
+async def test_fssai_is_sent_only_once_legal_publishes(engine, maker):
+    _, _, sid = await _world(engine)
+    async with maker() as db:
+        lic = models.SiteLicensing(site_id=sid, fssai="yes", stage="draft")  # executive draft
+        db.add(lic)
+        await db.commit()
+        lic.stage = "pending_review"
+        await db.commit()
+        lic.stage = "published"  # supervisor publishes
+        await db.commit()
+    rows = await _outbox(engine, sid)
+    assert [r.payload["licences"]["fssai_status"] for r in rows] == [None, "yes"]

@@ -38,7 +38,7 @@ WATCHED: dict[type, frozenset[str]] = {
         "name", "city", "model", "google_maps_pin", "google_maps_url",
         "ca_code", "finance_status", "loi_uploaded_at", "launched_at", "archived_at", "status",
     }),
-    models.SiteLicensing: frozenset({"fssai"}),
+    models.SiteLicensing: frozenset({"fssai", "stage"}),
     models.ProjectReview: frozenset({"initialization_date", "initialization_status", "pushed_to_nso_at"}),
     models.NsoReview: frozenset({"launch_date"}),
 }
@@ -111,9 +111,12 @@ def build_snapshot(session: Session, site_id: uuid.UUID) -> Optional[dict[str, A
     if row is None:
         return None
 
-    fssai = session.execute(
-        select(models.SiteLicensing.fssai).where(models.SiteLicensing.site_id == site_id)
-    ).scalar_one_or_none()
+    licence = session.execute(
+        select(models.SiteLicensing.fssai, models.SiteLicensing.stage).where(models.SiteLicensing.site_id == site_id)
+    ).first()
+    # Only Legal-published values: executives' drafts (stage draft /
+    # pending_review) are unreviewed. Published rows never return to draft.
+    fssai = licence.fssai if licence and licence.stage == "published" else None
     pr = models.ProjectReview
     project = session.execute(
         select(pr.initialization_date, pr.initialization_status, pr.pushed_to_nso_at).where(pr.site_id == site_id)
