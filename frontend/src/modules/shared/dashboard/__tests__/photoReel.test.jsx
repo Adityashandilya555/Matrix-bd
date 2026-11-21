@@ -55,6 +55,30 @@ describe('PhotoReel', () => {
   });
 });
 
+describe('cityPhotos across the city list', () => {
+  it('uses a major city\'s landmark, then its state, then café photos', () => {
+    const jaipur = cityPhotos('Jaipur').map((p) => p.src);
+    expect(jaipur[0]).toContain('city-jaipur');
+    expect(jaipur[1]).toContain('state-rajasthan');
+    expect(jaipur).toHaveLength(3);
+  });
+
+  it('falls back to the state photo for a smaller city', () => {
+    expect(cityPhotos('Achalpur')[0].src).toContain('state-maharashtra');
+    expect(cityPhotos('Ludhiana')[0].src).toContain('state-punjab');
+  });
+
+  it('understands common alternative names', () => {
+    expect(cityPhotos('Bangalore')[0].src).toContain('/dashboard/cities/bengaluru-');
+    expect(cityPhotos('Vizag')[0].src).toContain('city-visakhapatnam');
+  });
+
+  it('gives every photo a credit except the bundled café shots', () => {
+    const withCredit = cityPhotos('Udaipur').filter((p) => p.src.includes('/places/'));
+    expect(withCredit.every((p) => p.credit)).toBe(true);
+  });
+});
+
 describe('packRows', () => {
   it('stretches the last block of each row so every row ends flush at 12 columns', () => {
     const rows = packRows([{ key: 'a', span: 5 }, { key: 'b', span: 12 }, { key: 'c', span: 4 }, { key: 'd', span: 4 }]);

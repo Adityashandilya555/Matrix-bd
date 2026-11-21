@@ -3,6 +3,9 @@
 // scene, and a street. Files and credits: public/dashboard/cities/CREDITS.md
 // (Unsplash License). No coffee-chain storefronts or logos. A city without its
 // own photos falls back to the bundled café photos.
+import { INDIAN_CITIES_DATA } from '../../../constants/indianCities.js';
+import { PLACE_CAFE, PLACE_CITY, PLACE_STATE } from './placePhotos.js';
+
 const P = (file, alt, credit) => ({ src: `/dashboard/cities/${file}.webp`, alt, credit });
 
 const CAFE = [
@@ -49,7 +52,44 @@ export const CITY_PHOTOS = {
   ],
 };
 
+// Other spellings people type for the same city.
+const ALIAS = {
+  bangalore: 'bengaluru', gurgaon: 'gurugram', bombay: 'mumbai', calcutta: 'kolkata', madras: 'chennai',
+  mysore: 'mysuru', mangalore: 'mangaluru', trivandrum: 'thiruvananthapuram', vizag: 'visakhapatnam',
+  cochin: 'kochi', ernakulam: 'kochi', panjim: 'panaji', goa: 'panaji', baroda: 'vadodara', 'new delhi': 'new-delhi',
+  poona: 'pune', 'navi mumbai': 'mumbai', thane: 'mumbai', secunderabad: 'hyderabad', 'greater noida': 'noida',
+};
+
+const slug = (v) => String(v || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+let stateByCity;
+function stateOf(key) {
+  if (!stateByCity) {
+    stateByCity = new Map(INDIAN_CITIES_DATA.map((c) => [slug(c.name), slug(c.state)]));
+    // Cities that sit in a union territory of the same name.
+    stateByCity.set('new-delhi', 'delhi');
+  }
+  return stateByCity.get(key);
+}
+
+// Two café photos, picked by the city's name so neighbouring cities differ.
+function cafePair(key) {
+  const all = [...PLACE_CAFE, ...CAFE];
+  let h = 0;
+  for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) % 997;
+  return [all[h % all.length], all[(h + 3) % all.length]];
+}
+
+// The slideshow for a city: its own set when it has one; otherwise its
+// landmark (if any), its state's photo, and café photos to make three.
 export function cityPhotos(name) {
-  const own = CITY_PHOTOS[String(name || '').trim().toLowerCase()];
-  return own?.length ? own : CAFE;
+  const raw = String(name || '').trim().toLowerCase();
+  const key = slug(ALIAS[raw] || raw);
+  const own = CITY_PHOTOS[key];
+  if (own?.length) return own;
+  const landmark = PLACE_CITY[key];
+  const statePhoto = PLACE_STATE[stateOf(key)];
+  const list = [landmark, statePhoto].filter(Boolean);
+  for (const c of cafePair(key || 'x')) if (list.length < 3 && !list.includes(c)) list.push(c);
+  return list.length ? list : CAFE;
 }
