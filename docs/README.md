@@ -20,6 +20,15 @@ This documentation explains the codebase in the order a new developer needs it. 
 | 14 | [Admin role simulation](13-admin-role-simulation/admin-role-simulation.md) | How can a business admin simulate another role and module? |
 | 15 | [Vendor platform](15-vendor-platform/vendor-platform.md) | How do outside fit-out vendors sign in, get admitted, and use their portal? |
 
+## Forward-looking design
+
+These pages are proposals, not descriptions of current behaviour. Their current-state sections follow the Source of Truth rule below; their target-state sections are design.
+
+| Page | Question answered |
+| --- | --- |
+| [Dynamic flow transformation plan](14-dynamic-platform/dynamic-flow-transformation-plan.html) | *(July 2026, partly superseded by 15)* How could the order between modules become data while module internals stay in code? |
+| [Platform architecture research & refoundation](15-platform-architecture/README.md) | How does Matrix become an organization operating platform, with today's product as one installed package? |
+
 ## Documentation rule
 
 Every section contains a **Source of Truth** block. A statement that cannot be traced to code, configuration, schema, migration, or tests does not belong here. Line ranges are navigation aids; use the named symbol when normal edits shift a range.
