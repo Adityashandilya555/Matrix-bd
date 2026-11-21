@@ -115,6 +115,18 @@ class Settings(BaseSettings):
     # hammering the DB or Resend rate limits.
     notification_drain_interval_secs: int = 30
 
+    # ── NSO platform integration (signed webhooks) ──────────────────────────
+    # Fernet key(s) that encrypt each workspace's webhook signing secret at rest.
+    # Comma list, newest first: "key2:<fernet>,key1:<fernet>". A bare key means
+    # version 1. Empty = the integration cannot be configured and the sender
+    # never starts; the rest of the app is unaffected.
+    integration_secret_key: str = ""
+    # Kill switch for the sender loop. Off by default so a deploy alone sends
+    # nothing; events still queue for enabled workspaces while it is off.
+    integration_sender_enabled: bool = False
+    integration_sender_interval_secs: int = Field(10, ge=1)
+    integration_http_timeout_secs: float = Field(10.0, gt=0)
+
     # ── Platform admin (workspace-request approval) ─────────────────────────
     # The portal at /admin uses an email + password pair set via env. On
     # successful login the backend hands back `platform_admin_token` and the

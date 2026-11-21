@@ -549,6 +549,13 @@ async def update_tenant_branding(
         text("UPDATE tenants SET name = :name, logo_url = :logo WHERE id = :id"),
         {"name": name, "logo": logo, "id": tenant_id},
     )
+    # Raw SQL is invisible to the NSO capture hooks; this re-queues the
+    # workspace's shared sites so NSO gets the new company name (no-op when the
+    # integration is off, and identical snapshots are skipped).
+    from app.integrations.capture import note_tenant_renamed
+    sync_session = getattr(db, "sync_session", None)
+    if sync_session is not None:
+        note_tenant_renamed(sync_session, tenant_id)
     await db.commit()
 
 

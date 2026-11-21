@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
@@ -61,8 +62,17 @@ def _make_engine() -> AsyncEngine:
 
 engine: AsyncEngine = _make_engine()
 
+class MatrixSession(Session):
+    """Sync session behind every request's AsyncSession.
+
+    A subclass (not the global Session class) so the integration capture hooks
+    in app/integrations/capture.py apply to app sessions only.
+    """
+
+
 SessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(
     bind=engine,
+    sync_session_class=MatrixSession,
     expire_on_commit=False,
     autoflush=False,
     autocommit=False,
@@ -98,3 +108,4 @@ async def transaction(session: AsyncSession) -> AsyncGenerator[AsyncSession, Non
     else:
         async with session.begin():
             yield session
+
