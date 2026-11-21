@@ -43,9 +43,7 @@ describe('IntegrationsTab', () => {
     await user.click(screen.getByLabelText(/send site updates/i));
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    expect(api.saveNsoIntegration).toHaveBeenCalledWith(expect.objectContaining({
-      endpointUrl: 'https://nso.example.com/hook', enabled: true,
-    }));
+    expect(api.saveNsoIntegration).toHaveBeenCalledWith({ endpointUrl: 'https://nso.example.com/hook', enabled: true });
     expect(await screen.findByText('whsec_abc')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /saved it/i }));
     expect(screen.queryByText('whsec_abc')).not.toBeInTheDocument();
@@ -109,5 +107,21 @@ describe('IntegrationsTab', () => {
     await user.type(await screen.findByLabelText(/endpoint url/i), 'https://x.example');
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByText('whsec_keep')).toBeInTheDocument();
+  });
+
+  it('keeps an edit made while a save is still in flight', async () => {
+    let finish;
+    api.getNsoIntegration.mockResolvedValue(cfg({ configured: true, enabled: true, endpointUrl: 'https://a.example' }));
+    api.saveNsoIntegration.mockImplementation(() => new Promise((r) => { finish = r; }));
+    const user = userEvent.setup();
+    render(<IntegrationsTab />);
+    const input = await screen.findByLabelText(/endpoint url/i);
+    await user.clear(input);
+    await user.type(input, 'https://b.example');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.type(input, '/later');  // typed while the save is pending
+    finish({ enabled: true, endpointUrl: 'https://b.example', secret: null, justEnabled: false });
+    await screen.findByText('Saved.');
+    expect(screen.getByLabelText(/endpoint url/i)).toHaveValue('https://b.example/later');
   });
 });

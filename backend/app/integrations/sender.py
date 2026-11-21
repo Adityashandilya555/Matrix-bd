@@ -23,6 +23,8 @@ import socket
 import time
 import uuid
 from dataclasses import dataclass
+from email.utils import parsedate_to_datetime
+from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from urllib.parse import urlsplit
@@ -45,6 +47,11 @@ MAX_ATTEMPTS = 12
 # Delay after attempt N fails (index N-1). Sums to about 2.15 days.
 BACKOFF_SECS = (30, 120, 600, 1800, 3600, 7200, 14400, 28800, 43200, 43200, 43200)
 DISABLED_RECHECK = timedelta(hours=1)
+# Rows claimed per pass. Sends are sequential and each can take up to
+# SEND_DEADLINE_SECS + DNS_TIMEOUT_SECS, so 5 × 35 s stays well inside
+# STALE_AFTER: no claimed row can look abandoned before this worker reaches it.
+CLAIM_BATCH = 5
+PURGE_BATCH = 1000
 # Hard cap on one send (DNS + connect + TLS + body), well under STALE_AFTER so a
 # slow receiver can't keep a claim long enough for another worker to reclaim it.
 SEND_DEADLINE_SECS = 30
@@ -53,7 +60,7 @@ DNS_TIMEOUT_SECS = 5
 
 _CLAIM_SQL = text("""
 UPDATE integration_outbox o
-   SET status = 'sending', locked_at = now(), locked_by = :worker, attempts = o.attempts + 1
+   SET status = 'sending', locked_at = now(), locked_by = :worker
  WHERE o.id IN (
        SELECT id FROM integration_outbox
         WHERE status IN ('pending', 'failed') AND next_attempt_at <= now()
@@ -106,11 +113,20 @@ def backoff(attempts: int, retry_after: Optional[int] = None) -> timedelta:
 
 
 def parse_retry_after(value: Optional[str]) -> Optional[int]:
-    """Seconds form of ``Retry-After`` only; HTTP-date form is ignored."""
-    try:
-        return max(0, int(value)) if value is not None else None
-    except ValueError:
+    """``Retry-After`` as seconds from now: delta-seconds or an HTTP-date."""
+    if value is None:
         return None
+    try:
+        return max(0, int(value))
+    except ValueError:
+        pass
+    try:
+        when = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return max(0, int((when - datetime.now(timezone.utc)).total_seconds()))
 
 
 def is_blocked_ip(addr: str) -> bool:
@@ -203,6 +219,9 @@ async def post_event(client: httpx.AsyncClient, url: str, row: Any, secrets: lis
         return Outcome(status=classify(None, row.attempts), error=f"dns: {exc}")
     except BlockedAddressError as exc:
         return Outcome(status="dead", error=f"blocked_address: {exc}")
+    except (ValueError, httpx.InvalidURL) as exc:
+        # e.g. a port out of range: retrying can't fix the URL.
+        return Outcome(status="dead", error=f"invalid_url: {exc}")
     except asyncio.TimeoutError:
         return Outcome(status=classify(None, row.attempts), error="deadline exceeded",
                        duration_ms=int((time.monotonic() - started) * 1000))
@@ -257,7 +276,6 @@ async def _park(row_id: uuid.UUID) -> None:
         ob = await db.get(models.IntegrationOutbox, row_id, with_for_update=True)
         if ob is not None and _still_ours(ob):
             ob.status = "pending"
-            ob.attempts = max(0, ob.attempts - 1)
             ob.locked_at = None
             ob.locked_by = None
             ob.next_attempt_at = datetime.now(timezone.utc) + DISABLED_RECHECK
@@ -267,14 +285,18 @@ def _still_ours(ob: models.IntegrationOutbox) -> bool:
     return ob.status == "sending" and ob.locked_by == WORKER_ID
 
 
-async def _refresh_claim(row_id: uuid.UUID) -> bool:
-    """Restart the stale clock just before sending; False if we no longer own the row."""
+async def _refresh_claim(row_id: uuid.UUID) -> Optional[int]:
+    """Start an attempt: restart the stale clock and count it.
+
+    Returns the new attempt count, or None if this worker no longer owns the
+    row. Attempts are counted here, when a send really starts, not at claim
+    time, so a row reclaimed before it was reached isn't charged an attempt.
+    """
     async with SessionLocal() as db, db.begin():
-        result = await db.execute(text(
-            "UPDATE integration_outbox SET locked_at = now() "
-            "WHERE id = :id AND status = 'sending' AND locked_by = :w"
-        ), {"id": row_id, "w": WORKER_ID})
-        return bool(result.rowcount)
+        return (await db.execute(text(
+            "UPDATE integration_outbox SET locked_at = now(), attempts = attempts + 1 "
+            "WHERE id = :id AND status = 'sending' AND locked_by = :w RETURNING attempts"
+        ), {"id": row_id, "w": WORKER_ID})).scalar_one_or_none()
 
 
 async def _endpoint(tenant_id: uuid.UUID) -> Optional[models.IntegrationEndpoint]:
@@ -287,8 +309,6 @@ async def _endpoint(tenant_id: uuid.UUID) -> Optional[models.IntegrationEndpoint
 
 async def deliver(client: httpx.AsyncClient, row: Any) -> str:
     """Send one claimed row and record the result. Returns the new status."""
-    if not await _refresh_claim(row.id):
-        return "skipped"
     endpoint = await _endpoint(row.tenant_id)
     if endpoint is None or not endpoint.enabled:
         await _park(row.id)
@@ -296,11 +316,16 @@ async def deliver(client: httpx.AsyncClient, row: Any) -> str:
     try:
         secrets = endpoint_secrets(endpoint, datetime.now(timezone.utc))
     except secret_store.IntegrationKeyError as exc:
-        # A key problem is ours, not the receiver's: retry with backoff, log loudly.
+        # Our problem, not the receiver's — e.g. another environment with a
+        # different INTEGRATION_SECRET_KEY claimed it. Put it back uncounted.
         log.error("integration_sender: cannot decrypt secret for tenant %s: %s", row.tenant_id, exc)
-        outcome = Outcome(status=classify(None, row.attempts), error=f"key_error: {exc}")
-    else:
-        outcome = await post_event(client, endpoint.endpoint_url, row, secrets)
+        await _park(row.id)
+        return "pending"
+    attempts = await _refresh_claim(row.id)
+    if attempts is None:
+        return "skipped"
+    row = SimpleNamespace(**{**row._mapping, "attempts": attempts})
+    outcome = await post_event(client, endpoint.endpoint_url, row, secrets)
     await _record(row, outcome)
     return outcome.status
 
@@ -312,9 +337,10 @@ async def reclaim_stale() -> int:
     """Rows left in ``sending`` by a dead worker become due again."""
     async with SessionLocal() as db, db.begin():
         result = await db.execute(text(
-            "UPDATE integration_outbox SET status = 'failed', locked_at = NULL, locked_by = NULL, "
-            "next_attempt_at = now() WHERE status = 'sending' AND locked_at < now() - make_interval(secs => :s)"
-        ), {"s": STALE_AFTER.total_seconds()})
+            "UPDATE integration_outbox SET locked_at = NULL, locked_by = NULL, next_attempt_at = now(), "
+            "status = CASE WHEN attempts >= :max THEN 'dead' ELSE 'failed' END "
+            "WHERE status = 'sending' AND locked_at < now() - make_interval(secs => :s)"
+        ), {"s": STALE_AFTER.total_seconds(), "max": MAX_ATTEMPTS})
         return result.rowcount or 0
 
 
@@ -324,7 +350,7 @@ async def claim(batch: int) -> list[Any]:
         return list((await db.execute(_CLAIM_SQL, {"worker": WORKER_ID, "batch": batch})).all())
 
 
-async def purge_sent(limit: int = 1000) -> int:
+async def purge_sent(limit: int = PURGE_BATCH) -> int:
     """Delete one batch of sent rows past retention (deliveries cascade).
 
     The newest live row per site is always kept: capture compares against it
@@ -344,7 +370,16 @@ async def purge_sent(limit: int = 1000) -> int:
         return result.rowcount or 0
 
 
-async def run_once(client: httpx.AsyncClient, batch: int = 20) -> int:
+async def purge_all_sent() -> int:
+    """Purge in batches until a batch comes back short."""
+    total = deleted = await purge_sent()
+    while deleted == PURGE_BATCH:
+        deleted = await purge_sent()
+        total += deleted
+    return total
+
+
+async def run_once(client: httpx.AsyncClient, batch: int = CLAIM_BATCH) -> int:
     """One pass. Returns how many rows were claimed."""
     await reclaim_stale()
     rows = await claim(batch)
@@ -373,10 +408,9 @@ async def run_forever(interval_secs: int, timeout_secs: float) -> None:
             try:
                 claimed = await run_once(client)
                 if last_purge is None or time.monotonic() - last_purge > 86400:
-                    while await purge_sent() == 1000:
-                        pass
+                    await purge_all_sent()
                     last_purge = time.monotonic()
-                if claimed == 20:
+                if claimed == CLAIM_BATCH:
                     continue  # backlog: go again without sleeping
             except Exception:
                 log.exception("integration_sender: pass failed")

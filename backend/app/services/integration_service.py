@@ -14,6 +14,7 @@ from typing import Any, Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
@@ -39,6 +40,10 @@ async def _validate_url(url: str) -> str:
     url = url.strip()
     if not _HTTPS_URL.match(url) or len(url) > 2000:
         raise HTTPException(422, "Endpoint must be an https:// URL with a host.")
+    try:
+        urlsplit(url).port  # noqa: B018 — raises ValueError for "host:abc" or ":99999"
+    except ValueError as exc:
+        raise HTTPException(422, "The port in the endpoint URL isn't valid.") from exc
     if urlsplit(url).username is not None:
         # Requests are signed instead; userinfo would also land in the audit log.
         raise HTTPException(422, "Don't put a username or password in the URL; requests are signed.")
@@ -131,7 +136,15 @@ async def save_config(db: AsyncSession, tenant_id: str, actor: dict, endpoint_ur
             created_by=uuid.UUID(str(actor["sub"])) if actor.get("sub") else None,
             disabled_at=None if enabled else now,
         )
-        db.add(endpoint)
+        try:
+            # Two admins saving the first time at once: one wins, the other gets
+            # a 409 instead of a 500 (and is never shown a secret that wasn't stored).
+            async with db.begin_nested():
+                db.add(endpoint)
+                await db.flush()
+        except IntegrityError as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT,
+                                "The integration was just set up by someone else; reload the page.") from exc
     else:
         if endpoint.enabled and not enabled:
             endpoint.disabled_at = now
@@ -171,11 +184,16 @@ async def rotate_secret(db: AsyncSession, tenant_id: str, actor: dict) -> dict[s
         # A second rotation would silently drop the secret NSO may still be using.
         raise HTTPException(status.HTTP_409_CONFLICT,
                             "A rotation is already in progress; try again after it finishes.")
-    old_plain = secret_store.decrypt(endpoint.secret_ciphertext, endpoint.secret_key_version)
+    try:
+        old_plain: Optional[str] = secret_store.decrypt(endpoint.secret_ciphertext, endpoint.secret_key_version)
+    except secret_store.IntegrationKeyError:
+        # The key that encrypted the old secret is gone: issue a new secret with
+        # no overlap window rather than failing the only way to recover.
+        old_plain = None
     new_secret = secret_store.generate_secret()
     endpoint.secret_ciphertext, endpoint.secret_key_version = secret_store.encrypt(new_secret)
-    endpoint.previous_secret_ciphertext, _ = secret_store.encrypt(old_plain)
-    endpoint.previous_secret_expires_at = now + ROTATION_OVERLAP
+    endpoint.previous_secret_ciphertext = secret_store.encrypt(old_plain)[0] if old_plain else None
+    endpoint.previous_secret_expires_at = now + ROTATION_OVERLAP if old_plain else None
     endpoint.updated_at = now
     await _audit(db, tenant_id, actor, "nso_integration_secret_rotated", "previous secret valid 24h")
     await db.flush()
@@ -204,6 +222,8 @@ async def backfill(db: AsyncSession, tenant_id: str, actor: dict) -> dict[str, A
     """Queue a snapshot of every eligible site (skips ones already up to date)."""
     await _require_enabled(db, tenant_id)
     tid = uuid.UUID(str(tenant_id))
+    # Same rule as nso.shared_cafe_code / is_eligible, as a query, so a big
+    # workspace doesn't lock and snapshot every never-eligible site.
     site_ids = (await db.execute(
         select(models.Site.id).where(
             models.Site.tenant_id == tid, models.Site.ca_code.isnot(None), models.Site.finance_status == "approved",

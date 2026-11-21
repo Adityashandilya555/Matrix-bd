@@ -38,6 +38,13 @@ log = logging.getLogger("matrix.integrations.capture")
 
 _TOUCHED = "nso_touched_sites"
 _DELETED = "nso_deleted_sites"
+_RENAMED = "nso_renamed_tenants"
+
+
+def note_tenant_renamed(session: Session, tenant_id: Any) -> None:
+    """Workspace renames use raw SQL, which the hooks can't see: call this so
+    the next commit re-queues the workspace's sites (``company.name``)."""
+    session.info.setdefault(_RENAMED, set()).add(uuid.UUID(str(tenant_id)))
 
 
 class _State:
@@ -167,16 +174,27 @@ def _before_commit(session: Session) -> None:
     session.flush()  # run after_flush for anything still pending
     touched: set[uuid.UUID] = session.info.pop(_TOUCHED, set())
     deleted: dict[uuid.UUID, dict] = session.info.pop(_DELETED, {})
-    if not touched and not deleted:
+    renamed: set[uuid.UUID] = session.info.pop(_RENAMED, set())
+    if not touched and not deleted and not renamed:
         return
     try:
         with session.begin_nested():
+            if renamed:
+                touched |= _eligible_sites_of(session, renamed)
             _queue(session, touched, deleted)
     except Exception:
         if _State.strict:
             raise
         log.exception("nso capture failed; the save goes on without an NSO event (sites=%s)",
                       sorted(map(str, touched | deleted.keys())))
+
+
+def _eligible_sites_of(session: Session, tenant_ids: set[uuid.UUID]) -> set[uuid.UUID]:
+    site = models.Site
+    return set(session.execute(
+        select(site.id).where(site.tenant_id.in_(tenant_ids), site.ca_code.isnot(None),
+                              site.finance_status == "approved")
+    ).scalars())
 
 
 def _queue(session: Session, touched: set[uuid.UUID], deleted: dict[uuid.UUID, dict]) -> None:
@@ -199,8 +217,13 @@ def _queue(session: Session, touched: set[uuid.UUID], deleted: dict[uuid.UUID, d
         queue_site_snapshot(session, site_id)
     if not deleted:
         return
+    # Any endpoint row, switched on or not: a tombstone queued while the
+    # integration is off is parked by the sender and goes out once it is back
+    # on (a backfill only covers live sites, so it would otherwise be lost).
+    ep = models.IntegrationEndpoint
     enabled_tenants = set(session.execute(
-        _enabled_filter().where(models.IntegrationEndpoint.tenant_id.in_({d["tenant_id"] for d in deleted.values()}))
+        select(ep.tenant_id).where(ep.integration == nso.INTEGRATION,
+                                   ep.tenant_id.in_({d["tenant_id"] for d in deleted.values()}))
     ).scalars())
     for site_id, info in deleted.items():
         # Only sites NSO actually has a record of: anything was sent for it (not
@@ -220,6 +243,7 @@ def _clear(session: Session, transaction: Any) -> None:
     if transaction.parent is None:
         session.info.pop(_TOUCHED, None)
         session.info.pop(_DELETED, None)
+        session.info.pop(_RENAMED, None)
 
 
 def register(session_cls: type[Session]) -> None:

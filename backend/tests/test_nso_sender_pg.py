@@ -69,8 +69,16 @@ def _client(handler):
 
 async def _drain(client):
     """Run passes until nothing more is due (other tests' rows may be queued too)."""
-    while await sender.run_once(client):
-        pass
+    claimed = await sender.run_once(client)
+    while claimed:
+        claimed = await sender.run_once(client)
+
+
+def _only(items):
+    """The single matching item; fails the test clearly otherwise."""
+    items = list(items)
+    assert len(items) == 1, items
+    return items[0]
 
 
 async def test_delivers_signed_event(engine, maker):  # noqa: F811
@@ -163,7 +171,7 @@ async def test_rotation_signs_with_both_secrets(engine, maker):  # noqa: F811
     seen = []
     async with _client(lambda r: (seen.append(r), httpx.Response(200))[1]) as client:
         await _drain(client)
-    req = next(r for r in seen if json.loads(r.content)["site"]["id"] == str(sid))
+    req = _only(r for r in seen if json.loads(r.content)["site"]["id"] == str(sid))
     for secret in (old, new):
         assert signing.verify(header=req.headers["x-matrix-signature"], secret=secret,
                               timestamp=req.headers["x-matrix-timestamp"], body=req.content,
@@ -209,7 +217,7 @@ async def test_test_event_and_replay(engine, maker):  # noqa: F811
     async with maker() as db:
         dead = await svc.list_dead(db, str(tid))
         assert {d["event_type"] for d in dead} >= {"site.test"}
-        test_row = next(d for d in dead if d["event_type"] == "site.test")
+        test_row = _only(d for d in dead if d["event_type"] == "site.test")
         await svc.replay(db, str(tid), ADMIN, uuid.UUID(test_row["id"]))
         await db.commit()
     async with _client(lambda r: httpx.Response(200)) as client:
@@ -316,8 +324,7 @@ async def test_purge_keeps_the_newest_row_per_site(engine, maker):  # noqa: F811
         await conn.execute(text(
             "update integration_outbox set status = 'sent', sent_at = now() - interval '40 days' where site_id = :s"
         ), {"s": sid})
-    while await sender.purge_sent() == 1000:
-        pass
+    await sender.purge_all_sent()
     rows = await _outbox(engine, sid)
     assert [r.payload["site"]["name"] for r in rows] == ["Second"]
 
@@ -372,3 +379,101 @@ async def test_backfill_skips_unapproved_cafe_codes(engine, maker):  # noqa: F81
         out = await svc.backfill(db, str(tid), ADMIN)
         await db.commit()
     assert out == {"eligible": 0, "queued": 0}
+
+
+# ── Owner review + CodeAnt nitpicks ──────────────────────────────────────
+
+
+async def test_bad_port_is_rejected_on_save(engine, maker):  # noqa: F811
+    tid, _, _ = await _world(engine, endpoint=False)
+    for bad in ("https://nso.example.com:99999/hook", "https://nso.example.com:abc/hook"):
+        async with maker() as db:
+            with pytest.raises(HTTPException) as exc:
+                await svc.save_config(db, str(tid), ADMIN, bad, True)
+        assert exc.value.status_code == 422
+
+
+async def test_stored_bad_url_is_dead_and_does_not_stall_others(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker)
+    async with engine.begin() as conn:
+        await conn.execute(text(
+            "update integration_endpoints set endpoint_url = 'https://nso.example.com:99999/hook' where tenant_id = :t"
+        ), {"t": tid})
+    async with _client(lambda r: httpx.Response(200)) as client:
+        await _drain(client)
+    status, attempts, _ = (await _status(engine, sid))[0]
+    assert (status, attempts) == ("dead", 1)
+
+
+async def test_reclaim_at_max_attempts_goes_dead(engine, maker):  # noqa: F811
+    _, sid, _ = await _setup(engine, maker)
+    async with engine.begin() as conn:
+        await conn.execute(text(
+            "update integration_outbox set status = 'sending', attempts = :m, "
+            "locked_at = now() - interval '10 minutes' where site_id = :s"), {"s": sid, "m": sender.MAX_ATTEMPTS})
+    await sender.reclaim_stale()
+    assert (await _status(engine, sid))[0][0] == "dead"
+
+
+async def test_key_error_parks_without_counting(engine, maker, monkeypatch):  # noqa: F811
+    _, sid, _ = await _setup(engine, maker)
+    monkeypatch.setattr(settings, "integration_secret_key", f"key1:{Fernet.generate_key().decode()}")  # wrong key
+    async with _client(lambda r: httpx.Response(200)) as client:
+        await _drain(client)
+    assert await _status(engine, sid) == [("pending", 0, None)]
+
+
+async def test_lost_claim_is_not_charged_an_attempt(engine, maker):  # noqa: F811
+    _, sid, _ = await _setup(engine, maker)
+    rows = [r for r in await sender.claim(500) if r.payload["site"]["id"] == str(sid)]
+    async with engine.begin() as conn:
+        await conn.execute(text("update integration_outbox set locked_by = 'other' where site_id = :s"), {"s": sid})
+    async with _client(lambda r: httpx.Response(200)) as client:
+        assert await sender.deliver(client, rows[0]) == "skipped"
+    assert (await _status(engine, sid))[0][1] == 0
+    async with engine.begin() as conn:
+        await conn.execute(text("update integration_outbox set status = 'pending', locked_by = null where status = 'sending'"))
+
+
+async def test_rotation_survives_a_dropped_encryption_key(engine, maker, monkeypatch):  # noqa: F811
+    tid, _, _ = await _setup(engine, maker)
+    monkeypatch.setattr(settings, "integration_secret_key", f"key2:{Fernet.generate_key().decode()}")
+    async with maker() as db:
+        out = await svc.rotate_secret(db, str(tid), ADMIN)
+        await db.commit()
+    assert out["secret"].startswith("whsec_") and out["previous_valid_until"] is None
+
+
+async def test_concurrent_first_save_is_a_409(engine, maker, monkeypatch):  # noqa: F811
+    tid, _, _ = await _world(engine)  # endpoint row already exists
+
+    async def _not_found(*_a, **_k):
+        return None  # as if the other request's row wasn't visible yet
+    monkeypatch.setattr(svc, "_endpoint", _not_found)
+    async with maker() as db:
+        with pytest.raises(HTTPException) as exc:
+            await svc.save_config(db, str(tid), ADMIN, "https://nso.example.com/hook", True)
+    assert exc.value.status_code == 409
+
+
+async def test_tombstone_is_queued_while_switched_off(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker)
+    async with _client(lambda r: httpx.Response(200)) as client:
+        await _drain(client)
+    async with maker() as db:
+        await svc.save_config(db, str(tid), ADMIN, "https://nso.example.com/hook", False)
+        await db.commit()
+    async with maker() as db:
+        await db.delete(await db.get(models.Site, sid))
+        await db.commit()
+    rows = await _outbox(engine, sid)
+    assert [r.event_type for r in rows] == ["site.updated", "site.deleted"]
+
+
+async def test_workspace_rename_requeues_shared_sites(engine, maker):  # noqa: F811
+    from app.services import tenancy_service
+    tid, sid, _ = await _setup(engine, maker)
+    async with maker() as db:
+        await tenancy_service.update_tenant_branding(db, tenant_id=str(tid), name="Renamed Coffee Co", logo=None)
+    rows = await _outbox(engine, sid)
+    assert rows[-1].payload["company"]["name"] == "Renamed Coffee Co"

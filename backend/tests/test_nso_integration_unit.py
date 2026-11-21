@@ -149,7 +149,12 @@ def test_backoff_grows_and_honours_retry_after():
     assert sender.backoff(1, retry_after=600) >= timedelta(seconds=600)
     assert sender.backoff(1, retry_after=10**9) <= timedelta(hours=12)
     assert sender.parse_retry_after("120") == 120
-    assert sender.parse_retry_after("Wed, 21 Oct 2026 07:28:00 GMT") is None
+    assert sender.parse_retry_after("Wed, 21 Oct 2015 07:28:00 GMT") == 0  # date in the past
+    from email.utils import format_datetime
+    import datetime as dt
+    later = format_datetime(dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=600), usegmt=True)
+    assert 590 <= sender.parse_retry_after(later) <= 600
+    assert sender.parse_retry_after("soon") is None
 
 
 @pytest.mark.parametrize(("addr", "blocked"), [
