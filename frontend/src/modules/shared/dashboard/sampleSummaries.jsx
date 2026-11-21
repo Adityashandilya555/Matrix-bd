@@ -3,6 +3,14 @@
 // data once the backend lands. The four admin tiles and the four approval rows
 // match what the live Business Admin page shows today; everything else is made up.
 
+// Chart colours for the sample status breakdowns, matching the café palette.
+// Declared first and exported so the file reads unambiguously as an ES module
+// (DeepSource's parser decides module vs script from the opening statement).
+export const SAMPLE_COLORS = {
+  muted: '#C9BBAA', sky: '#8FB0F0', orange: '#E07A2F', blue: '#2F5FD0',
+  green: '#1C7A52', amber: '#E8B23A', red: '#C4413A',
+};
+
 function heat(seed) {
   const cells = [];
   for (let day = 0; day < 7; day += 1) {
@@ -29,11 +37,11 @@ const BD_FUNNEL = [
 ];
 
 const MODULES = [
-  { name: 'Legal', source: 'sites.legal_dd_status', parts: [{ label: 'Pending', value: 14, color: '#C9BBAA' }, { label: 'In review', value: 18, color: '#E8B23A' }, { label: 'Positive', value: 86, color: '#1C7A52' }, { label: 'Negative', value: 7, color: '#C4413A' }] },
-  { name: 'Design', source: 'sites.design_status', parts: [{ label: 'Allocated', value: 9, color: '#C9BBAA' }, { label: 'In progress', value: 18, color: '#8FB0F0' }, { label: 'GFC pending', value: 2, color: '#E07A2F' }, { label: 'Approved', value: 42, color: '#2F5FD0' }] },
-  { name: 'Project', source: 'sites.project_status', parts: [{ label: 'Allocated', value: 8, color: '#C9BBAA' }, { label: 'In progress', value: 25, color: '#8FB0F0' }, { label: 'Done', value: 9, color: '#2F5FD0' }] },
-  { name: 'NSO', source: 'nso_reviews.current_stage', parts: [{ label: 'Stage 1', value: 2, color: '#C9BBAA' }, { label: 'Stage 2', value: 3, color: '#8FB0F0' }, { label: 'Stage 3', value: 6, color: '#E07A2F' }, { label: 'Complete', value: 6, color: '#2F5FD0' }] },
-  { name: 'Launch', source: 'launch_approvals.status', parts: [{ label: 'Admin review', value: 1, color: '#C9BBAA' }, { label: 'Exec / supervisor', value: 2, color: '#8FB0F0' }, { label: 'Final review', value: 1, color: '#E07A2F' }, { label: 'Ready', value: 2, color: '#1C7A52' }] },
+  { name: 'Legal', source: 'sites.legal_dd_status', parts: [{ label: 'Pending', value: 14, color: SAMPLE_COLORS.muted }, { label: 'In review', value: 18, color: SAMPLE_COLORS.amber }, { label: 'Positive', value: 86, color: SAMPLE_COLORS.green }, { label: 'Negative', value: 7, color: SAMPLE_COLORS.red }] },
+  { name: 'Design', source: 'sites.design_status', parts: [{ label: 'Allocated', value: 9, color: SAMPLE_COLORS.muted }, { label: 'In progress', value: 18, color: SAMPLE_COLORS.sky }, { label: 'GFC pending', value: 2, color: SAMPLE_COLORS.orange }, { label: 'Approved', value: 42, color: SAMPLE_COLORS.blue }] },
+  { name: 'Project', source: 'sites.project_status', parts: [{ label: 'Allocated', value: 8, color: SAMPLE_COLORS.muted }, { label: 'In progress', value: 25, color: SAMPLE_COLORS.sky }, { label: 'Done', value: 9, color: SAMPLE_COLORS.blue }] },
+  { name: 'NSO', source: 'nso_reviews.current_stage', parts: [{ label: 'Stage 1', value: 2, color: SAMPLE_COLORS.muted }, { label: 'Stage 2', value: 3, color: SAMPLE_COLORS.sky }, { label: 'Stage 3', value: 6, color: SAMPLE_COLORS.orange }, { label: 'Complete', value: 6, color: SAMPLE_COLORS.blue }] },
+  { name: 'Launch', source: 'launch_approvals.status', parts: [{ label: 'Admin review', value: 1, color: SAMPLE_COLORS.muted }, { label: 'Exec / supervisor', value: 2, color: SAMPLE_COLORS.sky }, { label: 'Final review', value: 1, color: SAMPLE_COLORS.orange }, { label: 'Ready', value: 2, color: SAMPLE_COLORS.green }] },
 ];
 
 const CYCLE = [
@@ -176,7 +184,7 @@ export function legalSupervisor(scope) {
     // My team narrows the Legal breakdown too, so it agrees with the tiles above
     // (51 in legal, 34 positive for the team; 125 and 86 for the module).
     modules: [team
-      ? { ...MODULES[0], parts: [{ label: 'Pending', value: 6, color: '#C9BBAA' }, { label: 'In review', value: 7, color: '#E8B23A' }, { label: 'Positive', value: 34, color: '#1C7A52' }, { label: 'Negative', value: 4, color: '#C4413A' }] }
+      ? { ...MODULES[0], parts: [{ label: 'Pending', value: 6, color: SAMPLE_COLORS.muted }, { label: 'In review', value: 7, color: SAMPLE_COLORS.amber }, { label: 'Positive', value: 34, color: SAMPLE_COLORS.green }, { label: 'Negative', value: 4, color: SAMPLE_COLORS.red }] }
       : MODULES[0]],
     cycle: { sub: 'Median days in Legal', steps: [{ label: 'Review started → DD verdict', days: 12 }, { label: 'DD positive → agreement signed', days: 9 }, { label: 'Signed → registered', days: 14 }, { label: 'Licensing complete', days: 21 }], callout: 'Licensing takes longest: 21 days on average.' },
     compliance: {
