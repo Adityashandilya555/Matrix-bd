@@ -195,12 +195,14 @@ function compliance(p) {
   return {
     title: 'Needs attention', sub: p.role === 'executive' ? 'On your sites' : 'Across the sites you can see',
     source: (c.source || []).join(' · '),
+    // LOI counts are BD's; the server leaves them out for Legal, so only the
+    // fields present become tiles.
     alerts: [
       { n: c.loi_overdue, label: 'LOIs overdue', tone: 'red' },
       { n: c.loi_due_7d, label: 'LOIs due in 7 days', tone: 'orange' },
       { n: c.dd_negative, label: 'DD negative', tone: 'red' },
       { n: c.legal_rejected, label: 'Legal rejected', tone: 'red' },
-    ],
+    ].filter((a) => typeof a.n === 'number'),
   };
 }
 
@@ -268,7 +270,7 @@ function empty(p, mod) {
   const sites = (p.funnel?.steps || []).reduce((n, st) => n + st.count, 0);
   if (sites > 0 || (p.inbox?.total || 0) > 0) return undefined;
   return p.module === 'bd'
-    ? { title: 'No sites yet', body: 'Sites you submit or are assigned will show up here with their next steps.', cta: 'Create a pipeline' }
+    ? { title: 'No sites yet', body: 'Sites you submit or are assigned will show up here with their next steps.', cta: 'Create a pipeline', href: '#/pipeline' }
     : { title: `No ${mod} sites delegated to you yet`, body: 'When your supervisor delegates a site to you, it appears here.' };
 }
 

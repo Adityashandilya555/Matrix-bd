@@ -302,6 +302,19 @@ async def test_nso_supervisor_has_no_workload_and_nso_executive_gets_a_notice():
     assert ex["notice"]["title"] and ex["kpis"]["tiles"] == [] and "funnel" not in ex
 
 
+async def test_project_workload_counts_open_financial_closure_work():
+    db, _ = await _run(_user("supervisor", "project"))
+    workload_sql = next((s for s in _sql(db) if "site_delegations" in s and "users" in s and "GROUP BY" in s), "")
+    assert "financial_closure_status" in workload_sql
+
+
+async def test_version_includes_the_date():
+    row = FakeResult(all_rows=[])
+    db = RecordingSession([row])
+    await svc.get_version(db, TID)
+    assert "current_date" in db.executed[0]
+
+
 async def test_inbox_rows_say_which_action_they_wait_for():
     db, _ = await _run(_user("supervisor", "design"))
     inbox_sql = next((s for s in _sql(db) if "CASE WHEN" in s and "LIMIT" in s), "")

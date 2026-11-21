@@ -17,15 +17,18 @@ export function useDashboard({ scope = 'module', nso = false } = {}, deps = {}) 
   const [state, setState] = React.useState({ data: null, status: 'loading', error: null, lastUpdatedAt: null });
   const etagRef = React.useRef(null);
   const seqRef = React.useRef(0);
+  const failedRef = React.useRef(false);
 
   const load = React.useCallback(async () => {
     const seq = ++seqRef.current;
     try {
       const data = await apiRef.current.getDashboardSummary({ scope, nso });
       if (seq !== seqRef.current) return;
+      failedRef.current = false;
       setState({ data, status: 'ready', error: null, lastUpdatedAt: Date.now() });
     } catch (error) {
       if (seq !== seqRef.current) return;
+      failedRef.current = true;
       setState((s) => ({ ...s, status: s.data ? 'ready' : 'error', error }));
     }
   }, [scope, nso]);
@@ -36,7 +39,9 @@ export function useDashboard({ scope = 'module', nso = false } = {}, deps = {}) 
       const { changed, etag } = await apiRef.current.getDashboardVersion(etagRef.current);
       const first = etagRef.current === null;
       etagRef.current = etag;
-      if (changed && !first) await load();
+      // Reload when the version moved, and retry after a failed load (the
+      // version alone would not move to trigger it).
+      if ((changed && !first) || failedRef.current) await load();
     } catch {
       // A failed check is retried on the next tick; the data on screen stays.
     }

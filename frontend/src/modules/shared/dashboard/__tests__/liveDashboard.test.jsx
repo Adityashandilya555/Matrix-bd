@@ -107,6 +107,21 @@ describe('LiveDashboard', () => {
     expect(screen.getByText('▲ 4 in 4 wk')).toBeTruthy();
   });
 
+  it('retries a failed load on the next version check', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const getDashboardSummary = vi.fn().mockRejectedValueOnce(new Error('Blip')).mockResolvedValue(ADMIN);
+    const getDashboardVersion = vi.fn().mockResolvedValue({ changed: false, etag: '"v1"' });
+    render(<LiveDashboard deps={{ getDashboardSummary, getDashboardVersion }} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(POLL_MS); });
+    await screen.findByText(/^Good (morning|afternoon|evening)/);
+    expect(getDashboardSummary.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('hides LOI tiles the server left out (Legal)', () => {
+    const vm = toViewModel({ role: 'supervisor', module: 'legal', kpis: { tiles: [] }, compliance: { dd_negative: 2, legal_rejected: 1 } });
+    expect(vm.compliance.alerts.map((a) => a.label)).toEqual(['DD negative', 'Legal rejected']);
+  });
+
   it('shows a retry card when the first load fails', async () => {
     const getDashboardSummary = vi.fn().mockRejectedValue(new Error('Network down'));
     const getDashboardVersion = vi.fn().mockResolvedValue({ changed: false, etag: '"v1"' });

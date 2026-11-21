@@ -47,7 +47,8 @@
   --zm-accent-line: #E3CDB8;
   --zm-accent-on: #FFFFFF;
   /* foreground on accent surface */
-  /* CTA button tokens — light mode mirrors --zm-accent. */
+  /* CTA button tokens: the primary call to action is the darkest ink, not the
+     accent, so it stays the strongest element on the page. */
   --zm-cta-bg: #1F1A17;
   --zm-cta-bg-hover: #3B322C;
   --zm-cta-fg: #FFFFFF;

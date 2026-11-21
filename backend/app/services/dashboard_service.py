@@ -233,117 +233,169 @@ def _module_open(module: str):
 # Hero tiles per (module, role): (key, label, caption, predicate, needs_action).
 # needs_action marks the tiles that make up "Waiting on you" for that role, so
 # the inbox and the tiles always agree. Definitions follow each module's
-# service: who moves the site next, not merely "unfinished".
-def _tiles(module: str, kind: str, uid: Optional[str] = None) -> list[tuple[str, str, str, Any, bool]]:
-    today = func.current_date()
-    if module == "bd" and kind == "supervisor":
-        return [
-            ("shortlist", "To shortlist", "new drafts", S.status == "draft_submitted", True),
-            ("approve", "To approve", "details submitted", S.status == "details_submitted", True),
-            ("push", "To push to legal", "LOI uploaded", S.status == "loi_uploaded", True),
-            ("loi_back", "LOIs sent back", "waiting on the executive",
-             and_(S.status == "approved", S.loi_rejection_note.isnot(None)), False),
-        ]
-    if module == "bd":
-        deadline = (
-            select(func.max(models.Approval.loi_deadline))
-            .where(models.Approval.site_id == S.id, models.Approval.tenant_id == S.tenant_id, models.Approval.status == "approved")
-            .correlate(S).scalar_subquery()
-        )
-        return [
-            ("details", "Need details", "shortlisted sites", S.status == "shortlisted", True),
-            ("loi_due", "LOI due ≤ 7 days", "including overdue",
-             and_(S.status == "approved", deadline <= today + 7), True),
-            ("sent_back", "Sent back to me", "LOI returned by supervisor",
-             and_(S.status == "approved", S.loi_rejection_note.isnot(None)), True),
-            ("cr", "Change requests open", "raised by you",
-             _rel(models.LegalChangeRequest,
-                  lambda c: (c.tenant_id == S.tenant_id, c.status == "pending", c.requested_by == uid)), False),
-        ]
-    if module == "legal" and kind == "supervisor":
-        return [
-            ("dd_review", "DD to review", "submitted checklists",
-             _rel(models.LegalDdChecklist, lambda c: (c.stage == "pending_review",)), True),
-            ("lic_review", "Licensing to review", "submitted licences",
-             _rel(models.SiteLicensing, lambda c: (c.stage == "pending_review",)), True),
-            ("cr", "Change requests", "waiting for a decision",
-             _rel(models.LegalChangeRequest, lambda c: (c.tenant_id == S.tenant_id, c.status == "pending")), True),
-            ("unallocated", "Not allocated", "no executive yet",
-             and_(S.status == "legal_review", ~_active_delegation("legal")), True),
-        ]
-    if module == "legal":
-        return [
-            ("dd_draft", "DD drafts", "checklists to finish",
-             _rel(models.LegalDdChecklist, lambda c: (c.stage == "draft",)), True),
-            ("lic_draft", "Licensing drafts", "licences to finish",
-             _rel(models.SiteLicensing, lambda c: (c.stage == "draft",)), True),
-            ("submitted", "With supervisor", "submitted for review",
-             or_(_rel(models.LegalDdChecklist, lambda c: (c.stage == "pending_review",)),
-                 _rel(models.SiteLicensing, lambda c: (c.stage == "pending_review",))), False),
-            ("dd_negative", "DD negative", "on your sites", S.legal_dd_status == "negative", False),
-        ]
-    if module == "design" and kind == "supervisor":
-        return [
-            ("allocate", "To allocate", "ready for design", S.design_status == "pending", True),
-            ("review", "Deliverables to review", "submitted by executives", _deliverable("submitted"), True),
-            ("gfc", "Ready for GFC", "send to admin",
-             and_(S.design_status == "in_progress",
-                  _rel(models.DesignReview, lambda r: (r.tenant_id == S.tenant_id, r.current_stage == "gfc"))), True),
-            ("done", "Design complete", "approved", S.design_status == "approved", False),
-        ]
-    if module == "design":
-        return [
-            ("upload", "To work on", "no deliverable under review",
-             and_(or_(S.design_status.is_(None), S.design_status != "approved"), ~_deliverable("submitted")), True),
-            ("awaiting", "Awaiting review", "submitted", _deliverable("submitted"), False),
-            ("sent_back", "Sent back", "rejected deliverables", _deliverable("rejected"), True),
-            ("done", "Completed", "design approved", S.design_status == "approved", False),
-        ]
-    if module == "project" and kind == "supervisor":
-        return [
-            ("allocate", "To allocate", "design approved", ~_active_delegation("project"), True),
-            ("approvals", "Approvals pending", "dates and quality audits",
-             _project(lambda r: (or_(r.expected_completion_status == "submitted", r.quality_audit_status == "submitted"),)), True),
-            ("overdue", "Overdue", "past expected completion",
-             and_(S.project_status != "done", _project(lambda r: (r.expected_completion_date < today,))), False),
-            ("handover", "Ready for NSO", "done, not handed over",
-             and_(S.project_status == "done", _project(lambda r: (r.nso_status == "pending",))), True),
-        ]
-    if module == "project":
-        return [
-            ("init", "Start date to confirm", "proposed by supervisor",
-             _project(lambda r: (r.initialization_status == "proposed",)), True),
-            ("completion", "Completion date due", "set the expected finish",
-             _project(lambda r: (r.initialization_status == "approved", r.expected_completion_status.in_(("pending", "rejected")))), True),
-            ("qa", "QA inspection due", "visit date set",
-             _project(lambda r: (r.mid_project_visit_date.isnot(None), r.quality_audit_status.in_(("pending", "rejected")))), True),
-            ("closure", "Closure budgets to fill", "financial closure", _budget("closure", "draft", "rejected"), True),
-        ]
-    if module == "project_excellence" and kind == "supervisor":
-        return [
-            ("allocate", "To allocate", "design approved", S.project_excellence_status == "pending", True),
-            ("budget_review", "Budgets to review", "submitted by executives", _budget("gfc", "pending_supervisor"), True),
-            ("qa", "Quality audits to confirm", "supervisor-approved",
-             _project(lambda r: (r.quality_audit_status == "supervisor_approved",)), True),
-            ("with_admin", "Budgets with admin", "awaiting admin", _budget("gfc", "pending_admin"), False),
-        ]
-    if module == "project_excellence":
-        return [
-            ("fill", "Budgets to fill", "draft or sent back", _budget("gfc", "draft", "rejected"), True),
-            ("review", "Awaiting review", "with supervisor or admin", _budget("gfc", "pending_supervisor", "pending_admin"), False),
-            ("qa", "Quality audits due", "pending or sent back",
-             _project(lambda r: (r.quality_audit_status.in_(("pending", "rejected")),)), True),
-            ("approved", "Budgets approved", "done", _budget("gfc", "approved"), False),
-        ]
-    # nso supervisor (NSO has no executives; see build_summary)
+# service: who moves the site next, not merely "unfinished". One small
+# function per (module, role), chosen from _TILE_BUILDERS.
+TileDef = tuple[str, str, str, Any, bool]
+
+def _tiles_bd_sup(today, uid: Optional[str]) -> list[TileDef]:
+    del today, uid  # same signature for every builder
     return [
-        ("stage1", "Stage 1 to complete", "property and comms",
-         or_(~_nso(lambda r: (true(),)), _nso(lambda r: (r.current_stage == "stage_one",))), True),
-        ("stage3", "Stage 3 to complete", "licences and handover", _nso(lambda r: (r.current_stage == "stage_three",)), True),
-        ("final", "Final approval due", "ready to sign off", _nso(lambda r: (r.current_stage == "final",)), True),
-        ("launching", "Launching ≤ 14 days", "by NSO launch date",
-         _nso(lambda r: (r.launch_date >= today, r.launch_date <= today + 14)), False),
+        ("shortlist", "To shortlist", "new drafts", S.status == "draft_submitted", True),
+        ("approve", "To approve", "details submitted", S.status == "details_submitted", True),
+        ("push", "To push to legal", "LOI uploaded", S.status == "loi_uploaded", True),
+        ("loi_back", "LOIs sent back", "waiting on the executive",
+         and_(S.status == "approved", S.loi_rejection_note.isnot(None)), False),
     ]
+
+
+def _tiles_bd_exec(today, uid: Optional[str]) -> list[TileDef]:
+    deadline = (
+        select(func.max(models.Approval.loi_deadline))
+        .where(models.Approval.site_id == S.id, models.Approval.tenant_id == S.tenant_id, models.Approval.status == "approved")
+        .correlate(S).scalar_subquery()
+    )
+    return [
+        ("details", "Need details", "shortlisted sites", S.status == "shortlisted", True),
+        ("loi_due", "LOI due ≤ 7 days", "including overdue",
+         and_(S.status == "approved", deadline <= today + 7), True),
+        ("sent_back", "Sent back to me", "LOI returned by supervisor",
+         and_(S.status == "approved", S.loi_rejection_note.isnot(None)), True),
+        ("cr", "Change requests open", "raised by you",
+         _rel(models.LegalChangeRequest,
+              lambda c: (c.tenant_id == S.tenant_id, c.status == "pending", c.requested_by == uid)), False),
+    ]
+
+
+def _tiles_legal_sup(today, uid: Optional[str]) -> list[TileDef]:
+    del today, uid  # same signature for every builder
+    return [
+        ("dd_review", "DD to review", "submitted checklists",
+         _rel(models.LegalDdChecklist, lambda c: (c.stage == "pending_review",)), True),
+        ("lic_review", "Licensing to review", "submitted licences",
+         _rel(models.SiteLicensing, lambda c: (c.stage == "pending_review",)), True),
+        ("cr", "Change requests", "waiting for a decision",
+         _rel(models.LegalChangeRequest, lambda c: (c.tenant_id == S.tenant_id, c.status == "pending")), True),
+        ("unallocated", "Not allocated", "no executive yet",
+         and_(S.status == "legal_review", ~_active_delegation("legal")), True),
+    ]
+
+
+def _tiles_legal_exec(today, uid: Optional[str]) -> list[TileDef]:
+    del today, uid  # same signature for every builder
+    return [
+        ("dd_draft", "DD drafts", "checklists to finish",
+         _rel(models.LegalDdChecklist, lambda c: (c.stage == "draft",)), True),
+        ("lic_draft", "Licensing drafts", "licences to finish",
+         _rel(models.SiteLicensing, lambda c: (c.stage == "draft",)), True),
+        ("submitted", "With supervisor", "submitted for review",
+         or_(_rel(models.LegalDdChecklist, lambda c: (c.stage == "pending_review",)),
+             _rel(models.SiteLicensing, lambda c: (c.stage == "pending_review",))), False),
+        ("dd_negative", "DD negative", "on your sites", S.legal_dd_status == "negative", False),
+    ]
+
+
+def _tiles_design_sup(today, uid: Optional[str]) -> list[TileDef]:
+    del today, uid  # same signature for every builder
+    return [
+        ("allocate", "To allocate", "ready for design", S.design_status == "pending", True),
+        ("review", "Deliverables to review", "submitted by executives", _deliverable("submitted"), True),
+        ("gfc", "Ready for GFC", "send to admin",
+         and_(S.design_status == "in_progress",
+              _rel(models.DesignReview, lambda r: (r.tenant_id == S.tenant_id, r.current_stage == "gfc"))), True),
+        ("done", "Design complete", "approved", S.design_status == "approved", False),
+    ]
+
+
+def _tiles_design_exec(today, uid: Optional[str]) -> list[TileDef]:
+    del today, uid  # same signature for every builder
+    return [
+        ("upload", "To work on", "no deliverable under review",
+         and_(or_(S.design_status.is_(None), S.design_status != "approved"), ~_deliverable("submitted")), True),
+        ("awaiting", "Awaiting review", "submitted", _deliverable("submitted"), False),
+        ("sent_back", "Sent back", "rejected deliverables", _deliverable("rejected"), True),
+        ("done", "Completed", "design approved", S.design_status == "approved", False),
+    ]
+
+
+def _tiles_project_sup(today, uid: Optional[str]) -> list[TileDef]:
+    del uid  # same signature for every builder
+    return [
+        ("allocate", "To allocate", "design approved", ~_active_delegation("project"), True),
+        ("approvals", "Approvals pending", "dates and quality audits",
+         _project(lambda r: (or_(r.expected_completion_status == "submitted", r.quality_audit_status == "submitted"),)), True),
+        ("overdue", "Overdue", "past expected completion",
+         and_(S.project_status != "done", _project(lambda r: (r.expected_completion_date < today,))), False),
+        ("handover", "Ready for NSO", "done, not handed over",
+         and_(S.project_status == "done", _project(lambda r: (r.nso_status == "pending",))), True),
+    ]
+
+
+def _tiles_project_exec(today, uid: Optional[str]) -> list[TileDef]:
+    del today, uid  # same signature for every builder
+    return [
+        ("init", "Start date to confirm", "proposed by supervisor",
+         _project(lambda r: (r.initialization_status == "proposed",)), True),
+        ("completion", "Completion date due", "set the expected finish",
+         _project(lambda r: (r.initialization_status == "approved", r.expected_completion_status.in_(("pending", "rejected")))), True),
+        ("qa", "QA inspection due", "visit date set",
+         _project(lambda r: (r.mid_project_visit_date.isnot(None), r.quality_audit_status.in_(("pending", "rejected")))), True),
+        ("closure", "Closure budgets to fill", "financial closure", _budget("closure", "draft", "rejected"), True),
+    ]
+
+
+def _tiles_project_excellence_sup(today, uid: Optional[str]) -> list[TileDef]:
+    del today, uid  # same signature for every builder
+    return [
+        ("allocate", "To allocate", "design approved", S.project_excellence_status == "pending", True),
+        ("budget_review", "Budgets to review", "submitted by executives", _budget("gfc", "pending_supervisor"), True),
+        ("qa", "Quality audits to confirm", "supervisor-approved",
+         _project(lambda r: (r.quality_audit_status == "supervisor_approved",)), True),
+        ("with_admin", "Budgets with admin", "awaiting admin", _budget("gfc", "pending_admin"), False),
+    ]
+
+
+def _tiles_project_excellence_exec(today, uid: Optional[str]) -> list[TileDef]:
+    del today, uid  # same signature for every builder
+    return [
+        ("fill", "Budgets to fill", "draft or sent back", _budget("gfc", "draft", "rejected"), True),
+        ("review", "Awaiting review", "with supervisor or admin", _budget("gfc", "pending_supervisor", "pending_admin"), False),
+        ("qa", "Quality audits due", "pending or sent back",
+         _project(lambda r: (r.quality_audit_status.in_(("pending", "rejected")),)), True),
+        ("approved", "Budgets approved", "done", _budget("gfc", "approved"), False),
+    ]
+
+
+def _tiles_nso_sup(today, uid: Optional[str]) -> list[TileDef]:
+    del uid  # same signature for every builder
+    return [
+    ("stage1", "Stage 1 to complete", "property and comms",
+     or_(~_nso(lambda r: (true(),)), _nso(lambda r: (r.current_stage == "stage_one",))), True),
+    ("stage3", "Stage 3 to complete", "licences and handover", _nso(lambda r: (r.current_stage == "stage_three",)), True),
+    ("final", "Final approval due", "ready to sign off", _nso(lambda r: (r.current_stage == "final",)), True),
+    ("launching", "Launching ≤ 14 days", "by NSO launch date",
+     _nso(lambda r: (r.launch_date >= today, r.launch_date <= today + 14)), False),
+    ]
+
+
+_TILE_BUILDERS = {
+    ("bd", "supervisor"): _tiles_bd_sup,
+    ("bd", "executive"): _tiles_bd_exec,
+    ("legal", "supervisor"): _tiles_legal_sup,
+    ("legal", "executive"): _tiles_legal_exec,
+    ("design", "supervisor"): _tiles_design_sup,
+    ("design", "executive"): _tiles_design_exec,
+    ("project", "supervisor"): _tiles_project_sup,
+    ("project", "executive"): _tiles_project_exec,
+    ("project_excellence", "supervisor"): _tiles_project_excellence_sup,
+    ("project_excellence", "executive"): _tiles_project_excellence_exec,
+    ("nso", "supervisor"): _tiles_nso_sup,
+}
+
+
+def _tiles(module: str, kind: str, uid: Optional[str] = None) -> list[TileDef]:
+    """The four hero tiles for this module and role."""
+    builder = _TILE_BUILDERS.get((module, kind)) or _TILE_BUILDERS[("nso", "supervisor")]
+    return builder(func.current_date(), uid)
 
 
 def _module_awaiting(module: str, kind: str = "supervisor", uid: Optional[str] = None):
@@ -766,6 +818,19 @@ async def _people(db: AsyncSession, ctx: DashContext) -> dict:
     }
 
 
+def _delegation_open(d, module: str):
+    """A delegation still has work: the module's own sites while the module is
+    open, and companion work (financial closure, quality audit) while that is
+    open, which can be after the project itself is done."""
+    own = and_(d.module == module, _module_open(module))
+    companion = _COMPANION_DELEGATION_MODULE.get(module)
+    if companion == "financial_closure":
+        return or_(own, and_(d.module == companion, S.financial_closure_status != "closed"))
+    if companion == "quality_audit":
+        return or_(own, and_(d.module == companion, _project(lambda r: (r.quality_audit_status != "approved",))))
+    return own
+
+
 async def _workload(db: AsyncSession, ctx: DashContext) -> dict:
     """Open sites per person (BD: submitter or assignee; elsewhere: active delegations)."""
     u = models.User
@@ -784,7 +849,7 @@ async def _workload(db: AsyncSession, ctx: DashContext) -> dict:
             select(u.id, u.name, func.count(func.distinct(d.site_id)).label("n"))
             .select_from(d).join(u, u.id == d.delegate_user_id).join(S, S.id == d.site_id)
             .where(*site_filters(ctx), d.tenant_id == ctx.tenant_id, d.revoked_at.is_(None),
-                   d.module.in_(_delegation_modules(ctx.module or "")), _module_open(ctx.module or ""))
+                   d.module.in_(_delegation_modules(ctx.module or "")), _delegation_open(d, ctx.module or ""))
         )
     stmt = stmt.group_by(u.id, u.name).order_by(text("n DESC")).limit(_TOP_N)
     items = [{"user_id": str(i), "name": nm, "open_sites": int(n)} for i, nm, n in (await db.execute(stmt)).all()]
@@ -921,6 +986,9 @@ _VERSION_SQL = text("""
       (SELECT max(updated_at) FROM site_budgets WHERE tenant_id = :tid) AS budgets_at,
       (SELECT max(updated_at) FROM launch_approvals WHERE tenant_id = :tid) AS launch_at,
       (SELECT count(*) FROM users WHERE tenant_id = :tid AND is_active) AS active_users,
+      -- Due windows, waiting ages and "launching soon" move with the calendar,
+      -- not with any row, so the date is part of the version too.
+      current_date AS today,
       -- Queues the admin and executive inboxes count. Creating or deciding one
       -- of these writes no audit event, so without them the poll could answer
       -- 304 while a queue had changed.

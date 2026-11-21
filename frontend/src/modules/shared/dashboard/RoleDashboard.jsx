@@ -152,10 +152,10 @@ function Empty({ e }) {
         <span className="dash-ico" style={{ width: 56, height: 56, borderRadius: 18, background: TONE.orange.bg, color: TONE.orange.fg }}><Ico name="store" size={26} /></span>
         <h2 className="dash-title">{e.title}</h2>
         <p className="dash-sub" style={{ maxWidth: 460, fontSize: 14 }}>{e.body}</p>
-        {e.cta && (
-          <button type="button" className="dash-chip" aria-pressed="true" style={{ marginTop: 4 }}>
+        {e.cta && e.href && (
+          <a href={e.href} className="dash-chip" style={{ marginTop: 4, textDecoration: 'none', background: 'var(--zm-cta-bg)', color: 'var(--zm-cta-fg)', borderColor: 'var(--zm-cta-bg)' }}>
             <Ico name="plus" size={16} />{e.cta}
-          </button>
+          </a>
         )}
       </div>
     </Card>
