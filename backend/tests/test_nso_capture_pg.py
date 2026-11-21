@@ -25,9 +25,20 @@ from sqlalchemy.pool import NullPool
 from app.db import models
 from app.db.session import MatrixSession
 from app.integrations import capture
+from app.integrations import nso_payload as nso
 
 PG_URL = os.environ.get("MATRIX_TEST_PG_URL")
 pytestmark = pytest.mark.skipif(not PG_URL, reason="MATRIX_TEST_PG_URL not set")
+
+
+@pytest.fixture(autouse=True)
+def _strict_capture():
+    """Surface capture errors in tests (production logs them and lets the save go on)."""
+    capture.set_strict(True)
+    capture.set_active(True)
+    yield
+    capture.set_strict(False)
+    capture.set_active(True)
 
 
 @pytest.fixture
@@ -42,7 +53,7 @@ def maker(engine):
     return async_sessionmaker(engine, sync_session_class=MatrixSession, expire_on_commit=False, autoflush=False)
 
 
-async def _world(engine, *, enabled=True, ca_code="EX-BLR-001", endpoint=True):
+async def _world(engine, *, enabled=True, ca_code="EX-BLR-001", endpoint=True, finance="approved"):
     """Tenant + user + site (+ endpoint) written with Core, so no hook fires."""
     tid, uid, sid = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     tag = tid.hex[:10]
@@ -54,9 +65,9 @@ async def _world(engine, *, enabled=True, ca_code="EX-BLR-001", endpoint=True):
             "insert into users (id, tenant_id, email, name, role) values (:u, :t, :e, 'Exec', 'executive')"
         ), {"u": uid, "t": tid, "e": f"{tag}@example.com"})
         await conn.execute(text(
-            "insert into sites (id, tenant_id, name, city, submitted_by, ca_code, google_maps_pin) "
-            "values (:s, :t, 'Indiranagar', 'Bengaluru', :u, :c, '12.9716, 77.6412')"
-        ), {"s": sid, "t": tid, "u": uid, "c": ca_code})
+            "insert into sites (id, tenant_id, name, city, submitted_by, ca_code, finance_status, google_maps_pin) "
+            "values (:s, :t, 'Indiranagar', 'Bengaluru', :u, :c, :f, '12.9716, 77.6412')"
+        ), {"s": sid, "t": tid, "u": uid, "c": ca_code, "f": finance})
         if endpoint:
             await conn.execute(text(
                 "insert into integration_endpoints (tenant_id, integration, enabled, endpoint_url, secret_ciphertext) "
@@ -82,7 +93,7 @@ async def test_watched_change_queues_one_snapshot(engine, maker):
         await db.commit()
     rows = await _outbox(engine, sid)
     assert len(rows) == 1
-    seq, event_type, payload = rows[0]
+    _, event_type, payload = rows[0]
     assert event_type == "site.updated"
     assert payload["site"]["name"] == "Indiranagar 100ft"
     assert payload["site"]["cafe_code"] == "EX-BLR-001"
@@ -164,10 +175,13 @@ async def test_delete_queues_tombstone_that_outlives_the_site(engine, maker):
     _, _, sid = await _world(engine)
     async with maker() as db:
         site = await db.get(models.Site, sid)
+        await db.run_sync(lambda s: capture.queue_site_snapshot(s, sid, force=True))
+        await db.commit()
         await db.delete(site)
         await db.commit()
-    (_, event_type, payload), = await _outbox(engine, sid)
-    assert event_type == "site.deleted"
+    rows = await _outbox(engine, sid)
+    assert [r.event_type for r in rows] == ["site.updated", "site.deleted"]
+    payload = rows[1].payload
     assert payload["site"] == {"id": str(sid), "cafe_code": "EX-BLR-001", "name": "Indiranagar"}
 
 
@@ -245,3 +259,95 @@ async def test_rolled_back_savepoint_delete_is_an_update_not_a_tombstone(engine,
     rows = await _outbox(engine, sid)
     assert [r.event_type for r in rows] == ["site.updated"]
     assert rows[0].payload["site"]["name"] == "Renamed"
+
+
+# ── Second review (PR 515) ───────────────────────────────────────────────
+
+
+async def test_draft_cafe_code_is_not_shared_until_finance_approves(engine, maker):
+    _, _, sid = await _world(engine, ca_code=None, finance="pending")
+    async with maker() as db:
+        site = await db.get(models.Site, sid)
+        site.ca_code = "EX-BLR-9"  # executive's finance draft
+        await db.commit()
+        assert await _outbox(engine, sid) == []
+        site.finance_status = "approved"  # business admin approves
+        await db.commit()
+    (_, _, payload), = await _outbox(engine, sid)
+    assert payload["site"]["cafe_code"] == "EX-BLR-9"
+
+
+async def test_never_sent_site_gets_no_tombstone(engine, maker):
+    _, _, sid = await _world(engine)
+    async with maker() as db:
+        await db.delete(await db.get(models.Site, sid))
+        await db.commit()
+    assert await _outbox(engine, sid) == []
+
+
+async def test_site_that_lost_its_code_still_gets_a_tombstone(engine, maker):
+    _, _, sid = await _world(engine)
+    async with maker() as db:
+        site = await db.get(models.Site, sid)
+        site.name = "Shared"
+        await db.commit()
+        site.ca_code = None
+        await db.commit()
+        await db.delete(site)
+        await db.commit()
+    assert [r.event_type for r in await _outbox(engine, sid)] == ["site.updated", "site.updated", "site.deleted"]
+
+
+async def test_savepoint_release_does_not_queue_early(engine, maker):
+    _, _, sid = await _world(engine)
+    async with maker() as db:
+        site = await db.get(models.Site, sid)
+        async with db.begin_nested():
+            site.name = "In savepoint"
+        site.model = "Kiosk"
+        await db.commit()
+    (_, _, payload), = await _outbox(engine, sid)
+    assert (payload["site"]["name"], payload["site"]["model"]) == ("In savepoint", "Kiosk")
+
+
+async def test_capture_failure_never_breaks_the_save(engine, maker, monkeypatch, caplog):
+    capture.set_strict(False)
+    _, _, sid = await _world(engine)
+
+    def boom(*_a, **_k):
+        raise RuntimeError("integration bug")
+    monkeypatch.setattr(nso, "build_snapshot", boom)
+    async with maker() as db:
+        site = await db.get(models.Site, sid)
+        site.name = "Saved anyway"
+        await db.commit()
+    async with engine.connect() as conn:
+        name = (await conn.execute(text("select name from sites where id = :s"), {"s": sid})).scalar()
+    assert name == "Saved anyway"
+    assert await _outbox(engine, sid) == []
+    assert "nso capture failed" in caplog.text
+
+
+async def test_missing_integration_tables_do_not_break_saves(engine, maker):
+    """Simulated inside a transaction: the tables are dropped, the save still commits."""
+    capture.set_strict(False)
+    _, _, sid = await _world(engine)
+    async with maker() as db:
+        await db.execute(text("ALTER TABLE integration_endpoints RENAME TO integration_endpoints_gone"))
+        site = await db.get(models.Site, sid)
+        site.name = "Still saves"
+        await db.commit()  # rename is committed too; undo it below
+    async with engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE integration_endpoints_gone RENAME TO integration_endpoints"))
+    async with engine.connect() as conn:
+        assert (await conn.execute(text("select name from sites where id = :s"), {"s": sid})).scalar() == "Still saves"
+
+
+async def test_inactive_capture_runs_no_queries(engine, maker):
+    capture.set_active(False)
+    _, _, sid = await _world(engine)
+    async with maker() as db:
+        site = await db.get(models.Site, sid)
+        site.name = "Off"
+        await db.commit()
+    assert await _outbox(engine, sid) == []

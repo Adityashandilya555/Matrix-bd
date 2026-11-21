@@ -91,4 +91,23 @@ describe('IntegrationsTab', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByText(/were not sent/i)).toBeInTheDocument();
   });
+
+  it('can still switch off when the server key is missing', async () => {
+    api.getNsoIntegration.mockResolvedValue(cfg({ keyConfigured: false, configured: true, enabled: true, endpointUrl: 'https://x.example' }));
+    api.saveNsoIntegration.mockResolvedValue({ enabled: false, endpointUrl: 'https://x.example', secret: null, justEnabled: false });
+    const user = userEvent.setup();
+    render(<IntegrationsTab />);
+    await user.click(await screen.findByRole('button', { name: /switch off sending/i }));
+    expect(api.saveNsoIntegration).toHaveBeenCalledWith({ endpointUrl: 'https://x.example', enabled: false });
+  });
+
+  it('keeps the one-time secret on screen if the refresh after saving fails', async () => {
+    api.getNsoIntegration.mockResolvedValueOnce(cfg()).mockRejectedValue(new Error('network down'));
+    api.saveNsoIntegration.mockResolvedValue({ enabled: false, endpointUrl: 'https://x.example', secret: 'whsec_keep', justEnabled: false });
+    const user = userEvent.setup();
+    render(<IntegrationsTab />);
+    await user.type(await screen.findByLabelText(/endpoint url/i), 'https://x.example');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('whsec_keep')).toBeInTheDocument();
+  });
 });

@@ -15,11 +15,16 @@ site: a second transaction touching the same site waits, then builds its
 snapshot from the first one's committed data, so the higher ``seq`` always
 carries the newer state.
 
-The hooks only read and insert. They never swallow errors: a bug here should
-fail loudly in tests, not silently drop events.
+Safety: a user's save must never fail because of this integration. The work
+runs inside a SAVEPOINT; if anything in it raises (a bug, a missing table), the
+savepoint is rolled back, the error is logged, and the user's commit goes on
+without the event. Capture can also be switched off for the process
+(``set_active(False)``), which app.main does when the integration tables are
+missing at boot. Tests pass ``strict=True`` to see errors instead.
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any
 
@@ -29,8 +34,26 @@ from sqlalchemy.orm import Session
 from app.db import models
 from app.integrations import nso_payload as nso
 
+log = logging.getLogger("matrix.integrations.capture")
+
 _TOUCHED = "nso_touched_sites"
 _DELETED = "nso_deleted_sites"
+
+
+class _State:
+    """Process-wide switches (a class, not module globals: see test_hygiene_globals)."""
+    active = True   # False when the integration tables are missing at boot
+    strict = False  # tests: re-raise instead of logging
+
+
+def set_active(active: bool) -> None:
+    """Turn capture on or off for this process."""
+    _State.active = active
+
+
+def set_strict(strict: bool) -> None:
+    """Re-raise capture errors instead of logging them (tests only)."""
+    _State.strict = strict
 
 
 def _site_id_of(obj: Any) -> uuid.UUID | None:
@@ -45,11 +68,16 @@ def _changed(obj: Any, attrs: frozenset[str], is_new: bool) -> bool:
 
 
 def _committed(obj: Any, name: str) -> Any:
-    """The attribute's value as last loaded from the database (pre-change)."""
-    hist = inspect(obj).attrs[name].history
+    """The attribute's value as last loaded from the database (pre-change).
+
+    Never triggers a load: an expired attribute on a deleted row would raise
+    ObjectDeletedError inside the flush. Unloaded → None.
+    """
+    state = inspect(obj)
+    hist = state.attrs[name].history
     if hist.deleted:
         return hist.deleted[0]
-    return getattr(obj, name)
+    return state.dict.get(name)
 
 
 def _after_flush(session: Session, _flush_context: Any) -> None:
@@ -65,7 +93,7 @@ def _after_flush(session: Session, _flush_context: Any) -> None:
         if isinstance(obj, models.Site):
             deleted[obj.id] = {
                 "tenant_id": obj.tenant_id,
-                "cafe_code": _committed(obj, "ca_code"),
+                "cafe_code": nso.shared_cafe_code(_committed(obj, "ca_code"), _committed(obj, "finance_status")),
                 "name": _committed(obj, "name"),
             }
 
@@ -132,11 +160,26 @@ def queue_site_snapshot(session: Session, site_id: uuid.UUID, *, force: bool = F
 
 
 def _before_commit(session: Session) -> None:
+    # before_commit also fires when a SAVEPOINT is released; only the outermost
+    # commit queues events (savepoint changes are still noted by after_flush).
+    if not _State.active or session.in_nested_transaction():
+        return
     session.flush()  # run after_flush for anything still pending
     touched: set[uuid.UUID] = session.info.pop(_TOUCHED, set())
     deleted: dict[uuid.UUID, dict] = session.info.pop(_DELETED, {})
     if not touched and not deleted:
         return
+    try:
+        with session.begin_nested():
+            _queue(session, touched, deleted)
+    except Exception:
+        if _State.strict:
+            raise
+        log.exception("nso capture failed; the save goes on without an NSO event (sites=%s)",
+                      sorted(map(str, touched | deleted.keys())))
+
+
+def _queue(session: Session, touched: set[uuid.UUID], deleted: dict[uuid.UUID, dict]) -> None:
 
     # One query: which noted sites still exist AND belong to an enabled workspace.
     # A site in `deleted` that still exists had its delete rolled back with a
@@ -160,8 +203,12 @@ def _before_commit(session: Session) -> None:
         _enabled_filter().where(models.IntegrationEndpoint.tenant_id.in_({d["tenant_id"] for d in deleted.values()}))
     ).scalars())
     for site_id, info in deleted.items():
-        # NSO only knows sites that were eligible; nothing to tell it otherwise.
-        if info["tenant_id"] in enabled_tenants and nso.is_eligible(info["cafe_code"]):
+        # Only sites NSO actually has a record of: anything was sent for it (not
+        # dead). That includes a site that later lost its code and got its final
+        # update; a site with a code that was never sent gets nothing.
+        if info["tenant_id"] not in enabled_tenants:
+            continue
+        if _last_payload(session, info["tenant_id"], site_id) is not None:
             enqueue(session, info["tenant_id"], site_id, nso.EVENT_DELETED,
                     nso.tombstone(info["tenant_id"], site_id, info["cafe_code"], info["name"]))
 
@@ -182,3 +229,11 @@ def register(session_cls: type[Session]) -> None:
     event.listen(session_cls, "after_flush", _after_flush)
     event.listen(session_cls, "before_commit", _before_commit)
     event.listen(session_cls, "after_transaction_end", _clear)
+
+
+def _register_default() -> None:
+    from app.db.session import MatrixSession
+    register(MatrixSession)
+
+
+_register_default()

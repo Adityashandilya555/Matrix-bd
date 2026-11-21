@@ -198,3 +198,24 @@ def test_pinned_request_keeps_host_and_sni():
         "https://93.184.216.34/hook?x=1", "nso.example.com", "nso.example.com")
     assert sender.pinned_request("https://nso.example.com:8443/h", "2606:4700::1111") == (
         "https://[2606:4700::1111]:8443/h", "nso.example.com:8443", "nso.example.com")
+    assert sender.pinned_request("https://[2606:4700::1111]/h", "2606:4700::1111")[1] == "[2606:4700::1111]"
+
+
+def test_dates_are_ist_calendar_days():
+    from datetime import datetime, timezone
+    # 20 Nov 21:00 UTC is 21 Nov 02:30 IST.
+    assert nso._day(datetime(2026, 11, 20, 21, 0, tzinfo=timezone.utc)) == "2026-11-21"
+
+
+def test_cafe_code_needs_finance_approval():
+    assert nso.shared_cafe_code("EX-1", "approved") == "EX-1"
+    assert nso.shared_cafe_code("EX-1", "pending") is None
+    assert nso.shared_cafe_code(None, "approved") is None
+
+
+def test_config_rejects_zero_interval_and_timeout():
+    from pydantic import ValidationError
+    from app.core.config import Settings
+    for bad in ({"integration_sender_interval_secs": 0}, {"integration_http_timeout_secs": 0}):
+        with pytest.raises(ValidationError):
+            Settings(**bad)

@@ -18,6 +18,7 @@ from app.core.config import settings
 from app.db import models
 from app.integrations import secrets as secret_store
 from app.integrations import sender, signing
+from app.integrations import capture
 from app.services import integration_service as svc
 from tests.test_nso_capture_pg import PG_URL, _outbox, _world, engine, maker  # noqa: F401 (fixtures)
 
@@ -28,6 +29,8 @@ ADMIN = {"sub": None, "name": "Admin"}
 
 @pytest.fixture(autouse=True)
 def _wire(monkeypatch, maker):  # noqa: F811
+    capture.set_strict(True)
+    capture.set_active(True)
     monkeypatch.setattr(settings, "integration_secret_key", f"key1:{Fernet.generate_key().decode()}")
     monkeypatch.setattr(sender, "SessionLocal", maker)
 
@@ -133,7 +136,7 @@ async def test_disabled_workspace_parks_without_counting(engine, maker):  # noqa
 
 
 async def test_two_workers_never_claim_the_same_row(engine, maker):  # noqa: F811
-    _, sid, _ = await _setup(engine, maker)
+    await _setup(engine, maker)
     first, second = await asyncio.gather(sender.claim(500), sender.claim(500))
     ids_a, ids_b = {r.id for r in first}, {r.id for r in second}
     assert not ids_a & ids_b
@@ -290,3 +293,82 @@ async def test_result_after_losing_the_claim_does_not_overwrite(engine, maker, m
     assert (status, locked_by) == ("sending", "other-worker")
     assert logged == 1
     assert not await sender._refresh_claim(row.id)
+
+
+async def test_dns_failure_is_retried_not_dead(engine, maker, monkeypatch):  # noqa: F811
+    _, sid, _ = await _setup(engine, maker)
+
+    async def _nxdomain(_url):
+        raise sender.ResolveError("cannot resolve nso.example.com")
+    monkeypatch.setattr(sender, "resolve_public_address", _nxdomain)
+    async with _client(lambda r: httpx.Response(200)) as client:
+        await _drain(client)
+    assert (await _status(engine, sid))[0][:2] == ("failed", 1)
+
+
+async def test_purge_keeps_the_newest_row_per_site(engine, maker):  # noqa: F811
+    _, sid, _ = await _setup(engine, maker)
+    async with maker() as db:
+        site = await db.get(models.Site, sid)
+        site.name = "Second"
+        await db.commit()
+    async with engine.begin() as conn:
+        await conn.execute(text(
+            "update integration_outbox set status = 'sent', sent_at = now() - interval '40 days' where site_id = :s"
+        ), {"s": sid})
+    while await sender.purge_sent() == 1000:
+        pass
+    rows = await _outbox(engine, sid)
+    assert [r.payload["site"]["name"] for r in rows] == ["Second"]
+
+
+async def test_second_rotation_is_refused_while_one_is_open(engine, maker):  # noqa: F811
+    tid, _, _ = await _setup(engine, maker)
+    async with maker() as db:
+        await svc.rotate_secret(db, str(tid), ADMIN)
+        await db.commit()
+    async with maker() as db:
+        with pytest.raises(HTTPException) as exc:
+            await svc.rotate_secret(db, str(tid), ADMIN)
+    assert exc.value.status_code == 409
+
+
+async def test_url_credentials_rejected_and_audit_omits_query(engine, maker):  # noqa: F811
+    tid, _, _ = await _world(engine, endpoint=False)
+    async with maker() as db:
+        with pytest.raises(HTTPException) as exc:
+            await svc.save_config(db, str(tid), ADMIN, "https://user:pw@nso.example.com/hook", True)
+        assert exc.value.status_code == 422
+    async with maker() as db:
+        await svc.save_config(db, str(tid), ADMIN, "https://nso.example.com/hook?token=abc123", True)
+        await db.commit()
+    async with engine.connect() as conn:
+        details = (await conn.execute(text(
+            "select detail from audit_logs where tenant_id = :t"), {"t": tid})).scalars().all()
+    assert details and all("abc123" not in d for d in details)
+
+
+async def test_enabling_wakes_parked_rows(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker)
+    async with engine.begin() as conn:
+        await conn.execute(text(
+            "update integration_outbox set next_attempt_at = now() + interval '1 hour' where site_id = :s"), {"s": sid})
+    async with maker() as db:
+        await svc.save_config(db, str(tid), ADMIN, "https://nso.example.com/hook", False)
+        await svc.save_config(db, str(tid), ADMIN, "https://nso.example.com/hook", True)
+        await db.commit()
+    async with engine.connect() as conn:
+        due = (await conn.execute(text(
+            "select next_attempt_at <= now() from integration_outbox where site_id = :s"), {"s": sid})).scalar()
+    assert due is True
+
+
+async def test_backfill_skips_unapproved_cafe_codes(engine, maker):  # noqa: F811
+    tid, _, _ = await _world(engine, endpoint=False, finance="pending")
+    async with maker() as db:
+        await svc.save_config(db, str(tid), ADMIN, "https://nso.example.com/hook", True)
+        await db.commit()
+    async with maker() as db:
+        out = await svc.backfill(db, str(tid), ADMIN)
+        await db.commit()
+    assert out == {"eligible": 0, "queued": 0}

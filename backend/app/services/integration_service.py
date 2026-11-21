@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from urllib.parse import urlsplit
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -38,6 +39,9 @@ async def _validate_url(url: str) -> str:
     url = url.strip()
     if not _HTTPS_URL.match(url) or len(url) > 2000:
         raise HTTPException(422, "Endpoint must be an https:// URL with a host.")
+    if urlsplit(url).username is not None:
+        # Requests are signed instead; userinfo would also land in the audit log.
+        raise HTTPException(422, "Don't put a username or password in the URL; requests are signed.")
     try:
         await assert_public_host(url)
     except BlockedAddressError as exc:
@@ -58,6 +62,13 @@ async def _audit(db: AsyncSession, tenant_id: str, actor: dict, action: str, det
         db, tenant_id=tenant_id, site_id=None, actor_id=actor.get("sub"), actor_name=actor.get("name"),
         action=action, entity_type="integration", detail=detail,
     )
+
+
+def _url_for_audit(url: str) -> str:
+    """scheme://host/path only: a query string may carry a token, and the audit
+    feed is readable by supervisors."""
+    parts = urlsplit(url)
+    return f"{parts.scheme}://{parts.hostname or ''}{f':{parts.port}' if parts.port else ''}{parts.path}"
 
 
 def _delivery_out(d: models.IntegrationDelivery, event_type: str, seq: int) -> dict[str, Any]:
@@ -129,12 +140,20 @@ async def save_config(db: AsyncSession, tenant_id: str, actor: dict, endpoint_ur
         endpoint.endpoint_url = url
         endpoint.enabled = enabled
         endpoint.updated_at = now
-    await _audit(db, tenant_id, actor, "nso_integration_saved", f"enabled={enabled} url={url}")
+    await _audit(db, tenant_id, actor, "nso_integration_saved", f"enabled={enabled} url={_url_for_audit(url)}")
+    just_enabled = enabled and not was_enabled
+    if just_enabled:
+        # Rows parked while the workspace was off wait an hour; send them now.
+        ob = models.IntegrationOutbox
+        await db.execute(
+            update(ob).where(ob.tenant_id == endpoint.tenant_id, ob.status.in_(("pending", "failed")))
+            .values(next_attempt_at=func.now())
+        )
     await db.flush()
     # Changes made while switched off were never queued; the UI prompts for a
     # backfill when this is true (a deliberate click, not an automatic flood).
     return {"enabled": enabled, "endpoint_url": url, "secret": new_secret,
-            "just_enabled": enabled and not was_enabled}
+            "just_enabled": just_enabled}
 
 
 async def rotate_secret(db: AsyncSession, tenant_id: str, actor: dict) -> dict[str, Any]:
@@ -147,11 +166,15 @@ async def rotate_secret(db: AsyncSession, tenant_id: str, actor: dict) -> dict[s
     endpoint = await _endpoint(db, tenant_id, lock=True)
     if endpoint is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Set up the integration first.")
+    now = datetime.now(timezone.utc)
+    if endpoint.previous_secret_expires_at and endpoint.previous_secret_expires_at > now:
+        # A second rotation would silently drop the secret NSO may still be using.
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "A rotation is already in progress; try again after it finishes.")
     old_plain = secret_store.decrypt(endpoint.secret_ciphertext, endpoint.secret_key_version)
     new_secret = secret_store.generate_secret()
     endpoint.secret_ciphertext, endpoint.secret_key_version = secret_store.encrypt(new_secret)
     endpoint.previous_secret_ciphertext, _ = secret_store.encrypt(old_plain)
-    now = datetime.now(timezone.utc)
     endpoint.previous_secret_expires_at = now + ROTATION_OVERLAP
     endpoint.updated_at = now
     await _audit(db, tenant_id, actor, "nso_integration_secret_rotated", "previous secret valid 24h")
@@ -182,9 +205,12 @@ async def backfill(db: AsyncSession, tenant_id: str, actor: dict) -> dict[str, A
     await _require_enabled(db, tenant_id)
     tid = uuid.UUID(str(tenant_id))
     site_ids = (await db.execute(
-        select(models.Site.id).where(models.Site.tenant_id == tid, models.Site.ca_code.isnot(None))
-        .order_by(models.Site.id)
+        select(models.Site.id).where(
+            models.Site.tenant_id == tid, models.Site.ca_code.isnot(None), models.Site.finance_status == "approved",
+        ).order_by(models.Site.id)
     )).scalars().all()
+    # Audit first, so it commits with the first chunk even if a later one fails.
+    await _audit(db, tenant_id, actor, "nso_integration_backfill", f"eligible={len(site_ids)}")
 
     # Committed in chunks so each site's lock is held briefly, not for the whole
     # backfill: a large workspace must not block everyone's edits meanwhile.
@@ -193,7 +219,6 @@ async def backfill(db: AsyncSession, tenant_id: str, actor: dict) -> dict[str, A
         chunk = site_ids[start:start + BACKFILL_CHUNK]
         queued += await db.run_sync(lambda s, c=chunk: sum(capture.queue_site_snapshot(s, sid) for sid in c))
         await db.commit()
-    await _audit(db, tenant_id, actor, "nso_integration_backfill", f"queued={queued} eligible={len(site_ids)}")
     return {"eligible": len(site_ids), "queued": queued}
 
 

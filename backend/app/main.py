@@ -174,6 +174,28 @@ async def _email_drain_loop() -> None:
         await asyncio.sleep(interval)
 
 
+async def _verify_integration_tables() -> bool:
+    """True when the NSO integration tables exist.
+
+    If they don't (their migration failed), capture is switched off for this
+    process so ordinary site saves keep working; only the integration is lost.
+    """
+    from app.integrations import capture
+
+    async with engine.connect() as conn:
+        res = await conn.execute(text(
+            "SELECT to_regclass('public.integration_endpoints') IS NOT NULL"
+            " AND to_regclass('public.integration_outbox') IS NOT NULL"
+            " AND to_regclass('public.integration_deliveries') IS NOT NULL"
+        ))
+        ready = bool(res.scalar())
+    if not ready:
+        capture.set_active(False)
+        log.error("startup: NSO integration tables missing (migration 20261120 failed?) — "
+                  "capture and sender are OFF; site saves are unaffected")
+    return ready
+
+
 # ── NSO webhook sender ─────────────────────────────────────────────────────
 
 def _start_integration_sender() -> asyncio.Task | None:
@@ -523,7 +545,8 @@ async def lifespan(app: FastAPI):
             "in notification_outbox and will NOT be delivered (#112)"
         )
 
-    sender_task = _start_integration_sender()
+    integration_ready = await _verify_integration_tables()
+    sender_task = _start_integration_sender() if integration_ready else None
 
     yield
 

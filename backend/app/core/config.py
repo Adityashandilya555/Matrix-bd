@@ -124,8 +124,8 @@ class Settings(BaseSettings):
     # Kill switch for the sender loop. Off by default so a deploy alone sends
     # nothing; events still queue for enabled workspaces while it is off.
     integration_sender_enabled: bool = False
-    integration_sender_interval_secs: int = 10
-    integration_http_timeout_secs: float = 10.0
+    integration_sender_interval_secs: int = Field(10, ge=1)
+    integration_http_timeout_secs: float = Field(10.0, gt=0)
 
     # ── Platform admin (workspace-request approval) ─────────────────────────
     # The portal at /admin uses an email + password pair set via env. On

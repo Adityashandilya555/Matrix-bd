@@ -117,7 +117,12 @@ export default function IntegrationsTab() {
       setDead(deadRows);
       setForm((f) => (f.touched ? f : { endpointUrl: cfg.endpointUrl || '', enabled: cfg.enabled }));
     } catch (err) {
-      setState({ status: 'error', message: errText(err, 'Could not load the integration.') });
+      // Keep what is on screen (including a just-shown secret) if a refresh fails;
+      // only a first load with nothing to show becomes an error page.
+      setState((prev) => (prev.status === 'ready'
+        ? prev
+        : { status: 'error', message: errText(err, 'Could not load the integration.') }));
+      setMsg((m) => m || { tone: 'bad', text: errText(err, 'Could not refresh — showing the last loaded state.') });
     }
   }, []);
   React.useEffect(() => { load(); }, [load]);
@@ -152,8 +157,19 @@ export default function IntegrationsTab() {
         onRefresh={load} />
 
       {!cfg.keyConfigured && (
-        <EmptyState icon={Icon.alert} title="Not available yet"
-          hint="The server has no integration key (INTEGRATION_SECRET_KEY). Ask the platform team to set it." />
+        <>
+          <Notice msg={msg} />
+          <EmptyState icon={Icon.alert} title="Not available yet"
+            hint="The server has no integration key (INTEGRATION_SECRET_KEY). Ask the platform team to set it." />
+          {cfg.enabled && (
+            <div style={{ marginTop: 12 }}>
+              <Button variant="danger" loading={busy === 'off'}
+                onClick={() => run('off', () => saveNsoIntegration({ endpointUrl: cfg.endpointUrl, enabled: false }), 'Switched off.')}>
+                Switch off sending
+              </Button>
+            </div>
+          )}
+        </>
       )}
 
       {cfg.keyConfigured && (
@@ -196,7 +212,7 @@ export default function IntegrationsTab() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
                 <Counts counts={cfg.counts} />
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <Button loading={busy === 'test'} onClick={() => run('test', sendNsoTest, 'Test event queued; it goes out within seconds.')}>
+                  <Button loading={busy === 'test'} onClick={() => run('test', sendNsoTest, 'Test event queued; it goes out shortly.')}>
                     Send test
                   </Button>
                   <Button loading={busy === 'backfill'}

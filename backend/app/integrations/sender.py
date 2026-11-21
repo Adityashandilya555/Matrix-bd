@@ -79,6 +79,10 @@ class BlockedAddressError(Exception):
     """The endpoint resolves to an address the backend must never call."""
 
 
+class ResolveError(BlockedAddressError):
+    """The host didn't resolve (or DNS timed out). Usually transient: retried, not dead."""
+
+
 # ── Pure helpers (unit-tested) ─────────────────────────────────────────────
 
 
@@ -134,7 +138,7 @@ async def resolve_public_address(url: str) -> str:
             asyncio.get_running_loop().getaddrinfo(host, None, type=socket.SOCK_STREAM), DNS_TIMEOUT_SECS,
         )
     except (socket.gaierror, asyncio.TimeoutError) as exc:
-        raise BlockedAddressError(f"cannot resolve {host}") from exc
+        raise ResolveError(f"cannot resolve {host}") from exc
     addrs = [info[4][0] for info in infos]
     if not addrs or any(is_blocked_ip(a) for a in addrs):
         raise BlockedAddressError(f"{host} resolves to a non-public address")
@@ -152,9 +156,9 @@ def pinned_request(url: str, address: str) -> tuple[str, str, str]:
     against the real hostname."""
     parts = urlsplit(url)
     host = parts.hostname or ""
-    ip_netloc = f"[{address}]" if ":" in address else address
     port = f":{parts.port}" if parts.port else ""
-    return parts._replace(netloc=ip_netloc + port).geturl(), host + port, host
+    bracket = lambda h: f"[{h}]" if ":" in h else h  # noqa: E731  IPv6 literals
+    return parts._replace(netloc=bracket(address) + port).geturl(), bracket(host) + port, host
 
 
 def envelope(row: Any) -> dict[str, Any]:
@@ -195,6 +199,8 @@ async def post_event(client: httpx.AsyncClient, url: str, row: Any, secrets: lis
             client.post(pinned_url, content=body, headers=headers, extensions={"sni_hostname": sni}),
             SEND_DEADLINE_SECS,
         )
+    except ResolveError as exc:
+        return Outcome(status=classify(None, row.attempts), error=f"dns: {exc}")
     except BlockedAddressError as exc:
         return Outcome(status="dead", error=f"blocked_address: {exc}")
     except asyncio.TimeoutError:
@@ -319,12 +325,21 @@ async def claim(batch: int) -> list[Any]:
 
 
 async def purge_sent(limit: int = 1000) -> int:
-    """Delete one batch of sent rows past retention (deliveries cascade)."""
+    """Delete one batch of sent rows past retention (deliveries cascade).
+
+    The newest live row per site is always kept: capture compares against it
+    to skip duplicates and to know whether NSO has the site (lost-eligibility
+    update, tombstones).
+    """
     async with SessionLocal() as db, db.begin():
         result = await db.execute(text(
             "DELETE FROM integration_outbox WHERE id IN ("
-            " SELECT id FROM integration_outbox WHERE status = 'sent'"
-            " AND sent_at < now() - make_interval(days => :d) LIMIT :n)"
+            " SELECT o.id FROM integration_outbox o WHERE o.status = 'sent'"
+            " AND o.sent_at < now() - make_interval(days => :d)"
+            " AND EXISTS (SELECT 1 FROM integration_outbox n WHERE n.tenant_id = o.tenant_id"
+            "   AND n.integration = o.integration AND n.site_id = o.site_id"
+            "   AND n.status <> 'dead' AND n.seq > o.seq)"
+            " LIMIT :n)"
         ), {"d": RETENTION.days, "n": limit})
         return result.rowcount or 0
 
@@ -334,7 +349,13 @@ async def run_once(client: httpx.AsyncClient, batch: int = 20) -> int:
     await reclaim_stale()
     rows = await claim(batch)
     for row in rows:
-        status = await deliver(client, row)
+        try:
+            status = await deliver(client, row)
+        except Exception:
+            # One bad row must not strand the rest of the batch; it is reclaimed
+            # after STALE_AFTER and retried.
+            log.exception("integration_sender: event %s failed unexpectedly", row.id)
+            continue
         log.info("integration_sender: event %s seq %s → %s", row.id, row.seq, status)
     return len(rows)
 
@@ -343,7 +364,11 @@ async def run_forever(interval_secs: int, timeout_secs: float) -> None:
     """The background loop started from app.main's lifespan."""
     log.info("integration_sender: loop started (interval=%ds, worker=%s)", interval_secs, WORKER_ID)
     last_purge: Optional[float] = None  # None: purge on the first pass
-    async with httpx.AsyncClient(timeout=timeout_secs, follow_redirects=False) as client:
+    # No keep-alive: requests go to pinned IPs, and httpcore pools by origin
+    # (scheme+IP+port), so a kept-alive TLS connection verified for one hostname
+    # could be reused for another hostname on the same IP.
+    limits = httpx.Limits(max_keepalive_connections=0)
+    async with httpx.AsyncClient(timeout=timeout_secs, follow_redirects=False, limits=limits) as client:
         while True:
             try:
                 claimed = await run_once(client)

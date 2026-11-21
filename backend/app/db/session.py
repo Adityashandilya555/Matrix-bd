@@ -109,9 +109,3 @@ async def transaction(session: AsyncSession) -> AsyncGenerator[AsyncSession, Non
         async with session.begin():
             yield session
 
-
-# Registered last: capture imports app.db.models, which must not run while this
-# module is half-initialised above.
-from app.integrations.capture import register as _register_capture  # noqa: E402
-
-_register_capture(MatrixSession)

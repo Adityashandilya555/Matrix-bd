@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
 from sqlalchemy import select
@@ -36,7 +36,7 @@ EVENT_TEST = "site.test"
 WATCHED: dict[type, frozenset[str]] = {
     models.Site: frozenset({
         "name", "city", "model", "google_maps_pin", "google_maps_url",
-        "ca_code", "loi_uploaded_at", "launched_at", "archived_at", "status",
+        "ca_code", "finance_status", "loi_uploaded_at", "launched_at", "archived_at", "status",
     }),
     models.SiteLicensing: frozenset({"fssai"}),
     models.ProjectReview: frozenset({"initialization_date", "initialization_status", "pushed_to_nso_at"}),
@@ -57,11 +57,20 @@ def parse_pin(raw: Optional[str]) -> tuple[Optional[float], Optional[float]]:
     return lat, lng
 
 
+def shared_cafe_code(ca_code: Optional[str], finance_status: Optional[str]) -> Optional[str]:
+    """The cafe code NSO may see: only once Finance has approved it.
+
+    ``sites.ca_code`` is also written by executives' finance *drafts* while
+    ``finance_status`` is still pending, so the raw column must not leak.
+    """
+    return ca_code if ca_code and finance_status == "approved" else None
+
+
 def is_eligible(cafe_code: Optional[str]) -> bool:
     """Whether a site is shared with the NSO platform at all.
 
-    v1 rule: once Finance has approved it and it has a cafe code. Changing the
-    rule means changing this one function, then running a backfill.
+    v1 rule: it has a Finance-approved cafe code (see ``shared_cafe_code``).
+    Changing the rule means changing these two functions, then a backfill.
     """
     return bool(cafe_code)
 
@@ -74,8 +83,13 @@ def _iso(value: date | datetime | None) -> Optional[str]:
     return value.isoformat()
 
 
+# India has no DST, so a fixed offset is exact and needs no tz database.
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
 def _day(value: Optional[datetime]) -> Optional[str]:
-    return value.date().isoformat() if value else None
+    """Calendar date in IST (a 01:00 IST push is that day, not the UTC day before)."""
+    return value.astimezone(IST).date().isoformat() if value else None
 
 
 def build_snapshot(session: Session, site_id: uuid.UUID) -> Optional[dict[str, Any]]:
@@ -88,7 +102,7 @@ def build_snapshot(session: Session, site_id: uuid.UUID) -> Optional[dict[str, A
     row = session.execute(
         select(
             s.id, s.tenant_id, s.name, s.city, s.model, s.status, s.archived_at,
-            s.ca_code, s.google_maps_pin, s.google_maps_url, s.loi_uploaded_at, s.launched_at,
+            s.ca_code, s.finance_status, s.google_maps_pin, s.google_maps_url, s.loi_uploaded_at, s.launched_at,
             models.Tenant.name.label("tenant_name"),
         )
         .join(models.Tenant, models.Tenant.id == s.tenant_id)
@@ -118,7 +132,7 @@ def build_snapshot(session: Session, site_id: uuid.UUID) -> Optional[dict[str, A
         "company": {"id": str(row.tenant_id), "name": row.tenant_name},
         "site": {
             "id": str(row.id),
-            "cafe_code": row.ca_code,
+            "cafe_code": shared_cafe_code(row.ca_code, row.finance_status),
             "name": row.name,
             "city": row.city,
             "model": row.model,
