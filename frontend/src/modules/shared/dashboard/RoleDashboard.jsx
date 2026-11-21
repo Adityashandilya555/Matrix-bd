@@ -104,10 +104,10 @@ function Hero({ d, updatedAt, scope, onScope, viewer }) {
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
   return (
     <section className="dash-card dash-hero2">
+      <div className="dash-hero2-photo" aria-hidden="true">
+        <img src={PHOTO.hero} alt="" />
+      </div>
       <div className="dash-hero2-top">
-        <div className="dash-hero2-photo" aria-hidden="true">
-          <img src={PHOTO.hero} alt="" />
-        </div>
         <div className="dash-hero2-text">
           <span className="dash-eyebrow" style={{ color: '#E9C9A6' }}>{h.eyebrow}</span>
           <h1>{greeting(viewer)}</h1>
