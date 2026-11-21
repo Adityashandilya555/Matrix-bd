@@ -3,7 +3,7 @@ import React from 'react';
 import PhotoReel from './PhotoReel.jsx';
 import { cityPhotos } from './cityPhotos.js';
 import {
-  Bars, Card, CardHead, ChipTabs, Donut, FreshnessBadge, Funnel, Heatmap, Ico, Legend, Source, SplitTrack, TONE, Track,
+  Bars, Card, CardHead, ChipTabs, CountUp, Donut, FreshnessBadge, Funnel, Heatmap, Ico, Legend, Lollipops, Source, SplitTrack, TONE, Track,
 } from './kit.jsx';
 
 // One dashboard for every role. It draws only the sections present in `data`,
@@ -133,7 +133,7 @@ function Hero({ d, updatedAt, scope, onScope }) {
           {d.kpis.map((k) => (
             <button key={k.key} type="button" className={`dash-glass${k.hot ? ' dash-glass--hot' : ''}`}>
               <span className="dash-eyebrow" style={{ color: k.hot ? '#FFD3A8' : '#E9C9A6', fontSize: 10.5 }}>{k.label}</span>
-              <span className="dash-num" style={{ fontSize: 38 }}>{k.value}</span>
+              <span className="dash-num" style={{ fontSize: 38 }}><CountUp value={k.value} /></span>
               <span style={{ fontSize: 12.5, color: '#E9DCCB' }}>{k.caption}</span>
             </button>
           ))}
@@ -226,8 +226,8 @@ function Readiness({ r }) {
 function Launches({ l }) {
   const [range, setRange] = React.useState(12);
   const past = l.past.slice(12 - range);
-  const bars = past.map(([m, v]) => ({ key: `p${m}`, label: m, value: v }))
-    .concat(l.ahead.map(([m, v]) => ({ key: `a${m}`, label: `${m} ›`, value: v, ahead: true })));
+  const bars = past.map(([m, v, title]) => ({ key: `p${m}`, label: m, value: v, title }))
+    .concat(l.ahead.map(([m, v, title]) => ({ key: `a${m}`, label: m, value: v, title, ahead: true })));
   const opened = past.reduce((s, [, v]) => s + v, 0);
   const planned = l.ahead.reduce((s, [, v]) => s + v, 0);
   return (
@@ -236,7 +236,7 @@ function Launches({ l }) {
         sub={`${opened} opened in the last ${range} months · ${planned} planned ahead`}
         right={<ChipTabs label="Period" value={range} onChange={setRange}
           items={[3, 6, 12].map((r) => ({ key: r, label: `${r}M` }))} />} />
-      <Bars bars={bars} color="var(--zm-info)" label="Cafés opened per month and planned openings" />
+      <Bars bars={bars} label="Cafés opened per month and planned openings" />
       <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--zm-fg-2)', flexWrap: 'wrap' }}>
         <Key color="var(--zm-info)">Opened</Key><Key color="color-mix(in srgb, var(--zm-copper) 45%, var(--zm-surface))">Planned (NSO launch date)</Key>
       </div>
@@ -253,14 +253,24 @@ function Openings({ items }) {
   return (
     <Card>
       <CardHead icon="calendar" tone="orange" title="Next openings" sub="From NSO launch dates" />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {items.map((o) => (
-          <div key={o.site} style={{ display: 'grid', gridTemplateColumns: '54px minmax(0,1fr)', gap: 12, alignItems: 'center' }}>
-            <div style={{ borderRadius: 14, background: TONE[o.tone || 'neutral'].bg, padding: '7px 0', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <span className="dash-num" style={{ fontSize: 19 }}>{o.d}</span>
-              <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--zm-fg-2)' }}>{o.m}</span>
+      <div className="dv-openings">
+        {items.map((o, k) => (
+          <div key={o.site} className="dv-anim dv-fade dv-opening" style={{ animationDelay: `${k * 60}ms` }}>
+            <div className="dv-cal" aria-hidden="true">
+              <span className="dv-cal-m">{o.m}</span>
+              <span className="dv-cal-d">{o.d}</span>
             </div>
-            <div className="dash-col"><span className="dash-lbl" style={{ fontWeight: 600 }}>{o.site}</span><span className="dash-sub">{o.state}</span></div>
+            <div className="dash-col" style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{o.site}</span>
+              <span className="dash-sub" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Ico name="pin" size={13} />{o.state}</span>
+            </div>
+            {o.inDays !== undefined && (
+              <span className="dash-pill" style={o.inDays <= 14
+                ? { background: 'var(--zm-copper-soft)', color: 'var(--zm-copper)' }
+                : { background: 'var(--zm-surface-sunken)', color: 'var(--zm-fg-2)' }}>
+                {o.inDays <= 0 ? 'today' : `in ${o.inDays} d`}
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -271,15 +281,16 @@ function Openings({ items }) {
 
 function Modules({ mods }) {
   const [i, setI] = React.useState(0);
+  const [active, setActive] = React.useState(null);
   const m = mods[i];
   const total = m.parts.reduce((s, p) => s + p.value, 0);
   return (
     <Card>
       <CardHead icon="layers" tone="blue" title="Where sites stand" sub={`${total} sites in ${m.name}`}
-        right={mods.length > 1 ? <ChipTabs label="Module" value={i} onChange={setI} items={mods.map((x, k) => ({ key: k, label: x.name }))} /> : null} />
+        right={mods.length > 1 ? <ChipTabs label="Module" value={i} onChange={(k) => { setI(k); setActive(null); }} items={mods.map((x, k) => ({ key: k, label: x.name }))} /> : null} />
       <div style={{ display: 'flex', gap: 26, alignItems: 'center', flexWrap: 'wrap' }}>
-        <Donut parts={m.parts} size={170} center={total} sub="sites" label={`Sites by status in ${m.name}`} />
-        <Legend parts={m.parts} showPct />
+        <Donut key={m.name} parts={m.parts} size={170} center={total} sub="sites" label={`Sites by status in ${m.name}`} active={active} />
+        <Legend parts={m.parts} showPct active={active} onActive={setActive} />
       </div>
       <Source>{m.source}</Source>
     </Card>
@@ -287,22 +298,10 @@ function Modules({ mods }) {
 }
 
 function Cycle({ c }) {
-  const max = Math.max(...c.steps.map((s) => s.days));
   return (
     <Card>
       <CardHead icon="clock" tone="orange" title="Time per step" sub={c.sub} />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
-        {c.steps.map((s) => (
-          <div key={s.label} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 44px', gap: 10, alignItems: 'center' }}>
-            <div className="dash-col" style={{ gap: 5 }}>
-              <span className="dash-lbl">{s.label}</span>
-              <Track pct={(s.days / max) * 100} height={8} color={s.days === max ? 'var(--zm-copper)' : 'color-mix(in srgb, var(--zm-accent) 55%, var(--zm-surface-sunken))'} />
-            </div>
-            <span className="dash-num" style={{ fontSize: 15, textAlign: 'right' }}>{s.days}d</span>
-          </div>
-        ))}
-      </div>
-      {c.callout && <p style={{ margin: 0, fontSize: 12.5, color: 'var(--zm-copper)', background: 'var(--zm-copper-soft)', borderRadius: 12, padding: '10px 12px' }}>{c.callout}</p>}
+      <Lollipops rows={c.steps} />
       <Source>step timestamps on sites · stage_events</Source>
     </Card>
   );
@@ -493,7 +492,7 @@ function Activity({ a }) {
   return (
     <Card>
       <CardHead icon="pulse" tone="blue" title="Activity" sub={a.sub} />
-      <Heatmap cells={a.cells} />
+      <Heatmap cells={a.cells} today={a.today} />
       {a.pills && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {a.pills.map(([text, tone]) => <span key={text} className="dash-pill" style={{ background: TONE[tone].bg, color: TONE[tone].fg }}>{text}</span>)}

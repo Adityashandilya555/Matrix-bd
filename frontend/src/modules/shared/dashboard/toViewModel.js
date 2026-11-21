@@ -133,17 +133,19 @@ function launches(p) {
   const past = [];
   for (let k = 11; k >= 0; k -= 1) {
     const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - k, 1));
-    past.push([MONTHS[d.getUTCMonth()], opened.get(d.toISOString().slice(0, 7)) || 0]);
+    past.push([MONTHS[d.getUTCMonth()], opened.get(d.toISOString().slice(0, 7)) || 0, `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`]);
   }
   const ahead = [];
   for (let k = 1; k <= 3; k += 1) {
     const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + k, 1));
     const key = d.toISOString().slice(0, 7);
-    ahead.push([MONTHS[d.getUTCMonth()], (l.upcoming || []).filter((u) => String(u.launch_date).slice(0, 7) === key).length]);
+    ahead.push([MONTHS[d.getUTCMonth()], (l.upcoming || []).filter((u) => String(u.launch_date).slice(0, 7) === key).length, `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`]);
   }
   const openings = (l.upcoming || []).map((u) => {
     const d = parseDay(u.launch_date);
-    return { site: u.name, d: d.getUTCDate(), m: MONTHS[d.getUTCMonth()], state: u.city, tone: 'orange' };
+    const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const inDays = Math.round((d.getTime() - today) / 86400000);
+    return { site: u.name, d: d.getUTCDate(), m: MONTHS[d.getUTCMonth()], state: u.city, tone: 'orange', inDays };
   });
   return { launches: { past, ahead }, openings: openings.length ? openings : undefined };
 }
@@ -255,7 +257,9 @@ function activity(p) {
   if (!a) return undefined;
   const total = (a.days || []).reduce((s, d) => s + d.count, 0);
   const who = p.role === 'executive' ? 'Your actions' : p.role === 'admin' ? 'Actions' : 'Module actions';
-  return { sub: `${who} per day · last 12 weeks · ${total} in total`, cells: activityCells(a.days) };
+  const now = new Date();
+  const todayRow = (now.getUTCDay() + 6) % 7; // Monday = 0, matching activityCells
+  return { sub: `${who} per day · last 12 weeks · ${total} in total`, cells: activityCells(a.days), today: todayRow * 12 + 11 };
 }
 
 function empty(p, mod) {

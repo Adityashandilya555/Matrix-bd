@@ -56,7 +56,7 @@ export function CardHead({ icon, tone = 'blue', title, sub, right }) {
   const t = TONE[tone] || TONE.blue;
   const head = (
     <div className="dash-head">
-      <span className="dash-ico" style={{ background: t.bg, color: t.fg }}><Ico name={icon} /></span>
+      <span className="dash-ico" style={{ background: `linear-gradient(145deg, ${t.bg}, color-mix(in srgb, ${t.bg} 82%, ${t.fg}))`, color: t.fg }}><Ico name={icon} stroke={1.75} /></span>
       <div className="dash-col">
         <h2 className="dash-title">{title}</h2>
         {sub && <p className="dash-sub">{sub}</p>}
@@ -118,72 +118,142 @@ export function ChipTabs({ label, items, value, onChange }) {
   );
 }
 
-const C = 2 * Math.PI * 54;
-export function Donut({ parts, size = 150, stroke = 18, center, sub, track = 'var(--zm-surface-sunken)', label }) {
+function reducedMotion() {
+  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+}
+
+// Numbers count up when they first appear and tween when they change (ease-out
+// expo). Non-numbers and reduced motion render the final value at once.
+export function useCountUp(value, ms = 900) {
+  const target = typeof value === 'number' && Number.isFinite(value) ? value : null;
+  const [shown, setShown] = React.useState(target === null ? value : 0);
+  const from = React.useRef(0);
+  React.useEffect(() => {
+    if (target === null || reducedMotion() || typeof window.requestAnimationFrame !== 'function') {
+      setShown(value);
+      from.current = target ?? 0;
+      return undefined;
+    }
+    const start = from.current;
+    const t0 = performance.now();
+    let raf;
+    const step = (now) => {
+      const t = Math.min(1, (now - t0) / ms);
+      const eased = t === 1 ? 1 : 1 - 2 ** (-10 * t);
+      setShown(Math.round(start + (target - start) * eased));
+      if (t < 1) raf = window.requestAnimationFrame(step);
+      else from.current = target;
+    };
+    raf = window.requestAnimationFrame(step);
+    return () => window.cancelAnimationFrame(raf);
+  }, [target, value, ms]);
+  return shown;
+}
+
+export function CountUp({ value, ms }) {
+  return <>{useCountUp(value, ms)}</>;
+}
+
+const R = 54;
+const C = 2 * Math.PI * R;
+// Ring with rounded caps; segments grow in, and the hovered/focused part
+// thickens while the rest fade, with its value and share shown in the centre.
+export function Donut({ parts, size = 150, stroke = 14, center, sub, label, active = null }) {
   const total = parts.reduce((s, p) => s + p.value, 0) || 1;
+  const centreValue = useCountUp(active === null ? center : parts[active]?.value);
   let acc = 0;
   return (
     <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
       <svg width={size} height={size} viewBox="0 0 140 140" role="img" aria-label={label}>
-        <circle cx="70" cy="70" r="54" fill="none" stroke={track} strokeWidth={stroke} />
-        {parts.map((p) => {
+        <circle cx="70" cy="70" r={R} fill="none" stroke="color-mix(in srgb, var(--zm-fg) 6%, transparent)" strokeWidth={stroke} />
+        {parts.map((p, i) => {
           const len = (p.value / total) * C;
-          const el = (
-            <circle key={p.label} cx="70" cy="70" r="54" fill="none" stroke={p.color} strokeWidth={stroke}
-              strokeDasharray={`${Math.max(0, len - 3)} ${C}`} strokeDashoffset={-acc} transform="rotate(-90 70 70)" />
-          );
+          const round = len > stroke + 4;
+          const dash = Math.max(0.01, round ? len - stroke - 2 : len - 2);
+          const off = -(acc + (round ? stroke / 2 : 0));
           acc += len;
-          return el;
+          if (p.value <= 0) return null;
+          const dim = active !== null && active !== i;
+          return (
+            <circle key={p.label} className="dv-anim dv-seg" cx="70" cy="70" r={R} fill="none" stroke={p.color}
+              strokeWidth={active === i ? stroke + 4 : stroke} strokeLinecap={round ? 'round' : 'butt'}
+              strokeDasharray={`${dash} ${C}`} strokeDashoffset={off} transform="rotate(-90 70 70)"
+              style={{ opacity: dim ? 0.35 : 1, animationDelay: `${i * 80}ms` }} />
+          );
         })}
       </svg>
       <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-        <span className="dash-num" style={{ fontSize: size > 120 ? 32 : 22 }}>{center}</span>
-        {sub && <span className="dash-sub">{sub}</span>}
+        <span className="dash-num" style={{ fontSize: size > 120 ? 32 : 22 }}>{centreValue}</span>
+        <span className="dash-sub">
+          {active === null ? sub : `${parts[active].label} · ${Math.round((parts[active].value / total) * 100)}%`}
+        </span>
       </div>
     </div>
   );
 }
 
-export function Legend({ parts, showPct }) {
+// Direct-label legend: a row per part with a micro-bar of its share. Rows are
+// buttons so hovering or focusing one highlights its donut segment.
+export function Legend({ parts, showPct, active = null, onActive }) {
   const total = parts.reduce((s, p) => s + p.value, 0) || 1;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 11, flex: '1 1 200px' }}>
-      {parts.map((p) => (
-        <div key={p.label} style={{ display: 'grid', gridTemplateColumns: '12px minmax(0,1fr) 40px 44px', gap: 10, alignItems: 'center' }}>
-          <span style={{ width: 12, height: 12, borderRadius: 4, background: p.color }} />
-          <span className="dash-lbl">{p.label}</span>
-          <span className="dash-num" style={{ fontSize: 16, textAlign: 'right' }}>{p.value}</span>
-          <span className="dash-sub" style={{ textAlign: 'right' }}>{showPct ? `${Math.round((p.value / total) * 100)}%` : ''}</span>
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 220px' }}>
+      {parts.map((p, i) => (
+        <button key={p.label} type="button" className="dv-legend-row" aria-pressed={active === i}
+          onMouseEnter={() => onActive?.(i)} onMouseLeave={() => onActive?.(null)}
+          onFocus={() => onActive?.(i)} onBlur={() => onActive?.(null)}>
+          <span className="dv-swatch" style={{ background: p.color }} />
+          <span className="dv-legend-main">
+            <span className="dash-lbl">{p.label}</span>
+            <span className="dv-microbar"><span style={{ width: `${(p.value / total) * 100}%`, background: `color-mix(in srgb, ${p.color} 85%, var(--zm-surface))` }} /></span>
+          </span>
+          <span className="dash-num" style={{ fontSize: 15, textAlign: 'right' }}>{p.value}</span>
+          <span className="dv-pct">{showPct ? `${Math.round((p.value / total) * 100)}%` : ''}</span>
+        </button>
       ))}
     </div>
   );
 }
 
-// Vertical bars; `ahead` bars are drawn in the planned colour.
-export function Bars({ bars, color, aheadColor = 'color-mix(in srgb, var(--zm-copper) 45%, var(--zm-surface))', height = 180, label }) {
+// Monthly columns: gradient past bars, hatched planned bars after a dashed
+// "Today" line, a faint dot instead of an empty bar, light gridlines, and
+// values only where they matter (largest, latest and planned); the rest are
+// in each column's tooltip.
+export function Bars({ bars, height = 200, label }) {
   const max = Math.max(1, ...bars.map((b) => b.value));
+  const firstAhead = bars.findIndex((b) => b.ahead);
+  const lastPast = firstAhead === -1 ? bars.length - 1 : firstAhead - 1;
   return (
-    <div role="img" aria-label={label} style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height }}>
-      {bars.map((b) => (
-        <div key={b.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: 6, height: '100%', minWidth: 0 }}>
-          <span style={{ fontSize: 11.5, fontWeight: 700, color: b.ahead ? 'var(--zm-copper)' : 'var(--zm-fg-2)' }}>{b.value}</span>
-          <div style={{ width: '100%', maxWidth: 38, borderRadius: '10px 10px 4px 4px', background: b.ahead ? aheadColor : color, height: `${Math.max(3, (b.value / max) * 100)}%` }} />
-          <span style={{ fontSize: 11, color: b.ahead ? 'var(--zm-copper)' : 'var(--zm-fg-3)', fontWeight: b.ahead ? 700 : 500 }}>{b.label}</span>
-        </div>
-      ))}
+    <div className="dv-bars" role="img" aria-label={label} style={{ height }}>
+      <div className="dv-grid" aria-hidden="true"><span /><span /><span /></div>
+      {bars.map((b, i) => {
+        const showValue = b.value > 0 && (b.ahead || b.value === max || i === lastPast);
+        const tip = `${b.title || b.label} · ${b.value === 0 ? (b.ahead ? 'none planned' : 'no openings') : `${b.value} ${b.ahead ? 'planned' : 'opened'}`}`;
+        return (
+          <div key={b.key} className={`dv-col${i === firstAhead ? ' dv-col--today' : ''}`} title={tip}>
+            <span className="dv-val" style={{ color: b.ahead ? 'var(--zm-copper)' : 'var(--zm-fg-2)' }}>{showValue ? b.value : ''}</span>
+            <div className="dv-bar-slot">
+              {b.value > 0
+                ? <div className={`dv-anim dv-bar${b.ahead ? ' dv-bar--ahead' : ''}`} style={{ height: `${(b.value / max) * 100}%`, animationDelay: `${i * 35}ms` }} />
+                : <span className="dv-zero" />}
+            </div>
+            <span className="dv-month" style={{ color: b.ahead ? 'var(--zm-copper)' : 'var(--zm-fg-3)', fontWeight: b.ahead ? 700 : 500 }}>{b.label}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-// One warm hue that deepens step by step (a stage ramp, not categories), built
-// from theme tokens so it reads correctly in café light and roast dark.
-const FUNNEL_SHADES = [30, 38, 46, 54, 62, 70, 78, 86, 94].map(
+// A stage ramp in one warm hue, deepening step by step, from theme tokens.
+const FUNNEL_SHADES = [34, 42, 50, 58, 66, 74, 82, 90, 96].map(
   (p) => `color-mix(in srgb, var(--zm-accent) ${p}%, var(--zm-surface-sunken))`,
 );
 
-// Clickable pipeline steps with a detail panel for the selected one.
-export function Funnel({ steps, photo }) {
+// Clickable pipeline steps: lit gradient bars with the previous step's width
+// as a dashed ghost (so the drop-off shows), the drop-off % in the gutter, and
+// a detail panel for the selected step.
+export function Funnel({ steps }) {
   const [sel, setSel] = React.useState(Math.min(4, steps.length - 1));
   const top = steps[0]?.value || 1;
   const st = steps[sel] || steps[0];
@@ -191,23 +261,40 @@ export function Funnel({ steps, photo }) {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 22 }}>
       <div style={{ flex: '3 1 440px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }} role="group" aria-label="Pipeline steps">
-        {steps.map((s, i) => (
-          <button key={s.label} type="button" className="dash-step" aria-pressed={i === sel} onClick={() => setSel(i)}>
-            <span className="dash-lbl" style={{ fontWeight: 600 }}>{s.label}</span>
-            <Track pct={(s.value / top) * 100} height={24} color={i === sel ? 'var(--zm-fg)' : FUNNEL_SHADES[Math.min(i, FUNNEL_SHADES.length - 1)]} />
-            <span className="dash-num" style={{ fontSize: 16, textAlign: 'right' }}>{s.value}</span>
-          </button>
-        ))}
+        {steps.map((s, i) => {
+          const prev = i > 0 ? steps[i - 1].value : null;
+          const drop = prev ? Math.round(((prev - s.value) / prev) * 100) : 0;
+          const shade = FUNNEL_SHADES[Math.min(i, FUNNEL_SHADES.length - 1)];
+          const fill = i === sel
+            ? 'linear-gradient(90deg, var(--zm-accent), var(--zm-copper))'
+            : `linear-gradient(90deg, ${shade}, color-mix(in srgb, ${shade} 78%, var(--zm-surface)))`;
+          return (
+            <button key={s.label} type="button" className="dash-step" aria-pressed={i === sel} onClick={() => setSel(i)}>
+              <span className="dash-lbl" style={{ fontWeight: 600 }}>{s.label}</span>
+              <span className="dv-funnel-track">
+                {prev !== null && <span className="dv-ghost" style={{ width: `${(prev / top) * 100}%` }} />}
+                <span className={`dv-anim dv-funnel-bar${i === sel ? ' is-sel' : ''}`}
+                  style={{ width: `${(s.value / top) * 100}%`, background: fill, animationDelay: `${i * 45}ms` }} />
+              </span>
+              <span className="dash-num" style={{ fontSize: 16, textAlign: 'right' }}>{s.value}</span>
+              <span className="dv-drop" style={{ color: drop > 30 ? 'var(--zm-copper)' : undefined }}>
+                {drop > 0 ? `${drop > 30 ? '▼ ' : ''}−${drop}%` : ''}
+              </span>
+            </button>
+          );
+        })}
       </div>
-      <div style={{ flex: '2 1 260px', borderRadius: 20, background: '#24170F', color: '#FFF6EC', padding: 22, display: 'flex', flexDirection: 'column', gap: 14, position: 'relative', overflow: 'hidden' }}>
-        {photo && <img src={photo} alt="" style={{ position: 'absolute', right: -40, bottom: -30, width: '70%', opacity: 0.28, borderRadius: 20 }} />}
+      <div className="dv-funnel-panel">
+        <span className="dash-reel-dots" aria-hidden="true" style={{ position: 'relative' }}>
+          {steps.map((s, i) => <span key={s.label} className={i === sel ? 'is-on' : ''} />)}
+        </span>
         <span className="dash-eyebrow" style={{ color: '#E9C9A6', position: 'relative' }}>Step {sel + 1} of {steps.length}</span>
-        <span style={{ fontFamily: 'var(--zm-font-display)', fontWeight: 800, fontSize: 28, position: 'relative' }}>{st.label}</span>
+        <span key={st.label} className="dv-anim dv-fade" style={{ fontFamily: 'var(--zm-font-display)', fontWeight: 800, fontSize: 28, position: 'relative' }}>{st.label}</span>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 14, position: 'relative' }}>
           <Stat label="Sites reached" value={st.value} />
-          <Stat label="Of all at step 1" value={`${Math.round((st.value / top) * 100)}%`} />
-          <Stat label="Carried to next" value={next ? `${Math.round((next.value / st.value) * 100)}%` : '—'} hot />
-          <Stat label="Median days here" value={st.days ? `${st.days} d` : '—'} />
+          <Stat label="Of all at step 1" value={Math.round((st.value / top) * 100)} suffix="%" />
+          <Stat label="Carried to next" value={next && st.value ? Math.round((next.value / st.value) * 100) : null} suffix="%" hot />
+          <Stat label="Median days here" value={st.days || null} suffix=" d" />
         </div>
         {st.note && <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: '#E9DCCB', position: 'relative' }}>{st.note}</p>}
       </div>
@@ -215,23 +302,73 @@ export function Funnel({ steps, photo }) {
   );
 }
 
-function Stat({ label, value, hot }) {
+function Stat({ label, value, suffix = '', hot }) {
+  const n = useCountUp(value === null ? 0 : value, 400);
   return (
     <div className="dash-col">
       <span style={{ fontSize: 12, color: '#C9B49F' }}>{label}</span>
-      <span className="dash-num" style={{ fontSize: 24, color: hot ? '#FFD3A8' : '#FFF6EC' }}>{value}</span>
+      <span className="dash-num" style={{ fontSize: 24, color: hot ? '#FFD3A8' : '#FFF6EC' }}>{value === null ? '—' : `${n}${suffix}`}</span>
     </div>
   );
 }
 
-export function Heatmap({ cells, cols = 12 }) {
-  // Token-based so more activity is always the stronger colour in both themes.
-  const shades = ['var(--zm-surface-sunken)', ...[32, 62, 95].map((p) => `color-mix(in srgb, var(--zm-accent) ${p}%, var(--zm-surface-sunken))`)];
+// Duration rows as a lollipop: a thin stem, a filled run to the value and a
+// dot; the slowest gets a copper dot with a halo and an inline note.
+export function Lollipops({ rows }) {
+  const max = Math.max(1, ...rows.map((r) => r.days));
+  const sorted = [...rows].map((r) => r.days).sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)] || 1;
   return (
-    <div role="img" aria-label="Activity per day" style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))`, gap: 4 }}>
-      {cells.map((lvl, i) => (
-        <span key={i} style={{ aspectRatio: '1', borderRadius: 4, background: shades[lvl] }} />
-      ))}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {rows.map((r, i) => {
+        const slow = r.days === max;
+        const pct = (r.days / max) * 100;
+        return (
+          <div key={r.label} className="dash-col" style={{ gap: 7 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+              <span className="dash-lbl">{r.label}</span>
+              <span className="dash-num" style={{ fontSize: 15, color: slow ? 'var(--zm-copper)' : undefined }}>{r.days}d</span>
+            </div>
+            <span className="dv-stem">
+              <span className="dv-run" style={{ width: `${pct}%`, background: slow ? 'color-mix(in srgb, var(--zm-copper) 60%, transparent)' : undefined }} />
+              <span className={`dv-anim dv-dot${slow ? ' is-slow' : ''}`} style={{ left: `${pct}%`, animationDelay: `${i * 50}ms` }} />
+            </span>
+            {slow && rows.length > 1 && (
+              <span style={{ fontSize: 12, color: 'var(--zm-copper)', fontWeight: 600 }}>
+                ↑ Slowest step{median > 0 && r.days / median >= 1.2 ? ` — ${(r.days / median).toFixed(1)}× the median` : ''}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// 7 × 12 days: empty days as faint outlines, four accent levels, today ringed,
+// and a Less→More key.
+export function Heatmap({ cells, cols = 12, today = null }) {
+  const levels = [null, 35, 65, 100].map((p) => (p === null ? 'transparent' : `color-mix(in srgb, var(--zm-accent) ${p}%, var(--zm-surface-sunken))`));
+  const shade = (lvl) => levels[Math.max(0, Math.min(3, lvl))];
+  return (
+    <div className="dash-col" style={{ gap: 10 }}>
+      <div role="img" aria-label="Activity per day, last 12 weeks" style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))`, gap: 3 }}>
+        {cells.map((lvl, i) => (
+          <span key={i} className="dv-anim dv-cell" style={{
+            aspectRatio: '1', borderRadius: 3, background: shade(lvl),
+            boxShadow: lvl === 0 ? 'inset 0 0 0 1px color-mix(in srgb, var(--zm-fg) 9%, transparent)' : undefined,
+            outline: i === today ? '1.5px solid var(--zm-fg)' : undefined, outlineOffset: 1,
+            animationDelay: `${((i % cols) + Math.floor(i / cols)) * 12}ms`,
+          }} />
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4, fontSize: 10.5, color: 'var(--zm-fg-3)' }}>
+        Less
+        {[0, 1, 2, 3].map((l) => (
+          <span key={l} style={{ width: 10, height: 10, borderRadius: 2, background: shade(l), boxShadow: l === 0 ? 'inset 0 0 0 1px color-mix(in srgb, var(--zm-fg) 9%, transparent)' : undefined }} />
+        ))}
+        More
+      </div>
     </div>
   );
 }
