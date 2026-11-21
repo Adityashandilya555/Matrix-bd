@@ -123,7 +123,9 @@ def _user(ids, key, role, module=None, real_role=None):
 
 
 def _tile(payload, key):
-    return next(t["value"] for t in payload["kpis"]["tiles"] if t["key"] == key)
+    values = [t["value"] for t in payload["kpis"]["tiles"] if t["key"] == key]
+    assert len(values) == 1, f"tile {key!r} missing"
+    return values[0]
 
 
 async def test_admin_sees_the_whole_tenant_and_nothing_else(engine, maker):

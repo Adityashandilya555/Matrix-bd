@@ -102,7 +102,7 @@ async def test_every_statement_is_bound_to_the_callers_tenant(user, scope):
 # ── executives ───────────────────────────────────────────────────────────────
 
 async def test_bd_executive_sees_only_sites_they_submitted_or_are_assigned():
-    db, out = await _run(_user("executive", "bd"))
+    db, _ = await _run(_user("executive", "bd"))
     site_sql = [s for s in _sql(db) if "FROM sites" in s and "audit_logs" not in s and "legal_change_requests" not in s]
     assert site_sql
     for sql in site_sql:
@@ -122,8 +122,8 @@ async def test_module_executive_is_scoped_by_active_delegations_including_the_co
 
 async def test_executive_activity_is_their_own_actions_only():
     db, _ = await _run(_user("executive", "bd"))
-    activity = next(s for s in _sql(db) if "audit_logs" in s)
-    assert "audit_logs.actor_id =" in activity
+    activity = [s for s in _sql(db) if "audit_logs" in s]
+    assert len(activity) == 1 and "audit_logs.actor_id =" in activity[0]
 
 
 @pytest.mark.parametrize("module", ["bd", "legal", "design", "nso"])
@@ -150,7 +150,7 @@ async def test_team_scope_reads_distinct_members_bound_by_tenant_and_module():
     assert db.execute_params[0] == {"tid": TID, "mod": "bd", "uid": UID}
     assert out["scope"] == "team"
     # The caller is never counted as their own team member.
-    assert next(t for t in out["kpis"]["tiles"] if t["key"] == "team")["value"] == 1
+    assert [t["value"] for t in out["kpis"]["tiles"] if t["key"] == "team"] == [1]
 
 
 async def test_bd_team_scope_filters_sites_by_team_or_supervisor_id():

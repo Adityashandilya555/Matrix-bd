@@ -34,6 +34,7 @@ below filters ``sites.tenant_id`` itself. Raw SQL is always one whole
 """
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
@@ -119,20 +120,21 @@ def resolve_context(user: dict, scope: str) -> DashContext:
     role = (user.get("role") or "").lower()
     real_role = (user.get("real_role") or role).lower()
     module = user.get("module")
-    base = {"tenant_id": str(user["tenant_id"]), "user_id": str(user["sub"]), "module": module}
+    tenant_id, user_id = str(user["tenant_id"]), str(user["sub"])
 
     if role in READ_ALL_ROLES:
-        return DashContext(kind="admin", **base)
+        return DashContext(tenant_id=tenant_id, user_id=user_id, kind="admin", module=module)
     if role not in (Role.SUPERVISOR.value, Role.EXECUTIVE.value) or module not in _MODULES:
         raise HTTPException(http_status.HTTP_403_FORBIDDEN, "No dashboard for this account")
     if role == Role.EXECUTIVE.value and real_role in READ_ALL_ROLES:
         # Simulation: show the module, not the admin's (empty) personal view.
-        return DashContext(kind="supervisor", simulated=True, **base)
+        return DashContext(tenant_id=tenant_id, user_id=user_id, kind="supervisor", module=module, simulated=True)
     if role == Role.SUPERVISOR.value:
         simulated = real_role in READ_ALL_ROLES
         team_scope = "team" if scope == "team" and not simulated else "module"
-        return DashContext(kind="supervisor", scope=team_scope, simulated=simulated, **base)
-    return DashContext(kind="executive", **base)
+        return DashContext(tenant_id=tenant_id, user_id=user_id, kind="supervisor", module=module,
+                           scope=team_scope, simulated=simulated)
+    return DashContext(tenant_id=tenant_id, user_id=user_id, kind="executive", module=module)
 
 
 _TEAM_SQL = text("""
@@ -157,7 +159,7 @@ async def load_team(db: AsyncSession, ctx: DashContext) -> DashContext:
         return ctx
     rows = (await db.execute(_TEAM_SQL, {"tid": ctx.tenant_id, "mod": ctx.module, "uid": ctx.user_id})).all()
     team = tuple(sorted({r[0] for r in rows if r[0] and r[0] != ctx.user_id}))
-    return DashContext(**{**ctx.__dict__, "team_ids": team})
+    return dataclasses.replace(ctx, team_ids=team)
 
 
 # ── Site scope (SQLAlchemy Core, never string-built) ─────────────────────────
@@ -174,14 +176,14 @@ def _module_entry(module: str):
     if module == "legal":
         return S.legal_review_at.isnot(None)
     if module == "design":
-        r = aliased(models.DesignReview)
-        return exists().where(r.site_id == S.id, r.tenant_id == S.tenant_id)
+        dr = aliased(models.DesignReview)
+        return exists().where(dr.site_id == S.id, dr.tenant_id == S.tenant_id)
     if module == "project":
-        r = aliased(models.ProjectReview)
-        return exists().where(r.site_id == S.id, r.tenant_id == S.tenant_id)
+        pr = aliased(models.ProjectReview)
+        return exists().where(pr.site_id == S.id, pr.tenant_id == S.tenant_id)
     if module == "nso":
-        r = aliased(models.NsoReview)
-        return exists().where(r.site_id == S.id, r.tenant_id == S.tenant_id)
+        nr = aliased(models.NsoReview)
+        return exists().where(nr.site_id == S.id, nr.tenant_id == S.tenant_id)
     return S.project_excellence_status != "pending"
 
 
@@ -196,8 +198,8 @@ def _module_awaiting(module: str):
     if module == "project":
         return S.project_status != "done"
     if module == "nso":
-        r = aliased(models.NsoReview)
-        return exists().where(r.site_id == S.id, r.tenant_id == S.tenant_id, r.current_stage != "done")
+        nr = aliased(models.NsoReview)
+        return exists().where(nr.site_id == S.id, nr.tenant_id == S.tenant_id, nr.current_stage != "done")
     return S.project_excellence_status != "approved"
 
 
@@ -245,6 +247,12 @@ def _scoped_ids(ctx: DashContext):
 
 # ── Sections ─────────────────────────────────────────────────────────────────
 
+async def _first_row(db: AsyncSession, stmt) -> dict[str, Any]:
+    """The single aggregate row of ``stmt`` as a plain dict ({} when empty)."""
+    row = (await db.execute(stmt)).mappings().first()
+    return dict(row) if row else {}
+
+
 def _src(*cols: str) -> list[str]:
     return list(cols)
 
@@ -260,7 +268,7 @@ async def _kpis(db: AsyncSession, ctx: DashContext) -> dict:
         func.count().filter(and_(open_, awaiting)).label("awaiting"),
         func.count().filter(S.updated_at >= func.now() - text("interval '7 days'")).label("moved_7d"),
     ).where(*site_filters(ctx))
-    r = (await db.execute(stmt)).mappings().first() or {}
+    r = await _first_row(db, stmt)
     get = lambda k: int(r.get(k) or 0)  # noqa: E731
     if ctx.kind == "executive":
         tiles = [
@@ -289,7 +297,7 @@ async def _kpis(db: AsyncSession, ctx: DashContext) -> dict:
 
 async def _bd_funnel(db: AsyncSession, ctx: DashContext) -> dict:
     cols = [func.count().filter(col.isnot(None)).label(key) for key, _label, col in _BD_STEPS]
-    r = (await db.execute(select(*cols).where(*site_filters(ctx)))).mappings().first() or {}
+    r = await _first_row(db, select(*cols).where(*site_filters(ctx)))
     steps = [{"key": k, "label": lbl, "count": int(r.get(k) or 0)} for k, lbl, _c in _BD_STEPS]
     return {"steps": steps, "source": _src("sites.*_at")}
 
@@ -331,6 +339,10 @@ _MODULE_STATUS_COLUMNS: tuple[tuple[str, str, Any], ...] = (
 )
 
 
+def _count_of(item: dict[str, Any]) -> int:
+    return int(item["count"])
+
+
 async def _modules(db: AsyncSession, ctx: DashContext) -> dict:
     """Status breakdown per module mirror column on ``sites``."""
     wanted = _MODULE_STATUS_COLUMNS if ctx.kind == "admin" else tuple(
@@ -345,13 +357,13 @@ async def _modules(db: AsyncSession, ctx: DashContext) -> dict:
         for key, _label, col in wanted
     ]
     stmt = parts[0] if len(parts) == 1 else parts[0].union_all(*parts[1:])
-    grouped: dict[str, list[dict]] = {key: [] for key, _l, _c in wanted}
+    grouped: dict[str, list[dict[str, Any]]] = {key: [] for key, _l, _c in wanted}
     for module, status, n in (await db.execute(stmt)).all():
         grouped.setdefault(module, []).append({"status": status or "pending", "count": int(n)})
-    items = [
-        {"key": key, "label": label, "statuses": sorted(grouped.get(key, []), key=lambda x: -x["count"])}
-        for key, label, _c in wanted
-    ]
+    items: list[dict[str, Any]] = []
+    for key, label, _c in wanted:
+        statuses: list[dict[str, Any]] = sorted(grouped.get(key, []), key=_count_of, reverse=True)
+        items.append({"key": key, "label": label, "statuses": statuses})
     return {"items": items, "source": _src(*(f"sites.{c.key}" for _k, _l, c in wanted))}
 
 
@@ -362,7 +374,7 @@ async def _cycle_times(db: AsyncSession, ctx: DashContext) -> dict:
     for (k1, _l1, a), (k2, _l2, b) in pairs:
         days = func.extract("epoch", b - a) / 86400.0
         cols.append(func.percentile_cont(0.5).within_group(days).filter(and_(a.isnot(None), b.isnot(None), b >= a)).label(f"{k1}__{k2}"))
-    r = (await db.execute(select(*cols).where(*site_filters(ctx)))).mappings().first() or {}
+    r = await _first_row(db, select(*cols).where(*site_filters(ctx)))
     steps = []
     for (k1, l1, _a), (k2, l2, _b) in pairs:
         v = r.get(f"{k1}__{k2}")
@@ -431,8 +443,8 @@ async def _compliance(db: AsyncSession, ctx: DashContext) -> dict:
         func.count().filter(S.legal_dd_status == "negative").label("dd_negative"),
         func.count().filter(S.status == "legal_rejected").label("legal_rejected"),
     ).where(*site_filters(ctx))
-    r = (await db.execute(stmt)).mappings().first() or {}
-    out = {k: int(r.get(k) or 0) for k in ("loi_overdue", "loi_due_7d", "dd_negative", "legal_rejected")}
+    r = await _first_row(db, stmt)
+    out: dict[str, Any] = {k: int(r.get(k) or 0) for k in ("loi_overdue", "loi_due_7d", "dd_negative", "legal_rejected")}
     rows = (
         select(S.id, S.name, S.city, deadline.label("deadline"))
         .where(*site_filters(ctx), S.status == "approved", deadline.isnot(None), deadline <= today + 7)
@@ -589,12 +601,12 @@ async def _workload(db: AsyncSession, ctx: DashContext) -> dict:
 
 async def _money(db: AsyncSession, ctx: DashContext) -> dict:
     open_ = S.status.notin_(_CLOSED)
-    r = (await db.execute(select(
+    r = await _first_row(db, select(
         func.coalesce(func.sum(S.expected_rent).filter(S.is_launched.is_(True)), 0).label("rent_live"),
         func.coalesce(func.sum(S.expected_rent).filter(and_(open_, S.is_launched.is_(False))), 0).label("rent_pipeline"),
         func.coalesce(func.sum(S.finance_amount).filter(S.finance_status == "approved"), 0).label("finance_approved"),
         func.coalesce(func.sum(S.finance_amount).filter(S.finance_status.in_(("awaiting_supervisor", "awaiting_admin"))), 0).label("finance_pending"),
-    ).where(*site_filters(ctx)))).mappings().first() or {}
+    ).where(*site_filters(ctx)))
     b = models.SiteBudget
     budgets = (await db.execute(
         select(b.phase, func.coalesce(func.sum(b.budget_total), 0), func.count())
