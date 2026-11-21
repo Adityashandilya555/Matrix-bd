@@ -45,4 +45,11 @@ describe('PhotoReel', () => {
   it('falls back to the café photos for a city without its own', () => {
     expect(cityPhotos('Atlantis').length).toBeGreaterThan(1);
   });
+
+  it('has three photos for each of the seven cities, matched case-insensitively', () => {
+    for (const city of ['Bengaluru', 'Mumbai', 'Pune', 'Hyderabad', 'Gurugram', 'Chennai', 'Kolkata']) {
+      expect(cityPhotos(city)).toHaveLength(3);
+    }
+    expect(cityPhotos(' MUMBAI ')[0].src).toContain('/dashboard/cities/mumbai-');
+  });
 });
