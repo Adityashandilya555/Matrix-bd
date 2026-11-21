@@ -59,7 +59,7 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
           style={{ display: 'block', flex: '0 0 auto', position: 'relative', zIndex: 1, borderRadius: 10, objectFit: 'cover' }}
         />
         <span className="zm-brand-word" style={{
-          fontFamily: 'var(--zm-font-display)', fontStyle: 'normal', fontWeight: 800,
+          fontFamily: 'var(--zm-font-brand)', fontStyle: 'normal', fontWeight: 800,
           fontSize: 12, color: 'var(--zm-sidebar-fg)', letterSpacing: '0.06em', lineHeight: 1,
           whiteSpace: 'nowrap', position: 'relative', zIndex: 1,
           display: sidebarCollapsed ? 'none' : 'inline',

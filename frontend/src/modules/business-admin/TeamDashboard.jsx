@@ -464,7 +464,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
 
           {/* ── Panels ── */}
           <div key={tab} className="ac-fade-in">
-            {tab === 'overview' && <LiveDashboard />}
+            {tab === 'overview' && <LiveDashboard viewer={decodeJwtPayload(getAuthToken()).user_metadata?.full_name} />}
             {tab === 'approvals' && (
               <ApprovalCenter data={approvalData} handlers={handlers} onRetry={() => reloadApprovals(false)} />
             )}

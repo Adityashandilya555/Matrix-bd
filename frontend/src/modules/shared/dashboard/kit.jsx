@@ -373,6 +373,115 @@ export function Heatmap({ cells, cols = 12, today = null }) {
   );
 }
 
+// Tiny trend line for a KPI tile: 2px stroke, area fading to transparent.
+export function Sparkline({ points, width = 120, height = 36, color = 'var(--zm-accent)' }) {
+  const id = React.useId().replace(/:/g, '');
+  if (!points || points.length < 2) return null;
+  const max = Math.max(...points);
+  const min = Math.min(...points);
+  const span = max - min || 1;
+  const xy = points.map((v, i) => [(i / (points.length - 1)) * width, height - 3 - ((v - min) / span) * (height - 6)]);
+  const line = xy.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  return (
+    <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <linearGradient id={`sp${id}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={color} stopOpacity=".22" /><stop offset="1" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={`${line} L${width},${height} L0,${height} Z`} fill={`url(#sp${id})`} />
+      <path className="dv-anim dv-draw" d={line} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+// Monthly openings as a gradient area line: solid for months gone, dashed for
+// planned months, a dot and label on the latest month, a crosshair on hover.
+export function AreaTrend({ points, height = 220, label }) {
+  const id = React.useId().replace(/:/g, '');
+  const [hover, setHover] = React.useState(null);
+  const W = 640;
+  const H = height;
+  const pad = { l: 8, r: 8, t: 24, b: 28 };
+  const max = Math.max(1, ...points.map((p) => p.value));
+  const n = points.length;
+  const x = (i) => pad.l + (i / Math.max(1, n - 1)) * (W - pad.l - pad.r);
+  const y = (v) => pad.t + (1 - v / max) * (H - pad.t - pad.b);
+  const firstAhead = points.findIndex((p) => p.ahead);
+  const lastPast = firstAhead === -1 ? n - 1 : firstAhead - 1;
+  const path = (from, to) => points.slice(from, to + 1).map((p, k) => `${k ? 'L' : 'M'}${x(from + k).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
+  const past = path(0, lastPast);
+  const ahead = firstAhead === -1 ? null : path(lastPast, n - 1);
+  const area = `${past} L${x(lastPast)},${H - pad.b} L${x(0)},${H - pad.b} Z`;
+  const ticks = [0, Math.round(max / 2), max];
+  const h = hover === null ? null : points[hover];
+  return (
+    <div style={{ position: 'relative' }}>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} style={{ display: 'block', overflow: 'visible' }}
+        onMouseLeave={() => setHover(null)}>
+        <defs>
+          <linearGradient id={`ar${id}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="var(--zm-accent)" stopOpacity=".24" /><stop offset="1" stopColor="var(--zm-accent)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {ticks.map((t) => (
+          <g key={t}>
+            <line x1={pad.l} x2={W - pad.r} y1={y(t)} y2={y(t)} stroke="color-mix(in srgb, var(--zm-fg) 7%, transparent)" />
+            <text x={W - pad.r} y={y(t) - 5} textAnchor="end" fontSize="10.5" fill="var(--zm-fg-4)">{t}</text>
+          </g>
+        ))}
+        <path className="dv-anim dv-fade" d={area} fill={`url(#ar${id})`} />
+        <path className="dv-anim dv-draw" d={past} fill="none" stroke="var(--zm-accent)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+        {ahead && <path d={ahead} fill="none" stroke="var(--zm-copper)" strokeWidth="2.5" strokeDasharray="6 6" strokeLinecap="round" />}
+        {firstAhead > 0 && (
+          <g>
+            <line x1={x(lastPast)} x2={x(lastPast)} y1={pad.t - 10} y2={H - pad.b} stroke="var(--zm-line-strong)" strokeDasharray="3 4" />
+            <text x={x(lastPast)} y={pad.t - 14} textAnchor="middle" fontSize="9.5" fontWeight="700" letterSpacing="1.2" fill="var(--zm-fg-3)">TODAY</text>
+          </g>
+        )}
+        <circle cx={x(lastPast)} cy={y(points[lastPast].value)} r="5" fill="var(--zm-accent)" stroke="var(--zm-surface)" strokeWidth="2" />
+        <text x={x(lastPast)} y={y(points[lastPast].value) - 11} textAnchor="middle" fontSize="12" fontWeight="700" fill="var(--zm-fg)">{points[lastPast].value}</text>
+        {points.map((p, i) => p.ahead && p.value > 0 && (
+          <circle key={p.key} cx={x(i)} cy={y(p.value)} r="4" fill="var(--zm-surface)" stroke="var(--zm-copper)" strokeWidth="2" />
+        ))}
+        {points.map((p, i) => (
+          <text key={`m${p.key}`} x={x(i)} y={H - 8} textAnchor="middle" fontSize="11"
+            fill={p.ahead ? 'var(--zm-copper)' : 'var(--zm-fg-3)'} fontWeight={p.ahead ? 700 : 500}>{p.label}</text>
+        ))}
+        {h && <line x1={x(hover)} x2={x(hover)} y1={pad.t} y2={H - pad.b} stroke="var(--zm-fg-3)" strokeDasharray="2 3" />}
+        {h && <circle cx={x(hover)} cy={y(h.value)} r="4" fill="var(--zm-fg)" />}
+        {points.map((p, i) => (
+          <rect key={`h${p.key}`} x={x(i) - (W / n) / 2} y={0} width={W / n} height={H} fill="transparent"
+            onMouseEnter={() => setHover(i)}>
+            <title>{`${p.title || p.label} · ${p.value} ${p.ahead ? 'planned' : 'opened'}`}</title>
+          </rect>
+        ))}
+      </svg>
+      {h && (
+        <div className="dv-tip" style={{ left: `${(x(hover) / W) * 100}%`, top: `${(y(h.value) / H) * 100}%` }}>
+          <strong>{h.value}</strong> <span style={{ opacity: 0.7 }}>{h.ahead ? 'planned' : 'opened'} · {h.title || h.label}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Status breakdown as one segmented bar (rounded ends) above a bar-list legend.
+export function StackedBar({ parts, active = null, label }) {
+  const total = parts.reduce((s, p) => s + p.value, 0) || 1;
+  return (
+    <div className="dv-stack" role="img" aria-label={label}>
+      {parts.filter((p) => p.value > 0).map((p) => {
+        const i = parts.indexOf(p);
+        return (
+          <span key={p.label} className="dv-anim dv-stack-seg" title={`${p.label}: ${p.value}`}
+            style={{ width: `${(p.value / total) * 100}%`, background: p.color, opacity: active !== null && active !== i ? 0.35 : 1 }} />
+        );
+      })}
+    </div>
+  );
+}
+
 // Real "how fresh is this" label, replacing the hard-coded "LIVE · 2M LAG".
 export function FreshnessBadge({ updatedAt, onDark }) {
   const [, tick] = React.useState(0);

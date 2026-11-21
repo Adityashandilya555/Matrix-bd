@@ -89,7 +89,7 @@ function hero(p, mod) {
 // is waiting.
 function kpis(p) {
   return (p.kpis?.tiles || []).map((t) => ({
-    key: t.key, label: t.label, value: t.value, caption: t.caption || KPI_CAPTION[t.key] || '',
+    key: t.key, label: t.label, value: t.value, caption: t.caption || KPI_CAPTION[t.key] || '', series: t.series, delta: t.delta,
   }));
 }
 

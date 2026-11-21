@@ -13,43 +13,43 @@
    ------------------------------------------------------------- */
 :root, [data-theme="light"] {
   /* Background plane — cool airy off-white (Peach skyline) */
-  --zm-bg: #F4EEE6;
+  --zm-bg: #FAF7F2;
   /* cool light canvas */
-  --zm-bg-2: #EFE6DA;
-  --zm-surface: #FFFDFA;
+  --zm-bg-2: #F3EDE4;
+  --zm-surface: #FFFFFF;
   /* clean white card */
-  --zm-surface-2: #F8F1E8;
-  --zm-surface-hover: #F3E9DC;
-  --zm-surface-sunken: #ECE1D3;
+  --zm-surface-2: #FAF7F2;
+  --zm-surface-hover: #F5EFE7;
+  --zm-surface-sunken: #F0E9DF;
 
   /* Linework — slate-tinted */
-  --zm-line: #E9DFD2;
-  --zm-line-strong: #D6C6B3;
-  --zm-line-faint: #F1E9DE;
+  --zm-line: #ECE4D8;
+  --zm-line-strong: #DDD2C3;
+  --zm-line-faint: #F4EEE6;
   /* Background grid — cool slate. Fine lines + a stronger coarse rhythm so
      the plane reads with depth and content surfaces float above it. */
   --zm-grid: rgba(58, 36, 22, 0.035);
   --zm-grid-strong: rgba(58, 36, 22, 0.055);
 
   /* Text — slate ink */
-  --zm-fg: #24170F;
+  --zm-fg: #1F1A17;
   /* slate ink */
-  --zm-fg-2: #3A2C22;
-  --zm-fg-3: #6B5A4C;
-  --zm-fg-4: #9C8B7B;
+  --zm-fg-2: #3B322C;
+  --zm-fg-3: #6E6259;
+  --zm-fg-4: #9A8E84;
   --zm-fg-inv: #FFFFFF;
 
   /* Brand accent — Slate (primary action) */
-  --zm-accent: #6F4122;
-  --zm-accent-hover: #5A341B;
-  --zm-accent-press: #472914;
-  --zm-accent-soft: #F3E6D8;
-  --zm-accent-line: #E2CBB2;
+  --zm-accent: #8A5A3B;
+  --zm-accent-hover: #74492F;
+  --zm-accent-press: #5F3B25;
+  --zm-accent-soft: #F3E8DD;
+  --zm-accent-line: #E3CDB8;
   --zm-accent-on: #FFFFFF;
   /* foreground on accent surface */
   /* CTA button tokens — light mode mirrors --zm-accent. */
-  --zm-cta-bg: #24170F;
-  --zm-cta-bg-hover: #3A2416;
+  --zm-cta-bg: #1F1A17;
+  --zm-cta-bg-hover: #3B322C;
   --zm-cta-fg: #FFFFFF;
 
   /* Brand palette — Peach skyline (categorical KPI fills / decoration) */
@@ -63,9 +63,9 @@
   /* text on the slate card */
 
   /* Data highlight — warm amber (peach family, AA-readable) */
-  --zm-copper: #B35A17;
+  --zm-copper: #A8703F;
   --zm-copper-hover: #964A12;
-  --zm-copper-soft: #FBE7D6;
+  --zm-copper-soft: #F6ECE0;
   --zm-copper-line: #F0C9A6;
 
   /* Secondary accent — Plum for state */
@@ -73,14 +73,14 @@
   --zm-plum-soft: #EEE7FF;
 
   /* Semantic */
-  --zm-success: #1C7A52;
-  --zm-success-soft: #DDF4EA;
+  --zm-success: #4F7A5A;
+  --zm-success-soft: #E7EFE8;
   --zm-warning: #9A5A12;
   --zm-warning-soft: #FBE7D6;
   --zm-danger: #B23A33;
   --zm-danger-soft: #FCE4E2;
-  --zm-info: #2F5FD0;
-  --zm-info-soft: #E3ECFF;
+  --zm-info: #55728C;
+  --zm-info-soft: #E8EEF3;
 
   /* Stage colors — retuned to the palette, kept mutually distinct */
   --zm-stage-draft: #7A6A5C;
@@ -161,10 +161,10 @@
    2. Color tokens — Deep Obsidian (dark, "command center")
    ------------------------------------------------------------- */
 [data-theme="dark"] {
-  --zm-bg: #120C08;
+  --zm-bg: #16120F;
   /* deep ink, warm-tinted */
   --zm-bg-2: #18100B;
-  --zm-surface: #1E1510;
+  --zm-surface: #211B17;
   /* paper card on ink */
   --zm-surface-2: #251A13;
   --zm-surface-hover: #33241A;
@@ -176,7 +176,7 @@
   --zm-grid: rgba(243, 233, 220, 0.04);
   --zm-grid-strong: rgba(243, 233, 220, 0.07);
 
-  --zm-fg: #F3E9DC;
+  --zm-fg: #EDE4D8;
   /* warm platinum */
   --zm-fg-2: #D9C9B6;
   /* lifted: ~10:1 on bg */
@@ -187,7 +187,7 @@
   --zm-fg-inv: #120C08;
 
   /* Brand accent — slate-blue (brand-consistent with the light Peach skyline) */
-  --zm-accent: #E2B07A;
+  --zm-accent: #C08A63;
   --zm-accent-hover: #EBC293;
   --zm-accent-press: #C99460;
   --zm-accent-soft: rgba(226, 176, 122, 0.14);
@@ -207,7 +207,7 @@
   --zm-brand-on-pastel: var(--zm-fg);
   --zm-brand-on-slate: #F3E9DC;
 
-  --zm-copper: #F2A85E;
+  --zm-copper: #D9A877;
   --zm-copper-hover: #F6BC80;
   --zm-copper-soft: rgba(242, 168, 94, 0.13);
   --zm-copper-line: rgba(242, 168, 94, 0.32);
@@ -215,13 +215,13 @@
   --zm-plum: #B9A6F2;
   --zm-plum-soft: rgba(185, 166, 242, 0.14);
 
-  --zm-success: #6FD3A4;
+  --zm-success: #7FB08A;
   --zm-success-soft: rgba(111, 211, 164, 0.12);
   --zm-warning: #F2A85E;
   --zm-warning-soft: rgba(242, 168, 94, 0.12);
   --zm-danger: #F08A80;
   --zm-danger-soft: rgba(240, 138, 128, 0.14);
-  --zm-info: #8FB0F7;
+  --zm-info: #93AEC6;
   --zm-info-soft: rgba(143, 176, 247, 0.14);
 
   --zm-stage-draft: #9C8B7B;
@@ -258,9 +258,11 @@
    3. Type tokens — three families, one role each
    ------------------------------------------------------------- */
 :root {
-  --zm-font-display: 'Fraunces', 'Plus Jakarta Sans', Georgia, serif;
+  --zm-font-display: 'Instrument Serif', 'Fraunces', Georgia, serif;
+  /* The sidebar wordmark keeps its own face (RetailExpansion logo stays as is). */
+  --zm-font-brand: 'Fraunces', 'Plus Jakarta Sans', Georgia, serif;
   --zm-font-serif: 'Instrument Serif', 'Newsreader', Georgia, serif;
-  --zm-font-body: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  --zm-font-body: 'Inter', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   --zm-font-mono: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
 
   /* Display sizes — for hero numbers, page titles */
@@ -447,3 +449,6 @@ kbd {
   padding: 1px 6px;
   border-radius: var(--zm-r-1);
 }
+/* Instrument Serif ships one weight (400). Never let the browser fake a bold
+   version of it: headings set in it read as intended at 400. */
+html { font-synthesis-weight: none; }

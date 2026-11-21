@@ -267,7 +267,8 @@ async def test_admin_awaiting_tile_counts_the_admins_own_queues():
     """The tile must agree with the inbox below it, not count BD approvals."""
     kpi_row = FakeResult(mappings_rows=[{"total": 9, "open": 5, "launched": 1, "closed": 0, "awaiting": 4, "moved_7d": 2}])
     inbox_rows = FakeResult(all_rows=[("finance", 2, None), ("budgets", 1, None)])
-    _, out = await _run(_user("business_admin"), results=[kpi_row, inbox_rows])
+    series_rows = FakeResult(all_rows=[])   # the weekly KPI history comes between the two
+    _, out = await _run(_user("business_admin"), results=[kpi_row, series_rows, inbox_rows])
     tile = next((t for t in out["kpis"]["tiles"] if t["key"] == "awaiting"), None)
     assert tile is not None and tile["value"] == out["inbox"]["total"] == 3
 
@@ -305,3 +306,13 @@ async def test_inbox_rows_say_which_action_they_wait_for():
     db, _ = await _run(_user("supervisor", "design"))
     inbox_sql = next((s for s in _sql(db) if "CASE WHEN" in s and "LIMIT" in s), "")
     assert "design_deliverables" in inbox_sql
+
+
+
+async def test_admin_tiles_get_weekly_history_except_awaiting():
+    kpi_row = FakeResult(mappings_rows=[{"total": 9, "open": 5, "launched": 1, "closed": 0}])
+    weeks = FakeResult(all_rows=[(f"w{i}", i, i // 3, i - i // 3) for i in range(12)])
+    _, out = await _run(_user("business_admin"), results=[kpi_row, weeks])
+    tiles = {t["key"]: t for t in out["kpis"]["tiles"]}
+    assert len(tiles["total"]["series"]) == 12 and tiles["total"]["delta"] == 11 - 7
+    assert "series" not in tiles["awaiting"]

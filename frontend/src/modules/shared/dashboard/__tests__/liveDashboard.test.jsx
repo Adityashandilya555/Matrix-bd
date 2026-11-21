@@ -87,7 +87,7 @@ describe('LiveDashboard', () => {
     let version = '"v1"';
     const getDashboardVersion = vi.fn(async (etag) => ({ changed: etag !== version, etag: version }));
     render(<LiveDashboard deps={{ getDashboardSummary, getDashboardVersion }} />);
-    await screen.findByText('Your café portfolio, from first look to opening day.');
+    await screen.findByText(/^Good (morning|afternoon|evening)/);
     expect(getDashboardSummary).toHaveBeenCalledTimes(1);
 
     await act(async () => { await vi.advanceTimersByTimeAsync(POLL_MS); });
@@ -96,6 +96,15 @@ describe('LiveDashboard', () => {
     version = '"v2"';
     await act(async () => { await vi.advanceTimersByTimeAsync(POLL_MS); });
     await waitFor(() => expect(getDashboardSummary).toHaveBeenCalledTimes(2));
+  });
+
+  it('greets the viewer by first name and shows tile history when present', async () => {
+    const withSeries = { ...ADMIN, kpis: { tiles: [{ key: 'total', label: 'Total sites', value: 20, series: [1, 2, 3, 4, 5], delta: 4 }] } };
+    const getDashboardSummary = vi.fn().mockResolvedValue(withSeries);
+    const getDashboardVersion = vi.fn().mockResolvedValue({ changed: false, etag: '"v1"' });
+    render(<LiveDashboard viewer="Priya Shah" deps={{ getDashboardSummary, getDashboardVersion }} />);
+    expect(await screen.findByText(/, Priya$/)).toBeTruthy();
+    expect(screen.getByText('▲ 4 in 4 wk')).toBeTruthy();
   });
 
   it('shows a retry card when the first load fails', async () => {

@@ -4,6 +4,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, act, fireEvent, cleanup } from '@testing-library/react';
 import PhotoReel, { REEL_MS } from '../PhotoReel.jsx';
 import { cityPhotos } from '../cityPhotos.js';
+import { packRows } from '../RoleDashboard.jsx';
 
 afterEach(() => { cleanup(); vi.useRealTimers(); try { window.localStorage?.clear(); } catch { /* no storage in this env */ } });
 
@@ -51,5 +52,12 @@ describe('PhotoReel', () => {
       expect(cityPhotos(city)).toHaveLength(3);
     }
     expect(cityPhotos(' MUMBAI ')[0].src).toContain('/dashboard/cities/mumbai-');
+  });
+});
+
+describe('packRows', () => {
+  it('stretches the last block of each row so every row ends flush at 12 columns', () => {
+    const rows = packRows([{ key: 'a', span: 5 }, { key: 'b', span: 12 }, { key: 'c', span: 4 }, { key: 'd', span: 4 }]);
+    expect(rows.map((r) => r.span)).toEqual([12, 12, 4, 8]);
   });
 });

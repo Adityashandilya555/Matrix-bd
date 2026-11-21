@@ -32,7 +32,7 @@ export default function Sidebar({
         {expanded && (
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{
-              fontFamily: 'var(--zm-font-display)',
+              fontFamily: 'var(--zm-font-brand)',
               fontSize: 12,
               fontWeight: 800,
               letterSpacing: '0.06em',

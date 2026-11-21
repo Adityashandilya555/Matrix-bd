@@ -429,7 +429,41 @@ async def _kpis(db: AsyncSession, ctx: DashContext) -> dict:
         {"key": "launched", "label": "Completed sites", "value": get("launched"), "caption": "opened"},
         {"key": "open", "label": "In progress", "value": get("open"), "caption": "still moving"},
     ]
+    await _admin_kpi_series(db, ctx, tiles)
     return {"tiles": tiles, "closed": get("closed"), "source": _src("sites.status", "sites.is_launched")}
+
+
+_KPI_SERIES_SQL = text("""
+    SELECT w.week,
+           count(s.id) FILTER (WHERE s.created_at < w.week + interval '7 days') AS total,
+           count(s.id) FILTER (WHERE s.launched_at < w.week + interval '7 days') AS launched,
+           count(s.id) FILTER (WHERE s.created_at < w.week + interval '7 days'
+                                 AND (s.launched_at IS NULL OR s.launched_at >= w.week + interval '7 days')
+                                 AND (s.rejected_at IS NULL OR s.rejected_at >= w.week + interval '7 days')
+                                 AND (s.archived_at IS NULL OR s.archived_at >= w.week + interval '7 days')) AS open
+      FROM generate_series(date_trunc('week', now()) - interval '11 weeks', date_trunc('week', now()), interval '1 week') AS w(week)
+      LEFT JOIN sites s ON s.tenant_id = :tid
+     GROUP BY w.week
+     ORDER BY w.week
+""")
+
+
+async def _admin_kpi_series(db: AsyncSession, ctx: DashContext, tiles: list[dict]) -> None:
+    """Attach 12 weekly points and a 4-week change to the admin tiles that have
+    real history (sites created, launched, still open). "Awaiting approval"
+    has no history in the data, so it gets none rather than a made-up line."""
+    rows = (await db.execute(_KPI_SERIES_SQL, {"tid": ctx.tenant_id})).all()
+    if not rows:
+        return
+    cols = {"total": 1, "launched": 2, "open": 3}
+    for tile in tiles:
+        col = cols.get(tile["key"])
+        if col is None:
+            continue
+        series = [int(r[col] or 0) for r in rows]
+        tile["series"] = series
+        if len(series) >= 5:
+            tile["delta"] = series[-1] - series[-5]
 
 
 async def _role_kpis(db: AsyncSession, ctx: DashContext) -> dict:

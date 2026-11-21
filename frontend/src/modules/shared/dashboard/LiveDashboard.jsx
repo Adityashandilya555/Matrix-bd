@@ -14,7 +14,7 @@ function readScope() {
 // The live role dashboard: loads the caller's summary, refreshes it when the
 // server's version moves, and draws it with RoleDashboard. `nso` reads the NSO
 // supervisor view from /nso/summary (for executives with NSO access).
-export default function LiveDashboard({ nso = false, deps }) {
+export default function LiveDashboard({ nso = false, deps, viewer }) {
   const [scope, setScopeState] = React.useState(readScope);
   const setScope = (s) => {
     setScopeState(s);
@@ -42,5 +42,5 @@ export default function LiveDashboard({ nso = false, deps }) {
       </Card>
     );
   }
-  return <RoleDashboard data={vm} updatedAt={lastUpdatedAt} scope={data?.scope === 'team' ? 'team' : scope} onScope={setScope} />;
+  return <RoleDashboard data={vm} updatedAt={lastUpdatedAt} scope={data?.scope === 'team' ? 'team' : scope} onScope={setScope} viewer={viewer} />;
 }

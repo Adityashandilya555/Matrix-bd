@@ -3,7 +3,7 @@ import React from 'react';
 import PhotoReel from './PhotoReel.jsx';
 import { cityPhotos } from './cityPhotos.js';
 import {
-  Bars, Card, CardHead, ChipTabs, CountUp, Donut, FreshnessBadge, Funnel, Heatmap, Ico, Legend, Lollipops, Source, SplitTrack, TONE, Track,
+  AreaTrend, Card, CardHead, ChipTabs, CountUp, Donut, FreshnessBadge, Funnel, Heatmap, Ico, Legend, Lollipops, Source, Sparkline, SplitTrack, StackedBar, TONE, Track,
 } from './kit.jsx';
 
 // One dashboard for every role. It draws only the sections present in `data`,
@@ -17,128 +17,123 @@ const PHOTO = {
   cup: '/dashboard/beans-cup.jpg',
 };
 
-export default function RoleDashboard({ data, updatedAt, scope, onScope }) {
+// Preferred width of each section on a 12-column bento grid.
+const SPAN = {
+  readiness: 7, inbox: 5, launches: 7, openings: 4, modules: 4, cycle: 4, funnel: 12, cities: 12,
+  compliance: 4, licences: 4, timeline: 4, money: 8, budget: 4, people: 4, workload: 4, activity: 4,
+};
+
+// Pack blocks into rows of 12 so every row ends flush: when the next block
+// does not fit, the last block of the row stretches to fill it.
+export function packRows(blocks) {
+  const out = blocks.map((b) => ({ ...b }));
+  let used = 0;
+  let rowEnd = -1;
+  out.forEach((b, i) => {
+    if (used + b.span > 12) {
+      if (rowEnd >= 0) out[rowEnd].span += 12 - used;
+      used = 0;
+    }
+    used += b.span;
+    rowEnd = i;
+  });
+  if (rowEnd >= 0 && used < 12) out[rowEnd].span += 12 - used;
+  return out;
+}
+
+export default function RoleDashboard({ data, updatedAt, scope, onScope, viewer }) {
   const d = data;
+  const all = [
+    ['readiness', d.readiness && <Readiness r={d.readiness} />],
+    ['inbox', d.inbox && <Inbox inbox={d.inbox} />],
+    ['launches', d.launches && <Launches l={d.launches} />],
+    ['openings', d.openings && <Openings items={d.openings} />],
+    ['modules', d.modules && <Modules mods={d.modules} />],
+    ['cycle', d.cycle && <Cycle c={d.cycle} />],
+    ['funnel', d.funnel && (
+      <Card>
+        <CardHead icon="funnel" tone="purple" title={d.funnel.title} sub="Pick a step to see how sites move through it" />
+        <Funnel steps={d.funnel.steps} />
+        <Source>{d.funnel.source}</Source>
+      </Card>
+    )],
+    ['cities', d.cities && <Cities cities={d.cities} />],
+    ['compliance', d.compliance && <Compliance c={d.compliance} />],
+    ['licences', d.licences && <Licences l={d.licences} />],
+    ['timeline', d.timeline && <Timeline t={d.timeline} />],
+    ['money', d.money && <Money m={d.money} />],
+    ['budget', d.budget && <Budget b={d.budget} />],
+    ['people', d.people && <People p={d.people} />],
+    ['workload', d.workload && <Workload w={d.workload} />],
+    ['activity', d.activity && <Activity a={d.activity} />],
+  ].filter(([, el]) => el).map(([key, el]) => ({ key, el, span: SPAN[key] }));
+  const blocks = packRows(all);
+  // Medium screens: halves and fulls, packed the same way so rows stay flush.
+  const md = packRows(all.map((b) => ({ ...b, span: b.span <= 6 ? 6 : 12 })));
   return (
-    <div className="dash">
-      <Hero d={d} updatedAt={updatedAt} scope={scope} onScope={onScope} />
-      {d.empty && <Empty e={d.empty} />}
-
-      {(d.inbox || d.readiness) && (
-        <div className="dash-grid2">
-          {d.inbox && <Inbox inbox={d.inbox} />}
-          {d.readiness && <Readiness r={d.readiness} />}
-        </div>
-      )}
-
-      {d.launches && (
-        <>
-          <p className="dash-sec">Openings</p>
-          <div className="dash-grid3">
-            <Launches l={d.launches} />
-            {d.openings && <Openings items={d.openings} />}
-          </div>
-        </>
-      )}
-
-      {d.funnel && (
-        <>
-          <p className="dash-sec">{d.funnel.section || 'Pipeline'}</p>
-          <Card>
-            <CardHead icon="funnel" tone="purple" title={d.funnel.title} sub="Pick a step to see how sites move through it" />
-            <Funnel steps={d.funnel.steps} />
-            <Source>{d.funnel.source}</Source>
-          </Card>
-        </>
-      )}
-
-      {(d.modules || d.cycle) && (
-        <div className="dash-grid2">
-          {d.modules && <Modules mods={d.modules} />}
-          {d.cycle && <Cycle c={d.cycle} />}
-        </div>
-      )}
-
-      {d.cities && (
-        <>
-          <p className="dash-sec">Cities</p>
-          <Cities cities={d.cities} />
-        </>
-      )}
-
-      {(d.compliance || d.licences || d.timeline) && (
-        <>
-          <p className="dash-sec">{d.timeline?.section || 'Compliance & leases'}</p>
-          <div className="dash-grid3">
-            {d.compliance && <Compliance c={d.compliance} />}
-            {d.licences && <Licences l={d.licences} />}
-            {d.timeline && <Timeline t={d.timeline} />}
-          </div>
-        </>
-      )}
-
-      {d.money && (
-        <>
-          <p className="dash-sec">Money</p>
-          <div className="dash-grid2">
-            <Money m={d.money} />
-            {d.budget && <Budget b={d.budget} />}
-          </div>
-        </>
-      )}
-
-      {(d.people || d.workload || d.activity) && (
-        <>
-          <p className="dash-sec">{d.people ? 'People & activity' : 'Team & activity'}</p>
-          <div className="dash-grid3">
-            {d.people && <People p={d.people} />}
-            {d.workload && <Workload w={d.workload} />}
-            {d.activity && <Activity a={d.activity} />}
-          </div>
-        </>
-      )}
+    <div className="dash dash-bento">
+      <div className="b-item" style={{ '--span': 12, '--span-md': 12 }}>
+        <Hero d={d} updatedAt={updatedAt} scope={scope} onScope={onScope} viewer={viewer} />
+      </div>
+      {d.empty && <div className="b-item" style={{ '--span': 12, '--span-md': 12 }}><Empty e={d.empty} /></div>}
+      {blocks.map((b, i) => (
+        <div key={b.key} className="b-item" style={{ '--span': b.span, '--span-md': md[i].span }}>{b.el}</div>
+      ))}
     </div>
   );
 }
 
-function Hero({ d, updatedAt, scope, onScope }) {
+function greeting(name) {
+  const h = new Date().getHours();
+  const part = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  const first = String(name || '').trim().split(/[\s(]+/)[0];
+  return first ? `${part}, ${first}` : part;
+}
+
+// Greeting and a café photo on top, a solid KPI strip below: each tile is a
+// number with its 12-week sparkline and 4-week change when history exists.
+function Hero({ d, updatedAt, scope, onScope, viewer }) {
   const h = d.hero;
+  const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
   return (
-    <section className="dash-hero">
-      <img src={PHOTO.hero} alt="A barista pouring latte art into a white cup" />
-      <div className="dash-hero-shade" />
-      <div className="dash-hero-body">
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span className="dash-eyebrow" style={{ color: '#E9C9A6' }}>{h.eyebrow}</span>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            {d.simulated && <span className="dash-pill" style={{ background: 'rgba(224,122,47,.32)', color: '#FFF6EC' }}>Simulated view</span>}
+    <section className="dash-card dash-hero2">
+      <div className="dash-hero2-top">
+        <div className="dash-hero2-text">
+          <span className="dash-eyebrow" style={{ color: 'var(--zm-accent)' }}>{h.eyebrow}</span>
+          <h1>{greeting(viewer)}</h1>
+          <p className="dash-sub" style={{ fontSize: 14.5 }}>{today} · {h.lede}</p>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginTop: 6 }}>
+            {d.simulated && <span className="dash-pill" style={{ background: 'var(--zm-copper-soft)', color: 'var(--zm-copper)' }}>Simulated view</span>}
             {d.scopes && (
-              <div style={{ display: 'flex', background: 'rgba(255,246,236,.14)', borderRadius: 999, padding: 3 }} role="group" aria-label="Scope">
-                {d.scopes.map((s) => (
-                  <button key={s.key} type="button" aria-pressed={scope === s.key} onClick={() => onScope?.(s.key)}
-                    style={{ border: 0, borderRadius: 999, padding: '8px 14px', minHeight: 36, cursor: 'pointer', font: '600 12.5px var(--zm-font-body)', background: scope === s.key ? '#FFF6EC' : 'transparent', color: scope === s.key ? '#24170F' : '#FFF6EC' }}>
-                    {s.label}
-                  </button>
+              <div className="dash-seg" role="group" aria-label="Scope">
+                {d.scopes.map((sc) => (
+                  <button key={sc.key} type="button" aria-pressed={scope === sc.key} onClick={() => onScope?.(sc.key)}>{sc.label}</button>
                 ))}
               </div>
             )}
-            <FreshnessBadge updatedAt={updatedAt} onDark />
+            <FreshnessBadge updatedAt={updatedAt} />
           </div>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <h1>{h.title}</h1>
-          <p style={{ margin: 0, fontSize: 15, lineHeight: 1.55, color: '#E9DCCB', maxWidth: 560 }}>{h.lede}</p>
+        <div className="dash-hero2-photo" aria-hidden="true">
+          <img src={PHOTO.hero} alt="" />
         </div>
-        {d.kpis.length > 0 && <div className="dash-grid4">
-          {d.kpis.map((k) => (
-            <button key={k.key} type="button" className={`dash-glass${k.hot ? ' dash-glass--hot' : ''}`}>
-              <span className="dash-eyebrow" style={{ color: k.hot ? '#FFD3A8' : '#E9C9A6', fontSize: 10.5 }}>{k.label}</span>
-              <span className="dash-num" style={{ fontSize: 38 }}><CountUp value={k.value} /></span>
-              <span style={{ fontSize: 12.5, color: '#E9DCCB' }}>{k.caption}</span>
-            </button>
-          ))}
-        </div>}
       </div>
+      {d.kpis.length > 0 && (
+        <div className="dash-kpis">
+          {d.kpis.map((k) => (
+            <div key={k.key} className="dash-kpi">
+              <span className="dash-kpi-label">{k.label}</span>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span className="dash-num dash-kpi-value"><CountUp value={k.value} /></span>
+                {typeof k.delta === 'number' && k.delta !== 0 && (
+                  <span className={`dash-delta${k.delta > 0 ? ' is-up' : ' is-down'}`}>{k.delta > 0 ? '▲' : '▼'} {Math.abs(k.delta)} in 4 wk</span>
+                )}
+              </div>
+              {k.series ? <Sparkline points={k.series} /> : <span className="dash-sub" style={{ fontSize: 12 }}>{k.caption}</span>}
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -162,35 +157,49 @@ function Empty({ e }) {
 
 const KIND_TONE = { design: 'blue', payment: 'orange', quality: 'purple', loi: 'red', change: 'neutral', budget: 'green' };
 
+// "Waiting on you" as a focused card stack: one item at a time with the next
+// two peeking behind; Next and Snooze (moves it to the back for now) step through.
 function Inbox({ inbox }) {
-  const [tab, setTab] = React.useState('all');
-  const kinds = [...new Set(inbox.items.map((i) => i.key))];
-  const tabs = [{ key: 'all', label: 'All', count: inbox.items.length }].concat(
-    kinds.map((k) => ({ key: k, label: inbox.items.find((i) => i.key === k).kind, count: inbox.items.filter((i) => i.key === k).length })),
-  );
-  const rows = inbox.items.filter((i) => tab === 'all' || i.key === tab);
+  const [order, setOrder] = React.useState(() => inbox.items.map((_, i) => i));
+  React.useEffect(() => { setOrder(inbox.items.map((_, i) => i)); }, [inbox.items]);
+  const n = order.length;
+  const top = n ? inbox.items[order[0]] : null;
+  const next = () => setOrder((o) => (o.length > 1 ? [...o.slice(1), o[0]] : o));
+  const prev = () => setOrder((o) => (o.length > 1 ? [o[o.length - 1], ...o.slice(0, -1)] : o));
+  const t = top ? TONE[KIND_TONE[top.key] || 'neutral'] : TONE.neutral;
   return (
     <Card id="inbox">
-      <CardHead icon="inbox" tone="orange" title={inbox.title} sub={inbox.sub}
-        right={inbox.items.length > 0 ? <ChipTabs label="Filter" items={tabs} value={tab} onChange={setTab} /> : null} />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {rows.length === 0 && <p className="dash-sub">Nothing waiting on you. Nice.</p>}
-        {rows.map((a) => {
-          const t = TONE[KIND_TONE[a.key] || 'neutral'];
-          return (
-            <a key={a.id || a.code + a.kind} href="#inbox" className="dash-row-link">
-              <span className="dash-ico" style={{ background: t.bg, color: t.fg }}><Ico name="store" /></span>
-              <div className="dash-col" style={{ flex: '1 1 200px' }}>
-                <span style={{ fontFamily: 'var(--zm-font-display)', fontWeight: 700, fontSize: 16.5 }}>{a.name}</span>
-                <span className="dash-sub"><span style={{ fontFamily: 'var(--zm-font-mono)' }}>{a.code}</span> · {a.city}</span>
-              </div>
-              <span className="dash-pill" style={{ background: t.bg, color: t.fg }}>{a.kind}</span>
-              <span className="dash-sub" style={{ width: 70, textAlign: 'right' }}>{a.age}</span>
-              <span style={{ color: 'var(--zm-fg-3)' }}><Ico name="chevron" size={18} /></span>
-            </a>
-          );
-        })}
-      </div>
+      <CardHead icon="inbox" tone="orange" title={inbox.title} sub={n ? `${n} waiting · ${inbox.sub}` : inbox.sub} />
+      {!top && (
+        <div className="dash-stack-empty">
+          <span className="dash-ico" style={{ background: 'var(--zm-success-soft)', color: 'var(--zm-success)' }}><Ico name="check" /></span>
+          <div className="dash-col"><span style={{ fontWeight: 600 }}>You're all caught up</span><span className="dash-sub">New items show up here as soon as they need you.</span></div>
+        </div>
+      )}
+      {top && (
+        <div className="dash-stack" aria-live="polite">
+          {n > 2 && <span className="dash-stack-ghost g2" aria-hidden="true" />}
+          {n > 1 && <span className="dash-stack-ghost g1" aria-hidden="true" />}
+          <article key={order[0]} className="dash-stack-card dv-anim dv-fade">
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+              <span className="dash-pill" style={{ background: t.bg, color: t.fg }}>{top.kind}</span>
+              {top.age && <span className="dash-sub">{top.age}</span>}
+            </div>
+            <span style={{ fontFamily: 'var(--zm-font-display)', fontSize: 26, lineHeight: 1.15 }}>{top.name}</span>
+            <span className="dash-sub"><span style={{ fontFamily: 'var(--zm-font-mono)' }}>{top.code}</span>{top.city ? ` · ${top.city}` : ''}</span>
+          </article>
+        </div>
+      )}
+      {n > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <span className="dash-sub">1 of {n}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="dash-chip" onClick={prev} aria-label="Previous item">‹ Back</button>
+            <button type="button" className="dash-chip" onClick={next}>Snooze</button>
+            <button type="button" className="dash-chip" aria-pressed="true" onClick={next}>Next ›</button>
+          </div>
+        </div>
+      )}
       <Source>{inbox.source}</Source>
     </Card>
   );
@@ -226,19 +235,19 @@ function Readiness({ r }) {
 function Launches({ l }) {
   const [range, setRange] = React.useState(12);
   const past = l.past.slice(12 - range);
-  const bars = past.map(([m, v, title]) => ({ key: `p${m}`, label: m, value: v, title }))
-    .concat(l.ahead.map(([m, v, title]) => ({ key: `a${m}`, label: m, value: v, title, ahead: true })));
+  const points = past.map(([m, v, title]) => ({ key: `p${title || m}`, label: m, value: v, title }))
+    .concat(l.ahead.map(([m, v, title]) => ({ key: `a${title || m}`, label: m, value: v, title, ahead: true })));
   const opened = past.reduce((s, [, v]) => s + v, 0);
   const planned = l.ahead.reduce((s, [, v]) => s + v, 0);
   return (
-    <Card className="dash-span2">
+    <Card>
       <CardHead icon="rocket" tone="blue" title="Cafés opened & opening"
         sub={`${opened} opened in the last ${range} months · ${planned} planned ahead`}
         right={<ChipTabs label="Period" value={range} onChange={setRange}
           items={[3, 6, 12].map((r) => ({ key: r, label: `${r}M` }))} />} />
-      <Bars bars={bars} label="Cafés opened per month and planned openings" />
+      <AreaTrend points={points} label="Cafés opened per month and planned openings" />
       <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--zm-fg-2)', flexWrap: 'wrap' }}>
-        <Key color="var(--zm-info)">Opened</Key><Key color="color-mix(in srgb, var(--zm-copper) 45%, var(--zm-surface))">Planned (NSO launch date)</Key>
+        <Key color="var(--zm-accent)">Opened</Key><Key color="var(--zm-copper)">Planned (NSO launch date)</Key>
       </div>
       <Source>sites.launched_at · nso_reviews.launch_date</Source>
     </Card>
@@ -288,10 +297,12 @@ function Modules({ mods }) {
     <Card>
       <CardHead icon="layers" tone="blue" title="Where sites stand" sub={`${total} sites in ${m.name}`}
         right={mods.length > 1 ? <ChipTabs label="Module" value={i} onChange={(k) => { setI(k); setActive(null); }} items={mods.map((x, k) => ({ key: k, label: x.name }))} /> : null} />
-      <div style={{ display: 'flex', gap: 26, alignItems: 'center', flexWrap: 'wrap' }}>
-        <Donut key={m.name} parts={m.parts} size={170} center={total} sub="sites" label={`Sites by status in ${m.name}`} active={active} />
-        <Legend parts={m.parts} showPct active={active} onActive={setActive} />
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+        <span className="dash-num" style={{ fontSize: 34 }}><CountUp value={active === null ? total : m.parts[active].value} /></span>
+        <span className="dash-sub">{active === null ? 'sites' : `${m.parts[active].label} · ${Math.round((m.parts[active].value / (total || 1)) * 100)}%`}</span>
       </div>
+      <StackedBar key={m.name} parts={m.parts} active={active} label={`Sites by status in ${m.name}`} />
+      <Legend parts={m.parts} showPct active={active} onActive={setActive} />
       <Source>{m.source}</Source>
     </Card>
   );
