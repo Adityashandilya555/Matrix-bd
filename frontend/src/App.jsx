@@ -206,9 +206,9 @@ export default function App() {
             <div role="alert" style={{
               marginBottom: 16, padding: '10px 14px', borderRadius: 8,
               display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between',
-              background: dark ? '#3a1a1a' : '#fdecec',
-              border: '1px solid ' + (dark ? '#7a2d2d' : '#f3b5b5'),
-              color: dark ? '#ffb4b4' : '#9e1c1c', fontSize: 13,
+              background: 'var(--zm-danger-soft)',
+              border: '1px solid var(--zm-danger)',
+              color: 'var(--zm-danger)', fontSize: 13,
             }}>
               <span>Couldn’t load sites: {sitesError}</span>
               <span style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
@@ -262,23 +262,23 @@ export default function App() {
           position: 'fixed', top: 12, left: `calc(${sidebarWidth}px + 24px)`, zIndex: 999,
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '7px 14px 7px 14px', borderRadius: 12,
-          background: dark ? '#1a1a2e' : '#fff',
-          border: '1px solid ' + (dark ? '#333' : '#ddd'),
+          background: 'var(--zm-surface)',
+          border: '1px solid var(--zm-line)',
           fontFamily: 'var(--zm-font-body)', fontSize: 12, fontWeight: 600,
-          color: dark ? '#f5f5f5' : '#1a1a2e',
+          color: 'var(--zm-fg)',
           boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
           transition: 'left 200ms ease',
         }}>
-          <span style={{ width: 8, height: 8, borderRadius: 999, background: '#4CAF50', flexShrink: 0, animation: 'zm-pulse 2s infinite' }}/>
+          <span style={{ width: 8, height: 8, borderRadius: 999, background: 'var(--zm-success)', flexShrink: 0, animation: 'zm-pulse 2s infinite' }}/>
           <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>Simulating</span>
           <select
             value={adminOverride.role}
             onChange={(e) => { switchAs(e.target.value, adminOverride.module); }}
             style={{
               height: 28, padding: '0 6px', borderRadius: 6, fontSize: 11.5, fontWeight: 600,
-              border: '1px solid ' + (dark ? '#444' : '#ccc'),
-              background: dark ? '#2a2a3e' : '#f5f5f5',
-              color: dark ? '#f5f5f5' : '#1a1a2e',
+              border: '1px solid var(--zm-line-strong)',
+              background: 'var(--zm-surface-2)',
+              color: 'var(--zm-fg)',
               fontFamily: 'var(--zm-font-body)', cursor: 'pointer',
             }}
           >
@@ -294,9 +294,9 @@ export default function App() {
             }}
             style={{
               height: 28, padding: '0 6px', borderRadius: 6, fontSize: 11.5, fontWeight: 600,
-              border: '1px solid ' + (dark ? '#444' : '#ccc'),
-              background: dark ? '#2a2a3e' : '#f5f5f5',
-              color: dark ? '#f5f5f5' : '#1a1a2e',
+              border: '1px solid var(--zm-line-strong)',
+              background: 'var(--zm-surface-2)',
+              color: 'var(--zm-fg)',
               fontFamily: 'var(--zm-font-body)', cursor: 'pointer',
             }}
           >
@@ -312,8 +312,8 @@ export default function App() {
             onClick={() => { switchAs(null, null); navigate('/business-admin'); }}
             style={{
               marginLeft: 2, padding: '4px 12px', borderRadius: 8,
-              border: 'none', background: '#C62828',
-              color: '#fff', fontSize: 11, fontWeight: 700,
+              border: 'none', background: 'var(--zm-danger)',
+              color: 'var(--zm-accent-on)', fontSize: 11, fontWeight: 700,
               cursor: 'pointer', fontFamily: 'var(--zm-font-body)',
               display: 'inline-flex', alignItems: 'center', gap: 4,
             }}

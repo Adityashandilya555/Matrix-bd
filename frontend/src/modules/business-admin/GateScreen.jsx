@@ -35,23 +35,23 @@ export default function GateScreen({ onAuth }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0B0C10', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, overflowY: 'auto' }}>
-      <form onSubmit={submit} style={{ width: 420, background: '#13141B', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 14, padding: 28, display: 'flex', flexDirection: 'column', gap: 16, boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--zm-bg)', color: 'var(--zm-fg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, overflowY: 'auto' }}>
+      <form onSubmit={submit} style={{ width: 420, background: 'var(--zm-surface)', border: '1px solid var(--zm-line)', borderRadius: 14, padding: 28, display: 'flex', flexDirection: 'column', gap: 16, boxShadow: 'var(--zm-shadow-3, 0 20px 50px rgba(36,23,15,0.18))' }}>
         <div>
-          <div style={{ fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.75)' }}>{PRODUCT_NAME} · Business admin</div>
-          <h1 style={{ margin: '6px 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', color: '#fff' }}>Workspace controls</h1>
-          <p style={{ margin: 0, fontSize: 13, color: 'rgba(255,255,255,0.82)', lineHeight: 1.5 }}>Manage department codes and approve supervisors waiting in the queue.</p>
+          <div style={{ fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>{PRODUCT_NAME} · Business admin</div>
+          <h1 style={{ margin: '6px 0 4px', fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--zm-fg)', fontFamily: 'var(--zm-font-display)' }}>Workspace controls</h1>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--zm-fg-2)', lineHeight: 1.5 }}>Manage department codes and approve supervisors waiting in the queue.</p>
         </div>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'rgba(255,255,255,0.9)', fontWeight: 600 }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'var(--zm-fg-2)', fontWeight: 600 }}>
           Email
-          <input type="email" autoFocus autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@company.com" style={{ height: 38, padding: '0 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.22)', background: 'rgba(0,0,0,0.45)', color: '#fff', fontSize: 13, outline: 'none' }}/>
+          <input type="email" autoFocus autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@company.com" style={{ height: 38, padding: '0 12px', borderRadius: 8, border: '1px solid var(--zm-line-strong)', background: 'var(--zm-surface-2)', color: 'var(--zm-fg)', fontSize: 13, outline: 'none' }}/>
         </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'rgba(255,255,255,0.9)', fontWeight: 600 }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'var(--zm-fg-2)', fontWeight: 600 }}>
           Workspace code
-          <input autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. ACME-7K2P" style={{ height: 38, padding: '0 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.22)', background: 'rgba(0,0,0,0.45)', color: '#fff', fontSize: 13, outline: 'none', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', letterSpacing: '0.05em' }}/>
+          <input autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. ACME-7K2P" style={{ height: 38, padding: '0 12px', borderRadius: 8, border: '1px solid var(--zm-line-strong)', background: 'var(--zm-surface-2)', color: 'var(--zm-fg)', fontSize: 13, outline: 'none', fontFamily: 'var(--zm-font-mono)', letterSpacing: '0.05em' }}/>
         </label>
-        {error && <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(220,38,38,0.22)', color: '#FCA5A5', fontSize: 12, border: '1px solid rgba(220,38,38,0.35)' }}>{error}</div>}
-        <button type="submit" disabled={busy} style={{ height: 38, borderRadius: 8, border: 'none', background: '#fff', color: '#0B0C10', fontWeight: 700, fontSize: 13, cursor: busy ? 'wait' : 'pointer' }}>{busy ? 'Signing in…' : 'Sign in'}</button>
+        {error && <div style={{ padding: '8px 12px', borderRadius: 8, background: 'var(--zm-danger-soft)', color: 'var(--zm-danger)', fontSize: 12, border: '1px solid var(--zm-danger)' }}>{error}</div>}
+        <button type="submit" disabled={busy} style={{ height: 38, borderRadius: 8, border: 'none', background: 'var(--zm-cta-bg)', color: 'var(--zm-cta-fg)', fontWeight: 700, fontSize: 13, cursor: busy ? 'wait' : 'pointer' }}>{busy ? 'Signing in…' : 'Sign in'}</button>
       </form>
     </div>
   );

@@ -44,7 +44,7 @@ export default function RoleDashboard({ data, updatedAt, scope, onScope }) {
           <p className="dash-sec">{d.funnel.section || 'Pipeline'}</p>
           <Card>
             <CardHead icon="funnel" tone="purple" title={d.funnel.title} sub="Pick a step to see how sites move through it" />
-            <Funnel steps={d.funnel.steps} photo={PHOTO.cup} />
+            <Funnel steps={d.funnel.steps} />
             <Source>{d.funnel.source}</Source>
           </Card>
         </>
@@ -196,7 +196,7 @@ function Inbox({ inbox }) {
 
 function Readiness({ r }) {
   return (
-    <Card variant="green" photo={PHOTO.cafe} photoOpacity={0.3}>
+    <Card variant="green">
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
         <div className="dash-col">
           <span className="dash-eyebrow" style={{ color: '#9FE0C4' }}>Launch readiness</span>
@@ -229,14 +229,14 @@ function Launches({ l }) {
   const opened = past.reduce((s, [, v]) => s + v, 0);
   const planned = l.ahead.reduce((s, [, v]) => s + v, 0);
   return (
-    <Card className="dash-span2" photo={PHOTO.beans} photoOpacity={0.22}>
+    <Card className="dash-span2">
       <CardHead icon="rocket" tone="blue" title="Cafés opened & opening"
         sub={`${opened} opened in the last ${range} months · ${planned} planned ahead`}
         right={<ChipTabs label="Period" value={range} onChange={setRange}
           items={[3, 6, 12].map((r) => ({ key: r, label: `${r}M` }))} />} />
       <Bars bars={bars} color="var(--zm-info)" label="Cafés opened per month and planned openings" />
       <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--zm-fg-2)', flexWrap: 'wrap' }}>
-        <Key color="var(--zm-info)">Opened</Key><Key color="#F2B27A">Planned (NSO launch date)</Key>
+        <Key color="var(--zm-info)">Opened</Key><Key color="color-mix(in srgb, var(--zm-copper) 45%, var(--zm-surface))">Planned (NSO launch date)</Key>
       </div>
       <Source>sites.launched_at · nso_reviews.launch_date</Source>
     </Card>
@@ -294,7 +294,7 @@ function Cycle({ c }) {
           <div key={s.label} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 44px', gap: 10, alignItems: 'center' }}>
             <div className="dash-col" style={{ gap: 5 }}>
               <span className="dash-lbl">{s.label}</span>
-              <Track pct={(s.days / max) * 100} height={8} color={s.days === max ? '#E07A2F' : '#A08AE7'} />
+              <Track pct={(s.days / max) * 100} height={8} color={s.days === max ? 'var(--zm-copper)' : 'color-mix(in srgb, var(--zm-accent) 55%, var(--zm-surface-sunken))'} />
             </div>
             <span className="dash-num" style={{ fontSize: 15, textAlign: 'right' }}>{s.days}d</span>
           </div>
@@ -329,7 +329,6 @@ function Cities({ cities }) {
             <SplitTrack height={12} parts={[{ label: 'Opened', value: c.launched, color: 'var(--zm-info)' }, { label: 'Pipeline', value: c.pipeline, color: 'var(--zm-info-soft)' }]} />
           </div>
           <span className="dash-sub">Share of the portfolio: {Math.round((total / all) * 100)}%</span>
-          <p className="dash-src" style={{ maxWidth: 520 }}>sites.city · is_launched · site_details rent / carpet area</p>
         </div>
       </div>
     </Card>
@@ -365,20 +364,20 @@ function Licences({ l }) {
         {l.rows.map(([name, y, p, n]) => (
           <div key={name} style={{ display: 'grid', gridTemplateColumns: '104px minmax(0,1fr) 40px', gap: 10, alignItems: 'center' }}>
             <span className="dash-lbl" style={{ fontSize: 13 }}>{name}</span>
-            <SplitTrack height={9} parts={[{ label: 'Have it', value: y, color: 'var(--zm-success)' }, { label: 'Pending', value: p, color: '#E8B23A' }, { label: 'Refused', value: n, color: 'var(--zm-danger)' }]} />
+            <SplitTrack height={9} parts={[{ label: 'Have it', value: y, color: 'var(--zm-success)' }, { label: 'Pending', value: p, color: 'var(--zm-warning)' }, { label: 'Refused', value: n, color: 'var(--zm-danger)' }]} />
             <span style={{ fontSize: 12, textAlign: 'right', fontWeight: 700 }}>{y}/{l.of}</span>
           </div>
         ))}
       </div>
       <div style={{ display: 'flex', gap: 12, fontSize: 11.5, color: 'var(--zm-fg-2)', flexWrap: 'wrap' }}>
-        <Key color="var(--zm-success)">Have it</Key><Key color="#E8B23A">Pending</Key><Key color="var(--zm-danger)">Refused</Key>
+        <Key color="var(--zm-success)">Have it</Key><Key color="var(--zm-warning)">Pending</Key><Key color="var(--zm-danger)">Refused</Key>
       </div>
       <Source>site_licensing: fssai, health_trade, shops_estab_reg, fire_noc, storage_license</Source>
     </Card>
   );
 }
 
-const DOT = { orange: '#E07A2F', blue: '#2F5FD0', purple: '#5A3FC0', green: '#1C7A52', red: '#C4413A' };
+const DOT = { orange: TONE.orange.fg, blue: TONE.blue.fg, purple: TONE.purple.fg, green: TONE.green.fg, red: TONE.red.fg };
 
 function Timeline({ t }) {
   return (
@@ -404,7 +403,6 @@ function Money({ m }) {
   return (
     <Card variant="dark" flush>
       <div style={{ position: 'relative', display: 'flex', minHeight: '100%' }}>
-        <img src={PHOTO.cup} alt="Roasted coffee beans in a white cup" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.38 }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(36,23,15,.97) 0%, rgba(36,23,15,.86) 55%, rgba(36,23,15,.45) 100%)' }} />
         <div style={{ position: 'relative', padding: 26, display: 'flex', flexDirection: 'column', gap: 18, width: '100%', boxSizing: 'border-box' }}>
           <div className="dash-head">
@@ -420,7 +418,6 @@ function Money({ m }) {
               </div>
             ))}
           </div>
-          <p className="dash-src">site_details: fixed_rent_amt, cam_charges, capex, security_deposit · sites.finance_amount</p>
         </div>
       </div>
     </Card>
@@ -479,7 +476,7 @@ function Workload({ w }) {
             <span style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--zm-copper-soft)', color: 'var(--zm-fg)', font: '700 12px var(--zm-font-body)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{r.ini}</span>
             <div className="dash-col" style={{ gap: 4 }}>
               <span style={{ fontSize: 12.5, color: 'var(--zm-fg-2)' }}>{r.role}</span>
-              <Track pct={(r.n / max) * 100} height={7} color={r.n >= 8 ? '#E07A2F' : '#A08AE7'} />
+              <Track pct={(r.n / max) * 100} height={7} color={r.n >= 8 ? 'var(--zm-copper)' : 'color-mix(in srgb, var(--zm-accent) 55%, var(--zm-surface-sunken))'} />
             </div>
             <span className="dash-num" style={{ fontSize: 15, textAlign: 'right' }}>{r.n}</span>
           </div>

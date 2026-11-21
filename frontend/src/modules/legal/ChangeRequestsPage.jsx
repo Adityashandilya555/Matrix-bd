@@ -8,6 +8,7 @@ import {
   approveChangeRequest,
   rejectChangeRequest,
 } from '../../services/api/changeRequestApi.js';
+import { changeFieldLabel } from '../../lib/labels.js';
 
 function StatusPill({ value }) {
   const meta = value === 'approved'
@@ -212,7 +213,7 @@ export default function ChangeRequestsPage() {
               </div>
               <div>
                 <div style={{ fontSize: 13 }}>
-                  <strong>{cr.targetTable.replace(/_/g, ' ')}</strong> · {cr.fieldName}
+                  <strong>{changeFieldLabel(cr.targetTable, cr.fieldName)}</strong>
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--zm-fg-3)' }}>
                   {cr.currentValue} → {cr.requestedValue}

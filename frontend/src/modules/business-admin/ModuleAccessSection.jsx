@@ -2,6 +2,7 @@
 import React from 'react';
 // skipcq: JS-0833
 import { T, Icon, Card, Button, Skeleton, EmptyState, ErrorState } from './ui/kit.jsx';
+import { moduleLabel } from '../../lib/labels.js';
 
 // Cross-module workspace access (migration 20260930) — the admin's side.
 //
@@ -32,9 +33,9 @@ export default function ModuleAccessSection({
     // so the admin is told rather than protected from it.
     if (g.recruitedCount > 0) {
       const ok = window.confirm(
-        `${g.recruitedCount} executive${g.recruitedCount === 1 ? '' : 's'} in ${g.module} report to `
+        `${g.recruitedCount} executive${g.recruitedCount === 1 ? '' : 's'} in ${moduleLabel(g.module)} report to `
         + `${g.supervisorName}. They stay active and will appear as unassigned in `
-        + `Departments → ${g.module}. Withdraw access anyway?`,
+        + `Departments → ${moduleLabel(g.module)}. Withdraw access anyway?`,
       );
       if (!ok) return;
     }
@@ -89,7 +90,7 @@ export default function ModuleAccessSection({
                         </span>
                       </div>
                       <span style={{ fontSize: 11.5, color: T.textMuted, justifySelf: 'start' }}>
-                        {r.homeModule ? `${r.homeModule} → ` : ''}<strong>{r.module}</strong>
+                        {r.homeModule ? `${moduleLabel(r.homeModule)} → ` : ''}<strong>{moduleLabel(r.module)}</strong>
                       </span>
                       <span style={{ fontSize: 11.5, color: T.textFaint, justifySelf: 'end' }}>
                         {r.createdAt
@@ -138,7 +139,7 @@ export default function ModuleAccessSection({
                       <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.1em',
                         textTransform: 'uppercase', color: T.textMuted, padding: '3px 9px', borderRadius: 999,
                         background: T.chip, border: `1px solid ${T.line}`, justifySelf: 'start' }}>
-                        {g.module}
+                        {moduleLabel(g.module)}
                       </span>
                       <span style={{ fontSize: 11.5, color: T.textFaint, justifySelf: 'end' }}>
                         {g.recruitedCount > 0

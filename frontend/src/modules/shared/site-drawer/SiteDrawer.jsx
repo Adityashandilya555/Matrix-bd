@@ -56,7 +56,7 @@ const formatDate = (value) => {
 
 function EyeBadge({ title = 'Edited by supervisor' }) {
   return (
-    <span title={title} aria-label={title} style={{ display: 'inline-flex', alignItems: 'center', color: '#B45309' }}>
+    <span title={title} aria-label={title} style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--zm-warning)' }}>
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
     </span>
   );
@@ -74,7 +74,7 @@ function Field({ label, value, mono, span = 1, edited = false }) {
       <span style={{
         fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5,
         letterSpacing: '0.1em', textTransform: 'uppercase',
-        color: edited ? '#B45309' : 'var(--zm-fg-3)',
+        color: edited ? 'var(--zm-warning)' : 'var(--zm-fg-3)',
         display: 'inline-flex', alignItems: 'center', gap: 5,
       }}>{label}{edited && <EyeBadge/>}</span>
       <span style={{
@@ -557,7 +557,7 @@ export default function SiteDrawer({ site, onClose }) {
                 marginTop: 4, alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6,
                 padding: '4px 10px', borderRadius: 999,
                 background: 'rgba(217,119,6,0.12)', border: '1px solid rgba(217,119,6,0.38)',
-                color: '#B45309', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, fontWeight: 600,
+                color: 'var(--zm-warning)', fontFamily: 'var(--zm-font-body)', fontSize: 11.5, fontWeight: 600,
               }}>
                 <EyeBadge title="Supervisor edits"/>
                 {editedFields.length} field{editedFields.length === 1 ? '' : 's'} edited by supervisor

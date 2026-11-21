@@ -8,6 +8,7 @@ import {
   createChangeRequest,
 } from '../../../services/api/changeRequestApi.js';
 import { agreementAllowsLicensing, agreementStatusLabel, normalizeAgreementStatus } from '../../../lib/agreementStatus.js';
+import { changeFieldLabel, humanize } from '../../../lib/labels.js';
 
 const DD_CHECKS = [
   { id: 'title_doc',       label: 'Title / ownership' },
@@ -354,7 +355,7 @@ export default function SiteStatusPage() {
             }}>
               <div>
                 <div style={{ fontWeight: 700 }}>
-                  {cr.targetTable.replace(/_/g, ' ')} · {cr.fieldName}
+                  {changeFieldLabel(cr.targetTable, cr.fieldName)}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--zm-fg-3)' }}>
                   {cr.currentValue} → {cr.requestedValue}
@@ -368,7 +369,7 @@ export default function SiteStatusPage() {
                   cr.status === 'approved' ? 'var(--zm-success)' :
                   cr.status === 'rejected' ? 'var(--zm-danger)'  :
                   'var(--zm-fg-3)',
-              }}>{cr.status}</span>
+              }}>{humanize(cr.status)}</span>
               <span style={{ textAlign: 'right', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>
                 {new Date(cr.createdAt).toLocaleDateString()}
               </span>

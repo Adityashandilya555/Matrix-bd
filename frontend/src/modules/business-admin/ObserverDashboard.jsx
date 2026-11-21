@@ -123,7 +123,7 @@ export default function ObserverDashboard({ onLogout, fetchers = OBSERVER_FETCHE
               <div style={{ fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: T.textMuted }}>
                 {PRODUCT_NAME} · Observer
               </div>
-              <h1 style={{ margin: '5px 0 0', fontSize: 27, fontWeight: 730, letterSpacing: '-0.025em', color: T.text }}>
+              <h1 style={{ margin: '5px 0 0', fontSize: 28, fontWeight: 700, letterSpacing: '-0.02em', color: T.text, fontFamily: 'var(--zm-font-display)' }}>
                 {company || 'Workspace'}
               </h1>
               <div style={{ marginTop: 3, fontSize: 13, color: T.textMuted }}>Read-only view of the workspace</div>

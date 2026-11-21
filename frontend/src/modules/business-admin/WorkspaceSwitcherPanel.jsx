@@ -26,8 +26,8 @@ const label = {
 // write is refused at get_current_user no matter which role it enters as.
 const COPY = {
   business_admin: {
-    blurb: 'Simulate a role in the main workspace. All API calls will carry your override context '
-         + 'and the backend will bypass its normal role and module guards — you always see all sites.',
+    blurb: 'Simulate a supervisor or executive of any module to see the workspace as they would. '
+         + 'Their usual role and module limits are bypassed for you, so you still see every site.',
     enter: 'Enter Workspace',
     activeLabel: 'Active simulation',
   },
@@ -87,8 +87,8 @@ export default function WorkspaceSwitcherPanel({ variant = 'business_admin' }) {
           </div>
           <button onClick={handleExit} style={{
             padding: '5px 14px', borderRadius: 8,
-            border: 'none', background: '#C62828',
-            color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+            border: 'none', background: 'var(--zm-danger)',
+            color: 'var(--zm-accent-on)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
           }}>
             ✕ Exit Simulation
           </button>
@@ -112,14 +112,14 @@ export default function WorkspaceSwitcherPanel({ variant = 'business_admin' }) {
 
       <button onClick={handleEnter} style={{
         alignSelf: 'flex-start', height: 40, padding: '0 24px', borderRadius: 10, border: 'none',
-        background: '#1B5E20', color: '#fff', fontSize: 13.5, fontWeight: 700,
+        background: 'var(--zm-success)', color: 'var(--zm-accent-on)', fontSize: 13.5, fontWeight: 700,
         cursor: 'pointer', fontFamily: 'inherit',
         display: 'inline-flex', alignItems: 'center', gap: 8,
-        boxShadow: '0 2px 8px rgba(27,94,32,0.3)',
+        boxShadow: 'var(--zm-shadow-1, none)',
         transition: 'background 160ms ease, box-shadow 160ms ease',
       }}
-        onMouseEnter={e => { e.currentTarget.style.background = '#2E7D32'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(27,94,32,0.4)'; }}
-        onMouseLeave={e => { e.currentTarget.style.background = '#1B5E20'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(27,94,32,0.3)'; }}
+        onMouseEnter={e => { e.currentTarget.style.filter = 'brightness(1.08)'; }}
+        onMouseLeave={e => { e.currentTarget.style.filter = ''; }}
       >
         {copy.enter}
         <Icon.caret size={14} style={{ transform: 'rotate(-90deg)' }} />

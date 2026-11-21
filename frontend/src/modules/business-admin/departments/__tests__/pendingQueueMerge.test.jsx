@@ -75,7 +75,10 @@ describe('Awaiting approval — one queue', () => {
     // The module chip is what distinguishes a BD supervisor from a Legal one;
     // an observer has no module, so the same slot names the role instead.
     renderTab();
-    expect(within(queue()).getByText('observer')).toBeInTheDocument();
+    // "Observer" is also a filter chip now that labels are humanised, so look
+    // inside the observer's own row.
+    const row = within(queue()).getByText('obs@example.com').parentElement;
+    expect(within(row).getByText('Observer')).toBeInTheDocument();
   });
 
   it('filters to observers only', async () => {

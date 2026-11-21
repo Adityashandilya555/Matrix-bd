@@ -63,7 +63,6 @@ export default function TopBar({ user, role, dark, onToggleDark, onNewPipeline, 
           fontSize: 12, color: 'var(--zm-sidebar-fg)', letterSpacing: '0.06em', lineHeight: 1,
           whiteSpace: 'nowrap', position: 'relative', zIndex: 1,
           display: sidebarCollapsed ? 'none' : 'inline',
-          textShadow: '0 1px 0 rgba(0,0,0,0.35), 0 0 24px rgba(122,231,218,0.15)',
         }}>{PRODUCT_NAME}</span>
         <span style={{
           position: 'absolute', top: 12, right: 12,

@@ -45,7 +45,10 @@
 .dash-sub { margin: 0; font-size: 13px; color: var(--zm-fg-3); }
 .dash-card--dark .dash-sub, .dash-card--green .dash-sub { color: rgba(255,246,236,.72); }
 .dash-lbl { font-size: 13.5px; color: var(--zm-fg-2); }
-.dash-num { font-family: var(--zm-font-display); font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Numbers are sans with tabular figures (serif digits wobble at small sizes);
+   only the hero's big tile values use the display serif. */
+.dash-num { font-family: var(--zm-font-body); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.dash-glass .dash-num { font-family: var(--zm-font-display); }
 .dash-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; }
 .dash-src {
   margin: auto 0 0; padding-top: 12px; border-top: 1px dashed var(--zm-line-strong);
@@ -73,11 +76,11 @@
 .dash-hero-body { position: relative; padding: 32px 34px; display: flex; flex-direction: column; gap: 18px; justify-content: space-between; width: 100%; box-sizing: border-box; }
 .dash-hero h1 { margin: 0; font-family: var(--zm-font-display); font-weight: 800; font-size: 42px; line-height: 1.06; letter-spacing: -.02em; max-width: 620px; }
 .dash-glass {
-  background: rgba(255,253,250,.14); border: 1px solid rgba(255,253,250,.28); border-radius: 18px; padding: 16px 18px;
+  background: rgba(36,23,15,.52); border: 1px solid rgba(255,253,250,.22); border-radius: 18px; padding: 16px 18px;
   display: flex; flex-direction: column; gap: 6px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
   color: #FFF6EC; text-decoration: none; text-align: left; font: inherit; cursor: pointer;
 }
-.dash-glass:hover { background: rgba(255,253,250,.2); }
+.dash-glass:hover { background: rgba(36,23,15,.62); }
 .dash-glass--hot { background: rgba(224,122,47,.34); border-color: rgba(255,211,168,.5); }
 
 .dash-step {

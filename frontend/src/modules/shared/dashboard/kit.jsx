@@ -75,8 +75,11 @@ export function Card({ variant, flush, photo, photoOpacity, className = '', id, 
   );
 }
 
-export function Source({ children }) {
-  return <p className="dash-src">{children}</p>;
+// Data provenance (table and column names) is for developers, not the people
+// using the dashboard, so it is never drawn. The payload still carries `source`
+// for debugging; pass it here and it stays out of the UI.
+export function Source() {
+  return null;
 }
 
 export function Track({ pct, color, height = 10, style }) {
@@ -156,7 +159,7 @@ export function Legend({ parts, showPct }) {
 }
 
 // Vertical bars; `ahead` bars are drawn in the planned colour.
-export function Bars({ bars, color, aheadColor = '#F2B27A', height = 180, label }) {
+export function Bars({ bars, color, aheadColor = 'color-mix(in srgb, var(--zm-copper) 45%, var(--zm-surface))', height = 180, label }) {
   const max = Math.max(1, ...bars.map((b) => b.value));
   return (
     <div role="img" aria-label={label} style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height }}>
@@ -171,7 +174,11 @@ export function Bars({ bars, color, aheadColor = '#F2B27A', height = 180, label 
   );
 }
 
-const FUNNEL_SHADES = ['#D9CFF7', '#C7B8F2', '#B4A1ED', '#A08AE7', '#8C73E0', '#795DD9', '#6648CC', '#5536BC', '#E07A2F'];
+// One warm hue that deepens step by step (a stage ramp, not categories), built
+// from theme tokens so it reads correctly in café light and roast dark.
+const FUNNEL_SHADES = [30, 38, 46, 54, 62, 70, 78, 86, 94].map(
+  (p) => `color-mix(in srgb, var(--zm-accent) ${p}%, var(--zm-surface-sunken))`,
+);
 
 // Clickable pipeline steps with a detail panel for the selected one.
 export function Funnel({ steps, photo }) {
@@ -216,7 +223,8 @@ function Stat({ label, value, hot }) {
 }
 
 export function Heatmap({ cells, cols = 12 }) {
-  const shades = ['var(--zm-surface-sunken)', '#E9C9A6', '#C98E5A', '#8A4E22'];
+  // Token-based so more activity is always the stronger colour in both themes.
+  const shades = ['var(--zm-surface-sunken)', ...[32, 62, 95].map((p) => `color-mix(in srgb, var(--zm-accent) ${p}%, var(--zm-surface-sunken))`)];
   return (
     <div role="img" aria-label="Activity per day" style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))`, gap: 4 }}>
       {cells.map((lvl, i) => (

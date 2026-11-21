@@ -140,22 +140,21 @@
   --zm-dur-4: 520ms;
   /* hero entry */
 
-  /* Left rail — now matches the CTA new pipeline button color. */
-  --zm-sidebar-bg: #24170F;
-  /* slate blue */
-  --zm-sidebar-fg: #FFF6EC;
-  /* active / brand text (cream) */
-  --zm-sidebar-fg-muted: #D9C7B4;
-  /* inactive item text (slate-blue tinted) */
-  --zm-sidebar-fg-faint: #A88F78;
-  /* section labels (slate-blue tinted) */
-  --zm-sidebar-icon: #C9AE94;
-  /* inactive icon (slate-blue tinted) */
-  --zm-sidebar-accent: #F2A85E;
-  /* copper active accent */
-  --zm-sidebar-active-bg: rgba(255, 246, 236, 0.12);
-  --zm-sidebar-hover-bg: rgba(255, 246, 236, 0.07);
-  --zm-sidebar-line: rgba(255, 246, 236, 0.12);
+  /* Left rail (café light): a latte panel one step darker than the cream page,
+     not the espresso of the dark theme. Next to #F4EEE6 a near-black rail read
+     as harsh; this keeps the rail distinct through tone and a hairline border.
+     Text on #EDE4D8: fg 13.9:1, muted 5.2:1 (WCAG AA); the active item is a
+     card-coloured pill with #6F4122 text (8.4:1). Follows Linear's dimmer,
+     warm-grey rail and Material 3's low surface-container drawer. */
+  --zm-sidebar-bg: #EDE4D8;
+  --zm-sidebar-fg: #24170F;
+  --zm-sidebar-fg-muted: #6B5A4C;
+  --zm-sidebar-fg-faint: #6B5A4C;
+  --zm-sidebar-icon: #6B5A4C;
+  --zm-sidebar-accent: #6F4122;
+  --zm-sidebar-active-bg: #FFFDFA;
+  --zm-sidebar-hover-bg: #E4D8C8;
+  --zm-sidebar-line: #D9CBB8;
 }
 
 /* -------------------------------------------------------------
@@ -243,6 +242,16 @@
   --zm-glass-bg: rgba(30, 21, 16, 0.68);
   --zm-glass-border: rgba(255, 255, 255, 0.08);
   --zm-glass-blur: blur(18px);
+  /* Left rail (roast dark): espresso. */
+  --zm-sidebar-bg: #1A110B;
+  --zm-sidebar-fg: #FFF6EC;
+  --zm-sidebar-fg-muted: #D9C7B4;
+  --zm-sidebar-fg-faint: #A88F78;
+  --zm-sidebar-icon: #C9AE94;
+  --zm-sidebar-accent: #F2A85E;
+  --zm-sidebar-active-bg: rgba(255, 246, 236, 0.12);
+  --zm-sidebar-hover-bg: rgba(255, 246, 236, 0.07);
+  --zm-sidebar-line: rgba(255, 246, 236, 0.12);
 }
 
 /* -------------------------------------------------------------
@@ -251,7 +260,7 @@
 :root {
   --zm-font-display: 'Fraunces', 'Plus Jakarta Sans', Georgia, serif;
   --zm-font-serif: 'Instrument Serif', 'Newsreader', Georgia, serif;
-  --zm-font-body: 'Inter', system-ui, -apple-system, sans-serif;
+  --zm-font-body: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
   --zm-font-mono: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
 
   /* Display sizes — for hero numbers, page titles */

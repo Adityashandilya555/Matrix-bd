@@ -1,6 +1,7 @@
 import React from 'react';
 import { T, Icon, Card, Button, Skeleton, EmptyState, ErrorState, TABULAR } from './ui/kit.jsx';
 import { WORKSPACE_MODULES } from '../shared/workspaceModules.js';
+import { moduleLabel } from '../../lib/labels.js';
 
 // Presentational. The shell owns fetching and passes:
 //   data = { status, items, error }   — items: [{ id, email, module, createdAt }]
@@ -127,7 +128,7 @@ export default function PendingSupervisorsList({ data, onApprove, onReject, onRe
                   textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</span>
                 <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
                   color: T.textMuted, padding: '3px 9px', borderRadius: 999, background: T.chip,
-                  border: `1px solid ${T.line}`, justifySelf: 'start' }}>{u.module}</span>
+                  border: `1px solid ${T.line}`, justifySelf: 'start' }}>{moduleLabel(u.module)}</span>
                 <span style={{ fontSize: 11.5, color: T.textFaint, fontFamily: T.mono, overflow: 'hidden',
                   textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.createdAt ? new Date(u.createdAt).toLocaleString() : '—'}</span>
                 <span style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

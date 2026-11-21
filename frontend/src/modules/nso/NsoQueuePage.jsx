@@ -332,7 +332,7 @@ export default function NsoQueuePage() {
                 </span>
               </span>
               <span style={{ color: 'var(--zm-fg-2)' }}>{row.city}</span>
-              <StatusPill value={row.projectStatus} tone={row.projectStatus === 'done' ? 'var(--zm-success)' : 'var(--zm-copper)'}/>
+              <StatusPill value={pretty(row.projectStatus)} tone={row.projectStatus === 'done' ? 'var(--zm-success)' : 'var(--zm-copper)'}/>
               <StatusPill value={STATUS_LABELS[row.currentStage] || row.currentStage} tone={row.nsoStatus === 'complete' ? 'var(--zm-success)' : 'var(--zm-accent)'}/>
               <button
                 type="button"

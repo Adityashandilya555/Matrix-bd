@@ -8,7 +8,8 @@ export const MODULE_LABEL = {
   project_excellence: 'Project Excellence',
 };
 
-const PART_COLORS = ['#2F5FD0', '#1C7A52', '#E07A2F', '#8FB0F0', '#E8B23A', '#C4413A', '#A08AE7', '#C9BBAA'];
+// Okabe-Ito re-tuned to the café palette: colour-blind safe, >= 3:1 on cards.
+const PART_COLORS = ['#2F5FD0', '#C2551B', '#12866C', '#B37A0A', '#A3548A', '#4F97CF', '#8A7462'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const STATUS_LABEL = {
@@ -208,7 +209,7 @@ function money(p) {
     money: [
       { label: 'Rent, opened cafés', value: inr(m.rent_live), note: 'expected monthly rent' },
       { label: 'Rent, pipeline', value: inr(m.rent_pipeline), note: 'sites not yet open' },
-      { label: 'Finance approved', value: inr(m.finance_approved), note: 'sites.finance_amount' },
+      { label: 'Finance approved', value: inr(m.finance_approved), note: 'approved by finance' },
       { label: 'Finance pending', value: inr(m.finance_pending), note: 'awaiting a decision' },
     ],
   };

@@ -2,6 +2,7 @@
 import React from 'react';
 // skipcq: JS-0833
 import { T, Icon, Card, Button, Skeleton, EmptyState, ErrorState } from './ui/kit.jsx';
+import { moduleLabel } from '../../lib/labels.js';
 
 // Executive cross-module access (migration 20261022) — the admin's side.
 //
@@ -42,8 +43,8 @@ export default function ExecModuleAccessSection({
 
   function confirmRevoke(g) {
     const ok = window.confirm(
-      `Withdraw ${g.executiveName}'s access to ${g.module}? Any sites delegated to them in `
-      + `${g.module} go back to their supervisor.`,
+      `Withdraw ${g.executiveName}'s access to ${moduleLabel(g.module)}? Any sites delegated to them in `
+      + `${moduleLabel(g.module)} go back to their supervisor.`,
     );
     if (ok) act(onRevoke, g.id);
   }
@@ -90,7 +91,7 @@ export default function ExecModuleAccessSection({
                       alignItems: 'center', opacity: isBusy ? 0.6 : 1 }}>
                       <Person name={r.executiveName} email={r.executiveEmail} note={r.note} />
                       <span style={{ fontSize: 11.5, color: T.textMuted, justifySelf: 'start' }}>
-                        {r.homeModule ? `${r.homeModule} → ` : ''}<strong>{r.module}</strong>
+                        {r.homeModule ? `${moduleLabel(r.homeModule)} → ` : ''}<strong>{moduleLabel(r.module)}</strong>
                       </span>
                       <span style={{ fontSize: 11.5, color: T.textMuted, overflow: 'hidden',
                         textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -150,7 +151,7 @@ export default function ExecModuleAccessSection({
                       <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.1em',
                         textTransform: 'uppercase', color: T.textMuted, padding: '3px 9px', borderRadius: 999,
                         background: T.chip, border: `1px solid ${T.line}`, justifySelf: 'start' }}>
-                        {g.module}
+                        {moduleLabel(g.module)}
                       </span>
                       <span style={{ fontSize: 11.5, color: T.textMuted, overflow: 'hidden',
                         textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
