@@ -4,8 +4,10 @@
 // match what the live Business Admin page shows today; everything else is made up.
 
 // Chart colours for the sample status breakdowns, matching the café palette.
-// Declared first and exported so the file reads unambiguously as an ES module
-// (DeepSource's parser decides module vs script from the opening statement).
+// Declared first so this file's first `export` is the one marked for DeepSource
+// (DeepSource reports JS-0833 on a file's first `export`; the marker below must
+// sit directly above it, as in utils/workspaceStorage.js).
+// skipcq: JS-0833
 export const SAMPLE_COLORS = {
   muted: '#C9BBAA', sky: '#8FB0F0', orange: '#E07A2F', blue: '#2F5FD0',
   green: '#1C7A52', amber: '#E8B23A', red: '#C4413A',
