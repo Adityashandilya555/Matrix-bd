@@ -16,6 +16,7 @@ from app.domain.schemas.nso import (
 )
 from app.rbac.guards import require_module, require_role
 from app.rbac.roles import Role
+from app.services.dashboard_service import build_nso_summary
 from app.services.nso_service import (
     svc_final_approval,
     svc_get_nso,
@@ -31,6 +32,14 @@ router = APIRouter(prefix="/nso", tags=["NSO"])
 # NSO is a supervisor-only module — executives are not part of the NSO flow.
 NsoMember = Annotated[dict, Depends(require_role(Role.SUPERVISOR))]
 InNsoModule = Annotated[dict, Depends(require_module("nso"))]
+
+
+# Declared before "/{site_id}" so "summary" is never read as a site id.
+@router.get("/summary")
+async def nso_summary(db: DbDep, user: NsoMember, _module: InNsoModule) -> dict:
+    """NSO dashboard summary. Lives here, not under /dashboard, because an
+    executive with NSO supervisor access is a supervisor only on /api/nso/*."""
+    return await build_nso_summary(db, user)
 
 
 @router.get("/queue", response_model=NsoQueueResponse)
