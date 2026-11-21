@@ -149,8 +149,11 @@ async def test_team_scope_reads_distinct_members_bound_by_tenant_and_module():
     assert "SELECT DISTINCT" in first and "m.tenant_id = :tid" in first and "g.tenant_id = :tid" in first
     assert db.execute_params[0] == {"tid": TID, "mod": "bd", "uid": UID}
     assert out["scope"] == "team"
-    # The caller is never counted as their own team member.
-    assert [t["value"] for t in out["kpis"]["tiles"] if t["key"] == "team"] == [1]
+    # The caller is never counted as their own team member: the team scope
+    # filters by [caller, *team], so the team list itself has one entry.
+    kpi_params = _params(db)[1]
+    member_lists = [v for v in kpi_params.values() if isinstance(v, list)]
+    assert [UID, MATE] in member_lists
 
 
 async def test_bd_team_scope_filters_sites_by_team_or_supervisor_id():
@@ -258,3 +261,47 @@ async def test_dashboard_summary_does_not_elevate_an_nso_grant_executive():
     """On /api/dashboard the same person is still an executive."""
     _, out = await _run(_user("executive", "nso"))
     assert out["role"] == "executive" and "workload" not in out
+
+
+async def test_admin_awaiting_tile_counts_the_admins_own_queues():
+    """The tile must agree with the inbox below it, not count BD approvals."""
+    kpi_row = FakeResult(mappings_rows=[{"total": 9, "open": 5, "launched": 1, "closed": 0, "awaiting": 4, "moved_7d": 2}])
+    inbox_rows = FakeResult(all_rows=[("finance", 2, None), ("budgets", 1, None)])
+    _, out = await _run(_user("business_admin"), results=[kpi_row, inbox_rows])
+    tile = next((t for t in out["kpis"]["tiles"] if t["key"] == "awaiting"), None)
+    assert tile is not None and tile["value"] == out["inbox"]["total"] == 3
+
+
+
+@pytest.mark.parametrize("module,expected", [
+    ("bd", {"shortlist", "approve", "push", "loi_back"}),
+    ("legal", {"dd_review", "lic_review", "cr", "unallocated"}),
+    ("design", {"allocate", "review", "gfc", "done"}),
+    ("project", {"allocate", "approvals", "overdue", "handover"}),
+    ("project_excellence", {"allocate", "budget_review", "qa", "with_admin"}),
+    ("nso", {"stage1", "stage3", "final", "launching"}),
+])
+async def test_supervisor_tiles_are_the_modules_own_work(module, expected):
+    _, out = await _run(_user("supervisor", module))
+    assert {t["key"] for t in out["kpis"]["tiles"]} == expected
+
+
+@pytest.mark.parametrize("module", ["legal", "design", "project", "project_excellence"])
+async def test_module_roles_never_see_bd_cities_or_lois(module):
+    for role in ("supervisor", "executive"):
+        _, out = await _run(_user(role, module))
+        assert "cities" not in out and "cycle_times" not in out
+        assert "loi_overdue" not in out.get("compliance", {})
+
+
+async def test_nso_supervisor_has_no_workload_and_nso_executive_gets_a_notice():
+    _, sup = await _run(_user("supervisor", "nso"))
+    assert "workload" not in sup and "launches" in sup
+    _, ex = await _run(_user("executive", "nso"))
+    assert ex["notice"]["title"] and ex["kpis"]["tiles"] == [] and "funnel" not in ex
+
+
+async def test_inbox_rows_say_which_action_they_wait_for():
+    db, _ = await _run(_user("supervisor", "design"))
+    inbox_sql = next((s for s in _sql(db) if "CASE WHEN" in s and "LIMIT" in s), "")
+    assert "design_deliverables" in inbox_sql

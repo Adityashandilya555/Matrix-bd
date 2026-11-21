@@ -3,10 +3,15 @@
    roast dark theme both work without overrides here. */
 
 .dash { display: flex; flex-direction: column; gap: 22px; font-family: var(--zm-font-body); color: var(--zm-fg); }
-.dash-grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
-.dash-grid2 { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 20px; }
+/* Rows of cards stretch to fill the width whatever a role's payload holds:
+   one card takes the whole row, two share it, three sit side by side, and they
+   wrap below ~340px each. (Fixed grid columns left half-empty rows.) */
+.dash-grid3, .dash-grid2 { display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch; }
+.dash-grid3 > *, .dash-grid2 > * { flex: 1 1 340px; min-width: 0; }
+.dash-grid2 > :first-child { flex-grow: 1.5; }
 .dash-grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .dash-span2 { grid-column: span 2; }
+.dash-grid3 > .dash-span2 { flex: 2 1 560px; }
 
 .dash-card {
   position: relative; overflow: hidden; min-width: 0;
@@ -92,13 +97,12 @@
 .dash-empty { text-align: center; padding: 40px 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
 
 @media (max-width: 1180px) {
-  .dash-grid3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .dash-grid2 { grid-template-columns: 1fr; }
   .dash-grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 720px) {
-  .dash-grid3, .dash-grid4 { grid-template-columns: 1fr; }
+  .dash-grid4 { grid-template-columns: 1fr; }
   .dash-span2 { grid-column: auto; }
+  .dash-grid3 > *, .dash-grid2 > * { flex-basis: 100%; }
   .dash-hero h1 { font-size: 30px; }
   .dash-step { grid-template-columns: 110px minmax(0, 1fr) 40px; }
   .dash-fade-right { width: 100%; opacity: .3; }

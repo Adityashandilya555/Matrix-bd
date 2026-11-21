@@ -122,6 +122,12 @@ def _user(ids, key, role, module=None, real_role=None):
             "real_role": real_role or role, "module": module}
 
 
+def _funnel_total(payload):
+    """Sites in the caller's scope that reached the first funnel step."""
+    return payload["funnel"]["steps"][0]["count"] if "module" not in payload["funnel"] else sum(
+        st["count"] for st in payload["funnel"]["steps"])
+
+
 def _tile(payload, key):
     values = [t["value"] for t in payload["kpis"]["tiles"] if t["key"] == key]
     assert len(values) == 1, f"tile {key!r} missing"
@@ -149,7 +155,8 @@ async def test_bd_executive_sees_only_their_own_sites(engine, maker):
     async with maker() as db:
         out = await svc.build_summary(db, _user(ids, "bd_exec", "executive", "bd"))
     assert out["role"] == "executive" and out["scope"] == "personal"
-    assert _tile(out, "mine") == 3
+    assert _funnel_total(out) == 3
+    assert _tile(out, "loi_due") == 1          # s_approved: deadline passed, still counts
     assert not {"money", "people", "workload", "modules"} & set(out)
     assert sum(d["count"] for d in out["activity"]["days"]) == 1   # only their own actions
     assert [i["name"] for i in out["compliance"]["loi_items"]] == ["s_approved"]
@@ -166,11 +173,11 @@ async def test_bd_supervisor_team_scope_narrows_to_their_executives(engine, make
         await db.commit()
         module = await svc.build_summary(db, _user(ids, "bd_sup", "supervisor", "bd"), "module")
         team = await svc.build_summary(db, _user(ids, "bd_sup", "supervisor", "bd"), "team")
-    assert _tile(module, "in_module") == 6
+    assert _funnel_total(module) == 6
     assert team["scope"] == "team"
     # The stranger's own site drops out; the one assigned to the team stays in.
-    assert _tile(team, "in_module") == 5
-    assert _tile(team, "team") == 1
+    assert _funnel_total(team) == 5
+    assert _tile(module, "shortlist") == 2 and _tile(team, "shortlist") == 1
     assert {w["name"] for w in team["workload"]["items"]} <= {"bd_exec", "bd_sup"}
 
 
@@ -178,18 +185,21 @@ async def test_legal_supervisor_gets_no_bd_numbers(engine, maker):
     ids = await _world(engine)
     async with maker() as db:
         out = await svc.build_summary(db, _user(ids, "legal_sup", "supervisor", "legal"))
-    assert _tile(out, "in_module") == 1       # only the site that reached legal
+    assert _funnel_total(out) == 1            # only the site that reached legal
     assert out["funnel"]["module"] == "legal"
-    assert "cycle_times" not in out
+    assert "cycle_times" not in out and "cities" not in out
     assert [m["key"] for m in out["modules"]["items"]] == ["legal"]
-    assert out["inbox"]["total"] == 1
+    assert "loi_overdue" not in out["compliance"]  # LOIs are BD's
+    # s_legal is delegated to the legal executive, so nothing is unallocated.
+    assert _tile(out, "unallocated") == 0 and out["inbox"]["total"] == 0
 
 
 async def test_legal_executive_sees_only_active_delegations(engine, maker):
     ids = await _world(engine)
     async with maker() as db:
         out = await svc.build_summary(db, _user(ids, "legal_exec", "executive", "legal"))
-    assert _tile(out, "mine") == 1
+    assert _funnel_total(out) == 1
+    assert "cities" not in out
 
 
 async def test_admin_simulating_an_executive_gets_the_module_view(engine, maker):
@@ -197,17 +207,21 @@ async def test_admin_simulating_an_executive_gets_the_module_view(engine, maker)
     async with maker() as db:
         out = await svc.build_summary(db, _user(ids, "admin", "executive", "bd", real_role="business_admin"))
     assert out["simulated"] is True and out["role"] == "supervisor"
-    assert _tile(out, "in_module") == 5
+    assert _funnel_total(out) == 5
 
 
 async def test_nso_summary_and_version(engine, maker):
     ids = await _world(engine)
+    async with engine.begin() as c:   # NSO's queue starts at finance approval with a CA code
+        await c.execute(text("update sites set finance_status = 'approved', ca_code = 'CA-1' where id = :s"),
+                        {"s": ids["s_legal"]})
     async with maker() as db:
         nso = await svc.build_nso_summary(db, _user(ids, "legal_exec", "supervisor", "nso", real_role="executive"))
         v1 = await svc.get_version(db, str(ids["tenant"]))
         v1_again = await svc.get_version(db, str(ids["tenant"]))
     assert nso["module"] == "nso" and nso["simulated"] is False
-    assert _tile(nso, "in_module") == 1
+    assert {st["key"]: st["count"] for st in nso["funnel"]["steps"]}["stage_two"] == 1
+    assert "workload" not in nso
     assert v1 == v1_again
     async with engine.begin() as c:
         await c.execute(_INSERT_AUDIT, {"t": ids["tenant"], "s": ids["s_draft"], "a": ids["bd_exec"]})

@@ -73,8 +73,8 @@ _MODULES = ("bd", "legal", "design", "project", "nso", "project_excellence")
 # Stage order per module, for the module funnel.
 _MODULE_STAGES: dict[str, tuple[str, ...]] = {
     "legal": ("pending", "in_review", "positive", "negative"),
-    "design": ("recce", "2d", "3d", "boq", "gfc", "done"),
-    "project": ("pending", "allocated", "budgeting", "in_progress", "done"),
+    "design": ("recce", "2d", "3d", "gfc", "done"),  # BOQ is no longer produced
+    "project": ("pending", "allocated", "in_progress", "done"),  # project_service never sets budgeting
     "nso": ("stage_one", "stage_two", "stage_three", "final", "done"),
     "project_excellence": ("pending", "allocated", "budgeting", "approved"),
 }
@@ -169,38 +169,187 @@ def _delegation_modules(module: str) -> list[str]:
     return [module, companion] if companion else [module]
 
 
+def _rel(model, *conds_fn):
+    """EXISTS a row of ``model`` for this site matching ``conds_fn(alias)``.
+
+    Aliased so a query that itself joins ``model`` cannot auto-correlate the
+    subquery away. Some module tables (legal_dd_checklist, site_licensing) have
+    no tenant_id; they are reached through the tenant-filtered site.
+    """
+    a = aliased(model)
+    conds = [c for fn in conds_fn for c in fn(a)]
+    return exists().where(a.site_id == S.id, *conds)
+
+
+def _active_delegation(module: str):
+    return _rel(models.SiteDelegation, lambda d: (d.tenant_id == S.tenant_id, d.revoked_at.is_(None), d.module == module))
+
+
+def _budget(phase: str, *statuses: str):
+    return _rel(models.SiteBudget, lambda b: (b.tenant_id == S.tenant_id, b.phase == phase, b.status.in_(statuses)))
+
+
+def _project(*conds_fn):
+    return _rel(models.ProjectReview, lambda r: (r.tenant_id == S.tenant_id,), *conds_fn)
+
+
+def _nso(*conds_fn):
+    return _rel(models.NsoReview, lambda r: (r.tenant_id == S.tenant_id,), *conds_fn)
+
+
+def _deliverable(*statuses: str):
+    return _rel(models.DesignDeliverable, lambda d: (d.tenant_id == S.tenant_id, d.status.in_(statuses)))
+
+
 def _module_entry(module: str):
-    """A site has reached this module."""
+    """A site is in this module's queue (including not-yet-allocated sites)."""
     if module == "bd":
         return true()
     if module == "legal":
         return S.legal_review_at.isnot(None)
     if module == "design":
-        dr = aliased(models.DesignReview)
-        return exists().where(dr.site_id == S.id, dr.tenant_id == S.tenant_id)
-    if module == "project":
-        pr = aliased(models.ProjectReview)
-        return exists().where(pr.site_id == S.id, pr.tenant_id == S.tenant_id)
-    if module == "nso":
-        nr = aliased(models.NsoReview)
-        return exists().where(nr.site_id == S.id, nr.tenant_id == S.tenant_id)
-    return S.project_excellence_status != "pending"
+        return and_(S.legal_dd_status == "positive", S.finance_status == "approved")
+    if module in ("project", "project_excellence"):
+        return S.design_status == "approved"
+    # nso
+    return and_(S.finance_status == "approved", S.ca_code.isnot(None))
 
 
-def _module_awaiting(module: str):
-    """A site in this module is still waiting on its supervisor."""
+def _module_open(module: str):
+    """Work in this module is not finished for the site."""
     if module == "bd":
-        return S.status.in_(("draft_submitted", "details_submitted", "loi_uploaded"))
+        return and_(S.status.notin_(_CLOSED), S.is_launched.is_(False))
     if module == "legal":
         return S.status == "legal_review"
     if module == "design":
         return or_(S.design_status.is_(None), S.design_status != "approved")
     if module == "project":
         return S.project_status != "done"
-    if module == "nso":
-        nr = aliased(models.NsoReview)
-        return exists().where(nr.site_id == S.id, nr.tenant_id == S.tenant_id, nr.current_stage != "done")
-    return S.project_excellence_status != "approved"
+    if module == "project_excellence":
+        return S.project_excellence_status != "approved"
+    return and_(S.is_launched.is_(False), ~_nso(lambda r: (r.current_stage == "done",)))
+
+
+# Hero tiles per (module, role): (key, label, caption, predicate, needs_action).
+# needs_action marks the tiles that make up "Waiting on you" for that role, so
+# the inbox and the tiles always agree. Definitions follow each module's
+# service: who moves the site next, not merely "unfinished".
+def _tiles(module: str, kind: str, uid: Optional[str] = None) -> list[tuple[str, str, str, Any, bool]]:
+    today = func.current_date()
+    if module == "bd" and kind == "supervisor":
+        return [
+            ("shortlist", "To shortlist", "new drafts", S.status == "draft_submitted", True),
+            ("approve", "To approve", "details submitted", S.status == "details_submitted", True),
+            ("push", "To push to legal", "LOI uploaded", S.status == "loi_uploaded", True),
+            ("loi_back", "LOIs sent back", "waiting on the executive",
+             and_(S.status == "approved", S.loi_rejection_note.isnot(None)), False),
+        ]
+    if module == "bd":
+        deadline = (
+            select(func.max(models.Approval.loi_deadline))
+            .where(models.Approval.site_id == S.id, models.Approval.tenant_id == S.tenant_id, models.Approval.status == "approved")
+            .correlate(S).scalar_subquery()
+        )
+        return [
+            ("details", "Need details", "shortlisted sites", S.status == "shortlisted", True),
+            ("loi_due", "LOI due ≤ 7 days", "including overdue",
+             and_(S.status == "approved", deadline <= today + 7), True),
+            ("sent_back", "Sent back to me", "LOI returned by supervisor",
+             and_(S.status == "approved", S.loi_rejection_note.isnot(None)), True),
+            ("cr", "Change requests open", "raised by you",
+             _rel(models.LegalChangeRequest,
+                  lambda c: (c.tenant_id == S.tenant_id, c.status == "pending", c.requested_by == uid)), False),
+        ]
+    if module == "legal" and kind == "supervisor":
+        return [
+            ("dd_review", "DD to review", "submitted checklists",
+             _rel(models.LegalDdChecklist, lambda c: (c.stage == "pending_review",)), True),
+            ("lic_review", "Licensing to review", "submitted licences",
+             _rel(models.SiteLicensing, lambda c: (c.stage == "pending_review",)), True),
+            ("cr", "Change requests", "waiting for a decision",
+             _rel(models.LegalChangeRequest, lambda c: (c.tenant_id == S.tenant_id, c.status == "pending")), True),
+            ("unallocated", "Not allocated", "no executive yet",
+             and_(S.status == "legal_review", ~_active_delegation("legal")), True),
+        ]
+    if module == "legal":
+        return [
+            ("dd_draft", "DD drafts", "checklists to finish",
+             _rel(models.LegalDdChecklist, lambda c: (c.stage == "draft",)), True),
+            ("lic_draft", "Licensing drafts", "licences to finish",
+             _rel(models.SiteLicensing, lambda c: (c.stage == "draft",)), True),
+            ("submitted", "With supervisor", "submitted for review",
+             or_(_rel(models.LegalDdChecklist, lambda c: (c.stage == "pending_review",)),
+                 _rel(models.SiteLicensing, lambda c: (c.stage == "pending_review",))), False),
+            ("dd_negative", "DD negative", "on your sites", S.legal_dd_status == "negative", False),
+        ]
+    if module == "design" and kind == "supervisor":
+        return [
+            ("allocate", "To allocate", "ready for design", S.design_status == "pending", True),
+            ("review", "Deliverables to review", "submitted by executives", _deliverable("submitted"), True),
+            ("gfc", "Ready for GFC", "send to admin",
+             and_(S.design_status == "in_progress",
+                  _rel(models.DesignReview, lambda r: (r.tenant_id == S.tenant_id, r.current_stage == "gfc"))), True),
+            ("done", "Design complete", "approved", S.design_status == "approved", False),
+        ]
+    if module == "design":
+        return [
+            ("upload", "To work on", "no deliverable under review",
+             and_(or_(S.design_status.is_(None), S.design_status != "approved"), ~_deliverable("submitted")), True),
+            ("awaiting", "Awaiting review", "submitted", _deliverable("submitted"), False),
+            ("sent_back", "Sent back", "rejected deliverables", _deliverable("rejected"), True),
+            ("done", "Completed", "design approved", S.design_status == "approved", False),
+        ]
+    if module == "project" and kind == "supervisor":
+        return [
+            ("allocate", "To allocate", "design approved", ~_active_delegation("project"), True),
+            ("approvals", "Approvals pending", "dates and quality audits",
+             _project(lambda r: (or_(r.expected_completion_status == "submitted", r.quality_audit_status == "submitted"),)), True),
+            ("overdue", "Overdue", "past expected completion",
+             and_(S.project_status != "done", _project(lambda r: (r.expected_completion_date < today,))), False),
+            ("handover", "Ready for NSO", "done, not handed over",
+             and_(S.project_status == "done", _project(lambda r: (r.nso_status == "pending",))), True),
+        ]
+    if module == "project":
+        return [
+            ("init", "Start date to confirm", "proposed by supervisor",
+             _project(lambda r: (r.initialization_status == "proposed",)), True),
+            ("completion", "Completion date due", "set the expected finish",
+             _project(lambda r: (r.initialization_status == "approved", r.expected_completion_status.in_(("pending", "rejected")))), True),
+            ("qa", "QA inspection due", "visit date set",
+             _project(lambda r: (r.mid_project_visit_date.isnot(None), r.quality_audit_status.in_(("pending", "rejected")))), True),
+            ("closure", "Closure budgets to fill", "financial closure", _budget("closure", "draft", "rejected"), True),
+        ]
+    if module == "project_excellence" and kind == "supervisor":
+        return [
+            ("allocate", "To allocate", "design approved", S.project_excellence_status == "pending", True),
+            ("budget_review", "Budgets to review", "submitted by executives", _budget("gfc", "pending_supervisor"), True),
+            ("qa", "Quality audits to confirm", "supervisor-approved",
+             _project(lambda r: (r.quality_audit_status == "supervisor_approved",)), True),
+            ("with_admin", "Budgets with admin", "awaiting admin", _budget("gfc", "pending_admin"), False),
+        ]
+    if module == "project_excellence":
+        return [
+            ("fill", "Budgets to fill", "draft or sent back", _budget("gfc", "draft", "rejected"), True),
+            ("review", "Awaiting review", "with supervisor or admin", _budget("gfc", "pending_supervisor", "pending_admin"), False),
+            ("qa", "Quality audits due", "pending or sent back",
+             _project(lambda r: (r.quality_audit_status.in_(("pending", "rejected")),)), True),
+            ("approved", "Budgets approved", "done", _budget("gfc", "approved"), False),
+        ]
+    # nso supervisor (NSO has no executives; see build_summary)
+    return [
+        ("stage1", "Stage 1 to complete", "property and comms",
+         or_(~_nso(lambda r: (true(),)), _nso(lambda r: (r.current_stage == "stage_one",))), True),
+        ("stage3", "Stage 3 to complete", "licences and handover", _nso(lambda r: (r.current_stage == "stage_three",)), True),
+        ("final", "Final approval due", "ready to sign off", _nso(lambda r: (r.current_stage == "final",)), True),
+        ("launching", "Launching ≤ 14 days", "by NSO launch date",
+         _nso(lambda r: (r.launch_date >= today, r.launch_date <= today + 14)), False),
+    ]
+
+
+def _module_awaiting(module: str, kind: str = "supervisor", uid: Optional[str] = None):
+    """The site needs this role to act (the union of its action tiles)."""
+    preds = [p for _k, _l, _c, p, action in _tiles(module, kind, uid) if action]
+    return or_(*preds)
 
 
 def _delegated(ctx: DashContext, who):
@@ -262,41 +411,35 @@ def _src(*cols: str) -> list[str]:
 
 
 async def _kpis(db: AsyncSession, ctx: DashContext) -> dict:
+    if ctx.kind != "admin":
+        return await _role_kpis(db, ctx)
     open_ = and_(S.status.notin_(_CLOSED), S.is_launched.is_(False))
-    awaiting = _module_awaiting(ctx.module or "bd") if ctx.kind != "admin" else S.status == "details_submitted"
     stmt = select(
         func.count().label("total"),
         func.count().filter(open_).label("open"),
         func.count().filter(S.is_launched.is_(True)).label("launched"),
         func.count().filter(S.status.in_(_CLOSED)).label("closed"),
-        func.count().filter(and_(open_, awaiting)).label("awaiting"),
-        func.count().filter(S.updated_at >= func.now() - text("interval '7 days'")).label("moved_7d"),
     ).where(*site_filters(ctx))
     r = await _first_row(db, stmt)
     get = lambda k: int(r.get(k) or 0)  # noqa: E731
-    if ctx.kind == "executive":
-        tiles = [
-            {"key": "mine", "label": "My sites", "value": get("total")},
-            {"key": "open", "label": "In progress", "value": get("open")},
-            {"key": "moved", "label": "Moved this week", "value": get("moved_7d")},
-            {"key": "done", "label": "Launched", "value": get("launched")},
-        ]
-    elif ctx.kind == "supervisor":
-        tiles = [
-            {"key": "in_module", "label": "In module", "value": get("total")},
-            {"key": "awaiting", "label": "Waiting on you", "value": get("awaiting")},
-            {"key": "open", "label": "In progress", "value": get("open")},
-            {"key": "team", "label": "Team members", "value": len(ctx.team_ids)} if ctx.scope == "team"
-            else {"key": "launched", "label": "Launched", "value": get("launched")},
-        ]
-    else:
-        tiles = [
-            {"key": "total", "label": "Total sites", "value": get("total")},
-            {"key": "awaiting", "label": "Awaiting approval", "value": get("awaiting")},
-            {"key": "launched", "label": "Completed sites", "value": get("launched")},
-            {"key": "open", "label": "In progress", "value": get("open")},
-        ]
-    return {"tiles": tiles, "closed": get("closed"), "source": _src("sites.status", "sites.is_launched", "sites.updated_at")}
+    # "awaiting" is overwritten with the admin inbox total in _admin_payload.
+    tiles = [
+        {"key": "total", "label": "Total sites", "value": get("total"), "caption": "in the workspace"},
+        {"key": "awaiting", "label": "Awaiting approval", "value": 0, "caption": "in your queues"},
+        {"key": "launched", "label": "Completed sites", "value": get("launched"), "caption": "opened"},
+        {"key": "open", "label": "In progress", "value": get("open"), "caption": "still moving"},
+    ]
+    return {"tiles": tiles, "closed": get("closed"), "source": _src("sites.status", "sites.is_launched")}
+
+
+async def _role_kpis(db: AsyncSession, ctx: DashContext) -> dict:
+    """The four tiles for a supervisor or executive: the module's own work."""
+    defs = _tiles(ctx.module or "bd", ctx.kind, ctx.user_id)
+    stmt = select(*[func.count().filter(pred).label(key) for key, _l, _c, pred, _a in defs]).where(*site_filters(ctx))
+    r = await _first_row(db, stmt)
+    tiles = [{"key": key, "label": label, "value": int(r.get(key) or 0), "caption": caption}
+             for key, label, caption, _p, _a in defs]
+    return {"tiles": tiles, "source": _src(f"{ctx.module} queues")}
 
 
 async def _bd_funnel(db: AsyncSession, ctx: DashContext) -> dict:
@@ -349,8 +492,11 @@ def _count_of(item: dict[str, Any]) -> int:
 
 async def _modules(db: AsyncSession, ctx: DashContext) -> dict:
     """Status breakdown per module mirror column on ``sites``."""
+    # A project supervisor also runs financial closure; their own project_status
+    # is already the funnel, so the breakdown shows closure instead.
+    own = "financial_closure" if ctx.module == "project" else ctx.module
     wanted = _MODULE_STATUS_COLUMNS if ctx.kind == "admin" else tuple(
-        m for m in _MODULE_STATUS_COLUMNS if m[0] == ctx.module
+        m for m in _MODULE_STATUS_COLUMNS if m[0] == own
     )
     if not wanted:
         return {}
@@ -433,7 +579,10 @@ async def _launches(db: AsyncSession, ctx: DashContext) -> dict:
 
 
 async def _compliance(db: AsyncSession, ctx: DashContext) -> dict:
-    """LOIs overdue or due within 7 days, DD negatives, legal rejections."""
+    """LOIs overdue or due within 7 days, DD negatives, legal rejections.
+
+    LOIs belong to BD: a Legal supervisor gets only the DD and rejection counts.
+    """
     a = models.Approval
     deadline = (
         select(func.max(a.loi_deadline))
@@ -450,15 +599,20 @@ async def _compliance(db: AsyncSession, ctx: DashContext) -> dict:
     r = await _first_row(db, stmt)
     out: dict[str, Any] = {k: int(r.get(k) or 0) for k in ("loi_overdue", "loi_due_7d", "dd_negative", "legal_rejected")}
     rows = (
-        select(S.id, S.name, S.city, deadline.label("deadline"))
+        select(S.id, func.coalesce(S.ca_code, S.code).label("code"), S.name, S.city, deadline.label("deadline"))
         .where(*site_filters(ctx), S.status == "approved", deadline.isnot(None), deadline <= today + 7)
         .order_by(deadline).limit(6)
     )
     out["loi_items"] = [
-        {"site_id": str(i), "name": nm, "city": c, "deadline": d.isoformat() if isinstance(d, date) else str(d)}
-        for i, nm, c, d in (await db.execute(rows)).all()
+        {"site_id": str(i), "code": code or "", "name": nm, "city": c,
+         "deadline": d.isoformat() if isinstance(d, date) else str(d)}
+        for i, code, nm, c, d in (await db.execute(rows)).all()
     ]
     out["source"] = _src("approvals.loi_deadline", "sites.legal_dd_status", "sites.status")
+    if not ctx.is_bd:
+        for key in ("loi_overdue", "loi_due_7d", "loi_items"):
+            out.pop(key, None)
+        out["source"] = _src("sites.legal_dd_status", "sites.status")
     return out
 
 
@@ -537,33 +691,31 @@ async def _admin_inbox(db: AsyncSession, ctx: DashContext) -> dict:
     return {"queues": queues, "total": sum(q["count"] for q in queues), "source": _src("admin queues")}
 
 
-async def _supervisor_inbox(db: AsyncSession, ctx: DashContext) -> dict:
-    """Sites waiting on this supervisor, oldest first."""
-    awaiting = and_(_module_awaiting(ctx.module or ""), S.status.notin_(_CLOSED))
+async def _action_inbox(db: AsyncSession, ctx: DashContext) -> dict:
+    """Sites that need this supervisor or executive to act, oldest first.
+
+    Built from the same action tiles as the hero, so "Waiting on you" and the
+    tiles always agree; each row says which action it is waiting for.
+    """
+    actions = [(label, pred) for _k, label, _c, pred, action in _tiles(ctx.module or "bd", ctx.kind, ctx.user_id) if action]
+    awaiting = and_(or_(*[p for _l, p in actions]), S.status.notin_(_CLOSED))
+    reason = case(*[(p, literal(label)) for label, p in actions], else_=literal(""))
     total = (await db.execute(select(func.count()).where(*site_filters(ctx), awaiting))).scalar() or 0
     rows = (
-        select(S.id, S.name, S.city, S.status, S.updated_at)
+        select(S.id, func.coalesce(S.ca_code, S.code).label("code"), S.name, S.city, reason.label("reason"), S.updated_at)
         .where(*site_filters(ctx), awaiting).order_by(S.updated_at.asc()).limit(6)
     )
     now = datetime.now(timezone.utc)
     items = [
-        {"site_id": str(i), "name": nm, "city": c, "status": st, "waiting_days": _age_days(u, now)}
-        for i, nm, c, st, u in (await db.execute(rows)).all()
+        {"site_id": str(i), "code": code or "", "name": nm, "city": c, "reason": why, "waiting_days": _age_days(u, now)}
+        for i, code, nm, c, why, u in (await db.execute(rows)).all()
     ]
-    return {"total": int(total), "items": items, "source": _src("sites.status", "sites.updated_at")}
-
-
-async def _executive_inbox(db: AsyncSession, ctx: DashContext) -> dict:
-    """The executive's own pending items: change requests they raised."""
-    cr = models.LegalChangeRequest
-    pending_crs = (await db.execute(
-        select(func.count()).where(cr.tenant_id == ctx.tenant_id, cr.requested_by == ctx.user_id, cr.status == "pending")
-    )).scalar() or 0
-    return {"change_requests_pending": int(pending_crs), "source": _src("legal_change_requests.status")}
+    return {"total": int(total), "items": items, "source": _src(f"{ctx.module} queues", "sites.updated_at")}
 
 
 _PEOPLE_SQL = text("""
-    SELECT role, count(*) FILTER (WHERE is_active) AS active, count(*) FILTER (WHERE NOT is_active) AS inactive
+    SELECT role, count(*) FILTER (WHERE is_active) AS active, count(*) FILTER (WHERE NOT is_active) AS inactive,
+           (SELECT seat_limit FROM tenants WHERE id = :tid) AS seat_limit
       FROM users
      WHERE tenant_id = :tid
      GROUP BY role
@@ -572,9 +724,11 @@ _PEOPLE_SQL = text("""
 
 async def _people(db: AsyncSession, ctx: DashContext) -> dict:
     rows = (await db.execute(_PEOPLE_SQL, {"tid": ctx.tenant_id})).all()
+    seat_limit = next((r[3] for r in rows if r[3] is not None), None)
     return {
-        "roles": [{"role": r, "active": int(a or 0), "inactive": int(i or 0)} for r, a, i in rows],
-        "source": _src("users.role", "users.is_active"),
+        "seat_limit": int(seat_limit) if seat_limit is not None else None,
+        "roles": [{"role": r, "active": int(a or 0), "inactive": int(i or 0)} for r, a, i, _limit in rows],
+        "source": _src("users.role", "users.is_active", "tenants.seat_limit"),
     }
 
 
@@ -596,7 +750,7 @@ async def _workload(db: AsyncSession, ctx: DashContext) -> dict:
             select(u.id, u.name, func.count(func.distinct(d.site_id)).label("n"))
             .select_from(d).join(u, u.id == d.delegate_user_id).join(S, S.id == d.site_id)
             .where(*site_filters(ctx), d.tenant_id == ctx.tenant_id, d.revoked_at.is_(None),
-                   d.module.in_(_delegation_modules(ctx.module or "")))
+                   d.module.in_(_delegation_modules(ctx.module or "")), _module_open(ctx.module or ""))
         )
     stmt = stmt.group_by(u.id, u.name).order_by(text("n DESC")).limit(_TOP_N)
     items = [{"user_id": str(i), "name": nm, "open_sites": int(n)} for i, nm, n in (await db.execute(stmt)).all()]
@@ -626,9 +780,16 @@ async def _money(db: AsyncSession, ctx: DashContext) -> dict:
 # ── Builders ─────────────────────────────────────────────────────────────────
 
 async def _admin_payload(db: AsyncSession, ctx: DashContext) -> dict:
+    kpis = await _kpis(db, ctx)
+    inbox = await _admin_inbox(db, ctx)
+    # The admin's "awaiting" tile is their own queues, so it always agrees with
+    # the inbox right below it (sites awaiting a BD supervisor are not theirs).
+    for tile in kpis["tiles"]:
+        if tile["key"] == "awaiting":
+            tile["value"] = inbox["total"]
     return {
-        "kpis": await _kpis(db, ctx),
-        "inbox": await _admin_inbox(db, ctx),
+        "kpis": kpis,
+        "inbox": inbox,
         "launches": await _launches(db, ctx),
         "funnel": await _bd_funnel(db, ctx),
         "modules": await _modules(db, ctx),
@@ -643,34 +804,49 @@ async def _admin_payload(db: AsyncSession, ctx: DashContext) -> dict:
 
 
 async def _supervisor_payload(db: AsyncSession, ctx: DashContext) -> dict:
+    """Only what this module's supervisor acts on. Cities, cycle times and LOIs
+    are BD's; NSO has no executives, so no workload there."""
     out: dict[str, Any] = {
         "kpis": await _kpis(db, ctx),
-        "inbox": await _supervisor_inbox(db, ctx),
+        "inbox": await _action_inbox(db, ctx),
         "funnel": await (_bd_funnel(db, ctx) if ctx.is_bd else _module_funnel(db, ctx)),
     }
-    modules = await _modules(db, ctx)
-    if modules:
-        out["modules"] = modules
+    if not ctx.is_bd and ctx.module != "nso":
+        modules = await _modules(db, ctx)
+        if modules:
+            out["modules"] = modules
     if ctx.is_bd:
         out["cycle_times"] = await _cycle_times(db, ctx)
-    out["cities"] = await _cities(db, ctx)
+        out["cities"] = await _cities(db, ctx)
     if ctx.module in ("bd", "legal"):
         out["compliance"] = await _compliance(db, ctx)
     if ctx.module == "nso":
         out["launches"] = await _launches(db, ctx)
-    out["workload"] = await _workload(db, ctx)
+    else:
+        out["workload"] = await _workload(db, ctx)
     out["activity"] = await _activity(db, ctx)
     return out
 
 
 async def _executive_payload(db: AsyncSession, ctx: DashContext) -> dict:
+    """The executive's own queue. NSO is supervisor-only (routers/nso.py), so an
+    NSO executive gets a short notice instead of empty charts."""
+    if ctx.module == "nso":
+        return {
+            "kpis": {"tiles": [], "source": []},
+            "notice": {"title": "NSO is run by supervisors",
+                       "body": "New store openings are handled by NSO supervisors. Ask your supervisor for NSO "
+                               "supervisor access if you need to work on a store opening.",
+                       "source": _src("routers/nso.py")},
+            "activity": await _activity(db, ctx),
+        }
     out: dict[str, Any] = {
         "kpis": await _kpis(db, ctx),
-        "inbox": await _executive_inbox(db, ctx),
+        "inbox": await _action_inbox(db, ctx),
         "funnel": await (_bd_funnel(db, ctx) if ctx.is_bd else _module_funnel(db, ctx)),
-        "cities": await _cities(db, ctx),
     }
     if ctx.is_bd:
+        out["cities"] = await _cities(db, ctx)
         out["compliance"] = await _compliance(db, ctx)
     out["activity"] = await _activity(db, ctx)
     return out

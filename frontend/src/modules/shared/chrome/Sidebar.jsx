@@ -93,6 +93,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
 
   // Active view derived from current URL path
   const activeView =
+    path === ROUTES.MY_DASHBOARD                          ? 'my-dashboard' :
     path === ROUTES.OVERVIEW                              ? 'overview'  :
     path === ROUTES.PIPELINE                             ? 'pipeline'  :
     path === ROUTES.SHORTLIST || path.startsWith('/shortlist/') ? 'shortlist' :
@@ -146,6 +147,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
       overflowY: 'auto',
       transition: 'width 220ms var(--zm-ease), flex-basis 220ms var(--zm-ease), padding 220ms var(--zm-ease)',
     }}>
+      <SidebarItem icon="dashboard" label="Dashboard" active={activeView === 'my-dashboard'} onClick={() => go(ROUTES.MY_DASHBOARD)} collapsed={collapsed}/>
       {!isModuleSurface && (
         <>
           {!collapsed && <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Overview</div>}

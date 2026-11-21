@@ -681,10 +681,10 @@ function AuthModal({ mode, onMode, onClose, prefillEmail, lockRegister = false }
   const routeFromToken = (token) => {
     const payload = decodeJwtPayload(token);
     if (payload?.role === 'business_admin') return '/business-admin';
-    if (payload?.module === 'legal')   return '/legal';
-    if (payload?.module === 'design')  return '/design';
-    if (payload?.module === 'project') return '/project';
-    return '/overview';
+    if (payload?.role === 'vendor') return '/vendor';
+    if (payload?.role === 'observer') return '/observer';
+    // Supervisors and executives of every module start on their role dashboard.
+    return '/dashboard';
   };
 
   const handleLogin = async (event) => {

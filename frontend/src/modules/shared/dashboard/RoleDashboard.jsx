@@ -127,7 +127,7 @@ function Hero({ d, updatedAt, scope, onScope }) {
           <h1>{h.title}</h1>
           <p style={{ margin: 0, fontSize: 15, lineHeight: 1.55, color: '#E9DCCB', maxWidth: 560 }}>{h.lede}</p>
         </div>
-        <div className="dash-grid4">
+        {d.kpis.length > 0 && <div className="dash-grid4">
           {d.kpis.map((k) => (
             <button key={k.key} type="button" className={`dash-glass${k.hot ? ' dash-glass--hot' : ''}`}>
               <span className="dash-eyebrow" style={{ color: k.hot ? '#FFD3A8' : '#E9C9A6', fontSize: 10.5 }}>{k.label}</span>
@@ -135,7 +135,7 @@ function Hero({ d, updatedAt, scope, onScope }) {
               <span style={{ fontSize: 12.5, color: '#E9DCCB' }}>{k.caption}</span>
             </button>
           ))}
-        </div>
+        </div>}
       </div>
     </section>
   );
@@ -176,7 +176,7 @@ function Inbox({ inbox }) {
         {rows.map((a) => {
           const t = TONE[KIND_TONE[a.key] || 'neutral'];
           return (
-            <a key={a.code + a.kind} href="#inbox" className="dash-row-link">
+            <a key={a.id || a.code + a.kind} href="#inbox" className="dash-row-link">
               <span className="dash-ico" style={{ background: t.bg, color: t.fg }}><Ico name="store" /></span>
               <div className="dash-col" style={{ flex: '1 1 200px' }}>
                 <span style={{ fontFamily: 'var(--zm-font-display)', fontWeight: 700, fontSize: 16.5 }}>{a.name}</span>

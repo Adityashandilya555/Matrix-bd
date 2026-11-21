@@ -14,6 +14,7 @@ const ScaleLandingPage = lazy(() => import('../modules/landing/ScaleLandingPage.
 // Per-company customized login page reached via the workspace-code dialog.
 const BrandedLoginPage = lazy(() => import('../modules/landing/BrandedLoginPage.jsx'));
 const OverviewPage = lazy(() => import('../modules/bd/overview/OverviewPage.jsx'));
+const MyDashboardPage = lazy(() => import('../modules/dashboard/MyDashboardPage.jsx'));
 const DraftsPage = lazy(() => import('../modules/bd/drafts/DraftsPage.jsx'));
 const ShortlistPage = lazy(() => import('../modules/bd/shortlist/ShortlistPage.jsx'));
 const ExecStagingPage = lazy(() => import('../modules/staging/exec/ExecStagingPage.jsx'));
@@ -79,16 +80,13 @@ const FinancialClosureReviewPage = lazy(() => import('../modules/financial_closu
 const USE_MOCK = (import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true) && !import.meta.env.PROD;
 const LANDING_PATH = '/welcome';
 
-function homeForRoleModule(role, module) {
+function homeForRole(role) {
   if (role === 'business_admin') return '/business-admin';
   if (role === 'observer')       return '/observer';
   if (role === 'vendor')         return ROUTES.VENDOR;
-  if (module === 'legal')        return ROUTES.LEGAL;
-  if (module === 'design')       return ROUTES.DESIGN;
-  if (module === 'project')      return ROUTES.PROJECT;
-  if (module === 'nso')               return ROUTES.NSO;
-  if (module === 'project_excellence') return ROUTES.PROJECT_EXCELLENCE;
-  return ROUTES.OVERVIEW; // BD / unknown → default to BD overview
+  // Supervisors and executives of every module start on their role dashboard;
+  // the module pages stay one click away in the sidebar.
+  return ROUTES.MY_DASHBOARD;
 }
 
 function RequireAuth({ children }) {
@@ -130,9 +128,9 @@ function LandingFallback() {
 function LandingRedirectIfAuthed() {
   // Send signed-in users away from the marketing page back to their module home.
   const token = useAuthToken();
-  const { role, session } = useSession();
+  const { role } = useSession();
   if (!USE_MOCK && token) {
-    return <Navigate to={homeForRoleModule(role, session?.module)} replace/>;
+    return <Navigate to={homeForRole(role)} replace/>;
   }
   return <ScaleLandingPage/>;
 }
@@ -200,6 +198,7 @@ export default function AppRouter() {
 
       <Route element={<RequireAuth><App/></RequireAuth>}>
         <Route index                  element={<IndexRedirect/>}/>
+        <Route path={ROUTES.MY_DASHBOARD} element={<Suspense fallback={null}><MyDashboardPage/></Suspense>}/>
         <Route path={ROUTES.PIPELINE}  element={<DraftsPage/>}/>
         <Route path={ROUTES.SHORTLIST} element={<ShortlistPage/>}/>
 

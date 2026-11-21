@@ -38,6 +38,7 @@ import FinancialClosureTab from './closure/FinancialClosureTab.jsx';
 import WorkspaceSwitcherPanel from './WorkspaceSwitcherPanel.jsx';
 import VendorsTab from './vendors/VendorsTab.jsx';
 import IntegrationsTab from './integrations/IntegrationsTab.jsx';
+import LiveDashboard from '../shared/dashboard/LiveDashboard.jsx';
 
 // Real API wiring. Injectable so the dev preview (and tests) can drive the whole
 // portal with mock data — see ./_preview/ApprovalCenterPreview.jsx.
@@ -95,6 +96,7 @@ export const REAL_FETCHERS = {
 };
 
 const TABS = [
+  { key: 'overview',    label: 'Overview',         icon: Icon.grid },
   { key: 'approvals',   label: 'Approval Center',  icon: Icon.check },
   { key: 'launch',      label: 'Launch Approvals', icon: Icon.flag },
   { key: 'closure',     label: 'Financial Closure', icon: Icon.rupee },
@@ -111,7 +113,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     return p.workspace_name || p.tenant_name || p.company || '';
   })();
 
-  const [tab, setTab] = React.useState('approvals');
+  const [tab, setTab] = React.useState('overview');
   // Which Sites sub-tab to show; lets the KPI tiles deep-link (e.g. the
   // "Completed sites" tile jumps straight to the Completed filter).
   const [sitesFilter, setSitesFilter] = React.useState('active');
@@ -383,16 +385,15 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     return () => window.clearInterval(pollId);
   }, [reloadApprovals, loadSupervisors, loadExecutiveRequests, loadOrg, loadSites, loadLaunchQueue]);
 
-  const navItems = [
-    { ...TABS[0], count: approvalSites.length },
-    { ...TABS[1], count: launchActionable },
-    { ...TABS[2] }, // Financial Closure — count fetched inside the tab
-    { ...TABS[3], count: pendingAccessCount + executiveRequests.items.length + execAccessCount },
-    { ...TABS[4] },
-    { ...TABS[5] }, // Workspace Access tab
-    { ...TABS[6] }, // Vendors — vendor platform admin, counts load inside the tab
-    { ...TABS[7] }, // Integrations — NSO platform webhooks
-  ];
+  // Counts by tab key, not position, so adding a tab can't shift a badge onto
+  // its neighbour. Tabs without an entry (Financial Closure, Vendors, ...) load
+  // their own counts inside the tab.
+  const navCounts = {
+    approvals: approvalSites.length,
+    launch: launchActionable,
+    departments: pendingAccessCount + executiveRequests.items.length + execAccessCount,
+  };
+  const navItems = TABS.map((t) => (t.key in navCounts ? { ...t, count: navCounts[t.key] } : { ...t }));
 
   return (
     <div className="ac-root" data-theme={theme}
@@ -448,8 +449,8 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
           )}
         </div>
 
-        {/* ── Overview tiles ── */}
-        <div className="ac-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(212px, 1fr))', gap: 14, marginBottom: 24 }}>
+        {/* ── Overview tiles (the Overview tab draws its own live ones) ── */}
+        {tab !== 'overview' && <div className="ac-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(212px, 1fr))', gap: 14, marginBottom: 24 }}>
           <StatTile icon={Icon.pin} label="Total sites" count={sitesCount} tone="peach"
             loading={sites.status === 'loading'} caption="in the system" onClick={() => openSites('active')} />
           <StatTile icon={Icon.check} label="Awaiting approval" count={approvalSites.length} tone="slate"
@@ -459,10 +460,11 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
             loading={sites.status === 'loading'} caption={completedSites ? 'project done' : 'none yet'} onClick={() => openSites('completed')} />
           <StatTile icon={Icon.users} label="Pending requests" count={pendingAccessCount + execAccessCount} tone="blue"
             loading={pendingAccess.status === 'loading'} caption="workspace access" onClick={() => setTab('departments')} />
-        </div>
+        </div>}
 
           {/* ── Panels ── */}
           <div key={tab} className="ac-fade-in">
+            {tab === 'overview' && <LiveDashboard />}
             {tab === 'approvals' && (
               <ApprovalCenter data={approvalData} handlers={handlers} onRetry={() => reloadApprovals(false)} />
             )}
