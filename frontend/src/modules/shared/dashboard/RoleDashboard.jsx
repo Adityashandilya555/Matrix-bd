@@ -1,5 +1,7 @@
 // skipcq: JS-0833
 import React from 'react';
+import PhotoReel from './PhotoReel.jsx';
+import { cityPhotos } from './cityPhotos.js';
 import {
   Bars, Card, CardHead, ChipTabs, Donut, FreshnessBadge, Funnel, Heatmap, Ico, Legend, Source, SplitTrack, TONE, Track,
 } from './kit.jsx';
@@ -314,8 +316,8 @@ function Cities({ cities }) {
   return (
     <Card flush>
       <div style={{ position: 'relative', minHeight: 290, display: 'flex', flexWrap: 'wrap' }}>
-        <img className="dash-fade-right" src={PHOTO.cafe} alt="A bright café interior with plants and tables" />
-        <div style={{ position: 'relative', flex: '1 1 460px', padding: 26, display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+        <PhotoReel photos={cityPhotos(c.name)} label={`Photos of ${c.name}`} />
+        <div className="dash-reel-text" style={{ position: 'relative', flex: '0 1 620px', padding: 26, display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <CardHead icon="pin" tone="blue" title="City spotlight" sub={`${cities.length} cities · pick one`} />
           <div style={{ maxWidth: 560 }}>
             <ChipTabs label="City" value={i} onChange={setI} items={cities.map((x, k) => ({ key: k, label: x.name, count: x.launched + x.pipeline }))} />

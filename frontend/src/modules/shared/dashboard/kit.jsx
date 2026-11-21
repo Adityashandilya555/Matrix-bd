@@ -6,6 +6,8 @@ import './dashboard.css';
 // app has no chart library, and these are small enough not to need one.
 
 const PATHS = {
+  pause: <><path d="M9 5v14" /><path d="M15 5v14" /></>,
+  play: <path d="M7 5l12 7-12 7V5Z" />,
   pin: <><path d="M12 21s7-6.1 7-12a7 7 0 0 0-14 0c0 5.9 7 12 7 12Z" /><circle cx="12" cy="9" r="2.5" /></>,
   check: <path d="M20 6 9 17l-5-5" />,
   inbox: <><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></>,
