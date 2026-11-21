@@ -258,11 +258,11 @@
    3. Type tokens — three families, one role each
    ------------------------------------------------------------- */
 :root {
-  --zm-font-display: 'Instrument Serif', 'Fraunces', Georgia, serif;
+  --zm-font-display: 'Fraunces', 'Plus Jakarta Sans', Georgia, serif;
   /* The sidebar wordmark keeps its own face (RetailExpansion logo stays as is). */
   --zm-font-brand: 'Fraunces', 'Plus Jakarta Sans', Georgia, serif;
   --zm-font-serif: 'Instrument Serif', 'Newsreader', Georgia, serif;
-  --zm-font-body: 'Inter', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --zm-font-body: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
   --zm-font-mono: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
 
   /* Display sizes — for hero numbers, page titles */
@@ -449,6 +449,3 @@ kbd {
   padding: 1px 6px;
   border-radius: var(--zm-r-1);
 }
-/* Instrument Serif ships one weight (400). Never let the browser fake a bold
-   version of it: headings set in it read as intended at 400. */
-html { font-synthesis-weight: none; }

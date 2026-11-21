@@ -23,6 +23,13 @@ const SPAN = {
   compliance: 4, licences: 4, timeline: 4, money: 8, budget: 4, people: 4, workload: 4, activity: 4,
 };
 
+// A soft tint per card, matching its header icon, so cards don't read flat.
+const TINT = {
+  readiness: 'green', inbox: 'orange', launches: 'blue', openings: 'orange', modules: 'blue', cycle: 'orange',
+  funnel: 'purple', compliance: 'red', licences: 'green', timeline: 'purple', budget: 'blue', people: 'green',
+  workload: 'orange', activity: 'blue',
+};
+
 // Pack blocks into rows of 12 so every row ends flush: when the next block
 // does not fit, the last block of the row stretches to fill it.
 export function packRows(blocks) {
@@ -77,7 +84,7 @@ export default function RoleDashboard({ data, updatedAt, scope, onScope, viewer 
       </div>
       {d.empty && <div className="b-item" style={{ '--span': 12, '--span-md': 12 }}><Empty e={d.empty} /></div>}
       {blocks.map((b, i) => (
-        <div key={b.key} className="b-item" style={{ '--span': b.span, '--span-md': md[i].span }}>{b.el}</div>
+        <div key={b.key} className="b-item" data-tone={TINT[b.key]} style={{ '--span': b.span, '--span-md': md[i].span }}>{b.el}</div>
       ))}
     </div>
   );
@@ -98,10 +105,13 @@ function Hero({ d, updatedAt, scope, onScope, viewer }) {
   return (
     <section className="dash-card dash-hero2">
       <div className="dash-hero2-top">
+        <div className="dash-hero2-photo" aria-hidden="true">
+          <img src={PHOTO.hero} alt="" />
+        </div>
         <div className="dash-hero2-text">
-          <span className="dash-eyebrow" style={{ color: 'var(--zm-accent)' }}>{h.eyebrow}</span>
+          <span className="dash-eyebrow" style={{ color: '#E9C9A6' }}>{h.eyebrow}</span>
           <h1>{greeting(viewer)}</h1>
-          <p className="dash-sub" style={{ fontSize: 14.5 }}>{today} · {h.lede}</p>
+          <p style={{ margin: 0, fontSize: 14.5, color: '#E9DCCB' }}>{today} · {h.lede}</p>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginTop: 6 }}>
             {d.simulated && <span className="dash-pill" style={{ background: 'var(--zm-copper-soft)', color: 'var(--zm-copper)' }}>Simulated view</span>}
             {d.scopes && (
@@ -111,11 +121,8 @@ function Hero({ d, updatedAt, scope, onScope, viewer }) {
                 ))}
               </div>
             )}
-            <FreshnessBadge updatedAt={updatedAt} />
+            <FreshnessBadge updatedAt={updatedAt} onDark />
           </div>
-        </div>
-        <div className="dash-hero2-photo" aria-hidden="true">
-          <img src={PHOTO.hero} alt="" />
         </div>
       </div>
       {d.kpis.length > 0 && (
@@ -185,7 +192,7 @@ function Inbox({ inbox }) {
               <span className="dash-pill" style={{ background: t.bg, color: t.fg }}>{top.kind}</span>
               {top.age && <span className="dash-sub">{top.age}</span>}
             </div>
-            <span style={{ fontFamily: 'var(--zm-font-display)', fontSize: 26, lineHeight: 1.15 }}>{top.name}</span>
+            <span style={{ fontFamily: 'var(--zm-font-display)', fontWeight: 700, fontSize: 22, lineHeight: 1.2 }}>{top.name}</span>
             <span className="dash-sub"><span style={{ fontFamily: 'var(--zm-font-mono)' }}>{top.code}</span>{top.city ? ` · ${top.city}` : ''}</span>
           </article>
         </div>

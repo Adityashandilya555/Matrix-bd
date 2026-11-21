@@ -81,7 +81,7 @@
 .dash-head-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .dash-ico { width: 40px; height: 40px; border-radius: 13px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .dash-col { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.dash-title { margin: 0; font-family: var(--zm-font-display); font-weight: 400; font-size: 25px; line-height: 1.1; letter-spacing: -.005em; color: inherit; }
+.dash-title { margin: 0; font-family: var(--zm-font-display); font-weight: 700; font-size: 21px; letter-spacing: -.01em; color: inherit; }
 .dash-sub { margin: 0; font-size: 13px; color: var(--zm-fg-3); }
 .dash-card--dark .dash-sub, .dash-card--green .dash-sub { color: rgba(255,246,236,.72); }
 .dash-lbl { font-size: 13.5px; color: var(--zm-fg-2); }
@@ -288,14 +288,21 @@
 
 /* Greeting hero: text left, café photo right, KPI strip below. */
 .dash-hero2 { padding: 0; gap: 0; overflow: hidden; }
-.dash-hero2-top { display: flex; min-height: 210px; }
-.dash-hero2-text { flex: 1 1 60%; padding: 30px 32px 22px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.dash-hero2-text h1 { margin: 0; font-family: var(--zm-font-display); font-weight: 400; font-size: 46px; line-height: 1.02; letter-spacing: -.01em; }
-.dash-hero2-photo { position: relative; flex: 0 0 40%; min-height: 210px; }
-.dash-hero2-photo img {
-  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
-  -webkit-mask-image: linear-gradient(to left, #000 55%, transparent); mask-image: linear-gradient(to left, #000 55%, transparent);
+.dash-hero2-top { position: relative; display: flex; min-height: 250px; background: #24170F; }
+.dash-hero2-text { position: relative; z-index: 1; flex: 0 1 640px; padding: 34px 34px 28px; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; min-width: 0; color: #FFF6EC; }
+.dash-hero2-text h1 { margin: 0; font-family: var(--zm-font-display); font-weight: 800; font-size: 42px; line-height: 1.06; letter-spacing: -.02em; }
+/* The photo is the top section's background; a left-to-right espresso scrim
+   keeps the greeting readable (>= 4.5:1) over the lightest part of the image. */
+.dash-hero2-photo { position: absolute; inset: 0; overflow: hidden; }
+.dash-hero2-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 70% 45%; }
+.dash-hero2-photo::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(31,26,23,.94) 0%, rgba(31,26,23,.82) 34%, rgba(31,26,23,.38) 66%, rgba(31,26,23,.08) 100%),
+              linear-gradient(0deg, rgba(31,26,23,.45) 0%, transparent 45%);
 }
+.dash-hero2 .dash-seg { background: rgba(255,246,236,.14); }
+.dash-hero2 .dash-seg button { color: #FFF6EC; }
+.dash-hero2 .dash-seg button[aria-pressed="true"] { background: #FFF6EC; color: #24170F; }
 .dash-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--zm-line); }
 .dash-kpi { padding: 18px 24px 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .dash-kpi + .dash-kpi { border-left: 1px solid var(--zm-line); }
@@ -309,8 +316,8 @@
 .dash-seg button[aria-pressed="true"] { background: var(--zm-surface); color: var(--zm-fg); box-shadow: 0 1px 2px color-mix(in srgb, var(--zm-fg) 12%, transparent); }
 @media (max-width: 1180px) { .dash-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dash-kpi:nth-child(3) { border-left: 0; } .dash-kpi:nth-child(n+3) { border-top: 1px solid var(--zm-line); } }
 @media (max-width: 720px) {
-  .dash-hero2-photo { display: none; }
-  .dash-hero2-text h1 { font-size: 34px; }
+  .dash-hero2-photo::after { background: rgba(31,26,23,.78); }
+  .dash-hero2-text h1 { font-size: 32px; }
 }
 
 /* Card-stack inbox. */
@@ -337,3 +344,17 @@
 @keyframes dv-draw { from { stroke-dasharray: 2000; stroke-dashoffset: 2000; } to { stroke-dasharray: 2000; stroke-dashoffset: 0; } }
 .dv-draw { animation: dv-draw 1100ms var(--zm-ease-out) both; }
 @media (prefers-reduced-motion: reduce) { .dv-draw, .dv-stack-seg { animation: none !important; } }
+
+
+/* Subtle card tints: a soft wash from the top-right in the card's tone, so
+   cards don't read flat. Token-based, so roast dark gets the dark tints. */
+.b-item[data-tone="orange"] { --tint: var(--zm-copper-soft); }
+.b-item[data-tone="blue"]   { --tint: var(--zm-info-soft); }
+.b-item[data-tone="purple"] { --tint: var(--zm-plum-soft); }
+.b-item[data-tone="green"]  { --tint: var(--zm-success-soft); }
+.b-item[data-tone="red"]    { --tint: var(--zm-danger-soft); }
+.b-item[data-tone] > .dash-card:not(.dash-card--dark):not(.dash-card--green):not(.dash-card--flush) {
+  background:
+    radial-gradient(120% 80% at 100% 0%, color-mix(in srgb, var(--tint) 85%, transparent) 0%, transparent 58%),
+    linear-gradient(180deg, color-mix(in srgb, var(--tint) 30%, var(--zm-surface)) 0%, var(--zm-surface) 60%);
+}
