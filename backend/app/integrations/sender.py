@@ -324,7 +324,7 @@ async def deliver(client: httpx.AsyncClient, row: Any) -> str:
     attempts = await _refresh_claim(row.id)
     if attempts is None:
         return "skipped"
-    row = SimpleNamespace(**{**row._mapping, "attempts": attempts})
+    row.attempts = attempts
     outcome = await post_event(client, endpoint.endpoint_url, row, secrets)
     await _record(row, outcome)
     return outcome.status
@@ -344,10 +344,14 @@ async def reclaim_stale() -> int:
         return result.rowcount or 0
 
 
-async def claim(batch: int) -> list[Any]:
-    """Claim up to ``batch`` due rows for this worker (committed on return)."""
+async def claim(batch: int) -> list[SimpleNamespace]:
+    """Claim up to ``batch`` due rows for this worker (committed on return).
+
+    Plain mutable objects, so ``deliver`` can record the attempt count on them.
+    """
     async with SessionLocal() as db, db.begin():
-        return list((await db.execute(_CLAIM_SQL, {"worker": WORKER_ID, "batch": batch})).all())
+        result = await db.execute(_CLAIM_SQL, {"worker": WORKER_ID, "batch": batch})
+        return [SimpleNamespace(**dict(m)) for m in result.mappings()]
 
 
 async def purge_sent(limit: int = PURGE_BATCH) -> int:
