@@ -37,6 +37,7 @@ import { getLaunchQueue } from '../../services/api/launchApprovalApi.js';
 import FinancialClosureTab from './closure/FinancialClosureTab.jsx';
 import WorkspaceSwitcherPanel from './WorkspaceSwitcherPanel.jsx';
 import VendorsTab from './vendors/VendorsTab.jsx';
+import IntegrationsTab from './integrations/IntegrationsTab.jsx';
 
 // Real API wiring. Injectable so the dev preview (and tests) can drive the whole
 // portal with mock data — see ./_preview/ApprovalCenterPreview.jsx.
@@ -101,6 +102,7 @@ const TABS = [
   { key: 'sites',       label: 'Sites',             icon: Icon.pin },
   { key: 'workspace',   label: 'Workspace Access',  icon: Icon.external },
   { key: 'vendors',     label: 'Vendors',           icon: Icon.box },
+  { key: 'integrations', label: 'Integrations',     icon: Icon.external },
 ];
 
 export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, workspaceName }) {
@@ -389,6 +391,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
     { ...TABS[4] },
     { ...TABS[5] }, // Workspace Access tab
     { ...TABS[6] }, // Vendors — vendor platform admin, counts load inside the tab
+    { ...TABS[7] }, // Integrations — NSO platform webhooks
   ];
 
   return (
@@ -481,6 +484,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
             )}
             {tab === 'workspace' && <WorkspaceSwitcherPanel />}
             {tab === 'vendors' && <VendorsTab />}
+            {tab === 'integrations' && <IntegrationsTab />}
           </div>
         </div>
       </main>

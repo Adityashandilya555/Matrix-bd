@@ -21,7 +21,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.config import settings
 from app.core.ratelimit import rate_limit
 from app.db.session import engine
-from app.routers import audit, auth, bd, business_admin, delegations, design, financial_closure, launch_approval, legal, loi, notifications, nso, project, project_excellence, sites, staging, supervisor_codes, tenancy, users, vendor_admin, vendor_portal
+from app.routers import audit, auth, bd, business_admin, delegations, design, financial_closure, integrations, launch_approval, legal, loi, notifications, nso, project, project_excellence, sites, staging, supervisor_codes, tenancy, users, vendor_admin, vendor_portal
 
 
 # ── Structured / JSON logging ─────────────────────────────────────────
@@ -172,6 +172,49 @@ async def _email_drain_loop() -> None:
         except Exception:
             log.exception("email_drain: unexpected error in drain run")
         await asyncio.sleep(interval)
+
+
+async def _verify_integration_tables() -> bool:
+    """True when the NSO integration tables exist.
+
+    If they don't (their migration failed), capture is switched off for this
+    process so ordinary site saves keep working; only the integration is lost.
+    """
+    from app.integrations import capture
+
+    async with engine.connect() as conn:
+        res = await conn.execute(text(
+            "SELECT to_regclass('public.integration_endpoints') IS NOT NULL"
+            " AND to_regclass('public.integration_outbox') IS NOT NULL"
+            " AND to_regclass('public.integration_deliveries') IS NOT NULL"
+        ))
+        ready = bool(res.scalar())
+    if not ready:
+        capture.set_active(False)
+        log.error("startup: NSO integration tables missing (migration 20261120 failed?) — "
+                  "capture and sender are OFF; site saves are unaffected")
+    return ready
+
+
+# ── NSO webhook sender ─────────────────────────────────────────────────────
+
+def _start_integration_sender() -> asyncio.Task | None:
+    """Start the NSO webhook sender when switched on and a key is configured.
+
+    Off by default: events still queue for enabled workspaces, nothing is sent.
+    """
+    from app.integrations import secrets as integration_secrets
+    from app.integrations.sender import run_forever
+
+    if not settings.integration_sender_enabled:
+        log.info("startup: INTEGRATION_SENDER_ENABLED is off — NSO webhooks are not sent")
+        return None
+    if not integration_secrets.is_configured():
+        log.error("startup: INTEGRATION_SENDER_ENABLED but INTEGRATION_SECRET_KEY is missing/invalid — sender not started")
+        return None
+    return asyncio.create_task(run_forever(
+        settings.integration_sender_interval_secs, settings.integration_http_timeout_secs,
+    ))
 
 
 # ── Startup migrations ────────────────────────────────────────────────────────
@@ -502,13 +545,17 @@ async def lifespan(app: FastAPI):
             "in notification_outbox and will NOT be delivered (#112)"
         )
 
+    integration_ready = await _verify_integration_tables()
+    sender_task = _start_integration_sender() if integration_ready else None
+
     yield
 
     # ── Graceful shutdown.
-    if drain_task:
-        drain_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await drain_task
+    for task in (drain_task, sender_task):
+        if task:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
 
     from app.services.storage_service import aclose_storage_client
     await aclose_storage_client()
@@ -598,7 +645,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 ROUTERS = (
     auth, bd, legal, design, project, project_excellence, financial_closure, nso,
     launch_approval, loi, staging, sites, audit, notifications, tenancy, users,
-    delegations, business_admin, supervisor_codes, vendor_admin, vendor_portal,
+    delegations, business_admin, supervisor_codes, vendor_admin, vendor_portal, integrations,
 )
 
 for router_module in ROUTERS:
