@@ -161,6 +161,21 @@ describe('LiveDashboard', () => {
     expect(widths).toEqual([50, 50, 0, 100]);
   });
 
+  it('draws the last summary at once on return, and drops it on sign-out', async () => {
+    const { setAuthToken, clearAuthToken } = await import('../../../../services/api/authToken.js');
+    const b64 = (o) => btoa(JSON.stringify(o)).replace(/=+$/, '');
+    setAuthToken(`${b64({ alg: 'none' })}.${b64({ sub: 'u-1' })}.x`);
+    const getDashboardVersion = vi.fn().mockResolvedValue({ changed: false, etag: '"v1"' });
+    const first = render(<LiveDashboard deps={{ getDashboardSummary: vi.fn().mockResolvedValue(ADMIN), getDashboardVersion }} />);
+    await screen.findByText(/^Good (morning|afternoon|evening)/);
+    first.unmount();
+    // Second visit: the summary request never answers, yet the page draws.
+    render(<LiveDashboard deps={{ getDashboardSummary: () => new Promise(() => {}), getDashboardVersion }} />);
+    expect(screen.getByText(/^Good (morning|afternoon|evening)/)).toBeTruthy();
+    clearAuthToken();
+    expect(Object.keys(window.sessionStorage).some((k) => k.startsWith('zm:dash:'))).toBe(false);
+  });
+
   it('shows a retry card when the first load fails', async () => {
     const getDashboardSummary = vi.fn().mockRejectedValue(new Error('Network down'));
     const getDashboardVersion = vi.fn().mockResolvedValue({ changed: false, etag: '"v1"' });

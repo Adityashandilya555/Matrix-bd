@@ -28,7 +28,12 @@ function _writePersisted(token) {
   if (typeof window === 'undefined') return;
   try {
     if (token) window.sessionStorage.setItem(STORAGE_KEY, token);
-    else       window.sessionStorage.removeItem(STORAGE_KEY);
+    else {
+      window.sessionStorage.removeItem(STORAGE_KEY);
+      // Signed out: drop the cached dashboard summaries too (hooks/useDashboard.js).
+      Object.keys(window.sessionStorage).filter((k) => k.startsWith('zm:dash:'))
+        .forEach((k) => window.sessionStorage.removeItem(k));
+    }
   } catch { /* incognito/quota — best-effort only */ }
 }
 
