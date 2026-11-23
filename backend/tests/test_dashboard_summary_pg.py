@@ -236,3 +236,56 @@ async def test_nso_summary_and_version(engine, maker):
         ), {"t": ids["tenant"], "u": ids["bd_sup"]})
     async with maker() as db:
         assert await svc.get_version(db, str(ids["tenant"])) != v2
+
+
+def _queue(payload, key):
+    return next((q["count"] for q in payload["inbox"]["queues"] if q["key"] == key), 0)
+
+
+async def test_admin_signups_count_only_pending_module_requests(engine, maker):
+    ids = await _world(engine)
+    async with engine.begin() as c:
+        for notes in ("pending_module:legal", None):  # a deactivated supervisor has no pending_module note
+            u = uuid.uuid4()
+            await c.execute(_INSERT_USER, {"id": u, "t": ids["tenant"], "email": f"{u.hex[:12]}@example.com",
+                                           "name": "sup", "role": "supervisor", "active": False})
+            await c.execute(text("update users set notes = :n where id = :u"), {"n": notes, "u": u})
+    async with maker() as db:
+        out = await svc.build_summary(db, _user(ids, "admin", "business_admin"))
+    assert _queue(out, "supervisor_signups") == 1
+
+
+async def test_project_tiles_and_executive_delegation_modules(engine, maker):
+    ids = await _world(engine)
+    t = ids["tenant"]
+    async with engine.begin() as c:
+        await c.execute(text("update sites set design_status = 'approved' where id in (:a, :b)"),
+                        {"a": ids["s_approved"], "b": ids["s_draft"]})
+        # A finished project is never "to allocate".
+        await c.execute(text("update sites set project_status = 'done' where id = :s"), {"s": ids["s_draft"]})
+        await c.execute(text("insert into project_reviews (site_id, tenant_id, initialization_status) values (:s, :t, 'proposed')"),
+                        {"s": ids["s_approved"], "t": t})
+        await c.execute(text("insert into site_budgets (tenant_id, site_id, phase, status) values (:t, :s, 'closure', 'draft')"),
+                        {"s": ids["s_approved"], "t": t})
+        # The executive only does financial closure on this site, not project work.
+        await c.execute(_INSERT_DELEGATION, {"t": t, "s": ids["s_approved"], "m": "financial_closure",
+                                             "u": ids["bd_exec"], "by": ids["bd_sup"], "revoked": None})
+    async with maker() as db:
+        sup = await svc.build_summary(db, _user(ids, "bd_sup", "supervisor", "project"))
+        ex = await svc.build_summary(db, _user(ids, "bd_exec", "executive", "project"))
+    assert _tile(sup, "allocate") == 1
+    assert _tile(ex, "closure") == 1
+    assert _tile(ex, "init") == 0     # proposed start date, but no project delegation
+
+
+async def test_nso_funnel_counts_unallocated_sites_and_planned_months(engine, maker):
+    ids = await _world(engine)
+    async with engine.begin() as c:
+        await c.execute(text("update sites set finance_status = 'approved', ca_code = 'CA-' || left(id::text, 6) "
+                             "where id in (:a, :b)"), {"a": ids["s_legal"], "b": ids["s_approved"]})
+    async with maker() as db:
+        nso = await svc.build_nso_summary(db, _user(ids, "legal_exec", "supervisor", "nso", real_role="executive"))
+        admin = await svc.build_summary(db, _user(ids, "admin", "business_admin"))
+    steps = {st["key"]: st["count"] for st in nso["funnel"]["steps"]}
+    assert steps["stage_one"] == 1 and steps["stage_two"] == 1   # s_approved has no NSO row yet
+    assert sum(m["planned"] for m in admin["launches"]["planned_by_month"]) == 1

@@ -33,8 +33,12 @@ export function useDashboard({ scope = 'module', nso = false } = {}, deps = {}) 
     }
   }, [scope, nso]);
 
+  const inFlightRef = React.useRef(false);
   const check = React.useCallback(async () => {
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    // visibilitychange and focus often fire together: one check at a time.
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     try {
       const { changed, etag } = await apiRef.current.getDashboardVersion(etagRef.current);
       const first = etagRef.current === null;
@@ -44,13 +48,23 @@ export function useDashboard({ scope = 'module', nso = false } = {}, deps = {}) 
       if ((changed && !first) || failedRef.current) await load();
     } catch {
       // A failed check is retried on the next tick; the data on screen stays.
+    } finally {
+      inFlightRef.current = false;
     }
   }, [load]);
 
   React.useEffect(() => {
     setState((s) => ({ ...s, status: s.data ? s.status : 'loading' }));
-    load();
-    check();
+    // Take the version first, then the summary, so a change landing between
+    // the two shows up on the next check instead of being missed.
+    let alive = true;
+    (async () => {
+      try {
+        const { etag } = await apiRef.current.getDashboardVersion(null);
+        if (alive) etagRef.current = etag;
+      } catch { /* the first poll will take it */ }
+      if (alive) load();
+    })();
     const id = window.setInterval(check, POLL_MS);
     const onVisible = () => { if (document.visibilityState === 'visible') check(); };
     const onChanged = () => load();
@@ -58,6 +72,7 @@ export function useDashboard({ scope = 'module', nso = false } = {}, deps = {}) 
     window.addEventListener('focus', onVisible);
     window.addEventListener(SITE_DATA_CHANGED_EVENT, onChanged);
     return () => {
+      alive = false;
       window.clearInterval(id);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);

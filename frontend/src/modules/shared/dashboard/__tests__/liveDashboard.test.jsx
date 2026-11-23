@@ -71,6 +71,13 @@ describe('toViewModel', () => {
     expect(vm.inbox.items[0]).toMatchObject({ id: 's1', code: 'BT-1', kind: 'Deliverables to review', age: '2 days' });
   });
 
+  it('takes planned openings per month from the server, not the short list', () => {
+    const now = new Date();
+    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
+    const vm = toViewModel({ ...ADMIN, launches: { by_month: [], upcoming: [], planned_by_month: [{ month: next, planned: 12 }] } });
+    expect(vm.launches.ahead[0][1]).toBe(12);
+  });
+
   it('lays activity out as 7 days × 12 weeks with levels 0-3', () => {
     const today = new Date(Date.UTC(2026, 10, 20));
     const cells = activityCells([{ date: '2026-11-20', count: 9 }], today);

@@ -181,6 +181,13 @@ def _rel(model, *conds_fn):
     return exists().where(a.site_id == S.id, *conds)
 
 
+def _delegated_to(uid: Optional[str], module: str):
+    """The caller holds an active delegation for this site in this module."""
+    return _rel(models.SiteDelegation, lambda d: (
+        d.tenant_id == S.tenant_id, d.revoked_at.is_(None), d.module == module, d.delegate_user_id == uid,
+    ))
+
+
 def _active_delegation(module: str):
     return _rel(models.SiteDelegation, lambda d: (d.tenant_id == S.tenant_id, d.revoked_at.is_(None), d.module == module))
 
@@ -315,7 +322,8 @@ def _tiles_design_exec(_today, _uid: Optional[str]) -> list[TileDef]:
 
 def _tiles_project_sup(today, _uid: Optional[str]) -> list[TileDef]:
     return [
-        ("allocate", "To allocate", "design approved", ~_active_delegation("project"), True),
+        ("allocate", "To allocate", "design approved",
+         and_(~_active_delegation("project"), S.project_status != "done", S.is_launched.is_(False)), True),
         ("approvals", "Approvals pending", "dates and quality audits",
          _project(lambda r: (or_(r.expected_completion_status == "submitted", r.quality_audit_status == "submitted"),)), True),
         ("overdue", "Overdue", "past expected completion",
@@ -325,15 +333,18 @@ def _tiles_project_sup(today, _uid: Optional[str]) -> list[TileDef]:
     ]
 
 
-def _tiles_project_exec(_today, _uid: Optional[str]) -> list[TileDef]:
+def _tiles_project_exec(_today, uid: Optional[str]) -> list[TileDef]:
+    # A financial-closure-only delegate must not get project tasks, and vice
+    # versa: each tile counts the delegation module it acts on.
+    project, closure = _delegated_to(uid, "project"), _delegated_to(uid, "financial_closure")
     return [
         ("init", "Start date to confirm", "proposed by supervisor",
-         _project(lambda r: (r.initialization_status == "proposed",)), True),
+         and_(project, _project(lambda r: (r.initialization_status == "proposed",))), True),
         ("completion", "Completion date due", "set the expected finish",
-         _project(lambda r: (r.initialization_status == "approved", r.expected_completion_status.in_(("pending", "rejected")))), True),
+         and_(project, _project(lambda r: (r.initialization_status == "approved", r.expected_completion_status.in_(("pending", "rejected"))))), True),
         ("qa", "QA inspection due", "visit date set",
-         _project(lambda r: (r.mid_project_visit_date.isnot(None), r.quality_audit_status.in_(("pending", "rejected")))), True),
-        ("closure", "Closure budgets to fill", "financial closure", _budget("closure", "draft", "rejected"), True),
+         and_(project, _project(lambda r: (r.mid_project_visit_date.isnot(None), r.quality_audit_status.in_(("pending", "rejected"))))), True),
+        ("closure", "Closure budgets to fill", "financial closure", and_(closure, _budget("closure", "draft", "rejected")), True),
     ]
 
 
@@ -347,13 +358,14 @@ def _tiles_project_excellence_sup(_today, _uid: Optional[str]) -> list[TileDef]:
     ]
 
 
-def _tiles_project_excellence_exec(_today, _uid: Optional[str]) -> list[TileDef]:
+def _tiles_project_excellence_exec(_today, uid: Optional[str]) -> list[TileDef]:
+    pe, qa = _delegated_to(uid, "project_excellence"), _delegated_to(uid, "quality_audit")
     return [
-        ("fill", "Budgets to fill", "draft or sent back", _budget("gfc", "draft", "rejected"), True),
-        ("review", "Awaiting review", "with supervisor or admin", _budget("gfc", "pending_supervisor", "pending_admin"), False),
+        ("fill", "Budgets to fill", "draft or sent back", and_(pe, _budget("gfc", "draft", "rejected")), True),
+        ("review", "Awaiting review", "with supervisor or admin", and_(pe, _budget("gfc", "pending_supervisor", "pending_admin")), False),
         ("qa", "Quality audits due", "pending or sent back",
-         _project(lambda r: (r.quality_audit_status.in_(("pending", "rejected")),)), True),
-        ("approved", "Budgets approved", "done", _budget("gfc", "approved"), False),
+         and_(qa, _project(lambda r: (r.quality_audit_status.in_(("pending", "rejected")),))), True),
+        ("approved", "Budgets approved", "done", and_(pe, _budget("gfc", "approved")), False),
     ]
 
 
@@ -387,12 +399,6 @@ def _tiles(module: str, kind: str, uid: Optional[str] = None) -> list[TileDef]:
     """The four hero tiles for this module and role."""
     builder = _TILE_BUILDERS.get((module, kind)) or _TILE_BUILDERS[("nso", "supervisor")]
     return builder(func.current_date(), uid)
-
-
-def _module_awaiting(module: str, kind: str = "supervisor", uid: Optional[str] = None):
-    """The site needs this role to act (the union of its action tiles)."""
-    preds = [p for _k, _l, _c, p, action in _tiles(module, kind, uid) if action]
-    return or_(*preds)
 
 
 def _delegated(ctx: DashContext, who):
@@ -449,9 +455,6 @@ async def _first_row(db: AsyncSession, stmt) -> dict[str, Any]:
     return dict(row) if row else {}
 
 
-def _src(*cols: str) -> list[str]:
-    return list(cols)
-
 
 async def _kpis(db: AsyncSession, ctx: DashContext) -> dict:
     if ctx.kind != "admin":
@@ -473,7 +476,7 @@ async def _kpis(db: AsyncSession, ctx: DashContext) -> dict:
         {"key": "open", "label": "In progress", "value": get("open"), "caption": "still moving"},
     ]
     await _admin_kpi_series(db, ctx, tiles)
-    return {"tiles": tiles, "closed": get("closed"), "source": _src("sites.status", "sites.is_launched")}
+    return {"tiles": tiles, "closed": get("closed"), "source": ["sites.status", "sites.is_launched"]}
 
 
 _KPI_SERIES_SQL = text("""
@@ -483,7 +486,9 @@ _KPI_SERIES_SQL = text("""
            count(s.id) FILTER (WHERE s.created_at < w.week + interval '7 days'
                                  AND (s.launched_at IS NULL OR s.launched_at >= w.week + interval '7 days')
                                  AND (s.rejected_at IS NULL OR s.rejected_at >= w.week + interval '7 days')
-                                 AND (s.archived_at IS NULL OR s.archived_at >= w.week + interval '7 days')) AS open
+                                 AND (s.archived_at IS NULL OR s.archived_at >= w.week + interval '7 days')
+                                 AND NOT (s.status = 'legal_rejected'
+                                          AND s.legal_rejected_at < w.week + interval '7 days')) AS open
       FROM generate_series(date_trunc('week', now()) - interval '11 weeks', date_trunc('week', now()), interval '1 week') AS w(week)
       LEFT JOIN sites s ON s.tenant_id = :tid
      GROUP BY w.week
@@ -512,18 +517,23 @@ async def _admin_kpi_series(db: AsyncSession, ctx: DashContext, tiles: list[dict
 async def _role_kpis(db: AsyncSession, ctx: DashContext) -> dict:
     """The four tiles for a supervisor or executive: the module's own work."""
     defs = _tiles(ctx.module or "bd", ctx.kind, ctx.user_id)
-    stmt = select(*[func.count().filter(pred).label(key) for key, _l, _c, pred, _a in defs]).where(*site_filters(ctx))
+    # Action tiles use the same closed-site filter as _action_inbox, so a tile
+    # never counts work that "Waiting on you" can't show.
+    stmt = select(*[
+        func.count().filter(and_(pred, S.status.notin_(_CLOSED)) if action else pred).label(key)
+        for key, _l, _c, pred, action in defs
+    ]).where(*site_filters(ctx))
     r = await _first_row(db, stmt)
     tiles = [{"key": key, "label": label, "value": int(r.get(key) or 0), "caption": caption}
              for key, label, caption, _p, _a in defs]
-    return {"tiles": tiles, "source": _src(f"{ctx.module} queues")}
+    return {"tiles": tiles, "source": [f"{ctx.module} queues"]}
 
 
 async def _bd_funnel(db: AsyncSession, ctx: DashContext) -> dict:
     cols = [func.count().filter(col.isnot(None)).label(key) for key, _label, col in _BD_STEPS]
     r = await _first_row(db, select(*cols).where(*site_filters(ctx)))
     steps = [{"key": k, "label": lbl, "count": int(r.get(k) or 0)} for k, lbl, _c in _BD_STEPS]
-    return {"steps": steps, "source": _src("sites.*_at")}
+    return {"steps": steps, "source": ["sites.*_at"]}
 
 
 def _stage_column(module: str):
@@ -542,15 +552,19 @@ def _stage_column(module: str):
 async def _module_funnel(db: AsyncSession, ctx: DashContext) -> dict:
     module = ctx.module or ""
     col, joined = _stage_column(module)
+    order = _MODULE_STAGES.get(module, ())
+    if joined is not None:
+        # Outer join: a site in the module queue without a review row yet (not
+        # allocated) is at the first stage, as the "to allocate" tiles count it.
+        col = func.coalesce(col, literal(order[0] if order else "pending"))
     stmt = select(col.label("stage"), func.count().label("n")).select_from(S)
     if joined is not None:
-        stmt = stmt.join(joined, and_(joined.site_id == S.id, joined.tenant_id == S.tenant_id))
+        stmt = stmt.outerjoin(joined, and_(joined.site_id == S.id, joined.tenant_id == S.tenant_id))
     stmt = stmt.where(*site_filters(ctx)).group_by(col)
     counts = {row[0]: int(row[1]) for row in (await db.execute(stmt)).all()}
-    order = _MODULE_STAGES.get(module, ())
     keys = list(order) + sorted(k for k in counts if k and k not in order)
     steps = [{"key": k, "label": _STAGE_LABELS.get(k, k.replace("_", " ").title()), "count": counts.get(k, 0)} for k in keys]
-    return {"steps": steps, "module": module, "source": _src(f"{module} current stage")}
+    return {"steps": steps, "module": module, "source": [f"{module} current stage"]}
 
 
 _MODULE_STATUS_COLUMNS: tuple[tuple[str, str, Any], ...] = (
@@ -591,7 +605,7 @@ async def _modules(db: AsyncSession, ctx: DashContext) -> dict:
     for key, label, _c in wanted:
         statuses: list[dict[str, Any]] = sorted(grouped.get(key, []), key=_count_of, reverse=True)
         items.append({"key": key, "label": label, "statuses": statuses})
-    return {"items": items, "source": _src(*(f"sites.{c.key}" for _k, _l, c in wanted))}
+    return {"items": items, "source": [*(f"sites.{c.key}" for _k, _l, c in wanted)]}
 
 
 async def _cycle_times(db: AsyncSession, ctx: DashContext) -> dict:
@@ -606,7 +620,7 @@ async def _cycle_times(db: AsyncSession, ctx: DashContext) -> dict:
     for (k1, l1, _a), (k2, l2, _b) in pairs:
         v = r.get(f"{k1}__{k2}")
         steps.append({"from": k1, "to": k2, "label": f"{l1} → {l2}", "median_days": round(float(v), 1) if v is not None else None})
-    return {"steps": steps, "source": _src("sites.*_at")}
+    return {"steps": steps, "source": ["sites.*_at"]}
 
 
 async def _cities(db: AsyncSession, ctx: DashContext) -> dict:
@@ -629,7 +643,7 @@ async def _cities(db: AsyncSession, ctx: DashContext) -> dict:
          "rent_psf": round(float(r), 1) if r is not None else None}
         for c, n, lc, p, r in (await db.execute(stmt)).all()
     ]
-    return {"items": items, "source": _src("sites.city", "sites.expected_rent", "sites.area_sqft")}
+    return {"items": items, "source": ["sites.city", "sites.expected_rent", "sites.area_sqft"]}
 
 
 async def _launches(db: AsyncSession, ctx: DashContext) -> dict:
@@ -647,12 +661,26 @@ async def _launches(db: AsyncSession, ctx: DashContext) -> dict:
         .where(*site_filters(ctx), S.is_launched.is_(False), n.launch_date.isnot(None), n.launch_date >= func.current_date())
         .order_by(n.launch_date).limit(8)
     )
+    pmonth = func.date_trunc("month", n.launch_date)
+    planned_months = (
+        select(pmonth.label("m"), func.count())
+        .select_from(S).join(n, and_(n.site_id == S.id, n.tenant_id == S.tenant_id))
+        .where(*site_filters(ctx), S.is_launched.is_(False), n.launch_date >= func.current_date(),
+               n.launch_date < func.current_date() + text("interval '4 months'"))
+        .group_by(pmonth).order_by(pmonth)
+    )
     by_month = [{"month": m.date().isoformat() if hasattr(m, "date") else str(m), "opened": int(c)} for m, c in (await db.execute(opened)).all()]
+    # Totals per month for the chart; `upcoming` stays a short list of names.
+    planned_by_month = [
+        {"month": m.date().isoformat() if hasattr(m, "date") else str(m), "planned": int(c)}
+        for m, c in (await db.execute(planned_months)).all()
+    ]
     upcoming = [
         {"site_id": str(i), "name": nm, "city": c, "launch_date": d.isoformat() if isinstance(d, date) else str(d)}
         for i, nm, c, d in (await db.execute(planned)).all()
     ]
-    return {"by_month": by_month, "upcoming": upcoming, "source": _src("sites.launched_at", "nso_reviews.launch_date")}
+    return {"by_month": by_month, "planned_by_month": planned_by_month, "upcoming": upcoming,
+            "source": ["sites.launched_at", "nso_reviews.launch_date"]}
 
 
 async def _compliance(db: AsyncSession, ctx: DashContext) -> dict:
@@ -685,11 +713,11 @@ async def _compliance(db: AsyncSession, ctx: DashContext) -> dict:
          "deadline": d.isoformat() if isinstance(d, date) else str(d)}
         for i, code, nm, c, d in (await db.execute(rows)).all()
     ]
-    out["source"] = _src("approvals.loi_deadline", "sites.legal_dd_status", "sites.status")
+    out["source"] = ["approvals.loi_deadline", "sites.legal_dd_status", "sites.status"]
     if not ctx.is_bd:
         for key in ("loi_overdue", "loi_due_7d", "loi_items"):
             out.pop(key, None)
-        out["source"] = _src("sites.legal_dd_status", "sites.status")
+        out["source"] = ["sites.legal_dd_status", "sites.status"]
     return out
 
 
@@ -706,12 +734,13 @@ async def _activity(db: AsyncSession, ctx: DashContext) -> dict:
         stmt = stmt.where(al.site_id.in_(_scoped_ids(ctx)))
     stmt = stmt.group_by(day).order_by(day)
     days = [{"date": d.date().isoformat() if hasattr(d, "date") else str(d), "count": int(c)} for d, c in (await db.execute(stmt)).all()]
-    return {"days": days, "window_days": _ACTIVITY_DAYS, "source": _src("audit_logs.created_at")}
+    return {"days": days, "window_days": _ACTIVITY_DAYS, "source": ["audit_logs.created_at"]}
 
 
 _ADMIN_INBOX_SQL = text("""
     SELECT 'supervisor_signups' AS key, count(*) AS n, min(created_at) AS oldest
       FROM users WHERE tenant_id = :tid AND role = 'supervisor' AND is_active = false
+       AND notes LIKE 'pending_module:%'
     UNION ALL
     SELECT 'executive_requests', count(*), min(created_at)
       FROM supervisor_executive_requests WHERE tenant_id = :tid AND status = 'pending'
@@ -765,7 +794,7 @@ async def _admin_inbox(db: AsyncSession, ctx: DashContext) -> dict:
         {"key": k, "label": _INBOX_LABELS.get(k, k), "count": int(n or 0), "oldest_days": _age_days(o, now)}
         for k, n, o in (await db.execute(_ADMIN_INBOX_SQL, {"tid": ctx.tenant_id})).all()
     ]
-    return {"queues": queues, "total": sum(q["count"] for q in queues), "source": _src("admin queues")}
+    return {"queues": queues, "total": sum(q["count"] for q in queues), "source": ["admin queues"]}
 
 
 async def _action_inbox(db: AsyncSession, ctx: DashContext) -> dict:
@@ -787,7 +816,7 @@ async def _action_inbox(db: AsyncSession, ctx: DashContext) -> dict:
         {"site_id": str(i), "code": code or "", "name": nm, "city": c, "reason": why, "waiting_days": _age_days(u, now)}
         for i, code, nm, c, why, u in (await db.execute(rows)).all()
     ]
-    return {"total": int(total), "items": items, "source": _src(f"{ctx.module} queues", "sites.updated_at")}
+    return {"total": int(total), "items": items, "source": [f"{ctx.module} queues", "sites.updated_at"]}
 
 
 _PEOPLE_SQL = text("""
@@ -805,7 +834,7 @@ async def _people(db: AsyncSession, ctx: DashContext) -> dict:
     return {
         "seat_limit": int(seat_limit) if seat_limit is not None else None,
         "roles": [{"role": r, "active": int(a or 0), "inactive": int(i or 0)} for r, a, i, _limit in rows],
-        "source": _src("users.role", "users.is_active", "tenants.seat_limit"),
+        "source": ["users.role", "users.is_active", "tenants.seat_limit"],
     }
 
 
@@ -844,7 +873,7 @@ async def _workload(db: AsyncSession, ctx: DashContext) -> dict:
         )
     stmt = stmt.group_by(u.id, u.name).order_by(text("n DESC")).limit(_TOP_N)
     items = [{"user_id": str(i), "name": nm, "open_sites": int(n)} for i, nm, n in (await db.execute(stmt)).all()]
-    return {"items": items, "source": _src("sites.assigned_to", "site_delegations")}
+    return {"items": items, "source": ["sites.assigned_to", "site_delegations"]}
 
 
 async def _money(db: AsyncSession, ctx: DashContext) -> dict:
@@ -863,7 +892,7 @@ async def _money(db: AsyncSession, ctx: DashContext) -> dict:
     return {
         **{k: float(r.get(k) or 0) for k in ("rent_live", "rent_pipeline", "finance_approved", "finance_pending")},
         "budgets": [{"phase": p, "total": float(t or 0), "sites": int(n)} for p, t, n in budgets],
-        "source": _src("sites.expected_rent", "sites.finance_amount", "site_budgets.budget_total"),
+        "source": ["sites.expected_rent", "sites.finance_amount", "site_budgets.budget_total"],
     }
 
 
@@ -927,7 +956,7 @@ async def _executive_payload(db: AsyncSession, ctx: DashContext) -> dict:
             "notice": {"title": "NSO is run by supervisors",
                        "body": "New store openings are handled by NSO supervisors. Ask your supervisor for NSO "
                                "supervisor access if you need to work on a store opening.",
-                       "source": _src("routers/nso.py")},
+                       "source": ["routers/nso.py"]},
             "activity": await _activity(db, ctx),
         }
     out: dict[str, Any] = {
@@ -951,17 +980,17 @@ async def build_summary(db: AsyncSession, user: dict, scope: str = "module") -> 
         sections = await _supervisor_payload(db, ctx)
     else:
         sections = await _executive_payload(db, ctx)
+    scope = ctx.scope if ctx.kind == "supervisor" else ("tenant" if ctx.kind == "admin" else "personal")
+    return _envelope(ctx, ctx.module if ctx.kind != "admin" else None, scope, sections)
+
+
+def _envelope(ctx: DashContext, module: Optional[str], scope: str, sections: dict) -> dict:
+    """Wrap the sections in the payload header both summary routes share."""
     as_of = datetime.now(timezone.utc).isoformat()
     for section in sections.values():
         section.setdefault("as_of", as_of)
-    return {
-        "role": ctx.kind,
-        "module": ctx.module if ctx.kind != "admin" else None,
-        "scope": ctx.scope if ctx.kind == "supervisor" else ("tenant" if ctx.kind == "admin" else "personal"),
-        "simulated": ctx.simulated,
-        "generated_at": as_of,
-        **sections,
-    }
+    return {"role": ctx.kind, "module": module, "scope": scope, "simulated": ctx.simulated,
+            "generated_at": as_of, **sections}
 
 
 # ── Change detector ──────────────────────────────────────────────────────────
@@ -997,6 +1026,11 @@ _VERSION_SQL = text("""
 
 async def get_version(db: AsyncSession, tenant_id: str) -> str:
     """A short hash that changes whenever anything a dashboard shows changes.
+
+    The timestamps come from now(), the start time of the writing transaction,
+    so a long transaction that commits after a shorter one can land below the
+    current max and not move the hash. That is rare and self-correcting (the
+    next change moves it), and the counts in the query usually catch it.
 
     Reveals no data, only "something changed", so any signed-in role may ask.
     """
@@ -1037,9 +1071,4 @@ async def build_nso_summary(db: AsyncSession, user: dict) -> dict:
         tenant_id=str(user["tenant_id"]), user_id=str(user["sub"]), kind="supervisor",
         module="nso", simulated=real_role in READ_ALL_ROLES,
     )
-    sections = await _supervisor_payload(db, ctx)
-    as_of = datetime.now(timezone.utc).isoformat()
-    for section in sections.values():
-        section.setdefault("as_of", as_of)
-    return {"role": "supervisor", "module": "nso", "scope": "module", "simulated": ctx.simulated,
-            "generated_at": as_of, **sections}
+    return _envelope(ctx, "nso", "module", await _supervisor_payload(db, ctx))

@@ -135,11 +135,19 @@ function launches(p) {
     const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - k, 1));
     past.push([MONTHS[d.getUTCMonth()], opened.get(d.toISOString().slice(0, 7)) || 0, `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`]);
   }
+  // Planned totals come from the server; `upcoming` is a short list of names
+  // and would undercount a busy month. Older backends only send `upcoming`.
+  const planned = l.planned_by_month
+    ? new Map(l.planned_by_month.map((r) => [String(r.month).slice(0, 7), r.planned]))
+    : null;
   const ahead = [];
   for (let k = 1; k <= 3; k += 1) {
     const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + k, 1));
     const key = d.toISOString().slice(0, 7);
-    ahead.push([MONTHS[d.getUTCMonth()], (l.upcoming || []).filter((u) => String(u.launch_date).slice(0, 7) === key).length, `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`]);
+    const count = planned
+      ? planned.get(key) || 0
+      : (l.upcoming || []).filter((u) => String(u.launch_date).slice(0, 7) === key).length;
+    ahead.push([MONTHS[d.getUTCMonth()], count, `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`]);
   }
   const openings = (l.upcoming || []).map((u) => {
     const d = parseDay(u.launch_date);
