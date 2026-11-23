@@ -182,11 +182,24 @@
 .dash-card {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .14  0 0 0 0 .09  0 0 0 0 .06  0 0 0 .05 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
   background-image: none; border-color: transparent; border-radius: 20px;
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--zm-fg) 6%, transparent), 0 8px 24px color-mix(in srgb, var(--zm-fg) 6%, transparent);
+  box-shadow: var(--dash-card-shadow);
   transition: box-shadow 200ms var(--zm-ease-out), transform 200ms var(--zm-ease-out);
 }
 .dash-card:hover { box-shadow: 0 1px 2px color-mix(in srgb, var(--zm-fg) 7%, transparent), 0 12px 32px color-mix(in srgb, var(--zm-fg) 9%, transparent); }
-[data-theme="dark"] .dash-card { box-shadow: 0 1px 0 rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35); }
+/* Theme-dependent values are variables set on every [data-theme] element, so
+   the nearest theme wins: a light portal inside a dark page stays light. A
+   "[data-theme=dark] .x" selector would match any dark ancestor instead. */
+:root, [data-theme="light"] {
+  --dash-card-shadow: 0 1px 2px color-mix(in srgb, var(--zm-fg) 6%, transparent), 0 8px 24px color-mix(in srgb, var(--zm-fg) 6%, transparent);
+  --dash-kpi-bg: rgba(255,253,250,.9); --dash-kpi-border: rgba(255,255,255,.6);
+  --dash-kpi-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 10px 28px rgba(20,12,8,.22);
+}
+[data-theme="dark"] {
+  --dash-card-shadow: 0 1px 0 rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  --dash-kpi-bg: rgba(33,27,23,.8); --dash-kpi-border: rgba(255,246,236,.12);
+  --dash-kpi-shadow: inset 0 1px 0 rgba(255,246,236,.08), 0 10px 28px rgba(0,0,0,.4);
+}
+
 .dash-card--dark, .dash-card--green { background-image: none; }
 
 /* Entrance motion (never replayed on refresh: elements are keyed by data). */
@@ -309,17 +322,13 @@
 .dash-kpis { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; padding: 6px 24px 24px; }
 .dash-kpi {
   padding: 16px 18px 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0; border-radius: 16px;
-  background: rgba(255,253,250,.9); color: var(--zm-fg);
+  background: var(--dash-kpi-bg); color: var(--zm-fg);
   -webkit-backdrop-filter: blur(14px) saturate(1.15); backdrop-filter: blur(14px) saturate(1.15);
-  border: 1px solid rgba(255,255,255,.6);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 10px 28px rgba(20,12,8,.22);
+  border: 1px solid var(--dash-kpi-border);
+  box-shadow: var(--dash-kpi-shadow);
   transition: transform 200ms var(--zm-ease-out), box-shadow 200ms var(--zm-ease-out);
 }
 .dash-kpi:hover { transform: translateY(-2px); box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 14px 34px rgba(20,12,8,.28); }
-[data-theme="dark"] .dash-kpi {
-  background: rgba(33,27,23,.8); border-color: rgba(255,246,236,.12);
-  box-shadow: inset 0 1px 0 rgba(255,246,236,.08), 0 10px 28px rgba(0,0,0,.4);
-}
 @media (prefers-reduced-motion: reduce) { .dash-kpi { transition: none; } .dash-kpi:hover { transform: none; } }
 .dash-kpi-label { font-size: 11.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--zm-fg-3); }
 .dash-kpi-value { font-size: 32px; font-weight: 600; letter-spacing: -.02em; }
