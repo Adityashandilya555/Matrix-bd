@@ -58,7 +58,7 @@
   display: inline-flex; gap: 8px; align-items: center; transition: background var(--zm-dur-1) var(--zm-ease);
 }
 .dash-chip:hover { background: var(--zm-surface-hover); }
-.dash-chip[aria-pressed="true"] { background: var(--zm-fg); border-color: var(--zm-fg); color: var(--zm-bg); }
+.dash-chip[aria-pressed="true"], .dash-chip--primary { background: var(--zm-fg); border-color: var(--zm-fg); color: var(--zm-bg); }
 .dash-chip .c { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--zm-surface-sunken); color: var(--zm-fg-2); }
 .dash-chip[aria-pressed="true"] .c { background: rgba(255,255,255,.18); color: inherit; }
 
@@ -70,9 +70,8 @@
 .dash-glass {
   background: rgba(255,253,250,.14); border: 1px solid rgba(255,253,250,.28); border-radius: 18px; padding: 16px 18px;
   display: flex; flex-direction: column; gap: 6px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-  color: #FFF6EC; text-decoration: none; text-align: left; font: inherit; cursor: pointer;
+  color: #FFF6EC; text-decoration: none; text-align: left; font: inherit;
 }
-.dash-glass:hover { background: rgba(255,253,250,.2); }
 .dash-glass--hot { background: rgba(224,122,47,.34); border-color: rgba(255,211,168,.5); }
 
 .dash-step {

@@ -129,11 +129,11 @@ function Hero({ d, updatedAt, scope, onScope }) {
         </div>
         <div className="dash-grid4">
           {d.kpis.map((k) => (
-            <button key={k.key} type="button" className={`dash-glass${k.hot ? ' dash-glass--hot' : ''}`}>
+            <div key={k.key} className={`dash-glass${k.hot ? ' dash-glass--hot' : ''}`}>
               <span className="dash-eyebrow" style={{ color: k.hot ? '#FFD3A8' : '#E9C9A6', fontSize: 10.5 }}>{k.label}</span>
               <span className="dash-num" style={{ fontSize: 38 }}>{k.value}</span>
               <span style={{ fontSize: 12.5, color: '#E9DCCB' }}>{k.caption}</span>
-            </button>
+            </div>
           ))}
         </div>
       </div>
@@ -149,9 +149,10 @@ function Empty({ e }) {
         <h2 className="dash-title">{e.title}</h2>
         <p className="dash-sub" style={{ maxWidth: 460, fontSize: 14 }}>{e.body}</p>
         {e.cta && (
-          <button type="button" className="dash-chip" aria-pressed="true" style={{ marginTop: 4 }}>
+          // Samples only: the CTA names the next step; the live page links it.
+          <span className="dash-chip dash-chip--primary" style={{ marginTop: 4 }}>
             <Ico name="plus" size={16} />{e.cta}
-          </button>
+          </span>
         )}
       </div>
     </Card>
