@@ -147,6 +147,20 @@ describe('LiveDashboard', () => {
     await waitFor(() => expect(onUnavailable).toHaveBeenCalled());
   });
 
+  it('draws a module stage breakdown as shares, never past 100%', async () => {
+    const legal = { role: 'supervisor', module: 'legal', scope: 'module', simulated: false, kpis: { tiles: [] },
+      funnel: { module: 'legal', steps: [
+        { key: 'pending', label: 'Pending', count: 1 }, { key: 'in_review', label: 'In review', count: 1 },
+        { key: 'positive', label: 'DD positive', count: 0 }, { key: 'negative', label: 'DD negative', count: 2 }] } };
+    const getDashboardSummary = vi.fn().mockResolvedValue(legal);
+    const getDashboardVersion = vi.fn().mockResolvedValue({ changed: false, etag: '"v1"' });
+    const { container } = render(<LiveDashboard deps={{ getDashboardSummary, getDashboardVersion }} />);
+    await screen.findByText('Share of all sites');
+    expect(screen.queryByText('Of all at step 1')).toBeNull();
+    const widths = [...container.querySelectorAll('.dv-funnel-bar')].map((b) => parseFloat(b.style.width));
+    expect(widths).toEqual([50, 50, 0, 100]);
+  });
+
   it('shows a retry card when the first load fails', async () => {
     const getDashboardSummary = vi.fn().mockRejectedValue(new Error('Network down'));
     const getDashboardVersion = vi.fn().mockResolvedValue({ changed: false, etag: '"v1"' });

@@ -59,8 +59,8 @@ export default function RoleDashboard({ data, updatedAt, scope, onScope, viewer 
     ['cycle', d.cycle && <Cycle c={d.cycle} />],
     ['funnel', d.funnel && (
       <Card>
-        <CardHead icon="funnel" tone="purple" title={d.funnel.title} sub="Pick a step to see how sites move through it" />
-        <Funnel steps={d.funnel.steps} />
+        <CardHead icon="funnel" tone="purple" title={d.funnel.title} sub={d.funnel.kind === 'stages' ? 'Where each site is now · pick a stage' : 'Pick a step to see how sites move through it'} />
+        <Funnel steps={d.funnel.steps} kind={d.funnel.kind} />
         <Source>{d.funnel.source}</Source>
       </Card>
     )],
@@ -198,9 +198,9 @@ function Inbox({ inbox }) {
         </div>
       )}
       {n > 1 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-          <span className="dash-sub">1 of {n}</span>
-          <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <span className="dash-sub" style={{ whiteSpace: 'nowrap' }}>1 of {n}</span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" className="dash-chip" onClick={prev} aria-label="Previous item">‹ Back</button>
             <button type="button" className="dash-chip" onClick={next}>Snooze</button>
             <button type="button" className="dash-chip dash-chip--primary" onClick={next}>Next ›</button>

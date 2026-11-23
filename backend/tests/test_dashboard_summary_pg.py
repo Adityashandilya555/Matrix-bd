@@ -188,7 +188,7 @@ async def test_legal_supervisor_gets_no_bd_numbers(engine, maker):
     assert _funnel_total(out) == 1            # only the site that reached legal
     assert out["funnel"]["module"] == "legal"
     assert "cycle_times" not in out and "cities" not in out
-    assert [m["key"] for m in out["modules"]["items"]] == ["legal"]
+    assert "modules" not in out      # the stage funnel already shows legal_dd_status
     assert "loi_overdue" not in out["compliance"]  # LOIs are BD's
     # s_legal is delegated to the legal executive, so nothing is unallocated.
     assert _tile(out, "unallocated") == 0 and out["inbox"]["total"] == 0

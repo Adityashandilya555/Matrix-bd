@@ -942,7 +942,10 @@ async def _supervisor_payload(db: AsyncSession, ctx: DashContext) -> dict:
         "inbox": await _action_inbox(db, ctx),
         "funnel": await (_bd_funnel(db, ctx) if ctx.is_bd else _module_funnel(db, ctx)),
     }
-    if not ctx.is_bd and ctx.module != "nso":
+    # Legal and Project Excellence break down the same column their stage
+    # funnel already shows, so a second card would only repeat it (with a
+    # different total, since it leaves closed sites out).
+    if not ctx.is_bd and ctx.module not in ("nso", "legal", "project_excellence"):
         modules = await _modules(db, ctx)
         if modules:
             out["modules"] = modules

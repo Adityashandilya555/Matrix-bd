@@ -163,6 +163,9 @@ function funnel(p, mod) {
   if (!f) return undefined;
   const cyc = new Map((p.cycle_times?.steps || []).map((s) => [s.from, s.median_days]));
   return {
+    // A module's stages count where sites are now (each site once); the BD
+    // pipeline counts every site that reached a step (cumulative).
+    kind: f.module ? 'stages' : 'pipeline',
     section: f.module ? `${mod} stages` : 'Pipeline',
     title: f.module ? `${mod} sites by stage` : 'From first look to opening day',
     source: (f.source || []).join(' · '),

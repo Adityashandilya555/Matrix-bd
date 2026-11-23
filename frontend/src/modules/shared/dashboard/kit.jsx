@@ -253,16 +253,22 @@ const FUNNEL_SHADES = [34, 42, 50, 58, 66, 74, 82, 90, 96].map(
 // Clickable pipeline steps: lit gradient bars with the previous step's width
 // as a dashed ghost (so the drop-off shows), the drop-off % in the gutter, and
 // a detail panel for the selected step.
-export function Funnel({ steps }) {
+// kind="pipeline": cumulative steps (every site passes step 1), so bars scale
+// to step 1 and show drop-off. kind="stages": where sites are now, so bars
+// scale to the largest stage and each step shows its share of the total.
+export function Funnel({ steps, kind = 'pipeline' }) {
+  const stages = kind === 'stages';
   const [sel, setSel] = React.useState(Math.min(4, steps.length - 1));
-  const top = steps[0]?.value || 1;
+  const total = steps.reduce((n, s) => n + (s.value || 0), 0);
+  const top = (stages ? Math.max(0, ...steps.map((s) => s.value || 0)) : steps[0]?.value) || 1;
+  const pct = (v) => Math.min(100, (v / top) * 100);
   const st = steps[sel] || steps[0];
   const next = steps[sel + 1];
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 22 }}>
       <div style={{ flex: '3 1 440px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }} role="group" aria-label="Pipeline steps">
         {steps.map((s, i) => {
-          const prev = i > 0 ? steps[i - 1].value : null;
+          const prev = !stages && i > 0 ? steps[i - 1].value : null;
           const drop = prev ? Math.round(((prev - s.value) / prev) * 100) : 0;
           const shade = FUNNEL_SHADES[Math.min(i, FUNNEL_SHADES.length - 1)];
           const fill = i === sel
@@ -272,9 +278,9 @@ export function Funnel({ steps }) {
             <button key={s.label} type="button" className="dash-step" aria-pressed={i === sel} onClick={() => setSel(i)}>
               <span className="dash-lbl" style={{ fontWeight: 600 }}>{s.label}</span>
               <span className="dv-funnel-track">
-                {prev !== null && <span className="dv-ghost" style={{ width: `${(prev / top) * 100}%` }} />}
+                {prev !== null && <span className="dv-ghost" style={{ width: `${pct(prev)}%` }} />}
                 <span className={`dv-anim dv-funnel-bar${i === sel ? ' is-sel' : ''}`}
-                  style={{ width: `${(s.value / top) * 100}%`, background: fill, animationDelay: `${i * 45}ms` }} />
+                  style={{ width: `${pct(s.value)}%`, background: fill, animationDelay: `${i * 45}ms` }} />
               </span>
               <span className="dash-num" style={{ fontSize: 16, textAlign: 'right' }}>{s.value}</span>
               <span className="dv-drop" style={{ color: drop > 30 ? 'var(--zm-copper)' : undefined }}>
@@ -291,10 +297,19 @@ export function Funnel({ steps }) {
         <span className="dash-eyebrow" style={{ color: '#E9C9A6', position: 'relative' }}>Step {sel + 1} of {steps.length}</span>
         <span key={st.label} className="dv-anim dv-fade" style={{ fontFamily: 'var(--zm-font-display)', fontWeight: 800, fontSize: 28, position: 'relative' }}>{st.label}</span>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 14, position: 'relative' }}>
-          <Stat label="Sites reached" value={st.value} />
-          <Stat label="Of all at step 1" value={Math.round((st.value / top) * 100)} suffix="%" />
-          <Stat label="Carried to next" value={next && st.value ? Math.round((next.value / st.value) * 100) : null} suffix="%" hot />
-          <Stat label="Median days here" value={st.days || null} suffix=" d" />
+          {stages ? (
+            <>
+              <Stat label="Sites at this stage" value={st.value} />
+              <Stat label="Share of all sites" value={total ? Math.round((st.value / total) * 100) : 0} suffix="%" hot />
+            </>
+          ) : (
+            <>
+              <Stat label="Sites reached" value={st.value} />
+              <Stat label="Of all at step 1" value={Math.min(100, Math.round((st.value / top) * 100))} suffix="%" />
+              <Stat label="Carried to next" value={next && st.value ? Math.round((next.value / st.value) * 100) : null} suffix="%" hot />
+              <Stat label="Median days here" value={st.days || null} suffix=" d" />
+            </>
+          )}
         </div>
         {st.note && <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: '#E9DCCB', position: 'relative' }}>{st.note}</p>}
       </div>

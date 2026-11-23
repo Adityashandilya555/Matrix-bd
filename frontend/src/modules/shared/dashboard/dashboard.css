@@ -258,7 +258,7 @@
 .dv-month { font-size: 11px; height: 18px; }
 
 /* Funnel. */
-.dv-funnel-track { position: relative; display: block; height: 22px; border-radius: 999px; background: color-mix(in srgb, var(--zm-fg) 5%, transparent); }
+.dv-funnel-track { position: relative; display: block; height: 22px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--zm-fg) 5%, transparent); }
 .dv-ghost { position: absolute; inset: 0 auto 0 0; border: 1px dashed var(--zm-line-strong); border-radius: 999px; }
 .dv-funnel-bar { position: absolute; inset: 0 auto 0 0; border-radius: 999px; transform-origin: left; animation: dv-grow-x 700ms var(--zm-ease-out) both; }
 .dv-funnel-bar.is-sel { box-shadow: 0 4px 12px color-mix(in srgb, var(--zm-copper) 30%, transparent); }
