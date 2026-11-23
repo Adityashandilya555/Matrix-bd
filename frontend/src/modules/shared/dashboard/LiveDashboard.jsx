@@ -24,8 +24,9 @@ export default function LiveDashboard({ nso = false, deps, viewer, onUnavailable
   const vm = React.useMemo(() => toViewModel(data), [data]);
 
   // A 404 means this backend predates the dashboard endpoints (frontend shipped
-  // first): hand the person back to their usual page instead of an error card.
-  const notDeployed = status === 'error' && !data && error?.status === 404;
+  // first); a 403 means this account has no dashboard (no module yet). Either
+  // way, hand the person back to their usual page instead of an error card.
+  const notDeployed = status === 'error' && !data && (error?.status === 404 || error?.status === 403);
   React.useEffect(() => {
     if (notDeployed) onUnavailable?.();
   }, [notDeployed, onUnavailable]);

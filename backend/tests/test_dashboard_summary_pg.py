@@ -276,16 +276,19 @@ async def test_project_tiles_and_executive_delegation_modules(engine, maker):
     assert _tile(sup, "allocate") == 1
     assert _tile(ex, "closure") == 1
     assert _tile(ex, "init") == 0     # proposed start date, but no project delegation
+    assert _funnel_total(ex) == 0     # closure-only: no project stages on their funnel
 
 
 async def test_nso_funnel_counts_unallocated_sites_and_planned_months(engine, maker):
     ids = await _world(engine)
     async with engine.begin() as c:
         await c.execute(text("update sites set finance_status = 'approved', ca_code = 'CA-' || left(id::text, 6) "
-                             "where id in (:a, :b)"), {"a": ids["s_legal"], "b": ids["s_approved"]})
+                             "where id in (:a, :b, :c)"), {"a": ids["s_legal"], "b": ids["s_approved"], "c": ids["s_launched"]})
     async with maker() as db:
         nso = await svc.build_nso_summary(db, _user(ids, "legal_exec", "supervisor", "nso", real_role="executive"))
         admin = await svc.build_summary(db, _user(ids, "admin", "business_admin"))
     steps = {st["key"]: st["count"] for st in nso["funnel"]["steps"]}
     assert steps["stage_one"] == 1 and steps["stage_two"] == 1   # s_approved has no NSO row yet
+    assert steps["done"] == 1        # s_launched opened before NSO capture: done, not new
+    assert _tile(nso, "stage1") == 1
     assert sum(m["planned"] for m in admin["launches"]["planned_by_month"]) == 1

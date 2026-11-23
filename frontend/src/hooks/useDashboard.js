@@ -43,6 +43,9 @@ export function useDashboard({ scope = 'module', nso = false } = {}, deps = {}) 
       const { changed, etag } = await apiRef.current.getDashboardVersion(etagRef.current);
       const first = etagRef.current === null;
       etagRef.current = etag;
+      // The guard covers only the version call: a slow summary must not pause
+      // polling, and load() already drops stale responses.
+      inFlightRef.current = false;
       // Reload when the version moved, and retry after a failed load (the
       // version alone would not move to trigger it).
       if ((changed && !first) || failedRef.current) await load();

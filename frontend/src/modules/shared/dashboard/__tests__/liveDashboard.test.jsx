@@ -138,6 +138,15 @@ describe('LiveDashboard', () => {
     await waitFor(() => expect(onUnavailable).toHaveBeenCalled());
   });
 
+  it('hands back to the usual page when the account has no dashboard (403)', async () => {
+    const forbidden = Object.assign(new Error('No dashboard for this account'), { status: 403 });
+    const getDashboardSummary = vi.fn().mockRejectedValue(forbidden);
+    const getDashboardVersion = vi.fn().mockResolvedValue({ changed: false, etag: '"v1"' });
+    const onUnavailable = vi.fn();
+    render(<LiveDashboard deps={{ getDashboardSummary, getDashboardVersion }} onUnavailable={onUnavailable} />);
+    await waitFor(() => expect(onUnavailable).toHaveBeenCalled());
+  });
+
   it('shows a retry card when the first load fails', async () => {
     const getDashboardSummary = vi.fn().mockRejectedValue(new Error('Network down'));
     const getDashboardVersion = vi.fn().mockResolvedValue({ changed: false, etag: '"v1"' });

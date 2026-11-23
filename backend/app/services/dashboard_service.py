@@ -372,7 +372,8 @@ def _tiles_project_excellence_exec(_today, uid: Optional[str]) -> list[TileDef]:
 def _tiles_nso_sup(today, _uid: Optional[str]) -> list[TileDef]:
     return [
     ("stage1", "Stage 1 to complete", "property and comms",
-     or_(~_nso(lambda r: (true(),)), _nso(lambda r: (r.current_stage == "stage_one",))), True),
+     or_(and_(~_nso(lambda r: (true(),)), S.is_launched.is_(False)),
+         _nso(lambda r: (r.current_stage == "stage_one",))), True),
     ("stage3", "Stage 3 to complete", "licences and handover", _nso(lambda r: (r.current_stage == "stage_three",)), True),
     ("final", "Final approval due", "ready to sign off", _nso(lambda r: (r.current_stage == "final",)), True),
     ("launching", "Launching ≤ 14 days", "by NSO launch date",
@@ -509,6 +510,9 @@ async def _admin_kpi_series(db: AsyncSession, ctx: DashContext, tiles: list[dict
         if col is None:
             continue
         series = [int(r[col] or 0) for r in rows]
+        # The tile counts by status; the history by timestamps, which older
+        # rows may lack. The current week is the tile, so the two never differ.
+        series[-1] = int(tile["value"])
         tile["series"] = series
         if len(series) >= 5:
             tile["delta"] = series[-1] - series[-5]
@@ -556,11 +560,19 @@ async def _module_funnel(db: AsyncSession, ctx: DashContext) -> dict:
     if joined is not None:
         # Outer join: a site in the module queue without a review row yet (not
         # allocated) is at the first stage, as the "to allocate" tiles count it.
-        col = func.coalesce(col, literal(order[0] if order else "pending"))
+        # A finished site without one (launched before NSO capture, designed
+        # before design reviews) is done, not new.
+        first, last = (order[0], order[-1]) if order else ("pending", "done")
+        col = func.coalesce(col, case((_module_open(module), literal(first)), else_=literal(last)))
     stmt = select(col.label("stage"), func.count().label("n")).select_from(S)
     if joined is not None:
         stmt = stmt.outerjoin(joined, and_(joined.site_id == S.id, joined.tenant_id == S.tenant_id))
-    stmt = stmt.where(*site_filters(ctx)).group_by(col)
+    stmt = stmt.where(*site_filters(ctx))
+    if ctx.kind == "executive":
+        # site_filters admits companion delegations (financial closure, quality
+        # audit); this funnel is the module's own stages, so only its own sites.
+        stmt = stmt.where(_delegated_to(ctx.user_id, module))
+    stmt = stmt.group_by(col)
     counts = {row[0]: int(row[1]) for row in (await db.execute(stmt)).all()}
     keys = list(order) + sorted(k for k in counts if k and k not in order)
     steps = [{"key": k, "label": _STAGE_LABELS.get(k, k.replace("_", " ").title()), "count": counts.get(k, 0)} for k in keys]

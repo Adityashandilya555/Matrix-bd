@@ -327,5 +327,7 @@ async def test_admin_tiles_get_weekly_history_except_awaiting():
     weeks = FakeResult(all_rows=[(f"w{i}", i, i // 3, i - i // 3) for i in range(12)])
     _, out = await _run(_user("business_admin"), results=[kpi_row, weeks])
     tiles = {t["key"]: t for t in out["kpis"]["tiles"]}
-    assert len(tiles["total"]["series"]) == 12 and tiles["total"]["delta"] == 11 - 7
+    assert len(tiles["total"]["series"]) == 12
+    # The current week is the tile's own value, so line and number agree.
+    assert tiles["total"]["series"][-1] == 9 and tiles["total"]["delta"] == 9 - 7
     assert "series" not in tiles["awaiting"]
