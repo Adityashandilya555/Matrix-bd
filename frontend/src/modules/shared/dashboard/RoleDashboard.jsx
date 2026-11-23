@@ -203,7 +203,7 @@ function Inbox({ inbox }) {
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" className="dash-chip" onClick={prev} aria-label="Previous item">‹ Back</button>
             <button type="button" className="dash-chip" onClick={next}>Snooze</button>
-            <button type="button" className="dash-chip" aria-pressed="true" onClick={next}>Next ›</button>
+            <button type="button" className="dash-chip dash-chip--primary" onClick={next}>Next ›</button>
           </div>
         </div>
       )}

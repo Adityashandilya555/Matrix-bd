@@ -44,7 +44,7 @@ export default function LiveDashboard({ nso = false, deps, viewer, onUnavailable
         <div className="dash-empty">
           <h2 className="dash-title">The dashboard didn’t load</h2>
           <p className="dash-sub">{error?.message || 'Something went wrong.'}</p>
-          <button type="button" className="dash-chip" aria-pressed="true" onClick={refresh}>Try again</button>
+          <button type="button" className="dash-chip dash-chip--primary" onClick={refresh}>Try again</button>
         </div>
       </Card>
     );
