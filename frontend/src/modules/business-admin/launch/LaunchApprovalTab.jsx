@@ -45,12 +45,12 @@ const FEATURE_RENT_V2 = import.meta.env.VITE_FEATURE_RENT_V2 === 'true';
 
 // ── Status display map ─────────────────────────────────────────────────────────
 const STATUS_LABELS = {
-  pending_admin_review:    { label: 'Pending Admin Review',  color: '#E09A3C' },
-  under_exec_review:       { label: 'With Executive',        color: '#6C9FE6' },
-  under_supervisor_review: { label: 'With Supervisor',       color: '#9B8AF2' },
-  pending_admin_final:     { label: 'Final Admin Confirm',   color: '#E0B33C' },
-  ready_to_launch:         { label: 'Ready to Launch',       color: '#58E0A4' },
-  launched:                { label: 'LAUNCHED',              color: '#58E0A4' },
+  pending_admin_review:    { label: 'Pending Admin Review',  color: 'var(--zm-warning)' },
+  under_exec_review:       { label: 'With Executive',        color: 'var(--zm-info)' },
+  under_supervisor_review: { label: 'With Supervisor',       color: 'var(--zm-plum)' },
+  pending_admin_final:     { label: 'Final Admin Confirm',   color: 'var(--zm-warning)' },
+  ready_to_launch:         { label: 'Ready to Launch',       color: 'var(--zm-success)' },
+  launched:                { label: 'Launched',              color: 'var(--zm-success)' },
 };
 
 const RENT_TYPE_LABEL = { fixed: 'Fixed + escalation', revshare: 'Revenue share', mg_revshare: 'MG + Revenue share', staggered: 'Staggered Rent with Escalation' };
@@ -155,7 +155,7 @@ function VerdictChip({ verdict }) {
   const ok = verdict === 'approved';
   const color = ok ? T.success : T.danger;
   return (
-    <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color, background: `${color}22`, padding: '2px 9px', borderRadius: 20 }}>
+    <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color, background: `color-mix(in srgb, ${color} 14%, transparent)`, padding: '2px 9px', borderRadius: 20 }}>
       {ok ? '✓ Approved' : '✕ Rejected'}
     </span>
   );
@@ -389,7 +389,7 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
       title={loading ? 'Loading…' : `${dep.ca_code || d?.site_code || ''} · ${d?.site_name || ''}`}
       subtitle={loading ? '' : d?.city}
       headerRight={d && (
-        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: statusInfo.color, background: `${statusInfo.color}22`, padding: '3px 10px', borderRadius: 20 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: statusInfo.color, background: `color-mix(in srgb, ${statusInfo.color} 14%, transparent)`, padding: '3px 10px', borderRadius: 20 }}>
           {statusInfo.label}
         </span>
       )}
@@ -409,7 +409,7 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
           )}
           {status === 'ready_to_launch' && (
             <Button variant="success" size="md" loading={acting} onClick={() => requestAction('launch')}
-              style={{ background: '#2EA86A', color: '#fff' }}>
+              style={{ background: 'var(--zm-success)', color: 'var(--zm-accent-on)' }}>
               Launch Site
             </Button>
           )}
@@ -472,7 +472,7 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
           {/* ── Rent terms (editable for admin at both touches) ────────────── */}
           <div>
             <SubHead right={canEdit && <ModeToggle mode={rentMode} onChange={setRentMode} group="rent terms" />}>
-              Rent terms {canEdit && <span style={{ color: '#E09A3C', fontWeight: 700 }}>· editable</span>}
+              Rent terms {canEdit && <span style={{ color: 'var(--zm-warning)', fontWeight: 700 }}>· editable</span>}
             </SubHead>
 
             <div style={{ padding: '10px 14px', borderRadius: 10, background: T.successSoft, border: `1px solid ${T.line}`, marginBottom: canEdit && rentMode === 'edit' ? 14 : 0 }}>
@@ -510,7 +510,7 @@ function LaunchDetailDrawer({ siteId, onClose, onRefresh }) {
           {/* ── Commercial terms (editable for admin at both touches) ─────── */}
           <div>
             <SubHead right={canEdit && <ModeToggle mode={commercialMode} onChange={setCommercialMode} group="commercial terms" />}>
-              Commercial terms {canEdit && <span style={{ color: '#E09A3C', fontWeight: 700 }}>· editable</span>}
+              Commercial terms {canEdit && <span style={{ color: 'var(--zm-warning)', fontWeight: 700 }}>· editable</span>}
             </SubHead>
 
             <div style={{ padding: '12px 16px', borderRadius: 10, background: T.successSoft, border: `1px solid ${T.line}`, marginBottom: canEdit && commercialMode === 'edit' ? 14 : 0 }}>
@@ -678,7 +678,7 @@ function QueueRow({ item, onClick }) {
       <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{item.site_name}</span>
       <span style={{ fontSize: 13, color: T.textMuted }}>{item.city}</span>
       <span>
-        <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: info.color, background: `${info.color}22` }}>
+        <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: info.color, background: `color-mix(in srgb, ${info.color} 14%, transparent)` }}>
           {info.label}
         </span>
       </span>

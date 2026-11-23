@@ -55,7 +55,7 @@ export const AC_TOKENS = {
   accent: 'var(--zm-accent)', accentSoft: 'var(--zm-accent-soft)',
   fg: 'var(--zm-fg)', fgMuted: 'var(--zm-fg-2)', fgFaint: 'var(--zm-fg-3)',
   danger: 'var(--zm-danger)',
-  fontBody: 'var(--zm-font-body, system-ui)', fontMono: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontBody: 'var(--zm-font-body, system-ui)', fontMono: 'var(--zm-font-mono)',
 };
 
 const RENT_TYPES = [

@@ -1,6 +1,7 @@
 // Route path constants. Always import from here — never hardcode paths in components.
 export const ROUTES = {
   OVERVIEW:               '/',
+  MY_DASHBOARD:           '/dashboard',
   PIPELINE:               '/pipeline',
   SHORTLIST:              '/shortlist',
   STAGING_EXEC:           '/staging/exec',

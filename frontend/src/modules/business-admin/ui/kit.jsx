@@ -58,7 +58,7 @@ export const T = {
   projectText: 'var(--zm-plum)',
   projectSoft: 'var(--zm-plum-soft)',
 
-  mono: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  mono: 'var(--zm-font-mono)',
 
   radius:     14,
   radiusSm:   10,
@@ -183,9 +183,9 @@ export function Card({ as: Tag = 'div', interactive = false, raised = false, sty
 
 const BTN_VARIANTS = {
   solid:   { background: T.invBg, color: T.invText, border: '1px solid transparent' },
-  success: { background: T.success, color: '#fff', border: '1px solid transparent' },
-  danger:  { background: T.danger,  color: '#fff', border: '1px solid transparent' },
-  accent:  { background: T.accent,  color: '#fff', border: '1px solid transparent' },
+  success: { background: T.success, color: 'var(--zm-accent-on)', border: '1px solid transparent' },
+  danger:  { background: T.danger,  color: 'var(--zm-accent-on)', border: '1px solid transparent' },
+  accent:  { background: T.accent,  color: 'var(--zm-accent-on)', border: '1px solid transparent' },
   ghost:   { background: T.chip, color: T.text, border: `1px solid ${T.lineStrong}` },
   subtle:  { background: T.chip, color: T.text, border: '1px solid transparent' },
 };
@@ -453,7 +453,7 @@ export function SectionHeader({ icon: HeadIcon, title, description, count, tone 
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 680, letterSpacing: '-0.01em', color: T.text }}>{title}</h2>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, letterSpacing: '-0.01em', color: T.text, fontFamily: 'var(--zm-font-display)' }}>{title}</h2>
           {count != null && <CountBadge count={count} tone={tone} />}
         </div>
         {description && <p style={{ margin: '4px 0 0', fontSize: 12.5, color: T.textMuted, lineHeight: 1.5 }}>{description}</p>}
@@ -588,7 +588,7 @@ export function Drawer({ open, onClose, title, subtitle, headerRight, children, 
         <div className="ac-drawer-header" style={{ padding: '18px 22px', borderBottom: `1px solid ${T.line}`, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             {subtitle && <div style={{ fontSize: 11.5, letterSpacing: '0.04em', color: T.textMuted, marginBottom: 3 }}>{subtitle}</div>}
-            <h2 id={titleId} style={{ margin: 0, fontSize: 18, fontWeight: 720, letterSpacing: '-0.015em', color: T.text }}>{title}</h2>
+            <h2 id={titleId} style={{ margin: 0, fontSize: 19, fontWeight: 700, letterSpacing: '-0.015em', color: T.text, fontFamily: 'var(--zm-font-display)' }}>{title}</h2>
           </div>
           {headerRight}
           <IconButton label="Close" onClick={onClose}><Icon.x size={16} /></IconButton>

@@ -36,7 +36,7 @@ describe('executive module access requests', () => {
     renderSection();
     const row = screen.getByTestId('exec-access-request-r-1');
     expect(within(row).getByText('Ravi')).toBeInTheDocument();
-    expect(within(row).getByText(/legal →/)).toBeInTheDocument();
+    expect(within(row).getByText(/Legal →/)).toBeInTheDocument();
     expect(within(row).getByText('under Meera')).toBeInTheDocument();
     expect(within(row).getByText(/Covering a launch/)).toBeInTheDocument();
   });

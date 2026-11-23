@@ -54,7 +54,7 @@ function SidebarItem({ icon, label, count, active, onClick, collapsed = false })
           minWidth: 15, height: 15, padding: '0 3px', borderRadius: 999,
           background: active ? 'var(--zm-sidebar-accent)' : 'var(--zm-sidebar-active-bg)',
           border: '1px solid var(--zm-sidebar-line)',
-          color: active ? '#1A1A1F' : 'var(--zm-sidebar-fg-muted)',
+          color: active ? 'var(--zm-sidebar-bg)' : 'var(--zm-sidebar-fg-muted)',
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           fontFamily: 'var(--zm-font-mono)', fontSize: 9, fontWeight: 700,
           lineHeight: 1,
@@ -93,6 +93,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
 
   // Active view derived from current URL path
   const activeView =
+    path === ROUTES.MY_DASHBOARD                          ? 'my-dashboard' :
     path === ROUTES.OVERVIEW                              ? 'overview'  :
     path === ROUTES.PIPELINE                             ? 'pipeline'  :
     path === ROUTES.SHORTLIST || path.startsWith('/shortlist/') ? 'shortlist' :
@@ -146,6 +147,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
       overflowY: 'auto',
       transition: 'width 220ms var(--zm-ease), flex-basis 220ms var(--zm-ease), padding 220ms var(--zm-ease)',
     }}>
+      <SidebarItem icon="dashboard" label="Dashboard" active={activeView === 'my-dashboard'} onClick={() => go(ROUTES.MY_DASHBOARD)} collapsed={collapsed}/>
       {!isModuleSurface && (
         <>
           {!collapsed && <div style={{ ...SECTION_HEADING_STYLE, padding: '4px 10px 6px' }}>Overview</div>}
@@ -463,7 +465,7 @@ export default function Sidebar({ counts, role, onRole, collapsed = false }) {
           <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Ask Assistant</span>
         </div>
         <p style={{ margin: 0, fontFamily: 'var(--zm-font-body)', fontSize: 11.5, color: 'var(--zm-sidebar-fg-muted)', lineHeight: 1.45 }}>
-          "Sites in process overdue &gt; 14 days" — Answer in the desktop workspace.
+          Ask about your sites, for example “Which sites are overdue?”
         </p>
         </div>
       )}

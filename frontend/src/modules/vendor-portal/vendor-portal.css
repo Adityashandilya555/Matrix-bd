@@ -32,7 +32,7 @@
 .vp-h1 { margin: 0; font-size: 24px; font-weight: 750; text-wrap: balance; }
 .vp-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: var(--zm-fg-3); font-weight: 600; }
 .vp-muted { color: var(--zm-fg-2); } .vp-small { font-size: 12.5px; }
-.vp-mono { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+.vp-mono { font-family: var(--zm-font-mono); font-size: 12.5px; }
 .vp-num { font-variant-numeric: tabular-nums; }
 .vp-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .vp-between { justify-content: space-between; }
@@ -87,7 +87,7 @@ textarea.vp-input { min-height: 72px; resize: vertical; }
 .vp-logi:last-child { border-bottom: 0; }
 .vp-logi.miss { color: var(--vp-bad); }
 .vp-codebox { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.vp-codebox code { font-family: ui-monospace, Menlo, monospace; font-size: 15px; background: var(--zm-surface-2); border: 1px solid var(--zm-line); border-radius: 7px; padding: 5px 10px; }
+.vp-codebox code { font-family: var(--zm-font-mono); font-size: 15px; background: var(--zm-surface-2); border: 1px solid var(--zm-line); border-radius: 7px; padding: 5px 10px; }
 .vp-curve text { fill: var(--zm-fg-3); font-size: 11px; }
 .vp-center { min-height: 60vh; display: grid; place-items: center; text-align: center; padding: 24px; }
 .vp-error { color: var(--vp-bad); font-size: 13px; }

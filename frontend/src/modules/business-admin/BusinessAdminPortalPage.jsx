@@ -27,24 +27,24 @@ class BusinessAdminErrorBoundary extends React.Component {
   render() {
     if (!this.state.error) return this.props.children;
     const btn = {
-      height: 36, padding: '0 16px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.25)',
-      background: 'rgba(255,255,255,0.06)', color: '#F4F5F7', fontSize: 13, fontWeight: 650, cursor: 'pointer',
+      height: 36, padding: '0 16px', borderRadius: 10, border: '1px solid var(--zm-line-strong)',
+      background: 'var(--zm-surface-2)', color: 'var(--zm-fg)', fontSize: 13, fontWeight: 650, cursor: 'pointer',
     };
     return (
-      <div style={{ minHeight: '100vh', background: '#0B0C10', color: '#F4F5F7',
+      <div style={{ minHeight: '100vh', background: 'var(--zm-bg)', color: 'var(--zm-fg)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
         <div style={{ maxWidth: 460, textAlign: 'center' }}>
-          <div style={{ fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>
+          <div style={{ fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
             {PRODUCT_NAME} · Business admin
           </div>
           <h1 style={{ margin: '8px 0 6px', fontSize: 22, fontWeight: 720, letterSpacing: '-0.02em' }}>
             Approval center hit a display error
           </h1>
-          <p style={{ margin: 0, fontSize: 13.5, color: 'rgba(255,255,255,0.7)', lineHeight: 1.55 }}>
+          <p style={{ margin: 0, fontSize: 13.5, color: 'var(--zm-fg-2)', lineHeight: 1.55 }}>
             Refresh the view, or sign out and back in.
           </p>
           <div style={{ margin: '16px 0', padding: '10px 14px', borderRadius: 10, fontSize: 12.5,
-            background: 'rgba(192,65,63,0.16)', color: '#F4A6A4', border: '1px solid rgba(192,65,63,0.4)' }}>
+            background: 'var(--zm-danger-soft)', color: 'var(--zm-danger)', border: '1px solid var(--zm-danger)' }}>
             {this.state.error?.message || 'Dashboard render failed.'}
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>

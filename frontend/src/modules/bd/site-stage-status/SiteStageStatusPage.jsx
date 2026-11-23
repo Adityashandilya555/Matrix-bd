@@ -6,6 +6,7 @@ import Icon from '../../shared/primitives/Icon.jsx';
 import { getSiteStageStatus } from '../../../services/api/siteTrackerApi.js';
 import { bdSiteStatusRoute } from '../../../router/routes.js';
 import { useSiteDataRefresh } from '../../../hooks/useSiteDataRefresh.js';
+import { humanize } from '../../../lib/labels.js';
 
 
 const TONE_COLOR = {
@@ -186,8 +187,8 @@ function TimelineCard({ entries }) {
               {relTime(e.occurredAt)}
             </span>
             <span style={{ color: 'var(--zm-fg)', flex: 1, minWidth: 0 }}>
-              {String(e.eventType || '').replace(/_/g, ' ')}
-              {e.toStatus ? ` → ${String(e.toStatus).replace(/_/g, ' ')}` : ''}
+              {humanize(e.eventType, '')}
+              {e.toStatus ? ` → ${humanize(e.toStatus)}` : ''}
               {e.actorName ? <span style={{ color: 'var(--zm-fg-3)' }}> · {e.actorName}</span> : null}
             </span>
           </div>

@@ -154,9 +154,12 @@ CREATE TABLE public.sites (
   CONSTRAINT sites_submitted_by_fkey FOREIGN KEY (submitted_by) REFERENCES public.users(id),
   CONSTRAINT sites_assigned_to_fkey FOREIGN KEY (assigned_to) REFERENCES public.users(id),
   CONSTRAINT sites_supervisor_id_fkey FOREIGN KEY (supervisor_id) REFERENCES public.users(id),
+  -- Matches migration 202606141_drop_legacy_enum_types.sql.
   CONSTRAINT chk_sites_status CHECK (status IN (
       'draft_submitted','shortlisted','details_submitted',
-      'approved','loi_uploaded','rejected','archived'
+      'approved','loi_uploaded','legal_review','legal_approved',
+      'legal_rejected','pushed_to_payments','rejected','archived',
+      'launched'
   )) NOT VALID,
   CONSTRAINT chk_sites_rent_type CHECK (
       (rent_type IN ('fixed','revshare','mg_revshare','staggered')) OR (rent_type IS NULL)
@@ -1354,3 +1357,20 @@ CREATE INDEX IF NOT EXISTS idx_integration_deliveries_tenant
 ALTER TABLE public.integration_endpoints ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.integration_outbox ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.integration_deliveries ENABLE ROW LEVEL SECURITY;
+
+-- Role dashboards (migration 20261121_dashboard_indexes).
+CREATE INDEX IF NOT EXISTS idx_sites_tenant_updated_at
+    ON public.sites (tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_design_reviews_tenant_updated_at
+    ON public.design_reviews (tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_project_reviews_tenant_updated_at
+    ON public.project_reviews (tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_nso_reviews_tenant_updated_at
+    ON public.nso_reviews (tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_site_budgets_tenant_updated_at
+    ON public.site_budgets (tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_launch_approvals_tenant_updated_at
+    ON public.launch_approvals (tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_nso_reviews_tenant_launch_date
+    ON public.nso_reviews (tenant_id, launch_date)
+    WHERE launch_date IS NOT NULL;

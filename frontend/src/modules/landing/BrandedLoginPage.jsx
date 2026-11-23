@@ -42,10 +42,9 @@ function routeFromToken(token) {
   if (p?.role === 'business_admin') return '/business-admin';
   // Vendor accounts live in their own portal, never the Matrix shell.
   if (p?.role === 'vendor') return '/vendor';
-  if (p?.module === 'legal') return '/legal';
-  if (p?.module === 'design') return '/design';
-  if (p?.module === 'project') return '/project';
-  return '/overview';
+  if (p?.role === 'observer') return '/observer';
+  // Supervisors and executives of every module start on their role dashboard.
+  return '/dashboard';
 }
 
 function Banner({ msg }) {

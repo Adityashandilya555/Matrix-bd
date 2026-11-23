@@ -2,6 +2,7 @@
 import React from 'react';
 // skipcq: JS-0833
 import { T, Icon, Card, Button, Skeleton, EmptyState, ErrorState } from './ui/kit.jsx';
+import { moduleLabel } from '../../lib/labels.js';
 
 // Presentational component for executive requests.
 // The shell owns fetching and passes:
@@ -68,7 +69,7 @@ export default function ExecutiveRequestsList({ data, onApprove, onReject, onRet
                 
                 <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
                   color: T.textMuted, padding: '3px 9px', borderRadius: 999, background: T.chip,
-                  border: `1px solid ${T.line}`, justifySelf: 'start' }}>{r.module}</span>
+                  border: `1px solid ${T.line}`, justifySelf: 'start' }}>{moduleLabel(r.module)}</span>
                 
                 <span style={{ fontSize: 11.5, color: T.textFaint, justifySelf: 'end' }}>
                   {new Date(r.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
