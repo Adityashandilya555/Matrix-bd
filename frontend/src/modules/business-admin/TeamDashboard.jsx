@@ -124,6 +124,8 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
   })();
 
   const [tab, setTab] = React.useState('overview');
+  // A backend without the dashboard endpoints: open the Approval Center instead.
+  const showApprovals = React.useCallback(() => setTab('approvals'), []);
   // Which Sites sub-tab to show; lets the KPI tiles deep-link (e.g. the
   // "Completed sites" tile jumps straight to the Completed filter).
   const [sitesFilter, setSitesFilter] = React.useState('active');
@@ -474,7 +476,7 @@ export default function TeamDashboard({ onLogout, fetchers = REAL_FETCHERS, work
 
           {/* ── Panels ── */}
           <div key={tab} className="ac-fade-in">
-            {tab === 'overview' && <LiveDashboard viewer={decodeJwtPayload(getAuthToken()).user_metadata?.full_name} deps={dashboardDeps} />}
+            {tab === 'overview' && <LiveDashboard viewer={decodeJwtPayload(getAuthToken()).user_metadata?.full_name} deps={dashboardDeps} onUnavailable={showApprovals} />}
             {tab === 'approvals' && (
               <ApprovalCenter data={approvalData} handlers={handlers} onRetry={() => reloadApprovals(false)} />
             )}

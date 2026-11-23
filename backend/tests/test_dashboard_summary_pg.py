@@ -107,7 +107,7 @@ async def _world(engine) -> dict:
         ]
         for r in rows:
             await c.execute(_INSERT_SITE, r)
-        await c.execute(_INSERT_APPROVAL, {"t": t, "s": ids["s_approved"], "by": ids["bd_sup"], "deadline": date.today() - timedelta(days=1)})
+        await c.execute(_INSERT_APPROVAL, {"t": t, "s": ids["s_approved"], "by": ids["bd_sup"], "deadline": date.today() - timedelta(days=2)})  # 2 days: safe across the UTC/local midnight
         await c.execute(_INSERT_DELEGATION, {"t": t, "s": ids["s_legal"], "m": "legal", "u": ids["legal_exec"], "by": ids["legal_sup"], "revoked": None})
         # A revoked delegation never counts.
         await c.execute(_INSERT_DELEGATION, {"t": t, "s": ids["s_launched"], "m": "legal", "u": ids["legal_exec"], "by": ids["legal_sup"], "revoked": now})

@@ -122,6 +122,15 @@ describe('LiveDashboard', () => {
     expect(vm.compliance.alerts.map((a) => a.label)).toEqual(['DD negative', 'Legal rejected']);
   });
 
+  it('hands back to the usual page when the backend has no dashboard (404)', async () => {
+    const notFound = Object.assign(new Error('Not Found'), { status: 404 });
+    const getDashboardSummary = vi.fn().mockRejectedValue(notFound);
+    const getDashboardVersion = vi.fn().mockRejectedValue(notFound);
+    const onUnavailable = vi.fn();
+    render(<LiveDashboard deps={{ getDashboardSummary, getDashboardVersion }} onUnavailable={onUnavailable} />);
+    await waitFor(() => expect(onUnavailable).toHaveBeenCalled());
+  });
+
   it('shows a retry card when the first load fails', async () => {
     const getDashboardSummary = vi.fn().mockRejectedValue(new Error('Network down'));
     const getDashboardVersion = vi.fn().mockResolvedValue({ changed: false, etag: '"v1"' });
