@@ -161,6 +161,61 @@ describe('LiveDashboard', () => {
     expect(widths).toEqual([50, 50, 0, 100]);
   });
 
+  it('draws the last summary at once on return, and drops it on sign-out', async () => {
+    const { setAuthToken, clearAuthToken } = await import('../../../../services/api/authToken.js');
+    const b64 = (o) => btoa(JSON.stringify(o)).replace(/=+$/, '');
+    setAuthToken(`${b64({ alg: 'none' })}.${b64({ sub: 'u-1' })}.x`);
+    const getDashboardVersion = vi.fn().mockResolvedValue({ changed: false, etag: '"v1"' });
+    const first = render(<LiveDashboard deps={{ getDashboardSummary: vi.fn().mockResolvedValue(ADMIN), getDashboardVersion }} />);
+    await screen.findByText(/^Good (morning|afternoon|evening)/);
+    first.unmount();
+    // Second visit: the summary request never answers, yet the page draws.
+    render(<LiveDashboard deps={{ getDashboardSummary: () => new Promise(() => {}), getDashboardVersion }} />);
+    expect(screen.getByText(/^Good (morning|afternoon|evening)/)).toBeTruthy();
+    clearAuthToken();
+    expect(Object.keys(window.sessionStorage).some((k) => k.startsWith('zm:dash:'))).toBe(false);
+  });
+
+  it('keeps a separate cached summary per module view', async () => {
+    const { setAuthToken, clearAuthToken } = await import('../../../../services/api/authToken.js');
+    const b64 = (o) => btoa(JSON.stringify(o)).replace(/=+$/, '');
+    setAuthToken(`${b64({ alg: 'none' })}.${b64({ sub: 'u-2' })}.x`);
+    const getDashboardVersion = vi.fn().mockResolvedValue({ changed: false, etag: '"v1"' });
+    const a = render(<LiveDashboard cacheTag="legal:" deps={{ getDashboardSummary: vi.fn().mockResolvedValue(ADMIN), getDashboardVersion }} />);
+    await screen.findByText(/^Good (morning|afternoon|evening)/);
+    a.unmount();
+    // Another module: nothing cached for it, so it waits for its own data.
+    render(<LiveDashboard cacheTag="nso:nso" deps={{ getDashboardSummary: () => new Promise(() => {}), getDashboardVersion }} />);
+    expect(screen.getByText('Loading your dashboard…')).toBeTruthy();
+    clearAuthToken();
+  });
+
+  it('does not cache an answer that arrives after the account changed', async () => {
+    const { setAuthToken, clearAuthToken } = await import('../../../../services/api/authToken.js');
+    const b64 = (o) => btoa(JSON.stringify(o)).replace(/=+$/, '');
+    setAuthToken(`${b64({ alg: 'none' })}.${b64({ sub: 'user-a' })}.x`);
+    let answer;
+    const getDashboardSummary = () => new Promise((r) => { answer = r; });
+    const getDashboardVersion = vi.fn().mockResolvedValue({ changed: false, etag: '"v1"' });
+    render(<LiveDashboard deps={{ getDashboardSummary, getDashboardVersion }} />);
+    setAuthToken(`${b64({ alg: 'none' })}.${b64({ sub: 'user-b' })}.x`);
+    await act(async () => { answer(ADMIN); });
+    expect(Object.keys(window.sessionStorage).filter((k) => k.startsWith('zm:dash:'))).toEqual([]);
+    clearAuthToken();
+  });
+
+  it('polls from the version the summary carries', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const getDashboardSummary = vi.fn().mockResolvedValue({ ...ADMIN, version: 'p1' });
+    const getDashboardVersion = vi.fn().mockResolvedValue({ changed: true, etag: '"p2"' });
+    render(<LiveDashboard deps={{ getDashboardSummary, getDashboardVersion }} />);
+    await screen.findByText(/^Good (morning|afternoon|evening)/);
+    await act(async () => { await vi.advanceTimersByTimeAsync(POLL_MS); });
+    expect(getDashboardVersion).toHaveBeenCalledWith('"p1"');
+    // p2 is newer than the version the summary was read at: reload.
+    await waitFor(() => expect(getDashboardSummary).toHaveBeenCalledTimes(2));
+  });
+
   it('shows a retry card when the first load fails', async () => {
     const getDashboardSummary = vi.fn().mockRejectedValue(new Error('Network down'));
     const getDashboardVersion = vi.fn().mockResolvedValue({ changed: false, etag: '"v1"' });

@@ -114,6 +114,12 @@
 }
 .dash-chip:hover { background: var(--zm-surface-hover); }
 .dash-chip[aria-pressed="true"], .dash-chip--primary { background: var(--zm-fg); border-color: var(--zm-fg); color: var(--zm-bg); }
+/* :hover outranks a single class, so the filled chips keep their fill on
+   hover (only a little lighter) instead of taking the plain hover surface
+   while their text stays the light-on-dark colour. */
+.dash-chip[aria-pressed="true"]:hover, .dash-chip--primary:hover {
+  background: color-mix(in srgb, var(--zm-fg) 86%, var(--zm-bg)); border-color: color-mix(in srgb, var(--zm-fg) 86%, var(--zm-bg)); color: var(--zm-bg);
+}
 .dash-chip .c { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--zm-surface-sunken); color: var(--zm-fg-2); }
 .dash-chip[aria-pressed="true"] .c { background: rgba(255,255,255,.18); color: inherit; }
 

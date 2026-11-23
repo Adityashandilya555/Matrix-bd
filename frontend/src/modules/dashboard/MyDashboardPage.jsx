@@ -27,7 +27,7 @@ export default function MyDashboardPage() {
   );
   return (
     <div style={{ padding: '24px 28px 60px', maxWidth: 1320, margin: '0 auto', boxSizing: 'border-box' }}>
-      <LiveDashboard key={`${module}:${borrowedModule || ''}`} nso={borrowedModule === 'nso'} viewer={fullName} onUnavailable={toModuleHome} />
+      <LiveDashboard key={`${module}:${borrowedModule || ''}`} cacheTag={`${module}:${borrowedModule || ''}`} nso={borrowedModule === 'nso'} viewer={fullName} onUnavailable={toModuleHome} />
     </div>
   );
 }

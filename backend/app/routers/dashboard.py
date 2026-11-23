@@ -41,5 +41,11 @@ async def dashboard_summary(
     user: CurrentUser,
     scope: Literal["module", "team"] = Query("module"),
 ) -> dict:
-    """The caller's dashboard: only the sections their role may see."""
-    return await svc.build_summary(db, user, scope)
+    """The caller's dashboard: only the sections their role may see.
+
+    Carries the version taken *before* the sections are read, so the client
+    can poll from it: a change landing while the summary is built moves the
+    version past this one and is picked up by the next check.
+    """
+    version = await svc.get_version(db, str(user["tenant_id"]))
+    return {**await svc.build_summary(db, user, scope), "version": version}

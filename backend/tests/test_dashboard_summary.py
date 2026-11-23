@@ -234,6 +234,21 @@ async def test_version_route_answers_304_on_a_matching_etag(monkeypatch):
     assert body["version"] == "abc123" and fresh_resp.headers["ETag"] == '"abc123"'
 
 
+async def test_summary_route_takes_the_version_before_the_sections(monkeypatch):
+    calls = []
+    async def fake_version(_db, tid):
+        calls.append(("version", tid))
+        return "v-before"
+    async def fake_build(_db, _user, scope):
+        calls.append(("build", scope))
+        return {"role": "admin"}
+    monkeypatch.setattr(svc, "get_version", fake_version)
+    monkeypatch.setattr(svc, "build_summary", fake_build)
+    out = await dashboard_router.dashboard_summary(None, {"tenant_id": TID}, "module")
+    assert calls == [("version", TID), ("build", "module")]
+    assert out == {"role": "admin", "version": "v-before"}
+
+
 # ── routing ──────────────────────────────────────────────────────────────────
 
 # Inspect the router objects, not app.routes: see the note in
