@@ -16,7 +16,7 @@ from app.domain.schemas.nso import (
 )
 from app.rbac.guards import require_module, require_role
 from app.rbac.roles import Role
-from app.services.dashboard_service import build_nso_summary
+from app.services.dashboard_service import build_nso_summary, get_version
 from app.services.nso_service import (
     svc_final_approval,
     svc_get_nso,
@@ -39,7 +39,9 @@ InNsoModule = Annotated[dict, Depends(require_module("nso"))]
 async def nso_summary(db: DbDep, user: NsoMember, _module: InNsoModule) -> dict:
     """NSO dashboard summary. Lives here, not under /dashboard, because an
     executive with NSO supervisor access is a supervisor only on /api/nso/*."""
-    return await build_nso_summary(db, user)
+    # Version first, as on /dashboard/summary: the client polls from it.
+    version = await get_version(db, str(user["tenant_id"]))
+    return {**await build_nso_summary(db, user), "version": version}
 
 
 @router.get("/queue", response_model=NsoQueueResponse)

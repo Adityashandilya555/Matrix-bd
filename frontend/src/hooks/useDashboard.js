@@ -9,13 +9,14 @@ export const POLL_MS = 15000;
 // The last summary is kept for this tab (sessionStorage, like the token), so
 // coming back to the dashboard draws it at once and refreshes underneath
 // instead of showing an empty skeleton every time. Keyed by the signed-in
-// user, so a different account in the same tab never sees someone else's.
-function cacheKey(scope, nso) {
+// user and the view (module, borrowed module, scope), so another account or
+// another module in the same tab never sees this one's numbers.
+function cacheKey(scope, nso, tag) {
   try {
     const part = (getAuthToken() || '').split('.')[1];
     if (!part) return null;
     const { sub } = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/')));
-    return sub ? `zm:dash:${sub}:${nso ? 'nso' : scope}` : null;
+    return sub ? `zm:dash:${sub}:${tag || '-'}:${nso ? 'nso' : scope}` : null;
   } catch { return null; }
 }
 
@@ -37,12 +38,12 @@ function writeCache(key, data, at) {
 // moved) and reloads the summary only when the version changes. It skips the
 // check while the tab is hidden, checks at once when the tab comes back, and
 // reloads on the in-app "sites changed" event.
-export function useDashboard({ scope = 'module', nso = false } = {}, deps = {}) {
+export function useDashboard({ scope = 'module', nso = false, cacheTag = '' } = {}, deps = {}) {
   const api = { getDashboardSummary, getDashboardVersion, ...deps };
   const apiRef = React.useRef(api);
   apiRef.current = api;
   const [state, setState] = React.useState(() => {
-    const hit = readCache(cacheKey(scope, nso));
+    const hit = readCache(cacheKey(scope, nso, cacheTag));
     return hit
       ? { data: hit.data, status: 'ready', error: null, lastUpdatedAt: hit.at }
       : { data: null, status: 'loading', error: null, lastUpdatedAt: null };
@@ -53,19 +54,25 @@ export function useDashboard({ scope = 'module', nso = false } = {}, deps = {}) 
 
   const load = React.useCallback(async () => {
     const seq = ++seqRef.current;
+    // The key is taken when the request starts: if the account changes while
+    // it is in flight, the answer belongs to the old account and is not stored.
+    const key = cacheKey(scope, nso, cacheTag);
     try {
       const data = await apiRef.current.getDashboardSummary({ scope, nso });
       if (seq !== seqRef.current) return;
       failedRef.current = false;
+      // The server reads the version before the sections, so polling from it
+      // catches any change made while the summary was being built.
+      if (data && data.version) etagRef.current = `"${data.version}"`;
       const at = Date.now();
-      writeCache(cacheKey(scope, nso), data, at);
+      if (key && key === cacheKey(scope, nso, cacheTag)) writeCache(key, data, at);
       setState({ data, status: 'ready', error: null, lastUpdatedAt: at });
     } catch (error) {
       if (seq !== seqRef.current) return;
       failedRef.current = true;
       setState((s) => ({ ...s, status: s.data ? 'ready' : 'error', error }));
     }
-  }, [scope, nso]);
+  }, [scope, nso, cacheTag]);
 
   const inFlightRef = React.useRef(false);
   const check = React.useCallback(async () => {
@@ -92,15 +99,10 @@ export function useDashboard({ scope = 'module', nso = false } = {}, deps = {}) 
 
   React.useEffect(() => {
     setState((s) => ({ ...s, status: s.data ? s.status : 'loading' }));
-    // Version and summary go out together, version first: waiting for the
-    // version cost a round trip, and on the admin page it put the summary
-    // behind the approval-queue requests (this effect runs before the page's
-    // own, so the summary is first in the browser's connection queue). A
-    // change landing between the two is caught by the next check at worst.
-    let alive = true;
-    apiRef.current.getDashboardVersion(null)
-      .then(({ etag }) => { if (alive && etagRef.current === null) etagRef.current = etag; })
-      .catch(() => { /* the first poll will take it */ });
+    // The summary goes out at once and carries its own version, so there is
+    // no separate version round trip before it (on the admin page that wait
+    // also put the summary behind the approval-queue requests; this effect
+    // runs before the page's own, so the summary is first in line).
     load();
     const id = window.setInterval(check, POLL_MS);
     const onVisible = () => { if (document.visibilityState === 'visible') check(); };
@@ -109,7 +111,6 @@ export function useDashboard({ scope = 'module', nso = false } = {}, deps = {}) 
     window.addEventListener('focus', onVisible);
     window.addEventListener(SITE_DATA_CHANGED_EVENT, onChanged);
     return () => {
-      alive = false;
       window.clearInterval(id);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);

@@ -14,13 +14,13 @@ function readScope() {
 // The live role dashboard: loads the caller's summary, refreshes it when the
 // server's version moves, and draws it with RoleDashboard. `nso` reads the NSO
 // supervisor view from /nso/summary (for executives with NSO access).
-export default function LiveDashboard({ nso = false, deps, viewer, onUnavailable }) {
+export default function LiveDashboard({ nso = false, deps, viewer, onUnavailable, cacheTag = '' }) {
   const [scope, setScopeState] = React.useState(readScope);
   const setScope = (s) => {
     setScopeState(s);
     try { window.localStorage.setItem(SCOPE_KEY, s); } catch { /* per-viewer convenience only */ }
   };
-  const { data, status, error, lastUpdatedAt, refresh } = useDashboard({ scope, nso }, deps);
+  const { data, status, error, lastUpdatedAt, refresh } = useDashboard({ scope, nso, cacheTag }, deps);
   const vm = React.useMemo(() => toViewModel(data), [data]);
 
   // A 404 means this backend predates the dashboard endpoints (frontend shipped
