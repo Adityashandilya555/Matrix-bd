@@ -16,7 +16,7 @@
 // about being the security boundary.
 import React from 'react';
 import './approval-center.css';
-import { GRID_LAYERS, GRID_ATTACH, stageVignette, canvasBase } from '../../lib/surfaces.js';
+import { CANVAS_GRID, canvasBackdrop } from '../../lib/surfaces.js';
 import { PRODUCT_NAME } from '../../router/routes.js';
 import { getAuthToken } from '../../services/api/authToken.js';
 import { decodeJwtPayload } from './jwt.js';
@@ -111,10 +111,10 @@ export default function ObserverDashboard({ onLogout, fetchers = OBSERVER_FETCHE
         theme={theme} onToggleTheme={toggleTheme} onLogout={onLogout}
         sub="Observer" />
 
-      <main className="zm-app-main" style={{ flex: 1, minWidth: 0, height: '100%', overflowY: 'auto',
-        backgroundColor: canvasBase(theme === 'dark'),
-        backgroundImage: stageVignette(theme === 'dark') + ', ' + GRID_LAYERS,
-        backgroundAttachment: 'fixed, fixed, ' + GRID_ATTACH,
+      {/* Vignette on this non-scrolling wrapper, grid on the scroller:
+          see canvasBackdrop in lib/surfaces.js. */}
+      <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', ...canvasBackdrop(theme === 'dark') }}>
+      <main className="zm-app-main" style={{ flex: 1, minWidth: 0, height: '100%', overflowY: 'auto', ...CANVAS_GRID,
       }}>
         <div style={{ maxWidth: 1080, margin: '0 auto', padding: '30px 34px 60px' }}>
 
@@ -183,6 +183,7 @@ export default function ObserverDashboard({ onLogout, fetchers = OBSERVER_FETCHE
           </div>
         </div>
       </main>
+      </div>
     </div>
   );
 }
