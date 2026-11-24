@@ -10,6 +10,7 @@ import ImageLightbox from '../media/ImageLightbox.jsx';
 import RentScheduleButton from '../rent/RentScheduleDialog.jsx';
 import { useSession } from '../../../state/SessionContext.jsx';
 import { useSites } from '../../../state/SitesContext.jsx';
+import { TintStripe, tintCard } from '../../../lib/statusTint.jsx';
 
 // Relative time formatter for the activity tab. Keeps the rendering format from
 // the mock data ("12 min ago", "3 days ago") so the visual identity is preserved.
@@ -138,16 +139,17 @@ function LOITracker({ site }) {
 
   return (
     <div style={{
-      border: '1px solid ' + (overdue ? 'rgba(217,119,6,0.4)' : 'var(--zm-line)'),
-      background: overdue ? 'var(--zm-copper-soft)' : 'var(--zm-surface-2)',
-      borderRadius: 10, padding: 16,
+      border: '1px solid ' + (overdue ? tintCard('problem').borderColor : 'var(--zm-line)'),
+      background: overdue ? tintCard('problem').background : 'var(--zm-surface-2)',
+      borderRadius: 10, padding: 16, position: 'relative',
       display: 'flex', alignItems: 'center', gap: 18,
     }}>
+      <TintStripe kind={overdue && 'problem'} inset={14}/>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={{ fontFamily: 'var(--zm-font-body)', fontWeight: 600, fontSize: 10.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--zm-fg-3)' }}>
           {pushed ? 'LOI · pushed to payments' : uploaded ? 'LOI uploaded' : 'LOI countdown'}
         </span>
-        <span style={{ fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 28, fontWeight: 600, color: overdue ? 'var(--zm-warning)' : 'var(--zm-fg)', letterSpacing: '-0.02em' }}>
+        <span style={{ fontFamily: 'var(--zm-font-mono)', fontFeatureSettings: "'tnum' 1", fontSize: 28, fontWeight: 600, color: overdue ? 'var(--zm-danger)' : 'var(--zm-fg)', letterSpacing: '-0.02em' }}>
           {String(daysShown).padStart(2, '0')} days
           {!uploaded && (
             <span style={{ marginLeft: 8, fontSize: 13, color: 'var(--zm-fg-3)', fontWeight: 500 }}>

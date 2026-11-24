@@ -12,6 +12,7 @@ import { listMyTeam } from '../../../services/api/adapters/httpAdapter.js';
 import { useFocusSite } from '../../../hooks/useFocusSite.js';
 import StateKpiTile from '../../shared/primitives/StateKpiTile.jsx';
 import { STAGES } from '../../shared/primitives/constants.js';
+import { TintStripe, tintCard } from '../../../lib/statusTint.jsx';
 
 // All render bodies preserved exactly from Shortlist.jsx.
 
@@ -366,10 +367,10 @@ function ShortlistCard({ item, role, onView, onAddDetails, onApprove, onDelegate
   const hasSupEdits = supEdits.length > 0;
   return (
     <div data-site-id={item.code} style={{
-      background: hasSupEdits ? 'rgba(217,119,6,0.05)' : 'var(--zm-surface)',
-      border: '1px solid ' + (hasSupEdits ? 'rgba(217,119,6,0.45)' : 'var(--zm-line)'),
+      ...tintCard(hasSupEdits && 'attention'), borderWidth: 1, borderStyle: 'solid', position: 'relative',
       borderRadius: 14, padding: '18px 20px', display: 'flex', flexDirection: 'column', boxShadow: 'var(--zm-shadow-1)',
     }}>
+      <TintStripe kind={hasSupEdits && 'attention'} inset={18}/>
       {/* Identity row — map-pin · name/status/meta · score */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
         <span aria-hidden="true" style={{ flex: '0 0 46px', width: 46, height: 46, borderRadius: '50%', background: 'var(--zm-accent-soft)', border: '1px solid var(--zm-accent-line)', color: 'var(--zm-accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>

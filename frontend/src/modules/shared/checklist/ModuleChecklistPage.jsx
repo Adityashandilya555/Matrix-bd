@@ -3,6 +3,7 @@ import PageHeader, { HeaderTag } from '../page-header/PageHeader.jsx';
 import Icon from '../primitives/Icon.jsx';
 import { usePageContext } from '../../../App.jsx';
 import { useSession } from '../../../state/SessionContext.jsx';
+import { TintStripe, tintFill } from '../../../lib/statusTint.jsx';
 
 function yesNoTone(value, active) {
   if (!active) {
@@ -152,9 +153,11 @@ function ChecklistRow({ no, label, status, onStatus, children, readOnly = false 
         gap: 14,
         padding: '14px 16px',
         borderBottom: '1px solid var(--zm-line-faint)',
-        background: status === 'no' ? 'color-mix(in srgb, var(--zm-danger-soft) 34%, transparent)' : 'transparent',
+        background: tintFill(status === 'no' && 'problem'),
+        position: 'relative',
       }}
     >
+      <TintStripe kind={status === 'no' && 'problem'}/>
       <span
         style={{
           width: 28,

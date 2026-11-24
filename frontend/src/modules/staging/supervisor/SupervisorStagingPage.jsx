@@ -10,6 +10,7 @@ import { useFocusSite } from '../../../hooks/useFocusSite.js';
 import StateKpiTile from '../../shared/primitives/StateKpiTile.jsx';
 import { STAGES } from '../../shared/primitives/constants.js';
 import LOIDialog from './LOIDialog.jsx';
+import { TintStripe, tintFill } from '../../../lib/statusTint.jsx';
 
 // Render bodies preserved exactly from Staging.jsx — supervisor-only view.
 
@@ -76,7 +77,8 @@ function SupervisorRow({ site, onPush, onViewLOI, onOpen, onViewStatus, pushing 
   const pushed = site.pushed;
   const uploaded = site.loiUploaded;
   return (
-    <div className="zm-row" data-site-id={site.id} style={{ display: 'grid', gridTemplateColumns: '70px minmax(130px, 0.9fr) 70px 124px minmax(170px, 1.3fr) 170px', alignItems: 'center', gap: 10, padding: '14px 12px', borderBottom: '1px solid var(--zm-line-faint)', background: pushed ? 'rgba(4,120,87,0.04)' : 'transparent', opacity: pushed ? 0.85 : 1 }}>
+    <div className="zm-row" data-site-id={site.id} style={{ display: 'grid', gridTemplateColumns: '70px minmax(130px, 0.9fr) 70px 124px minmax(170px, 1.3fr) 170px', alignItems: 'center', gap: 10, padding: '14px 12px', borderBottom: '1px solid var(--zm-line-faint)', background: tintFill(pushed && 'done'), opacity: pushed ? 0.85 : 1, position: 'relative' }}>
+      <TintStripe kind={pushed && 'done'}/>
       <span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 11.5, color: 'var(--zm-fg-3)' }}>{site.caCode || site.code}</span>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13.5, fontWeight: 600, color: 'var(--zm-fg)' }}>{site.name}</span><span style={{ fontFamily: 'var(--zm-font-mono)', fontSize: 10.5, color: 'var(--zm-fg-3)' }}>by {site.createdBy}</span></div>
       <span style={{ fontFamily: 'var(--zm-font-body)', fontSize: 13, color: 'var(--zm-fg)' }}>{site.city}</span>
