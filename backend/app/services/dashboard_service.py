@@ -589,6 +589,19 @@ _MODULE_STATUS_COLUMNS: tuple[tuple[str, str, Any], ...] = (
 )
 
 
+def _status_entry(key: str):
+    """A site has reached this module, by the same rule the module's own pages
+    use. Without it every open site counted as "pending" in every module, so an
+    early-pipeline site showed up as pending in Finance, Design, Project ..."""
+    if key == "finance":
+        # Payments lists sites from the push into legal review onwards.
+        return S.legal_review_at.isnot(None)
+    if key == "financial_closure":
+        # svc_fc_queue: closure starts when the status leaves "pending".
+        return func.coalesce(S.financial_closure_status, "pending") != "pending"
+    return _module_entry(key)
+
+
 def _count_of(item: dict[str, Any]) -> int:
     return int(item["count"])
 
@@ -605,7 +618,7 @@ async def _modules(db: AsyncSession, ctx: DashContext) -> dict:
         return {}
     parts = [
         select(literal(key).label("module"), col.label("status"), func.count().label("n"))
-        .where(*site_filters(ctx), S.status.notin_(_CLOSED))
+        .where(*site_filters(ctx), S.status.notin_(_CLOSED), _status_entry(key))
         .group_by(col)
         for key, _label, col in wanted
     ]

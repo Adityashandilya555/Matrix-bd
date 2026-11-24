@@ -292,3 +292,13 @@ async def test_nso_funnel_counts_unallocated_sites_and_planned_months(engine, ma
     assert steps["done"] == 1        # s_launched opened before NSO capture: done, not new
     assert _tile(nso, "stage1") == 1
     assert sum(m["planned"] for m in admin["launches"]["planned_by_month"]) == 1
+
+
+async def test_module_breakdown_counts_only_sites_that_reached_the_module(engine, maker):
+    ids = await _world(engine)
+    async with maker() as db:
+        out = await svc.build_summary(db, _user(ids, "admin", "business_admin"))
+    mods = {m["key"]: {s["status"]: s["count"] for s in m["statuses"]} for m in out["modules"]["items"]}
+    # Only s_legal reached legal review (and so Finance); drafts never did.
+    assert sum(mods["legal"].values()) == 1 and sum(mods["finance"].values()) == 1
+    assert mods["financial_closure"] == {}   # nothing has started closure
