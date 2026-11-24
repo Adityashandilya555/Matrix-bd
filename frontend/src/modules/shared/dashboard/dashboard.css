@@ -68,10 +68,6 @@
   background: rgba(255,246,236,.16); color: #FFF6EC; cursor: pointer;
 }
 .dash-reel-btn:focus-visible { outline: 2px solid #FFF6EC; outline-offset: 2px; }
-.dash-reel-credit {
-  position: absolute; left: 34%; bottom: 14px; font-size: 10.5px; color: rgba(255,246,236,.82);
-  text-shadow: 0 1px 2px rgba(0,0,0,.5); pointer-events: none;
-}
 @media (prefers-reduced-motion: reduce) { .dash-reel-img { animation: none !important; transition: none; } }
 
 /* Text beside the reel always sits on the card surface, never on the photo. */
@@ -163,7 +159,7 @@
   .dash-step { grid-template-columns: 110px minmax(0, 1fr) 36px 54px; }
   .dash-fade-right { width: 100%; opacity: .3; }
   .dash-reel { width: 100%; opacity: .3; }
-  .dash-reel-ctl, .dash-reel-credit { display: none; }
+  .dash-reel-ctl { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .dash-chip, .dash-glass { transition: none; }
