@@ -15,6 +15,8 @@ const api = vi.hoisted(() => ({
   backfillNso: vi.fn(),
   listNsoDead: vi.fn(),
   replayNsoEvent: vi.fn(),
+  searchNsoEvents: vi.fn(),
+  getNsoEvent: vi.fn(),
 }));
 vi.mock('../../../services/api/integrationsApi.js', () => api);
 
@@ -123,5 +125,52 @@ describe('IntegrationsTab', () => {
     finish({ enabled: true, endpointUrl: 'https://b.example', secret: null, justEnabled: false });
     await screen.findByText('Saved.');
     expect(screen.getByLabelText(/endpoint url/i)).toHaveValue('https://b.example/later');
+  });
+
+  it('names the site, shows NSO\'s reply and opens the exact data sent', async () => {
+    const site = { id: 's1', name: 'Indiranagar 100ft', code: 'BT-BLR-01', deleted: false };
+    api.getNsoIntegration.mockResolvedValue(cfg({
+      configured: true, enabled: true, endpointUrl: 'https://x.example',
+      recentDeliveries: [
+        { outboxId: 'ev9', attemptNo: 1, seq: 9, eventType: 'site.updated', httpStatus: 400, durationMs: 840,
+          responseSnippet: '{"error":"city is required"}', site, attemptedAt: null },
+        { outboxId: 'ev10', attemptNo: 1, seq: 10, eventType: 'site.test', httpStatus: 200, durationMs: 300,
+          responseSnippet: 'ok', site: null, attemptedAt: null },
+      ],
+    }));
+    api.getNsoEvent.mockResolvedValue({
+      id: 'ev9', seq: 9, eventType: 'site.updated', status: 'dead', site,
+      attempts: [{ attemptNo: 1, httpStatus: 400, responseSnippet: '{"error":"city is required"}', attemptedAt: null }],
+      body: { event_id: 'ev9', site: { cafe_code: 'CC1', name: 'Indiranagar 100ft' } },
+    });
+    const user = userEvent.setup();
+    render(<IntegrationsTab />);
+
+    expect(await screen.findByText('Indiranagar 100ft')).toBeInTheDocument();
+    expect(screen.getByText('Test event')).toBeInTheDocument();
+    expect(screen.getByText(/NSO said: \{"error":"city is required"\}/)).toBeInTheDocument();
+    expect(screen.queryByText(/NSO said: ok/)).not.toBeInTheDocument(); // replies shown for failures only
+
+    await user.click(screen.getAllByRole('button', { name: 'View data' })[0]);
+    await waitFor(() => expect(api.getNsoEvent).toHaveBeenCalledWith('ev9'));
+    const dialog = await screen.findByRole('dialog');
+    // Keys stay as NSO received them (snake_case), not camelised.
+    expect(dialog.textContent).toContain('"cafe_code": "CC1"');
+    expect(dialog.textContent).toContain('"event_id": "ev9"');
+  });
+
+  it('finds what was sent for a site', async () => {
+    api.getNsoIntegration.mockResolvedValue(cfg({ configured: true, enabled: true, endpointUrl: 'https://x.example' }));
+    api.searchNsoEvents.mockResolvedValue([
+      { id: 'ev3', seq: 3, eventType: 'site.updated', status: 'sent', lastHttpStatus: 200, createdAt: null,
+        site: { id: 's2', name: 'Koramangala', code: null, deleted: false } },
+    ]);
+    const user = userEvent.setup();
+    render(<IntegrationsTab />);
+    await user.type(await screen.findByLabelText(/site name or code/i), 'kora');
+    await user.click(screen.getByRole('button', { name: 'Search' }));
+    expect(api.searchNsoEvents).toHaveBeenCalledWith('kora');
+    expect(await screen.findByText('Koramangala')).toBeInTheDocument();
+    expect(screen.getByText('Sent · 200')).toBeInTheDocument();
   });
 });

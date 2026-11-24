@@ -477,3 +477,49 @@ async def test_workspace_rename_requeues_shared_sites(engine, maker):  # noqa: F
         await tenancy_service.update_tenant_branding(db, tenant_id=str(tid), name="Renamed Coffee Co", logo=None)
     rows = await _outbox(engine, sid)
     assert rows[-1].payload["company"]["name"] == "Renamed Coffee Co"
+
+
+async def test_admin_sees_site_body_and_nso_reply(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker)
+    async with maker() as db:
+        await svc.send_test(db, str(tid), ADMIN)
+        await db.commit()
+    async with _client(lambda r: httpx.Response(400, text='{"error":"missing field city"}')) as client:
+        await _drain(client)
+    async with maker() as db:
+        cfg = await svc.get_config(db, str(tid))
+        dead = await svc.list_dead(db, str(tid))
+        found = await svc.list_events(db, str(tid), "queu")
+        nothing = await svc.list_events(db, str(tid), "%")
+        blank = await svc.list_events(db, str(tid), "  ")
+        row = _only(d for d in cfg["recent_deliveries"] if d["site"] and d["site"]["id"] == str(sid))
+        detail = await svc.get_event(db, str(tid), uuid.UUID(row["outbox_id"]))
+        test_row = _only(d for d in cfg["recent_deliveries"] if d["event_type"] == "site.test")
+        with pytest.raises(HTTPException) as other_tenant:
+            await svc.get_event(db, str(uuid.uuid4()), uuid.UUID(row["outbox_id"]))
+
+    assert row["site"]["name"] == "Queued" and row["site"]["deleted"] is False
+    assert row["response_snippet"] == '{"error":"missing field city"}'
+    assert test_row["site"] is None  # the test event is about no site
+    mine = _only(d for d in dead if d["site"] and d["site"]["id"] == str(sid))
+    assert mine["response_snippet"] == '{"error":"missing field city"}' and mine["site"]["name"] == "Queued"
+    assert [e["id"] for e in found] == [row["outbox_id"]] and found[0]["status"] == "dead"
+    assert nothing == [] and blank == []  # "%" is matched literally, not as a wildcard
+    # The body is the exact envelope the sender posts.
+    assert detail["body"]["event_id"] == row["outbox_id"] and detail["body"]["site"]["name"] == "Queued"
+    assert detail["body"]["event_type"] == "site.updated" and detail["body"]["seq"] == row["seq"]
+    assert [(a["attempt_no"], a["http_status"]) for a in detail["attempts"]] == [(1, 400)]
+    assert other_tenant.value.status_code == 404
+
+
+async def test_deleted_site_keeps_the_name_it_was_sent_with(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker)
+    async with _client(lambda r: httpx.Response(200)) as client:
+        await _drain(client)
+    async with engine.begin() as conn:
+        await conn.execute(text("update integration_outbox set site_id = :n where site_id = :s"),
+                           {"n": uuid.uuid4(), "s": sid})
+    async with maker() as db:
+        cfg = await svc.get_config(db, str(tid))
+    row = _only(d for d in cfg["recent_deliveries"] if d["site"] and d["site"]["deleted"])
+    assert row["site"]["name"] == "Queued"

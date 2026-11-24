@@ -2,12 +2,15 @@
 // Business-admin portal → Integrations → NSO platform.
 // Endpoint URL + on/off, the signing secret (shown once, on first save or
 // rotation), a test event, "send all current sites", recent deliveries and the
-// dead-letter list with Replay. Matrix only sends; nothing here reads from NSO.
+// dead-letter list with Replay. Every event names its site and shows NSO's
+// reply; "View data" opens the exact JSON body sent, and the site search answers
+// "what did we send for this site?". Matrix only sends; nothing here reads from NSO.
 import React from 'react';
 import {
-  backfillNso, getNsoIntegration, listNsoDead, replayNsoEvent, rotateNsoSecret, saveNsoIntegration, sendNsoTest,
+  backfillNso, getNsoEvent, getNsoIntegration, listNsoDead, replayNsoEvent, rotateNsoSecret, saveNsoIntegration,
+  searchNsoEvents, sendNsoTest,
 } from '../../../services/api/integrationsApi.js';
-import { Button, Card, EmptyState, ErrorState, Icon, SectionHeader, Skeleton, T } from '../ui/kit.jsx';
+import { Button, Card, Drawer, EmptyState, ErrorState, Icon, SectionHeader, Skeleton, T } from '../ui/kit.jsx';
 
 const inputStyle = {
   width: '100%', boxSizing: 'border-box', height: 36, padding: '0 10px', borderRadius: 8,
@@ -60,45 +63,215 @@ function Counts({ counts }) {
   );
 }
 
-function Deliveries({ rows }) {
-  if (!rows.length) return <div style={{ fontSize: 13, color: T.textMuted }}>No deliveries yet.</div>;
+const ok = (code) => code >= 200 && code < 300;
+const STATUS_LABEL = { pending: 'Waiting', sending: 'Sending', failed: 'Will retry', sent: 'Sent', dead: 'Gave up' };
+const cell = { padding: '7px 6px', verticalAlign: 'top' };
+const srOnly = {
+  position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0,0,0,0)', border: 0,
+};
+
+// Which site an event was about. The test event is about none.
+function SiteCell({ site }) {
+  if (!site) return <span style={{ color: T.textMuted }}>Test event</span>;
   return (
-    <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
-      <thead>
-        <tr style={{ color: T.textMuted, textAlign: 'left' }}>
-          <th style={{ padding: '6px 4px' }}>When</th><th>Event</th><th>Result</th><th>Time</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((d) => (
-          <tr key={`${d.outboxId}-${d.attemptNo}`} style={{ borderTop: `1px solid ${T.line}` }}>
-            <td style={{ padding: '6px 4px' }}>{when(d.attemptedAt)}</td>
-            <td>{d.eventType} #{d.seq}</td>
-            <td style={{ color: d.httpStatus >= 200 && d.httpStatus < 300 ? T.successText : T.dangerText }}>
-              {d.httpStatus ?? (d.error ? d.error.slice(0, 60) : '—')}
-            </td>
-            <td>{d.durationMs != null ? `${d.durationMs} ms` : '—'}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <span>
+      <span style={{ fontWeight: 600, color: T.text }}>{site.name || 'Unnamed site'}</span>
+      {site.code && <span style={{ color: T.textMuted, fontFamily: T.mono, fontSize: 11.5 }}> {site.code}</span>}
+      {site.deleted && <span style={{ color: T.textMuted }}> (deleted)</span>}
+    </span>
   );
 }
 
-function DeadList({ rows, onReplay, busyId }) {
+// NSO's answer to a failed attempt (the first part of its response body).
+function Reply({ text, max = 140 }) {
+  if (!text) return null;
+  const short = text.length > max ? `${text.slice(0, max)}…` : text;
+  return (
+    <div title={text} style={{ color: T.textMuted, fontFamily: T.mono, fontSize: 11.5, marginTop: 2, wordBreak: 'break-word' }}>
+      NSO said: {short}
+    </div>
+  );
+}
+
+function Result({ code, error, reply }) {
+  return (
+    <>
+      <span style={{ color: ok(code) ? T.successText : T.dangerText, fontWeight: 600 }}>
+        {code ?? (error ? error.slice(0, 60) : '—')}
+      </span>
+      {!ok(code) && <Reply text={reply} />}
+    </>
+  );
+}
+
+function ViewButton({ id, onView }) {
+  return <Button size="sm" onClick={() => onView(id)}>View data</Button>;
+}
+
+function Deliveries({ rows, onView }) {
+  if (!rows.length) return <div style={{ fontSize: 13, color: T.textMuted }}>No deliveries yet.</div>;
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ color: T.textMuted, textAlign: 'left' }}>
+            <th style={cell}>When</th><th style={cell}>Site</th><th style={cell}>Event</th>
+            <th style={cell}>Result</th><th style={cell}>Time</th><th style={cell}><span style={srOnly}>Data</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((d) => (
+            <tr key={`${d.outboxId}-${d.attemptNo}`} style={{ borderTop: `1px solid ${T.line}` }}>
+              <td style={{ ...cell, whiteSpace: 'nowrap' }}>{when(d.attemptedAt)}</td>
+              <td style={cell}><SiteCell site={d.site} /></td>
+              <td style={{ ...cell, whiteSpace: 'nowrap' }}>{d.eventType} #{d.seq}</td>
+              <td style={{ ...cell, maxWidth: 320 }}><Result code={d.httpStatus} error={d.error} reply={d.responseSnippet} /></td>
+              <td style={{ ...cell, whiteSpace: 'nowrap' }}>{d.durationMs != null ? `${d.durationMs} ms` : '—'}</td>
+              <td style={{ ...cell, textAlign: 'right' }}><ViewButton id={d.outboxId} onView={onView} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DeadList({ rows, onReplay, onView, busyId }) {
   if (!rows.length) return <div style={{ fontSize: 13, color: T.textMuted }}>Nothing has given up.</div>;
   return (
-    <div style={{ display: 'grid', gap: 8 }}>
+    <div style={{ display: 'grid', gap: 10 }}>
       {rows.map((r) => (
-        <div key={r.id} style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 13 }}>
-          <span style={{ flex: 1 }}>
-            {r.eventType} #{r.seq} · {r.lastHttpStatus ?? 'no response'} · {when(r.createdAt)}
-            {r.lastError ? <span style={{ color: T.textMuted }}> · {r.lastError.slice(0, 80)}</span> : null}
-          </span>
+        <div key={r.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', fontSize: 13, borderTop: `1px solid ${T.line}`, paddingTop: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <SiteCell site={r.site} />
+            <div style={{ color: T.textMuted, fontSize: 12.5 }}>
+              {r.eventType} #{r.seq} · <span style={{ color: T.dangerText }}>{r.lastHttpStatus ?? 'no response'}</span> · {when(r.createdAt)}
+              {r.lastError && !r.responseSnippet ? <> · {r.lastError.slice(0, 80)}</> : null}
+            </div>
+            <Reply text={r.responseSnippet} max={200} />
+          </div>
+          <ViewButton id={r.id} onView={onView} />
           <Button size="sm" loading={busyId === r.id} onClick={() => onReplay(r.id)}>Replay</Button>
         </div>
       ))}
     </div>
+  );
+}
+
+// "What did we send for site X?": the latest events for matching sites.
+function SiteSearch({ onView }) {
+  const [q, setQ] = React.useState('');
+  const [res, setRes] = React.useState({ status: 'idle', rows: [] });
+  const seq = React.useRef(0);
+  const search = async (e) => {
+    e.preventDefault();
+    const term = q.trim();
+    if (!term) return;
+    const mine = ++seq.current;
+    setRes((r) => ({ ...r, status: 'loading' }));
+    try {
+      const rows = await searchNsoEvents(term);
+      if (mine === seq.current) setRes({ status: 'ready', rows, term });
+    } catch (err) {
+      if (mine === seq.current) setRes({ status: 'error', rows: [], message: errText(err, 'Search failed.') });
+    }
+  };
+  return (
+    <Card style={{ padding: 16, marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, marginBottom: 4 }}>What was sent for a site</div>
+      <div style={{ fontSize: 12.5, color: T.textMuted, marginBottom: 10 }}>
+        Search by site name or code to see every event sent for it, whether NSO accepted it, and the exact data.
+      </div>
+      <form onSubmit={search} style={{ display: 'flex', gap: 8, marginBottom: res.status === 'idle' ? 0 : 12 }}>
+        <label htmlFor="nso-site-search" style={srOnly}>Site name or code</label>
+        <input id="nso-site-search" style={inputStyle} placeholder="Site name or code" value={q} maxLength={100}
+          onChange={(e) => setQ(e.target.value)} />
+        <Button type="submit" variant="solid" loading={res.status === 'loading'} disabled={!q.trim()}>Search</Button>
+      </form>
+      {res.status === 'error' && <div style={{ fontSize: 13, color: T.dangerText }}>{res.message}</div>}
+      {res.status === 'ready' && !res.rows.length && (
+        <div style={{ fontSize: 13, color: T.textMuted }}>Nothing has been sent for a site matching “{res.term}”.</div>
+      )}
+      {res.rows.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ color: T.textMuted, textAlign: 'left' }}>
+                <th style={cell}>Queued</th><th style={cell}>Site</th><th style={cell}>Event</th>
+                <th style={cell}>Status</th><th style={cell}><span style={srOnly}>Data</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {res.rows.map((r) => (
+                <tr key={r.id} style={{ borderTop: `1px solid ${T.line}` }}>
+                  <td style={{ ...cell, whiteSpace: 'nowrap' }}>{when(r.createdAt)}</td>
+                  <td style={cell}><SiteCell site={r.site} /></td>
+                  <td style={{ ...cell, whiteSpace: 'nowrap' }}>{r.eventType} #{r.seq}</td>
+                  <td style={{ ...cell, color: r.status === 'sent' ? T.successText : r.status === 'dead' ? T.dangerText : T.text }}>
+                    {STATUS_LABEL[r.status] || r.status}{r.lastHttpStatus ? ` · ${r.lastHttpStatus}` : ''}
+                  </td>
+                  <td style={{ ...cell, textAlign: 'right' }}><ViewButton id={r.id} onView={onView} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// One event: the exact body Matrix posts, and NSO's reply to every attempt.
+function EventDrawer({ id, onClose }) {
+  const [state, setState] = React.useState({ status: 'loading' });
+  const [copied, setCopied] = React.useState(false);
+  React.useEffect(() => {
+    if (!id) return undefined;
+    let live = true;
+    setState({ status: 'loading' }); setCopied(false);
+    getNsoEvent(id)
+      .then((ev) => { if (live) setState({ status: 'ready', ev }); })
+      .catch((err) => { if (live) setState({ status: 'error', message: errText(err, 'Could not load this event.') }); });
+    return () => { live = false; };
+  }, [id]);
+  const ev = state.ev;
+  const json = ev ? JSON.stringify(ev.body, null, 2) : '';
+  const copy = () => navigator.clipboard?.writeText(json).then(() => setCopied(true)).catch(() => {});
+  return (
+    <Drawer open={Boolean(id)} onClose={onClose}
+      subtitle={ev ? `${ev.eventType} #${ev.seq} · ${STATUS_LABEL[ev.status] || ev.status}` : 'Event'}
+      title={ev ? (ev.site ? (ev.site.name || 'Unnamed site') : 'Test event') : 'Loading…'}>
+      {state.status === 'loading' && <div style={{ display: 'grid', gap: 8 }}><Skeleton h={16} w="50%" /><Skeleton h={220} /></div>}
+      {state.status === 'error' && <div style={{ fontSize: 13, color: T.dangerText }}>{state.message}</div>}
+      {ev && (
+        <div style={{ display: 'grid', gap: 18, fontSize: 13 }}>
+          <section>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Attempts</div>
+            {!ev.attempts.length && <div style={{ color: T.textMuted }}>Not sent yet.</div>}
+            {ev.attempts.map((a) => (
+              <div key={a.attemptNo} style={{ borderTop: `1px solid ${T.line}`, padding: '6px 0' }}>
+                <span style={{ color: T.textMuted }}>#{a.attemptNo} · {when(a.attemptedAt)} · </span>
+                <Result code={a.httpStatus} error={a.error} reply={a.responseSnippet} />
+                {ok(a.httpStatus) && a.durationMs != null && <span style={{ color: T.textMuted }}> · {a.durationMs} ms</span>}
+              </div>
+            ))}
+          </section>
+          <section>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ fontWeight: 700 }}>Data sent</div>
+              <Button size="sm" onClick={copy} icon={<Icon.check size={14} />}>{copied ? 'Copied' : 'Copy JSON'}</Button>
+            </div>
+            <div style={{ fontSize: 12, color: T.textMuted, marginBottom: 8 }}>
+              The JSON body posted to NSO for this event (signed; headers not shown).
+            </div>
+            <pre style={{
+              margin: 0, padding: 12, borderRadius: 8, background: T.surfaceInset, color: T.text,
+              fontFamily: T.mono, fontSize: 12, lineHeight: 1.5, overflowX: 'auto', whiteSpace: 'pre',
+            }}>{json}</pre>
+          </section>
+        </div>
+      )}
+    </Drawer>
   );
 }
 
@@ -109,6 +282,8 @@ export default function IntegrationsTab() {
   const [busy, setBusy] = React.useState('');
   const [msg, setMsg] = React.useState(null);
   const [secret, setSecret] = React.useState('');
+  const [viewing, setViewing] = React.useState(null);
+  const closeView = React.useCallback(() => setViewing(null), []);
 
   const load = React.useCallback(async () => {
     try {
@@ -229,7 +404,7 @@ export default function IntegrationsTab() {
                   </Button>
                 </div>
               </div>
-              <Deliveries rows={cfg.recentDeliveries} />
+              <Deliveries rows={cfg.recentDeliveries} onView={setViewing} />
             </Card>
           )}
 
@@ -239,10 +414,13 @@ export default function IntegrationsTab() {
               <div style={{ fontSize: 12.5, color: T.textMuted, marginBottom: 10 }}>
                 Events the NSO platform rejected, or that kept failing for about 2 days. Fix the cause, then replay.
               </div>
-              <DeadList rows={dead} busyId={busy}
+              <DeadList rows={dead} busyId={busy} onView={setViewing}
                 onReplay={(id) => run(id, () => replayNsoEvent(id), 'Queued again.')} />
             </Card>
           )}
+
+          {cfg.configured && <div style={{ marginTop: 16 }}><SiteSearch onView={setViewing} /></div>}
+          <EventDrawer id={viewing} onClose={closeView} />
         </>
       )}
     </div>

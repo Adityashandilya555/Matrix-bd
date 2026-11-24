@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from app.core.deps import DbDep, TenantId
@@ -62,6 +62,20 @@ async def backfill(db: DbDep, admin: AdminUser, tenant_id: TenantId) -> dict[str
 async def list_dead(db: DbDep, _admin: AdminUser, tenant_id: TenantId) -> list[dict[str, Any]]:
     """Events that gave up, newest first."""
     return await svc.list_dead(db, tenant_id)
+
+
+@router.get("/events")
+async def list_events(
+    db: DbDep, _admin: AdminUser, tenant_id: TenantId, q: Annotated[str, Query(max_length=100)] = "",
+) -> list[dict[str, Any]]:
+    """Latest events for sites whose name or code matches ``q``."""
+    return await svc.list_events(db, tenant_id, q)
+
+
+@router.get("/events/{outbox_id}")
+async def get_event(outbox_id: uuid.UUID, db: DbDep, _admin: AdminUser, tenant_id: TenantId) -> dict[str, Any]:
+    """The exact data sent for one event, and NSO's reply to each attempt."""
+    return await svc.get_event(db, tenant_id, outbox_id)
 
 
 @router.post("/dead/{outbox_id}/replay")
