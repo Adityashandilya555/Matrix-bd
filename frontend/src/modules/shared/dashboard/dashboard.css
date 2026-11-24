@@ -220,7 +220,7 @@
 
 /* Donut legend as a bar list. */
 .dv-legend-row {
-  display: grid; grid-template-columns: 8px minmax(0, 1fr) auto 40px; gap: 12px; align-items: center;
+  display: grid; grid-template-columns: 8px minmax(0, 1fr) 5ch 40px; gap: 12px; align-items: center; /* fixed count column: rows line up */
   border: 0; background: transparent; padding: 7px 8px; border-radius: 10px; cursor: default; text-align: left;
   font: inherit; color: inherit;
 }
