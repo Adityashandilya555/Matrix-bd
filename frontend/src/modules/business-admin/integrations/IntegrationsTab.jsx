@@ -168,7 +168,8 @@ function SiteSearch({ onView }) {
     const term = q.trim();
     if (!term) return;
     const mine = ++seq.current;
-    setRes((r) => ({ ...r, status: 'loading' }));
+    // Drop the previous results so they can't be read as matches for the new query.
+    setRes({ status: 'loading', rows: [] });
     try {
       const rows = await searchNsoEvents(term);
       if (mine === seq.current) setRes({ status: 'ready', rows, term });

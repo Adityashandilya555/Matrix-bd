@@ -479,35 +479,64 @@ async def test_workspace_rename_requeues_shared_sites(engine, maker):  # noqa: F
     assert rows[-1].payload["company"]["name"] == "Renamed Coffee Co"
 
 
-async def test_admin_sees_site_body_and_nso_reply(engine, maker):  # noqa: F811
+REJECTION = '{"error":"missing field city"}'
+
+
+async def _rejected(engine, maker):  # noqa: F811
+    """A site event and a test event, both rejected by NSO with a 400. Returns (tid, sid)."""
     tid, sid, _ = await _setup(engine, maker)
     async with maker() as db:
         await svc.send_test(db, str(tid), ADMIN)
         await db.commit()
-    async with _client(lambda r: httpx.Response(400, text='{"error":"missing field city"}')) as client:
+    async with _client(lambda r: httpx.Response(400, text=REJECTION)) as client:
         await _drain(client)
+    return tid, sid
+
+
+def _for_site(rows, sid):
+    return _only(d for d in rows if d["site"] and d["site"]["id"] == str(sid))
+
+
+async def test_deliveries_and_dead_rows_name_the_site_and_nso_reply(engine, maker):  # noqa: F811
+    tid, sid = await _rejected(engine, maker)
     async with maker() as db:
         cfg = await svc.get_config(db, str(tid))
         dead = await svc.list_dead(db, str(tid))
-        found = await svc.list_events(db, str(tid), "queu")
-        nothing = await svc.list_events(db, str(tid), "%")
-        blank = await svc.list_events(db, str(tid), "  ")
-        row = _only(d for d in cfg["recent_deliveries"] if d["site"] and d["site"]["id"] == str(sid))
-        detail = await svc.get_event(db, str(tid), uuid.UUID(row["outbox_id"]))
-        test_row = _only(d for d in cfg["recent_deliveries"] if d["event_type"] == "site.test")
-        with pytest.raises(HTTPException) as other_tenant:
-            await svc.get_event(db, str(uuid.uuid4()), uuid.UUID(row["outbox_id"]))
+    row = _for_site(cfg["recent_deliveries"], sid)
+    assert row["site"]["name"] == "Queued"
+    assert row["site"]["deleted"] is False
+    assert row["response_snippet"] == REJECTION
+    assert _only(d for d in cfg["recent_deliveries"] if d["event_type"] == "site.test")["site"] is None
+    assert _for_site(dead, sid)["response_snippet"] == REJECTION
 
-    assert row["site"]["name"] == "Queued" and row["site"]["deleted"] is False
-    assert row["response_snippet"] == '{"error":"missing field city"}'
-    assert test_row["site"] is None  # the test event is about no site
-    mine = _only(d for d in dead if d["site"] and d["site"]["id"] == str(sid))
-    assert mine["response_snippet"] == '{"error":"missing field city"}' and mine["site"]["name"] == "Queued"
-    assert [e["id"] for e in found] == [row["outbox_id"]] and found[0]["status"] == "dead"
-    assert nothing == [] and blank == []  # "%" is matched literally, not as a wildcard
-    # The body is the exact envelope the sender posts.
-    assert detail["body"]["event_id"] == row["outbox_id"] and detail["body"]["site"]["name"] == "Queued"
-    assert detail["body"]["event_type"] == "site.updated" and detail["body"]["seq"] == row["seq"]
+
+async def test_event_search_by_name_and_ca_code(engine, maker):  # noqa: F811
+    tid, sid = await _rejected(engine, maker)
+    async with engine.begin() as conn:
+        await conn.execute(text("update sites set ca_code = 'CA-SRCH-9' where id = :s"), {"s": sid})
+    async with maker() as db:
+        by_name = await svc.list_events(db, str(tid), "queu")
+        by_ca = await svc.list_events(db, str(tid), "ca-srch")
+        literal = await svc.list_events(db, str(tid), "%")
+        blank = await svc.list_events(db, str(tid), "  ")
+    assert [e["status"] for e in by_name] == ["dead"]
+    assert [e["id"] for e in by_ca] == [by_name[0]["id"]]
+    assert by_ca[0]["site"]["code"] == "CA-SRCH-9"  # the CA code is the display code once set
+    assert literal == []  # "%" is matched literally, not as a wildcard
+    assert blank == []
+
+
+async def test_event_detail_is_the_exact_body_and_tenant_scoped(engine, maker):  # noqa: F811
+    tid, sid = await _rejected(engine, maker)
+    async with maker() as db:
+        row = _for_site((await svc.get_config(db, str(tid)))["recent_deliveries"], sid)
+        outbox_id = uuid.UUID(row["outbox_id"])
+        detail = await svc.get_event(db, str(tid), outbox_id)
+        with pytest.raises(HTTPException) as other_tenant:
+            await svc.get_event(db, str(uuid.uuid4()), outbox_id)
+    body = detail["body"]  # the envelope the sender posts
+    assert (body["event_id"], body["event_type"], body["seq"]) == (row["outbox_id"], "site.updated", row["seq"])
+    assert body["site"]["name"] == "Queued"
     assert [(a["attempt_no"], a["http_status"]) for a in detail["attempts"]] == [(1, 400)]
     assert other_tenant.value.status_code == 404
 

@@ -95,8 +95,10 @@ def _site_ref(site_id: uuid.UUID, payload: Optional[dict], name: Optional[str], 
 
 
 def _site_cols():
+    """Site name and display code: the CA code once set, else the generated code
+    (the same rule the rest of the app uses)."""
     s = models.Site
-    return s.name.label("site_name"), s.code.label("site_code")
+    return s.name.label("site_name"), func.coalesce(s.ca_code, s.code).label("site_code")
 
 
 def _site_join(stmt):
@@ -318,7 +320,7 @@ async def list_events(db: AsyncSession, tenant_id: str, q: str = "") -> list[dic
         _site_join(select(ob, *_site_cols()))
         .where(
             ob.tenant_id == uuid.UUID(str(tenant_id)), ob.integration == nso.INTEGRATION, ob.site_id != TEST_SITE_ID,
-            s.name.ilike(pattern) | s.code.ilike(pattern)
+            s.name.ilike(pattern) | s.ca_code.ilike(pattern) | s.code.ilike(pattern)
             | sent["name"].astext.ilike(pattern) | sent["cafe_code"].astext.ilike(pattern),
         )
         .order_by(ob.created_at.desc()).limit(EVENT_SEARCH_LIMIT)
