@@ -22,6 +22,18 @@ describe('PhotoReel', () => {
     expect(shown()).toBe('/b.jpg');
   });
 
+  it('stays still on narrow screens, where its pause control is hidden', () => {
+    vi.useFakeTimers();
+    const orig = window.matchMedia;
+    window.matchMedia = (q) => ({ matches: q === '(max-width: 720px)', media: q, addEventListener() {}, removeEventListener() {} });
+    try {
+      render(<PhotoReel photos={PHOTOS} />);
+      act(() => { vi.advanceTimersByTime(REEL_MS * 3); });
+      expect(shown()).toBe('/a.jpg');
+      expect(screen.queryByRole('button', { name: 'Pause photos' })).toBeNull();
+    } finally { window.matchMedia = orig; }
+  });
+
   it('stops when paused with its button', () => {
     vi.useFakeTimers();
     render(<PhotoReel photos={PHOTOS} />);
