@@ -594,8 +594,10 @@ def _status_entry(key: str):
     use. Without it every open site counted as "pending" in every module, so an
     early-pipeline site showed up as pending in Finance, Design, Project ..."""
     if key == "finance":
-        # Payments lists sites from the push into legal review onwards.
-        return S.legal_review_at.isnot(None)
+        # Payments lists sites from the push into legal review onwards, but
+        # finance_service also accepts work from loi_uploaded, so a site whose
+        # finance has already moved past "pending" counts too.
+        return or_(S.legal_review_at.isnot(None), func.coalesce(S.finance_status, "pending") != "pending")
     if key == "financial_closure":
         # svc_fc_queue: closure starts when the status leaves "pending".
         return func.coalesce(S.financial_closure_status, "pending") != "pending"

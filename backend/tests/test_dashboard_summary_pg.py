@@ -296,9 +296,13 @@ async def test_nso_funnel_counts_unallocated_sites_and_planned_months(engine, ma
 
 async def test_module_breakdown_counts_only_sites_that_reached_the_module(engine, maker):
     ids = await _world(engine)
+    async with engine.begin() as c:   # finance can start at loi_uploaded, before legal review
+        await c.execute(text("update sites set status = 'loi_uploaded', finance_status = 'awaiting_supervisor' where id = :s"),
+                        {"s": ids["s_approved"]})
     async with maker() as db:
         out = await svc.build_summary(db, _user(ids, "admin", "business_admin"))
     mods = {m["key"]: {s["status"]: s["count"] for s in m["statuses"]} for m in out["modules"]["items"]}
-    # Only s_legal reached legal review (and so Finance); drafts never did.
-    assert sum(mods["legal"].values()) == 1 and sum(mods["finance"].values()) == 1
+    # s_legal reached legal review; s_approved has finance underway; drafts are in neither.
+    assert sum(mods["legal"].values()) == 1
+    assert mods["finance"] == {"pending": 1, "awaiting_supervisor": 1}
     assert mods["financial_closure"] == {}   # nothing has started closure
