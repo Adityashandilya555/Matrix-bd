@@ -9,6 +9,13 @@ const PAUSE_KEY = 'zm:photo-reel-paused';
 function prefersReducedMotion() {
   try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
 }
+// On narrow screens the reel is a faint backdrop behind the text and its
+// Pause/Play control is hidden (dashboard.css), so it must not move at all:
+// motion nobody can stop fails WCAG 2.2.2.
+const NARROW = '(max-width: 720px)';
+function isNarrow() {
+  try { return window.matchMedia(NARROW).matches; } catch { return false; }
+}
 function readPaused() {
   try { return window.localStorage.getItem(PAUSE_KEY) === '1'; } catch { return false; }
 }
@@ -19,7 +26,8 @@ function readPaused() {
 // - Holds while hovered or focused, while the tab is hidden, and while the card
 //   is off screen; a Pause/Play button stops it for good (WCAG 2.2.2), and the
 //   choice is remembered.
-// - Reduced motion: the first photo, still. The photos are decorative (alt="").
+// - Reduced motion, or a screen 720px wide or less (no room for the control):
+//   the first photo, still. The photos are decorative (alt="").
 // - Only the current and next photos are in the DOM, so nothing else downloads.
 export default function PhotoReel({ photos, label = 'Photos' }) {
   const list = React.useMemo(() => (photos?.length ? photos : []), [photos]);
@@ -28,7 +36,16 @@ export default function PhotoReel({ photos, label = 'Photos' }) {
   const [paused, setPaused] = React.useState(readPaused);
   const [hold, setHold] = React.useState(false);
   const [visible, setVisible] = React.useState(true);
-  const still = React.useMemo(prefersReducedMotion, []);
+  const reduced = React.useMemo(prefersReducedMotion, []);
+  const [narrow, setNarrow] = React.useState(isNarrow);
+  React.useEffect(() => {
+    let mq;
+    try { mq = window.matchMedia(NARROW); } catch { return undefined; }
+    const onChange = () => setNarrow(mq.matches);
+    mq.addEventListener?.('change', onChange);
+    return () => mq.removeEventListener?.('change', onChange);
+  }, []);
+  const still = reduced || narrow;
   const ref = React.useRef(null);
   const key = list.map((p) => p.src).join('|');
 
