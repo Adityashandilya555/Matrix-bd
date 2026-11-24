@@ -90,7 +90,10 @@ export default function PhotoReel({ photos, label = 'Photos' }) {
   const next = (idx + 1) % list.length;
   const animate = running || (!still && !paused && !finished);
   return (
-    <div ref={ref} className="dash-reel" role="group" aria-roledescription="slideshow" aria-label={label}>
+    // The photographer is named on hover (and in public/dashboard/CREDITS.md)
+    // rather than printed over the photo: the Unsplash licence does not require a visible credit.
+    <div ref={ref} className="dash-reel" role="group" aria-roledescription="slideshow" aria-label={label}
+      title={list[idx].credit ? `Photo: ${list[idx].credit} / Unsplash` : undefined}>
       {list.map((p, k) => (k === idx || k === next) && (
         <img key={p.src} src={p.src} alt="" aria-hidden="true" decoding="async"
           fetchPriority={k === idx ? 'high' : 'low'}
@@ -107,7 +110,6 @@ export default function PhotoReel({ photos, label = 'Photos' }) {
           </button>
         </div>
       )}
-      {list[idx].credit && <span className="dash-reel-credit">Photo: {list[idx].credit} / Unsplash</span>}
     </div>
   );
 }
