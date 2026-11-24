@@ -13,7 +13,7 @@ import { safeHref } from './lib/safeHref.js';
 import Icon from './modules/shared/primitives/Icon.jsx';
 import { filterByScope } from './rbac/scope.js';
 import { extractGoogleMapsCoords, looksLikeMapsUrl } from './lib/googleMaps.js';
-import { GRID_LAYERS, GRID_ATTACH, stageVignette, canvasBase } from './lib/surfaces.js';
+import { CANVAS_GRID, canvasBackdrop } from './lib/surfaces.js';
 import { INDIAN_CITIES_DATA } from './constants/indianCities.js';
 import CitySelect from './modules/shared/primitives/CitySelect.jsx';
 import RentTermsFormV2 from './modules/shared/rent/RentTermsFormV2.jsx';
@@ -184,7 +184,7 @@ export default function App() {
             It is still a SIBLING of <main> rather than its first child, which
             is what keeps the original property: it does not scroll away with
             the page. */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, ...canvasBackdrop(dark) }}>
           <ReadOnlyBanner onLeave={leaveModule} />
           {/* Sibling of <main>, like the read-only strip: part of the chrome,
               so it survives scrolling and navigation within the borrowed
@@ -193,12 +193,10 @@ export default function App() {
 
           <main ref={mainRef} className="zm-app-main" style={{
             flex: 1, overflowY: 'auto', padding: '24px 32px 64px',
-            backgroundColor: canvasBase(dark),
-            // Premium grid canvas: stage-light vignette (fixed) layered over a
-            // fine + coarse grid (scrolls with content) so the plane sits deeper
-            // and every card above it reads as raised. See lib/surfaces.js.
-            backgroundImage: stageVignette(dark) + ', ' + GRID_LAYERS,
-            backgroundAttachment: 'fixed, fixed, ' + GRID_ATTACH,
+            // Premium grid canvas: the stage-light vignette sits on the
+            // non-scrolling column above; only the grid scrolls with the
+            // content (see canvasBackdrop in lib/surfaces.js for why).
+            ...CANVAS_GRID,
           }}>
           {/* Pages inject showToast and onOpenSite via context (see below) or props.
               AppRouter clones page elements with these props via a wrapper. */}
