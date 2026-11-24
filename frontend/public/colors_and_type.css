@@ -23,8 +23,8 @@
   --zm-surface-sunken: #F0E9DF;
 
   /* Linework — slate-tinted */
-  --zm-line: #ECE4D8;
-  --zm-line-strong: #DDD2C3;
+  --zm-line: #E3D8C9;          /* reads on white cards and on the #F1E9DE canvas */
+  --zm-line-strong: #D0C2AF;
   --zm-line-faint: #F4EEE6;
   /* Background grid — cool slate. Fine lines + a stronger coarse rhythm so
      the plane reads with depth and content surfaces float above it. */

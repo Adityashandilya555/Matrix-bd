@@ -12,6 +12,7 @@ import {
 import { ROUTES } from '../../router/routes.js';
 import { safeHref } from '../../lib/safeHref.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
+import { tintCard } from '../../lib/statusTint.jsx';
 
 const LICENSE_FIELDS = [
   ['fssai', 'FSSAI'],
@@ -326,8 +327,8 @@ function StageCard({ title, eyebrow, done, unlocked, children, footer }) {
     <section className="zm-glass" style={{
       borderRadius: 12,
       overflow: 'hidden',
-      borderColor: tone.border,
-      background: done ? tone.bg : 'var(--zm-surface)',
+      borderColor: done ? tintCard('done').borderColor : tone.border,
+      background: done ? tintCard('done').background : 'var(--zm-surface)',
     }}>
       <header style={{
         display: 'flex',

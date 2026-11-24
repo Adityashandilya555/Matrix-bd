@@ -101,7 +101,7 @@ function SubHead({ children, right }) {
 // two identical inline toggles would have drifted the moment one was restyled.
 function ModeToggle({ mode, onChange, group }) {
   return (
-    <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: `1px solid ${T.line}` }}>
+    <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: `1px solid ${T.lineStrong}`, background: T.surface }}>
       {['keep', 'edit'].map((m) => {
         const label = m === 'keep' ? 'Keep same' : 'Edit';
         return (

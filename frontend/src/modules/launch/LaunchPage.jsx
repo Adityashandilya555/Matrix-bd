@@ -211,12 +211,13 @@ export default function LaunchPage() {
 
       <div style={{ flexShrink: 0 }}>
         {/* Tab switcher */}
-        <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid var(--zm-line)', paddingBottom: 0 }}>
+        <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid var(--zm-line-strong)', paddingBottom: 0 }}>
           {TABS.map(({ key, label, count }) => (
             <button key={key} onClick={() => selectTab(key)}
-              style={{ padding: '8px 16px', borderRadius: '8px 8px 0 0', border: '1px solid var(--zm-line)',
-                borderBottom: tab === key ? '1px solid var(--zm-surface)' : '1px solid var(--zm-line)',
-                background: tab === key ? 'var(--zm-surface)' : 'transparent',
+              style={{ padding: '8px 16px', borderRadius: '8px 8px 0 0', border: '1px solid var(--zm-line-strong)',
+                borderBottom: tab === key ? '1px solid var(--zm-surface)' : '1px solid var(--zm-line-strong)',
+                // Inactive tabs get a resting fill: transparent ones vanished into the canvas.
+                background: tab === key ? 'var(--zm-surface)' : 'var(--zm-surface-2)',
                 color: tab === key ? 'var(--zm-fg)' : 'var(--zm-fg-3)',
                 fontFamily: 'var(--zm-font-body)', fontSize: 13, fontWeight: tab === key ? 700 : 500,
                 cursor: 'pointer', marginBottom: '-1px', position: 'relative' }}>
@@ -397,13 +398,15 @@ export default function LaunchPage() {
           <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
             <SearchBox value={q} onChange={setQ} placeholder="Search code, site, city, pending with…" />
             {/* Two pills rather than the closure module's four stages. */}
-            <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--zm-line)' }}>
+            {/* White track + divider so the unselected half reads as a button on the canvas. */}
+            <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--zm-line-strong)', background: 'var(--zm-surface)' }}>
               {[
                 { key: 'pending', label: 'Pending', count: fcCounts.pending },
                 { key: 'closed', label: 'Closed', count: fcCounts.closed },
-              ].map(({ key, label, count }) => (
+              ].map(({ key, label, count }, i) => (
                 <button key={key} onClick={() => setFcFilter(key)} aria-pressed={fcFilter === key}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 34, padding: '0 14px', border: 'none', cursor: 'pointer',
+                    borderLeft: i > 0 ? '1px solid var(--zm-line-strong)' : 'none',
                     fontFamily: 'var(--zm-font-body)', fontSize: 12.5, fontWeight: 600,
                     background: fcFilter === key ? 'var(--zm-accent)' : 'transparent',
                     color: fcFilter === key ? 'var(--zm-accent-on)' : 'var(--zm-fg-2)' }}>

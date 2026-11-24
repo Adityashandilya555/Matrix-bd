@@ -7,6 +7,7 @@ import { ROUTES, bdSiteFinanceRoute } from '../../router/routes.js';
 import { useSiteDataRefresh } from '../../hooks/useSiteDataRefresh.js';
 import { useSession } from '../../state/SessionContext.jsx';
 import { filterByScope } from '../../rbac/scope.js';
+import { TintStripe, tintFill } from '../../lib/statusTint.jsx';
 
 // Payments membership = sites pushed from "Sites in process". The push moves
 // site.status to legal_review, and Legal + Finance then run in parallel — so a
@@ -183,8 +184,10 @@ function PaymentRow({ site, onOpen }) {
       alignItems: 'center',
       padding: '16px 18px',
       borderBottom: '1px solid var(--zm-line-faint)',
-      background: state === 'pending' ? 'var(--zm-accent-soft, #E7F0EA)' : 'transparent',
+      background: tintFill(state === 'pending' && 'attention'),
+      position: 'relative',
     }}>
+      <TintStripe kind={state === 'pending' && 'attention'}/>
       <div style={{ minWidth: 0 }}>
         <div style={{
           fontFamily: 'var(--zm-font-mono)',
