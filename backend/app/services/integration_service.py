@@ -21,7 +21,7 @@ from app.db import models
 from app.integrations import capture
 from app.integrations import nso_payload as nso
 from app.integrations import secrets as secret_store
-from app.integrations.sender import BlockedAddressError, assert_public_host
+from app.integrations.sender import BlockedAddressError, assert_public_host, envelope
 from app.services.audit_service import write_audit_event
 
 # Same rule as the DB check chk_integration_endpoints_https.
@@ -76,11 +76,44 @@ def _url_for_audit(url: str) -> str:
     return f"{parts.scheme}://{parts.hostname or ''}{f':{parts.port}' if parts.port else ''}{parts.path}"
 
 
-def _delivery_out(d: models.IntegrationDelivery, event_type: str, seq: int) -> dict[str, Any]:
+TEST_SITE_ID = uuid.UUID(int=0)
+EVENT_SEARCH_LIMIT = 50
+
+
+def _site_ref(site_id: uuid.UUID, payload: Optional[dict], name: Optional[str], code: Optional[str]) -> Optional[dict]:
+    """Which site an event was about: its current name and code, or the name
+    the event itself carried when the site is gone (site.deleted)."""
+    if site_id == TEST_SITE_ID:
+        return None
+    sent = (payload or {}).get("site") or {}
     return {
-        "outbox_id": str(d.outbox_id), "event_type": event_type, "seq": seq, "attempt_no": d.attempt_no,
+        "id": str(site_id),
+        "name": name or sent.get("name"),
+        "code": code or sent.get("cafe_code"),
+        "deleted": name is None,
+    }
+
+
+def _site_cols():
+    """Site name and display code: the CA code once set, else the generated code
+    (the same rule the rest of the app uses)."""
+    s = models.Site
+    return s.name.label("site_name"), func.coalesce(s.ca_code, s.code).label("site_code")
+
+
+def _site_join(stmt):
+    ob = models.IntegrationOutbox
+    s = models.Site
+    return stmt.outerjoin(s, (s.id == ob.site_id) & (s.tenant_id == ob.tenant_id))
+
+
+def _delivery_out(row: Any) -> dict[str, Any]:
+    d = row.IntegrationDelivery
+    return {
+        "outbox_id": str(d.outbox_id), "event_type": row.event_type, "seq": row.seq, "attempt_no": d.attempt_no,
         "http_status": d.http_status, "duration_ms": d.duration_ms, "error": d.error,
-        "attempted_at": d.attempted_at,
+        "response_snippet": d.response_snippet, "attempted_at": d.attempted_at,
+        "site": _site_ref(row.site_id, {"site": row.site_payload}, row.site_name, row.site_code),
     }
 
 
@@ -94,7 +127,10 @@ async def get_config(db: AsyncSession, tenant_id: str) -> dict[str, Any]:
     )).all())
     d = models.IntegrationDelivery
     recent = (await db.execute(
-        select(d, ob.event_type, ob.seq).join(ob, ob.id == d.outbox_id)
+        _site_join(
+            select(d, ob.event_type, ob.seq, ob.site_id, ob.payload["site"].label("site_payload"), *_site_cols())
+            .join(ob, ob.id == d.outbox_id)
+        )
         .where(d.tenant_id == tid).order_by(d.attempted_at.desc()).limit(RECENT_DELIVERIES)
     )).all()
     now = datetime.now(timezone.utc)
@@ -108,7 +144,7 @@ async def get_config(db: AsyncSession, tenant_id: str) -> dict[str, Any]:
             endpoint and endpoint.previous_secret_expires_at and endpoint.previous_secret_expires_at > now
         ),
         "counts": {k: counts.get(k, 0) for k in ("pending", "sending", "sent", "failed", "dead")},
-        "recent_deliveries": [_delivery_out(row[0], row[1], row[2]) for row in recent],
+        "recent_deliveries": [_delivery_out(row) for row in recent],
     }
 
 
@@ -243,17 +279,83 @@ async def backfill(db: AsyncSession, tenant_id: str, actor: dict) -> dict[str, A
 
 
 async def list_dead(db: AsyncSession, tenant_id: str, limit: int = 100) -> list[dict[str, Any]]:
-    """Dead-lettered events, newest first."""
+    """Dead-lettered events, newest first, with the site and NSO's last reply."""
     ob = models.IntegrationOutbox
+    d = models.IntegrationDelivery
+    last_reply = (
+        select(d.response_snippet).where(d.outbox_id == ob.id)
+        .order_by(d.attempted_at.desc()).limit(1).correlate(ob).scalar_subquery()
+    )
     rows = (await db.execute(
-        select(ob).where(ob.tenant_id == uuid.UUID(str(tenant_id)), ob.status == "dead")
+        _site_join(select(ob, last_reply.label("reply"), *_site_cols()))
+        .where(ob.tenant_id == uuid.UUID(str(tenant_id)), ob.status == "dead")
         .order_by(ob.created_at.desc()).limit(limit)
-    )).scalars().all()
+    )).all()
     return [{
         "id": str(r.id), "seq": r.seq, "site_id": str(r.site_id), "event_type": r.event_type,
         "attempts": r.attempts, "last_http_status": r.last_http_status, "last_error": r.last_error,
-        "created_at": r.created_at,
-    } for r in rows]
+        "response_snippet": row.reply, "created_at": r.created_at,
+        "site": _site_ref(r.site_id, r.payload, row.site_name, row.site_code),
+    } for row in rows for r in (row.IntegrationOutbox,)]
+
+
+def _like(term: str) -> str:
+    return "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+async def list_events(db: AsyncSession, tenant_id: str, q: str = "") -> list[dict[str, Any]]:
+    """The latest events for sites whose name or code matches ``q``, newest first.
+
+    Each row carries its status and the last HTTP result, so "what did we send
+    for site X, and did NSO take it?" is one lookup.
+    """
+    term = q.strip()
+    if not term:
+        return []
+    ob = models.IntegrationOutbox
+    s = models.Site
+    pattern = _like(term[:100])
+    sent = ob.payload["site"]
+    rows = (await db.execute(
+        _site_join(select(ob, *_site_cols()))
+        .where(
+            ob.tenant_id == uuid.UUID(str(tenant_id)), ob.integration == nso.INTEGRATION, ob.site_id != TEST_SITE_ID,
+            s.name.ilike(pattern) | s.ca_code.ilike(pattern) | s.code.ilike(pattern)
+            | sent["name"].astext.ilike(pattern) | sent["cafe_code"].astext.ilike(pattern),
+        )
+        .order_by(ob.created_at.desc()).limit(EVENT_SEARCH_LIMIT)
+    )).all()
+    return [{
+        "id": str(r.id), "seq": r.seq, "event_type": r.event_type, "status": r.status,
+        "attempts": r.attempts, "last_http_status": r.last_http_status, "created_at": r.created_at,
+        "sent_at": r.sent_at, "site": _site_ref(r.site_id, r.payload, row.site_name, row.site_code),
+    } for row in rows for r in (row.IntegrationOutbox,)]
+
+
+async def get_event(db: AsyncSession, tenant_id: str, outbox_id: uuid.UUID) -> dict[str, Any]:
+    """One event: the exact JSON body Matrix sends for it, and every attempt with NSO's reply."""
+    ob = models.IntegrationOutbox
+    d = models.IntegrationDelivery
+    tid = uuid.UUID(str(tenant_id))
+    row = (await db.execute(
+        _site_join(select(ob, *_site_cols())).where(ob.id == outbox_id, ob.tenant_id == tid)
+    )).one_or_none()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No event with that id.")
+    r = row.IntegrationOutbox
+    attempts = (await db.execute(
+        select(d).where(d.outbox_id == r.id, d.tenant_id == tid).order_by(d.attempt_no.desc())
+    )).scalars().all()
+    return {
+        "id": str(r.id), "seq": r.seq, "event_type": r.event_type, "status": r.status,
+        "created_at": r.created_at, "sent_at": r.sent_at,
+        "site": _site_ref(r.site_id, r.payload, row.site_name, row.site_code),
+        "body": envelope(r),
+        "attempts": [{
+            "attempt_no": a.attempt_no, "http_status": a.http_status, "duration_ms": a.duration_ms,
+            "error": a.error, "response_snippet": a.response_snippet, "attempted_at": a.attempted_at,
+        } for a in attempts],
+    }
 
 
 async def replay(db: AsyncSession, tenant_id: str, actor: dict, outbox_id: uuid.UUID) -> dict[str, Any]:
