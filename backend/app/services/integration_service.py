@@ -236,8 +236,10 @@ async def rotate_secret(db: AsyncSession, tenant_id: str, actor: dict) -> dict[s
     return {"secret": new_secret, "previous_valid_until": endpoint.previous_secret_expires_at}
 
 
-async def _require_enabled(db: AsyncSession, tenant_id: str) -> models.IntegrationEndpoint:
-    endpoint = await _endpoint(db, tenant_id)
+async def _require_enabled(db: AsyncSession, tenant_id: str, *, lock: bool = False) -> models.IntegrationEndpoint:
+    # lock=True holds the endpoint row (as save_config does) until commit, so a
+    # concurrent switch-off can't land between this check and the queued event.
+    endpoint = await _endpoint(db, tenant_id, lock=lock)
     if endpoint is None or not endpoint.enabled:
         raise HTTPException(status.HTTP_409_CONFLICT, "Switch the integration on first.")
     return endpoint
@@ -326,7 +328,7 @@ async def resend_site(db: AsyncSession, tenant_id: str, actor: dict, site_id: uu
     and events older than the newest it holds, so a replay of an old event could
     be ignored again or carry stale data.
     """
-    await _require_enabled(db, tenant_id)
+    await _require_enabled(db, tenant_id, lock=True)
     tid = uuid.UUID(str(tenant_id))
     site = (await db.execute(
         select(models.Site).where(models.Site.id == site_id, models.Site.tenant_id == tid)

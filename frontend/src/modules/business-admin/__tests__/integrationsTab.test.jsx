@@ -240,4 +240,36 @@ describe('IntegrationsTab', () => {
     await user.click(screen.getByRole('button', { name: 'Check' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('No site in this workspace has CA code CA-0.');
   });
+
+  it('offers no Send again while the integration is switched off', async () => {
+    api.getNsoIntegration.mockResolvedValue(cfg({ configured: true, enabled: false, endpointUrl: 'https://x.example' }));
+    api.searchNsoEvents.mockResolvedValue([
+      { id: 'ev3', seq: 3, eventType: 'site.updated', status: 'sent', lastHttpStatus: 200, createdAt: null,
+        site: { id: 's2', name: 'Koramangala', code: 'CA-2', deleted: false } },
+    ]);
+    const user = userEvent.setup();
+    render(<IntegrationsTab />);
+    await user.type(await screen.findByLabelText(/site name or code/i), 'kora');
+    await user.click(screen.getByRole('button', { name: 'Search' }));
+    expect(await screen.findByText('Koramangala')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'View data' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send again' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('CA code')).not.toBeInTheDocument();
+  });
+
+  it('clears a checked CA code result when the code is edited', async () => {
+    api.getNsoIntegration.mockResolvedValue(cfg({ configured: true, enabled: true, endpointUrl: 'https://x.example' }));
+    api.lookupNsoSite.mockResolvedValue({
+      site: { id: 's9', name: 'Rajouri Garden', city: 'Delhi', code: 'CA-401' }, shareable: true, reason: null, lastEvent: null,
+    });
+    const user = userEvent.setup();
+    render(<IntegrationsTab />);
+    const input = await screen.findByLabelText('CA code');
+    await user.type(input, 'CA-401');
+    await user.click(screen.getByRole('button', { name: 'Check' }));
+    expect(await screen.findByRole('button', { name: 'Send to NSO' })).toBeInTheDocument();
+    await user.type(input, '2');
+    expect(screen.queryByRole('button', { name: 'Send to NSO' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Rajouri Garden')).not.toBeInTheDocument();
+  });
 });

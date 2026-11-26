@@ -114,9 +114,10 @@ function ViewButton({ id, onView }) {
 // NSO would skip as already seen). Not offered for the test event or a deleted site.
 const resendKey = (site) => `resend:${site.id}`;
 function SendAgain({ site, actions }) {
-  if (!site || site.deleted) return null;
+  if (!site || site.deleted || !actions.enabled) return null;
   return (
-    <Button size="sm" loading={actions.busy === resendKey(site)} onClick={() => actions.onResend(site)}
+    <Button size="sm" loading={actions.busy === resendKey(site)} disabled={actions.resending}
+      onClick={() => actions.onResend(site)}
       title="Send this site's current data to NSO again">
       Send again
     </Button>
@@ -216,7 +217,11 @@ function SendByCaCode({ actions }) {
       <form onSubmit={check} style={{ display: 'flex', gap: 8 }}>
         <label htmlFor="nso-ca-code" style={srOnly}>CA code</label>
         <input id="nso-ca-code" style={inputStyle} placeholder="CA code, e.g. CA-400" value={code} maxLength={100}
-          onChange={(e) => { setCode(e.target.value); setSent(false); }} />
+          onChange={(e) => {
+            // A result belongs to the code that was checked: editing the code
+            // clears it, so Send can never queue a different site than shown.
+            setCode(e.target.value); setSent(false); seq.current += 1; setRes({ status: 'idle' });
+          }} />
         <Button type="submit" loading={res.status === 'loading'} disabled={!code.trim()}>Check</Button>
       </form>
       {res.status === 'error' && <div role="alert" style={{ fontSize: 13, color: T.dangerText, marginTop: 10 }}>{res.message}</div>}
@@ -241,7 +246,8 @@ function SendByCaCode({ actions }) {
             )}
           </div>
           {found.shareable && (
-            <Button variant="solid" loading={actions.busy === resendKey(found.site)} onClick={send}>Send to NSO</Button>
+            <Button variant="solid" loading={actions.busy === resendKey(found.site)} disabled={actions.resending}
+              onClick={send}>Send to NSO</Button>
           )}
         </div>
       )}
@@ -424,8 +430,12 @@ export default function IntegrationsTab() {
     }
     return done;
   };
+  // One resend at a time: `busy` holds a single key, so a second concurrent
+  // resend would clear the first one's spinner and let it be clicked twice.
   const actions = {
     busy,
+    resending: busy.startsWith('resend:'),
+    enabled: Boolean(state.data?.enabled),
     onView: setViewing,
     onResend: (site) => run(resendKey(site), () => resendNsoSite(site.id),
       `${site.name || 'Site'} queued again with its current data. It goes out within a few seconds.`),
