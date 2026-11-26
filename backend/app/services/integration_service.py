@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -262,9 +262,17 @@ async def backfill(db: AsyncSession, tenant_id: str, actor: dict) -> dict[str, A
     await _require_enabled(db, tenant_id)
     tid = uuid.UUID(str(tenant_id))
     # nso.is_eligible as a query, so a big workspace doesn't lock and snapshot
-    # every never-eligible site.
+    # every never-eligible site. Plus sites NSO already has (a non-dead event):
+    # one that left the pipeline while sending was off still needs its final
+    # update. queue_site_snapshot skips it if NSO already has that final state.
+    ob = models.IntegrationOutbox
+    known_to_nso = select(ob.site_id).where(
+        ob.tenant_id == tid, ob.integration == nso.INTEGRATION, ob.status != "dead",
+    )
     site_ids = (await db.execute(
-        select(models.Site.id).where(models.Site.tenant_id == tid, nso.eligible_clause()).order_by(models.Site.id)
+        select(models.Site.id)
+        .where(models.Site.tenant_id == tid, or_(nso.eligible_clause(), models.Site.id.in_(known_to_nso)))
+        .order_by(models.Site.id)
     )).scalars().all()
     # Audit first, so it commits with the first chunk even if a later one fails.
     await _audit(db, tenant_id, actor, "nso_integration_backfill", f"eligible={len(site_ids)}")

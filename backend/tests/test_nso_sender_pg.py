@@ -651,6 +651,29 @@ async def test_resend_before_the_legal_push_explains_why(engine, maker):  # noqa
     assert await _outbox_count(engine, sid) == 0
 
 
+async def test_backfill_sends_the_final_update_for_a_site_archived_while_off(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker, ca_code=None, status="legal_review")
+    async with maker() as db:
+        await svc.save_config(db, str(tid), ADMIN, "https://nso.example.com/hook", False)
+        await db.commit()
+        site = await db.get(models.Site, sid)
+        site.status = "archived"  # sending is off: nothing is queued
+        await db.commit()
+    assert await _outbox_count(engine, sid) == 1
+    async with maker() as db:
+        await svc.save_config(db, str(tid), ADMIN, "https://nso.example.com/hook", True)
+        await db.commit()
+    async with maker() as db:
+        first = await svc.backfill(db, str(tid), ADMIN)
+        await db.commit()
+    async with maker() as db:
+        again = await svc.backfill(db, str(tid), ADMIN)
+        await db.commit()
+    rows = await _outbox(engine, sid)
+    assert [r.payload["site"]["status"] for r in rows] == ["legal_review", "archived"]
+    assert (first["queued"], again["queued"]) == (1, 0)  # the final update once, then nothing
+
+
 # ── One row per site, and its history ─────────────────────────────────────
 
 
