@@ -6,6 +6,8 @@
 //   POST    /business-admin/integrations/nso/backfill      queue every eligible site
 //   GET     /business-admin/integrations/nso/dead          events that gave up
 //   POST    /business-admin/integrations/nso/dead/{id}/replay
+//   GET     /business-admin/integrations/nso/sites/lookup?ca_code=  find a site by CA code
+//   POST    /business-admin/integrations/nso/sites/{id}/resend      send its current data again
 //   GET     /business-admin/integrations/nso/events?q=     latest events for matching sites
 //   GET     /business-admin/integrations/nso/events/{id}   the exact body sent + NSO's replies
 import { createApiClient } from './axiosClient.js';
@@ -30,3 +32,5 @@ export const getNsoEvent = async (outboxId) => {
   const { body, ...rest } = (await client.get(`${BASE}/events/${encodeURIComponent(outboxId)}`)).data;
   return { ...camelize(rest), body };
 };
+export const lookupNsoSite = (caCode) => get(`${BASE}/sites/lookup?ca_code=${encodeURIComponent(caCode)}`);
+export const resendNsoSite = (siteId) => post(`${BASE}/sites/${encodeURIComponent(siteId)}/resend`);

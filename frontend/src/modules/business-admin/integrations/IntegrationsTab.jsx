@@ -4,11 +4,13 @@
 // rotation), a test event, "send all current sites", recent deliveries and the
 // dead-letter list with Replay. Every event names its site and shows NSO's
 // reply; "View data" opens the exact JSON body sent, and the site search answers
-// "what did we send for this site?". Matrix only sends; nothing here reads from NSO.
+// "what did we send for this site?". "Send again" (on a site row, or by CA
+// code) queues a fresh event with the site's current data, for when NSO
+// answered 200 but didn't keep it. Matrix only sends; nothing here reads from NSO.
 import React from 'react';
 import {
-  backfillNso, getNsoEvent, getNsoIntegration, listNsoDead, replayNsoEvent, rotateNsoSecret, saveNsoIntegration,
-  searchNsoEvents, sendNsoTest,
+  backfillNso, getNsoEvent, getNsoIntegration, listNsoDead, lookupNsoSite, replayNsoEvent, resendNsoSite,
+  rotateNsoSecret, saveNsoIntegration, searchNsoEvents, sendNsoTest,
 } from '../../../services/api/integrationsApi.js';
 import { Button, Card, Drawer, EmptyState, ErrorState, Icon, SectionHeader, Skeleton, T } from '../ui/kit.jsx';
 
@@ -108,7 +110,30 @@ function ViewButton({ id, onView }) {
   return <Button size="sm" onClick={() => onView(id)}>View data</Button>;
 }
 
-function Deliveries({ rows, onView }) {
+// A new event with the site's current data (not a replay of the old one, which
+// NSO would skip as already seen). Not offered for the test event or a deleted site.
+const resendKey = (site) => `resend:${site.id}`;
+function SendAgain({ site, actions }) {
+  if (!site || site.deleted || !actions.enabled) return null;
+  return (
+    <Button size="sm" loading={actions.busy === resendKey(site)} disabled={actions.resending}
+      onClick={() => actions.onResend(site)}
+      title="Send this site's current data to NSO again">
+      Send again
+    </Button>
+  );
+}
+
+function RowActions({ id, site, actions }) {
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end' }}>
+      <ViewButton id={id} onView={actions.onView} />
+      <SendAgain site={site} actions={actions} />
+    </span>
+  );
+}
+
+function Deliveries({ rows, actions }) {
   if (!rows.length) return <div style={{ fontSize: 13, color: T.textMuted }}>No deliveries yet.</div>;
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -127,7 +152,7 @@ function Deliveries({ rows, onView }) {
               <td style={{ ...cell, whiteSpace: 'nowrap' }}>{d.eventType} #{d.seq}</td>
               <td style={{ ...cell, maxWidth: 320 }}><Result code={d.httpStatus} error={d.error} reply={d.responseSnippet} /></td>
               <td style={{ ...cell, whiteSpace: 'nowrap' }}>{d.durationMs != null ? `${d.durationMs} ms` : '—'}</td>
-              <td style={{ ...cell, textAlign: 'right' }}><ViewButton id={d.outboxId} onView={onView} /></td>
+              <td style={{ ...cell, textAlign: 'right', whiteSpace: 'nowrap' }}><RowActions id={d.outboxId} site={d.site} actions={actions} /></td>
             </tr>
           ))}
         </tbody>
@@ -158,8 +183,79 @@ function DeadList({ rows, onReplay, onView, busyId }) {
   );
 }
 
+// Send one site by its CA code: check it exists here and is shared with NSO
+// (Finance-approved), show when it was last sent, then send its current data.
+function SendByCaCode({ actions }) {
+  const [code, setCode] = React.useState('');
+  const [res, setRes] = React.useState({ status: 'idle' });
+  const [sent, setSent] = React.useState(false);
+  const seq = React.useRef(0);
+  const check = async (e) => {
+    e.preventDefault();
+    const term = code.trim();
+    if (!term) return;
+    const mine = ++seq.current;
+    setRes({ status: 'loading' }); setSent(false);
+    try {
+      const found = await lookupNsoSite(term);
+      if (mine === seq.current) setRes({ status: 'ready', found });
+    } catch (err) {
+      if (mine === seq.current) setRes({ status: 'error', message: errText(err, 'Could not check that CA code.') });
+    }
+  };
+  const { found } = res;
+  const last = found?.lastEvent;
+  const send = async () => {
+    if (await actions.onResend(found.site)) setSent(true);
+  };
+  return (
+    <Card style={{ padding: 16, marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, marginBottom: 4 }}>Send a site by CA code</div>
+      <div style={{ fontSize: 12.5, color: T.textMuted, marginBottom: 10 }}>
+        Enter a CA code to check the site, then send its current data to NSO as a new event.
+      </div>
+      <form onSubmit={check} style={{ display: 'flex', gap: 8 }}>
+        <label htmlFor="nso-ca-code" style={srOnly}>CA code</label>
+        <input id="nso-ca-code" style={inputStyle} placeholder="CA code, e.g. CA-400" value={code} maxLength={100}
+          onChange={(e) => {
+            // A result belongs to the code that was checked: editing the code
+            // clears it, so Send can never queue a different site than shown.
+            setCode(e.target.value); setSent(false); seq.current += 1; setRes({ status: 'idle' });
+          }} />
+        <Button type="submit" loading={res.status === 'loading'} disabled={!code.trim()}>Check</Button>
+      </form>
+      {res.status === 'error' && <div role="alert" style={{ fontSize: 13, color: T.dangerText, marginTop: 10 }}>{res.message}</div>}
+      {found && (
+        <div style={{
+          marginTop: 12, padding: 12, borderRadius: 9, border: `1px solid ${T.line}`,
+          display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap',
+        }}>
+          <div style={{ flex: 1, minWidth: 220, fontSize: 13 }}>
+            <SiteCell site={found.site} />
+            {found.site.city && <span style={{ color: T.textMuted }}> · {found.site.city}</span>}
+            <div style={{ color: T.textMuted, fontSize: 12.5, marginTop: 2 }}>
+              {last
+                ? `Last event #${last.seq}: ${STATUS_LABEL[last.status] || last.status}${last.lastHttpStatus ? ` (${last.lastHttpStatus})` : ''} · ${when(last.sentAt || last.createdAt)}`
+                : 'Never sent to NSO.'}
+            </div>
+            {!found.shareable && <div style={{ color: T.dangerText, fontSize: 12.5, marginTop: 4 }}>{found.reason}</div>}
+            {sent && (
+              <div role="status" style={{ color: T.successText, fontSize: 12.5, marginTop: 4 }}>
+                Queued. It goes out within a few seconds and shows in the table above.
+              </div>
+            )}
+          </div>
+          {found.shareable && (
+            <Button variant="solid" loading={actions.busy === resendKey(found.site)} disabled={actions.resending}
+              onClick={send}>Send to NSO</Button>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
 // "What did we send for site X?": the latest events for matching sites.
-function SiteSearch({ onView }) {
+function SiteSearch({ actions }) {
   const [q, setQ] = React.useState('');
   const [res, setRes] = React.useState({ status: 'idle', rows: [] });
   const seq = React.useRef(0);
@@ -211,7 +307,7 @@ function SiteSearch({ onView }) {
                   <td style={{ ...cell, color: r.status === 'sent' ? T.successText : r.status === 'dead' ? T.dangerText : T.text }}>
                     {STATUS_LABEL[r.status] || r.status}{r.lastHttpStatus ? ` · ${r.lastHttpStatus}` : ''}
                   </td>
-                  <td style={{ ...cell, textAlign: 'right' }}><ViewButton id={r.id} onView={onView} /></td>
+                  <td style={{ ...cell, textAlign: 'right', whiteSpace: 'nowrap' }}><RowActions id={r.id} site={r.site} actions={actions} /></td>
                 </tr>
               ))}
             </tbody>
@@ -223,7 +319,7 @@ function SiteSearch({ onView }) {
 }
 
 // One event: the exact body Matrix posts, and NSO's reply to every attempt.
-function EventDrawer({ id, onClose }) {
+function EventDrawer({ id, onClose, actions }) {
   const [state, setState] = React.useState({ status: 'loading' });
   const [copied, setCopied] = React.useState(false);
   React.useEffect(() => {
@@ -240,6 +336,12 @@ function EventDrawer({ id, onClose }) {
   const copy = () => navigator.clipboard?.writeText(json).then(() => setCopied(true)).catch(() => {});
   return (
     <Drawer open={Boolean(id)} onClose={onClose}
+      footer={ev?.site && !ev.site.deleted ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 12.5, color: T.textMuted }}>
+          <span>NSO answered but doesn&apos;t have it? Send the site&apos;s current data as a new event.</span>
+          <SendAgain site={ev.site} actions={actions} />
+        </div>
+      ) : null}
       subtitle={ev ? `${ev.eventType} #${ev.seq} · ${STATUS_LABEL[ev.status] || ev.status}` : 'Event'}
       title={ev ? (ev.site ? (ev.site.name || 'Unnamed site') : 'Test event') : 'Loading…'}>
       {state.status === 'loading' && <div style={{ display: 'grid', gap: 8 }}><Skeleton h={16} w="50%" /><Skeleton h={220} /></div>}
@@ -305,10 +407,13 @@ export default function IntegrationsTab() {
 
   // `submitted` = the form values a save sent; edits made while it was in
   // flight stay "touched" so the reload doesn't overwrite them.
+  // Returns whether the action succeeded.
   const run = async (key, fn, okText, submitted) => {
+    let done = false;
     setBusy(key); setMsg(null);
     try {
       const out = await fn();
+      done = true;
       if (out?.secret) setSecret(out.secret);
       setMsg({ tone: 'good', text: typeof okText === 'function' ? okText(out) : okText });
       // Only a save makes the server's values the form's; an unsaved edit must
@@ -323,6 +428,17 @@ export default function IntegrationsTab() {
     } finally {
       setBusy('');
     }
+    return done;
+  };
+  // One resend at a time: `busy` holds a single key, so a second concurrent
+  // resend would clear the first one's spinner and let it be clicked twice.
+  const actions = {
+    busy,
+    resending: busy.startsWith('resend:'),
+    enabled: Boolean(state.data?.enabled),
+    onView: setViewing,
+    onResend: (site) => run(resendKey(site), () => resendNsoSite(site.id),
+      `${site.name || 'Site'} queued again with its current data. It goes out within a few seconds.`),
   };
 
   if (state.status === 'loading') {
@@ -405,7 +521,7 @@ export default function IntegrationsTab() {
                   </Button>
                 </div>
               </div>
-              <Deliveries rows={cfg.recentDeliveries} onView={setViewing} />
+              <Deliveries rows={cfg.recentDeliveries} actions={actions} />
             </Card>
           )}
 
@@ -420,8 +536,13 @@ export default function IntegrationsTab() {
             </Card>
           )}
 
-          {cfg.configured && <div style={{ marginTop: 16 }}><SiteSearch onView={setViewing} /></div>}
-          <EventDrawer id={viewing} onClose={closeView} />
+          {cfg.configured && (
+            <div style={{ marginTop: 16 }}>
+              {cfg.enabled && <SendByCaCode actions={actions} />}
+              <SiteSearch actions={actions} />
+            </div>
+          )}
+          <EventDrawer id={viewing} onClose={closeView} actions={actions} />
         </>
       )}
     </div>

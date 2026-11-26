@@ -64,6 +64,20 @@ async def list_dead(db: DbDep, _admin: AdminUser, tenant_id: TenantId) -> list[d
     return await svc.list_dead(db, tenant_id)
 
 
+@router.get("/sites/lookup")
+async def lookup_site(
+    db: DbDep, _admin: AdminUser, tenant_id: TenantId, ca_code: Annotated[str, Query(max_length=100)] = "",
+) -> dict[str, Any]:
+    """Find a site by CA code and say whether it can be sent to NSO."""
+    return await svc.lookup_site(db, tenant_id, ca_code)
+
+
+@router.post("/sites/{site_id}/resend")
+async def resend_site(site_id: uuid.UUID, db: DbDep, admin: AdminUser, tenant_id: TenantId) -> dict[str, Any]:
+    """Send this site's current data to NSO again as a new event."""
+    return await svc.resend_site(db, tenant_id, admin, site_id)
+
+
 @router.get("/events")
 async def list_events(
     db: DbDep, _admin: AdminUser, tenant_id: TenantId, q: Annotated[str, Query(max_length=100)] = "",

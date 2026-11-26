@@ -552,3 +552,84 @@ async def test_deleted_site_keeps_the_name_it_was_sent_with(engine, maker):  # n
         cfg = await svc.get_config(db, str(tid))
     row = _only(d for d in cfg["recent_deliveries"] if d["site"] and d["site"]["deleted"])
     assert row["site"]["name"] == "Queued"
+
+
+async def _outbox_count(engine, sid):  # noqa: F811
+    async with engine.connect() as conn:
+        return (await conn.execute(text("select count(*) from integration_outbox where site_id = :s"), {"s": sid})).scalar()
+
+
+async def test_lookup_by_ca_code_ignores_case_and_other_workspaces(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker)
+    other_tid, _, _ = await _setup(engine, maker)  # same CA code in another workspace
+    async with maker() as db:
+        found = await svc.lookup_site(db, str(tid), "  ex-blr-001 ")
+        with pytest.raises(HTTPException) as missing:
+            await svc.lookup_site(db, str(tid), "NOPE-1")
+        with pytest.raises(HTTPException) as blank:
+            await svc.lookup_site(db, str(tid), " ")
+    assert other_tid != tid
+    assert found["site"]["id"] == str(sid)
+    assert found["site"]["code"] == "EX-BLR-001"
+    assert found["shareable"] is True and found["reason"] is None
+    assert found["last_event"]["status"] == "pending"
+    assert (missing.value.status_code, blank.value.status_code) == (404, 422)
+
+
+async def test_lookup_explains_an_unapproved_ca_code(engine, maker):  # noqa: F811
+    tid, _, _ = await _setup(engine, maker, finance="pending")
+    async with maker() as db:
+        found = await svc.lookup_site(db, str(tid), "EX-BLR-001")
+    assert found["shareable"] is False
+    assert "Finance" in found["reason"]
+
+
+async def test_resend_queues_a_fresh_event_even_when_already_sent(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker)
+    async with _client(lambda r: httpx.Response(200)) as client:
+        await _drain(client)
+    async with maker() as db:
+        backfill = await svc.backfill(db, str(tid), ADMIN)
+        await db.commit()
+    assert backfill["queued"] == 0  # already up to date: "Send all" skips it
+    async with maker() as db:
+        out = await svc.resend_site(db, str(tid), ADMIN, sid)
+        await db.commit()
+    assert out["queued"] is True and out["site"]["code"] == "EX-BLR-001"
+    seen = []
+    async with _client(lambda r: seen.append(json.loads(r.content)) or httpx.Response(200)) as client:
+        await _drain(client)
+    mine = [b for b in seen if b["site"]["id"] == str(sid)]
+    assert len(mine) == 1 and mine[0]["site"]["name"] == "Queued"
+    assert [row[0] for row in await _status(engine, sid)] == ["sent", "sent"]
+    async with engine.connect() as conn:
+        n = (await conn.execute(text(
+            "select count(*) from audit_logs where tenant_id = :t and action = 'nso_integration_resend'"), {"t": tid})).scalar()
+    assert n == 1
+
+
+async def test_resend_refuses_unshareable_foreign_or_switched_off(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker, finance="pending")
+    other_tid, other_sid, _ = await _setup(engine, maker)
+    async with maker() as db:
+        with pytest.raises(HTTPException) as unapproved:
+            await svc.resend_site(db, str(tid), ADMIN, sid)
+        with pytest.raises(HTTPException) as foreign:
+            await svc.resend_site(db, str(tid), ADMIN, other_sid)
+        await svc.save_config(db, str(other_tid), ADMIN, "https://nso.example.com/hook", False)
+        await db.commit()
+    async with maker() as db:
+        with pytest.raises(HTTPException) as off:
+            await svc.resend_site(db, str(other_tid), ADMIN, other_sid)
+    assert (unapproved.value.status_code, foreign.value.status_code, off.value.status_code) == (409, 404, 409)
+    assert await _outbox_count(engine, sid) == 0
+
+
+async def test_resend_refuses_while_an_update_is_still_on_its_way(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker)  # leaves one pending event
+    async with maker() as db:
+        with pytest.raises(HTTPException) as exc:
+            await svc.resend_site(db, str(tid), ADMIN, sid)
+    assert exc.value.status_code == 409
+    assert "already on its way" in exc.value.detail
+    assert await _outbox_count(engine, sid) == 1

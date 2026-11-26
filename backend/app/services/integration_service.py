@@ -236,8 +236,10 @@ async def rotate_secret(db: AsyncSession, tenant_id: str, actor: dict) -> dict[s
     return {"secret": new_secret, "previous_valid_until": endpoint.previous_secret_expires_at}
 
 
-async def _require_enabled(db: AsyncSession, tenant_id: str) -> models.IntegrationEndpoint:
-    endpoint = await _endpoint(db, tenant_id)
+async def _require_enabled(db: AsyncSession, tenant_id: str, *, lock: bool = False) -> models.IntegrationEndpoint:
+    # lock=True holds the endpoint row (as save_config does) until commit, so a
+    # concurrent switch-off can't land between this check and the queued event.
+    endpoint = await _endpoint(db, tenant_id, lock=lock)
     if endpoint is None or not endpoint.enabled:
         raise HTTPException(status.HTTP_409_CONFLICT, "Switch the integration on first.")
     return endpoint
@@ -276,6 +278,81 @@ async def backfill(db: AsyncSession, tenant_id: str, actor: dict) -> dict[str, A
         queued += await db.run_sync(lambda s, c=chunk: sum(capture.queue_site_snapshot(s, sid) for sid in c))
         await db.commit()
     return {"eligible": len(site_ids), "queued": queued}
+
+
+def _not_shareable_reason(site: models.Site) -> Optional[str]:
+    """Why NSO may not get this site yet, or None when it may (nso.is_eligible)."""
+    if nso.is_eligible(nso.shared_cafe_code(site.ca_code, site.finance_status)):
+        return None
+    if not site.ca_code:
+        return "This site has no CA code yet."
+    return "Finance hasn't approved this site's CA code yet, so it isn't shared with NSO."
+
+
+async def _last_event(db: AsyncSession, tid: uuid.UUID, site_id: uuid.UUID) -> Optional[dict[str, Any]]:
+    ob = models.IntegrationOutbox
+    r = (await db.execute(
+        select(ob).where(ob.tenant_id == tid, ob.integration == nso.INTEGRATION, ob.site_id == site_id)
+        .order_by(ob.seq.desc()).limit(1)
+    )).scalar_one_or_none()
+    if r is None:
+        return None
+    return {"id": str(r.id), "seq": r.seq, "status": r.status, "last_http_status": r.last_http_status,
+            "created_at": r.created_at, "sent_at": r.sent_at}
+
+
+async def lookup_site(db: AsyncSession, tenant_id: str, ca_code: str) -> dict[str, Any]:
+    """Find a site in this workspace by CA code and say whether NSO may get it."""
+    code = ca_code.strip()
+    if not code:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Enter a CA code.")
+    tid = uuid.UUID(str(tenant_id))
+    s = models.Site
+    site = (await db.execute(
+        select(s).where(s.tenant_id == tid, func.upper(s.ca_code) == code.upper())
+    )).scalar_one_or_none()
+    if site is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"No site in this workspace has CA code {code}.")
+    reason = _not_shareable_reason(site)
+    return {
+        "site": {"id": str(site.id), "name": site.name, "city": site.city, "code": site.ca_code},
+        "shareable": reason is None, "reason": reason,
+        "last_event": await _last_event(db, tid, site.id),
+    }
+
+
+IN_FLIGHT = frozenset({"pending", "sending", "failed"})
+
+
+async def resend_site(db: AsyncSession, tenant_id: str, actor: dict, site_id: uuid.UUID) -> dict[str, Any]:
+    """Queue a fresh snapshot of one site's current data, even if NSO already has it.
+
+    A new event (new id and seq), not a replay: NSO skips event ids it has seen
+    and events older than the newest it holds, so a replay of an old event could
+    be ignored again or carry stale data.
+    """
+    await _require_enabled(db, tenant_id, lock=True)
+    tid = uuid.UUID(str(tenant_id))
+    site = (await db.execute(
+        select(models.Site).where(models.Site.id == site_id, models.Site.tenant_id == tid)
+    )).scalar_one_or_none()
+    if site is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No site with that id in this workspace.")
+    reason = _not_shareable_reason(site)
+    if reason:
+        raise HTTPException(status.HTTP_409_CONFLICT, reason)
+    last = await _last_event(db, tid, site_id)
+    if last and last["status"] in IN_FLIGHT:
+        # Another forced event would only queue behind it: NSO keeps the highest seq.
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            f"An update for this site is already on its way (#{last['seq']}). "
+                            "Wait for it to finish, then send again if needed.")
+    name, code = site.name, site.ca_code
+    queued = await db.run_sync(lambda sess: capture.queue_site_snapshot(sess, site_id, force=True))
+    if not queued:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This site could not be queued. Refresh and try again.")
+    await _audit(db, tenant_id, actor, "nso_integration_resend", f"site_id={site_id} ca_code={code}")
+    return {"queued": True, "site": {"id": str(site_id), "name": name, "code": code}}
 
 
 async def list_dead(db: AsyncSession, tenant_id: str, limit: int = 100) -> list[dict[str, Any]]:
