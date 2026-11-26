@@ -623,3 +623,13 @@ async def test_resend_refuses_unshareable_foreign_or_switched_off(engine, maker)
             await svc.resend_site(db, str(other_tid), ADMIN, other_sid)
     assert (unapproved.value.status_code, foreign.value.status_code, off.value.status_code) == (409, 404, 409)
     assert await _outbox_count(engine, sid) == 0
+
+
+async def test_resend_refuses_while_an_update_is_still_on_its_way(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker)  # leaves one pending event
+    async with maker() as db:
+        with pytest.raises(HTTPException) as exc:
+            await svc.resend_site(db, str(tid), ADMIN, sid)
+    assert exc.value.status_code == 409
+    assert "already on its way" in exc.value.detail
+    assert await _outbox_count(engine, sid) == 1

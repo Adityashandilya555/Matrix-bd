@@ -321,6 +321,9 @@ async def lookup_site(db: AsyncSession, tenant_id: str, ca_code: str) -> dict[st
     }
 
 
+IN_FLIGHT = frozenset({"pending", "sending", "failed"})
+
+
 async def resend_site(db: AsyncSession, tenant_id: str, actor: dict, site_id: uuid.UUID) -> dict[str, Any]:
     """Queue a fresh snapshot of one site's current data, even if NSO already has it.
 
@@ -338,6 +341,12 @@ async def resend_site(db: AsyncSession, tenant_id: str, actor: dict, site_id: uu
     reason = _not_shareable_reason(site)
     if reason:
         raise HTTPException(status.HTTP_409_CONFLICT, reason)
+    last = await _last_event(db, tid, site_id)
+    if last and last["status"] in IN_FLIGHT:
+        # Another forced event would only queue behind it: NSO keeps the highest seq.
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            f"An update for this site is already on its way (#{last['seq']}). "
+                            "Wait for it to finish, then send again if needed.")
     name, code = site.name, site.ca_code
     queued = await db.run_sync(lambda sess: capture.queue_site_snapshot(sess, site_id, force=True))
     if not queued:
