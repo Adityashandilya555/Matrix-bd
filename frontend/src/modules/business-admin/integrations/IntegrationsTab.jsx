@@ -1,16 +1,16 @@
 // skipcq: JS-0833
 // Business-admin portal → Integrations → NSO platform.
 // Endpoint URL + on/off, the signing secret (shown once, on first save or
-// rotation), a test event, "send all current sites", recent deliveries and the
-// dead-letter list with Replay. Every event names its site and shows NSO's
-// reply; "View data" opens the exact JSON body sent, and the site search answers
-// "what did we send for this site?". "Send again" (on a site row, or by CA
+// rotation), a test event, "send all current sites", one row per site sent (open
+// it for that site's history: what changed each time and NSO's answers) and the
+// dead-letter list with Replay. "View data" opens the exact JSON body sent.
+// "Send again" (in a site's history, or by CA
 // code) queues a fresh event with the site's current data, for when NSO
 // answered 200 but didn't keep it. Matrix only sends; nothing here reads from NSO.
 import React from 'react';
 import {
-  backfillNso, getNsoEvent, getNsoIntegration, listNsoDead, lookupNsoSite, replayNsoEvent, resendNsoSite,
-  rotateNsoSecret, saveNsoIntegration, searchNsoEvents, sendNsoTest,
+  backfillNso, getNsoEvent, getNsoIntegration, getNsoSiteHistory, listNsoDead, listNsoSites, lookupNsoSite,
+  replayNsoEvent, resendNsoSite, rotateNsoSecret, saveNsoIntegration, sendNsoTest,
 } from '../../../services/api/integrationsApi.js';
 import { Button, Card, Drawer, EmptyState, ErrorState, Icon, SectionHeader, Skeleton, T } from '../ui/kit.jsx';
 
@@ -67,7 +67,6 @@ function Counts({ counts }) {
 
 const ok = (code) => code >= 200 && code < 300;
 const STATUS_LABEL = { pending: 'Waiting', sending: 'Sending', failed: 'Will retry', sent: 'Sent', dead: 'Gave up' };
-const cell = { padding: '7px 6px', verticalAlign: 'top' };
 const srOnly = {
   position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0,0,0,0)', border: 0,
 };
@@ -124,39 +123,198 @@ function SendAgain({ site, actions }) {
   );
 }
 
-function RowActions({ id, site, actions }) {
+// ── One row per site ─────────────────────────────────────────────────────────
+// Each site sent to NSO appears once, however many updates it has had: when it
+// was first sent, the latest update, and what that update is doing now. Opening
+// a row shows the site's history: what changed each time and NSO's answers.
+
+const STATE = {
+  up_to_date: { label: 'Up to date', tone: 'good' },
+  sending: { label: 'Sending', tone: 'neutral' },
+  retrying: { label: 'Retrying', tone: 'warn' },
+  gave_up: { label: 'Gave up', tone: 'bad' },
+};
+const toneColor = { good: T.successText, warn: T.warnText, bad: T.dangerText, neutral: T.text };
+
+// What the latest event is waiting for, in words.
+function stateDetail(state, latest, enabled) {
+  if (state === 'sending' && !enabled) return 'Waiting: sending is switched off';
+  if (state === 'retrying') {
+    const why = latest.lastHttpStatus ? `NSO answered ${latest.lastHttpStatus}` : (latest.lastError || 'no response').slice(0, 60);
+    return `${why} · next try ${when(latest.nextAttemptAt)}`;
+  }
+  if (state === 'gave_up') return latest.lastHttpStatus ? `NSO answered ${latest.lastHttpStatus}` : (latest.lastError || '').slice(0, 60);
+  if (state === 'up_to_date' && latest.lastHttpStatus) return `NSO answered ${latest.lastHttpStatus}`;
+  return '';
+}
+
+function StateCell({ state, latest, enabled }) {
+  const s = STATE[state] || { label: state, tone: 'neutral' };
+  const detail = stateDetail(state, latest, enabled);
   return (
-    <span style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end' }}>
-      <ViewButton id={id} onView={actions.onView} />
-      <SendAgain site={site} actions={actions} />
+    <span>
+      <span style={{ fontWeight: 600, color: toneColor[s.tone] }}>{s.label}</span>
+      {detail && <span style={{ display: 'block', color: T.textMuted, fontSize: 11.5 }}>{detail}</span>}
     </span>
   );
 }
 
-function Deliveries({ rows, actions }) {
-  if (!rows.length) return <div style={{ fontSize: 13, color: T.textMuted }}>No deliveries yet.</div>;
+const FIELD_LABEL = {
+  'site.cafe_code': 'CA code', 'site.status': 'Status', 'site.name': 'Name', 'site.city': 'City',
+  'site.model': 'Model', 'site.archived': 'Archived', 'site.google_pin': 'Map pin', 'site.lat': 'Latitude',
+  'site.lng': 'Longitude', 'site.google_maps_url': 'Maps link', 'company.name': 'Workspace name',
+  'loi.uploaded': 'LOI uploaded', 'loi.uploaded_at': 'LOI date', 'licences.fssai_status': 'FSSAI',
+  'dates.project_start': 'Project start', 'dates.handover': 'Handover to NSO',
+  'dates.live_planned': 'Planned launch', 'dates.live_actual': 'Launched',
+};
+// Derived fields that always change with another one: not worth a line each.
+const QUIET_FIELDS = new Set(['site.lat', 'site.lng', 'loi.uploaded']);
+const show = (v) => (v === null || v === undefined || v === '' ? '—' : String(v));
+
+function whatChanged(ev) {
+  if (ev.eventType === 'site.test') return 'Test event';
+  if (ev.eventType === 'site.deleted') return 'Site deleted';
+  // "First sent" only for an event NSO actually received.
+  if (ev.first) return ev.status === 'sent' ? 'First sent' : 'First event';
+  if (!ev.changes) return ev.status === 'dead' ? 'Not taken by NSO' : 'Update';
+  const shown = ev.changes.filter((c) => !QUIET_FIELDS.has(c.field));
+  if (!shown.length) return 'Sent again (no change)';
+  return shown.map((c) => `${FIELD_LABEL[c.field] || c.field}: ${show(c.from)} → ${show(c.to)}`).join(' · ');
+}
+
+function SiteHistory({ siteId, version, actions }) {
+  const [res, setRes] = React.useState({ status: 'loading' });
+  React.useEffect(() => {
+    let live = true;
+    getNsoSiteHistory(siteId)
+      .then((h) => { if (live) setRes({ status: 'ready', h }); })
+      .catch((err) => { if (live) setRes({ status: 'error', message: errText(err, 'Could not load this site.') }); });
+    return () => { live = false; };
+  }, [siteId, version]);
+  if (res.status === 'loading') return <div style={{ display: 'grid', gap: 6 }}><Skeleton h={14} w="60%" /><Skeleton h={14} /></div>;
+  if (res.status === 'error') return <div style={{ fontSize: 13, color: T.dangerText }}>{res.message}</div>;
+  const { h } = res;
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ color: T.textMuted, textAlign: 'left' }}>
-            <th style={cell}>When</th><th style={cell}>Site</th><th style={cell}>Event</th>
-            <th style={cell}>Result</th><th style={cell}>Time</th><th style={cell}><span style={srOnly}>Data</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((d) => (
-            <tr key={`${d.outboxId}-${d.attemptNo}`} style={{ borderTop: `1px solid ${T.line}` }}>
-              <td style={{ ...cell, whiteSpace: 'nowrap' }}>{when(d.attemptedAt)}</td>
-              <td style={cell}><SiteCell site={d.site} /></td>
-              <td style={{ ...cell, whiteSpace: 'nowrap' }}>{d.eventType} #{d.seq}</td>
-              <td style={{ ...cell, maxWidth: 320 }}><Result code={d.httpStatus} error={d.error} reply={d.responseSnippet} /></td>
-              <td style={{ ...cell, whiteSpace: 'nowrap' }}>{d.durationMs != null ? `${d.durationMs} ms` : '—'}</td>
-              <td style={{ ...cell, textAlign: 'right', whiteSpace: 'nowrap' }}><RowActions id={d.outboxId} site={d.site} actions={actions} /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div style={{ display: 'grid', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12.5, color: h.reason ? T.dangerText : T.textMuted }}>
+          {h.reason || (h.site ? 'Changes to this site are sent automatically.' : 'Events from the "Send test" button.')}
+        </span>
+        {!h.reason && <SendAgain site={h.site} actions={actions} />}
+      </div>
+      <ol aria-label="History" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+        {h.events.map((ev) => {
+          const last = ev.tries[0];
+          return (
+            <li key={ev.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', borderTop: `1px solid ${T.line}`, padding: '8px 0', fontSize: 12.5 }}>
+              <span style={{ width: 150, flexShrink: 0, color: T.textMuted }}>{when(ev.createdAt)}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ color: T.text }}>{whatChanged(ev)}</span>
+                <span style={{ display: 'block', color: T.textMuted, fontSize: 11.5 }}>
+                  #{ev.seq} · {STATUS_LABEL[ev.status] || ev.status}
+                  {ev.tries.length > 1 ? ` after ${ev.tries.length} tries` : ''}
+                  {ev.status === 'failed' && ev.nextAttemptAt ? ` · next try ${when(ev.nextAttemptAt)}` : ''}
+                </span>
+                {last && !ok(last.httpStatus) && <Reply text={last.responseSnippet || last.error} />}
+              </span>
+              <span style={{ whiteSpace: 'nowrap' }}>
+                {last ? <Result code={last.httpStatus} error={last.error} /> : <span style={{ color: T.textMuted }}>not tried yet</span>}
+              </span>
+              <ViewButton id={ev.id} onView={actions.onView} />
+            </li>
+          );
+        })}
+      </ol>
+      <div style={{ fontSize: 12, color: T.textMuted }}>
+        {h.truncated ? 'Showing the latest 100 events. ' : ''}
+        Delivered updates older than 30 days are cleared (the first one is kept), so one line can cover several updates.
+      </div>
+    </div>
+  );
+}
+
+function SiteRow({ row, open, onToggle, version, actions }) {
+  const panelId = `nso-site-${row.siteId}`;
+  return (
+    <li style={{ borderTop: `1px solid ${T.line}` }}>
+      <button type="button" aria-expanded={open} aria-controls={panelId} onClick={onToggle}
+        style={{
+          width: '100%', display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap', padding: '10px 4px',
+          background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', font: 'inherit', fontSize: 12.5, color: T.text,
+        }}>
+        <Icon.caret className={`ac-caret${open ? ' is-open' : ''}`} size={14} style={{ color: T.textFaint, marginTop: 2, flexShrink: 0 }} />
+        <span style={{ flex: '1 1 260px', minWidth: 0 }}>
+          {row.site ? <SiteCell site={row.site} /> : <span style={{ fontWeight: 600 }}>Test events</span>}
+          <span style={{ display: 'block', color: T.textMuted, fontSize: 11.5, marginTop: 2 }}>
+            {row.firstSentAt ? `First sent ${when(row.firstSentAt)}` : `First queued ${when(row.firstAt)} · not received yet`} · Last update {when(row.latest.createdAt)} · {row.events} {row.events === 1 ? 'event' : 'events'}
+          </span>
+        </span>
+        <span style={{ flex: '0 1 220px', minWidth: 150 }}><StateCell state={row.state} latest={row.latest} enabled={actions.enabled} /></span>
+      </button>
+      {open && (
+        <div id={panelId} style={{ padding: '4px 4px 12px 30px' }}>
+          <SiteHistory siteId={row.siteId} version={version} actions={actions} />
+        </div>
+      )}
+    </li>
+  );
+}
+
+function SitesSent({ version, actions }) {
+  const [q, setQ] = React.useState('');
+  const [query, setQuery] = React.useState({ q: '', page: 1 });
+  const [res, setRes] = React.useState({ status: 'loading' });
+  const [openId, setOpenId] = React.useState(null);
+  React.useEffect(() => {
+    let live = true;
+    listNsoSites(query.q, query.page)
+      .then((data) => { if (live) setRes({ status: 'ready', data }); })
+      // Keep the rows on screen if a refresh fails; only a first load shows the error.
+      .catch((err) => { if (live) setRes((prev) => (prev.data ? prev : { status: 'error', message: errText(err, 'Could not load the sites.') })); });
+    return () => { live = false; };
+  }, [query, version]);
+  const search = (e) => {
+    e.preventDefault();
+    setOpenId(null);
+    // Drop the previous rows so they can't be read as matches for the new search.
+    setRes({ status: 'loading' });
+    setQuery({ q: q.trim(), page: 1 });
+  };
+  const data = res.data;
+  const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+  const go = (page) => { setOpenId(null); setQuery((cur) => ({ ...cur, page })); };
+  return (
+    <div>
+      <form onSubmit={search} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        <label htmlFor="nso-site-search" style={srOnly}>Site name or code</label>
+        <input id="nso-site-search" style={inputStyle} placeholder="Find a site by name or code" value={q} maxLength={100}
+          onChange={(e) => setQ(e.target.value)} />
+        <Button type="submit">Search</Button>
+      </form>
+      {res.status === 'loading' && <div style={{ display: 'grid', gap: 8 }}><Skeleton h={16} /><Skeleton h={16} /></div>}
+      {res.status === 'error' && <div style={{ fontSize: 13, color: T.dangerText }}>{res.message}</div>}
+      {data && !data.sites.length && (
+        <div style={{ fontSize: 13, color: T.textMuted }}>
+          {query.q ? `Nothing has been sent for a site matching “${query.q}”.` : 'Nothing has been sent yet.'}
+        </div>
+      )}
+      {data && data.sites.length > 0 && (
+        <>
+          <ul aria-label="Sites sent to NSO" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {data.sites.map((row) => (
+              <SiteRow key={row.siteId} row={row} version={version} actions={actions}
+                open={openId === row.siteId} onToggle={() => setOpenId((cur) => (cur === row.siteId ? null : row.siteId))} />
+            ))}
+          </ul>
+          {pages > 1 && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', fontSize: 12.5, color: T.textMuted, marginTop: 8 }}>
+              <Button size="sm" disabled={query.page <= 1} onClick={() => go(query.page - 1)}>Previous</Button>
+              <span>Page {query.page} of {pages} · {data.total} sites</span>
+              <Button size="sm" disabled={query.page >= pages} onClick={() => go(query.page + 1)}>Next</Button>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -184,7 +342,8 @@ function DeadList({ rows, onReplay, onView, busyId }) {
 }
 
 // Send one site by its CA code: check it exists here and is shared with NSO
-// (Finance-approved), show when it was last sent, then send its current data.
+// (pushed to Legal, or Finance-approved), show when it was last sent, then send
+// its current data.
 function SendByCaCode({ actions }) {
   const [code, setCode] = React.useState('');
   const [res, setRes] = React.useState({ status: 'idle' });
@@ -241,7 +400,7 @@ function SendByCaCode({ actions }) {
             {!found.shareable && <div style={{ color: T.dangerText, fontSize: 12.5, marginTop: 4 }}>{found.reason}</div>}
             {sent && (
               <div role="status" style={{ color: T.successText, fontSize: 12.5, marginTop: 4 }}>
-                Queued. It goes out within a few seconds and shows in the table above.
+                Queued. It goes out within a few seconds and shows in the sites list above.
               </div>
             )}
           </div>
@@ -254,70 +413,6 @@ function SendByCaCode({ actions }) {
     </Card>
   );
 }
-// "What did we send for site X?": the latest events for matching sites.
-function SiteSearch({ actions }) {
-  const [q, setQ] = React.useState('');
-  const [res, setRes] = React.useState({ status: 'idle', rows: [] });
-  const seq = React.useRef(0);
-  const search = async (e) => {
-    e.preventDefault();
-    const term = q.trim();
-    if (!term) return;
-    const mine = ++seq.current;
-    // Drop the previous results so they can't be read as matches for the new query.
-    setRes({ status: 'loading', rows: [] });
-    try {
-      const rows = await searchNsoEvents(term);
-      if (mine === seq.current) setRes({ status: 'ready', rows, term });
-    } catch (err) {
-      if (mine === seq.current) setRes({ status: 'error', rows: [], message: errText(err, 'Search failed.') });
-    }
-  };
-  return (
-    <Card style={{ padding: 16, marginBottom: 16 }}>
-      <div style={{ fontWeight: 700, marginBottom: 4 }}>What was sent for a site</div>
-      <div style={{ fontSize: 12.5, color: T.textMuted, marginBottom: 10 }}>
-        Search by site name or code to see every event sent for it, whether NSO accepted it, and the exact data.
-      </div>
-      <form onSubmit={search} style={{ display: 'flex', gap: 8, marginBottom: res.status === 'idle' ? 0 : 12 }}>
-        <label htmlFor="nso-site-search" style={srOnly}>Site name or code</label>
-        <input id="nso-site-search" style={inputStyle} placeholder="Site name or code" value={q} maxLength={100}
-          onChange={(e) => setQ(e.target.value)} />
-        <Button type="submit" variant="solid" loading={res.status === 'loading'} disabled={!q.trim()}>Search</Button>
-      </form>
-      {res.status === 'error' && <div style={{ fontSize: 13, color: T.dangerText }}>{res.message}</div>}
-      {res.status === 'ready' && !res.rows.length && (
-        <div style={{ fontSize: 13, color: T.textMuted }}>Nothing has been sent for a site matching “{res.term}”.</div>
-      )}
-      {res.rows.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ color: T.textMuted, textAlign: 'left' }}>
-                <th style={cell}>Queued</th><th style={cell}>Site</th><th style={cell}>Event</th>
-                <th style={cell}>Status</th><th style={cell}><span style={srOnly}>Data</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {res.rows.map((r) => (
-                <tr key={r.id} style={{ borderTop: `1px solid ${T.line}` }}>
-                  <td style={{ ...cell, whiteSpace: 'nowrap' }}>{when(r.createdAt)}</td>
-                  <td style={cell}><SiteCell site={r.site} /></td>
-                  <td style={{ ...cell, whiteSpace: 'nowrap' }}>{r.eventType} #{r.seq}</td>
-                  <td style={{ ...cell, color: r.status === 'sent' ? T.successText : r.status === 'dead' ? T.dangerText : T.text }}>
-                    {STATUS_LABEL[r.status] || r.status}{r.lastHttpStatus ? ` · ${r.lastHttpStatus}` : ''}
-                  </td>
-                  <td style={{ ...cell, textAlign: 'right', whiteSpace: 'nowrap' }}><RowActions id={r.id} site={r.site} actions={actions} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Card>
-  );
-}
-
 // One event: the exact body Matrix posts, and NSO's reply to every attempt.
 function EventDrawer({ id, onClose, actions }) {
   const [state, setState] = React.useState({ status: 'loading' });
@@ -386,6 +481,8 @@ export default function IntegrationsTab() {
   const [msg, setMsg] = React.useState(null);
   const [secret, setSecret] = React.useState('');
   const [viewing, setViewing] = React.useState(null);
+  // Bumped on every reload, so the sites list and an open history refresh too.
+  const [version, setVersion] = React.useState(0);
   const closeView = React.useCallback(() => setViewing(null), []);
 
   const load = React.useCallback(async () => {
@@ -393,6 +490,7 @@ export default function IntegrationsTab() {
       const [cfg, deadRows] = await Promise.all([getNsoIntegration(), listNsoDead()]);
       setState({ status: 'ready', data: cfg });
       setDead(deadRows);
+      setVersion((v) => v + 1);
       setForm((f) => (f.touched ? f : { endpointUrl: cfg.endpointUrl || '', enabled: cfg.enabled }));
     } catch (err) {
       // Keep what is on screen (including a just-shown secret) if a refresh fails;
@@ -450,7 +548,7 @@ export default function IntegrationsTab() {
   return (
     <div>
       <SectionHeader icon={Icon.external} title="NSO platform"
-        description="Matrix sends each eligible site to the NSO platform as a signed webhook whenever its details change. Sites are shared once Finance has approved them (they have a cafe code)."
+        description="Matrix sends each site to the NSO platform as a signed webhook from the moment it is pushed to Legal (or once Finance approves its CA code), and again whenever its details change."
         onRefresh={load} />
 
       {!cfg.keyConfigured && (
@@ -509,7 +607,7 @@ export default function IntegrationsTab() {
 
           {cfg.enabled && (
             <Card style={{ padding: 16, marginBottom: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <Counts counts={cfg.counts} />
                 <div style={{ display: 'flex', gap: 8 }}>
                   <Button loading={busy === 'test'} onClick={() => run('test', sendNsoTest, 'Test event queued; it goes out shortly.')}>
@@ -521,7 +619,16 @@ export default function IntegrationsTab() {
                   </Button>
                 </div>
               </div>
-              <Deliveries rows={cfg.recentDeliveries} actions={actions} />
+            </Card>
+          )}
+
+          {cfg.configured && (
+            <Card style={{ padding: 16, marginBottom: 16 }}>
+              <div style={{ fontWeight: 700, marginBottom: 2 }}>Sites sent</div>
+              <div style={{ fontSize: 12.5, color: T.textMuted, marginBottom: 10 }}>
+                One row per site. Open a row to see every update sent for it, what changed, and NSO&apos;s answer.
+              </div>
+              <SitesSent version={version} actions={actions} />
             </Card>
           )}
 
@@ -539,7 +646,6 @@ export default function IntegrationsTab() {
           {cfg.configured && (
             <div style={{ marginTop: 16 }}>
               {cfg.enabled && <SendByCaCode actions={actions} />}
-              <SiteSearch actions={actions} />
             </div>
           )}
           <EventDrawer id={viewing} onClose={closeView} actions={actions} />

@@ -78,12 +78,19 @@ async def resend_site(site_id: uuid.UUID, db: DbDep, admin: AdminUser, tenant_id
     return await svc.resend_site(db, tenant_id, admin, site_id)
 
 
-@router.get("/events")
-async def list_events(
-    db: DbDep, _admin: AdminUser, tenant_id: TenantId, q: Annotated[str, Query(max_length=100)] = "",
-) -> list[dict[str, Any]]:
-    """Latest events for sites whose name or code matches ``q``."""
-    return await svc.list_events(db, tenant_id, q)
+@router.get("/sites")
+async def list_sites(
+    db: DbDep, _admin: AdminUser, tenant_id: TenantId,
+    q: Annotated[str, Query(max_length=100)] = "", page: Annotated[int, Query(ge=1, le=10_000)] = 1,
+) -> dict[str, Any]:
+    """One row per site sent to NSO, latest activity first, with its current state."""
+    return await svc.list_sites(db, tenant_id, q, page)
+
+
+@router.get("/sites/{site_id}/history")
+async def site_history(site_id: uuid.UUID, db: DbDep, _admin: AdminUser, tenant_id: TenantId) -> dict[str, Any]:
+    """Every event for one site: what changed each time, and NSO's reply to each attempt."""
+    return await svc.site_history(db, tenant_id, site_id)
 
 
 @router.get("/events/{outbox_id}")

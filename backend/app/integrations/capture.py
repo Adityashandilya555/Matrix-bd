@@ -157,8 +157,8 @@ def queue_site_snapshot(session: Session, site_id: uuid.UUID, *, force: bool = F
     if snapshot is None:
         return False
     previous = _last_payload(session, locked, site_id)
-    was_shared = bool(previous and previous.get("site", {}).get("cafe_code"))
-    if not nso.is_eligible(snapshot["site"]["cafe_code"]) and not was_shared:
+    was_shared = bool(previous) and nso.is_eligible(previous.get("site") or {})
+    if not nso.is_eligible(snapshot["site"]) and not was_shared:
         return False
     if previous == snapshot and not force:
         return False
@@ -192,8 +192,7 @@ def _before_commit(session: Session) -> None:
 def _eligible_sites_of(session: Session, tenant_ids: set[uuid.UUID]) -> set[uuid.UUID]:
     site = models.Site
     return set(session.execute(
-        select(site.id).where(site.tenant_id.in_(tenant_ids), site.ca_code.isnot(None),
-                              site.finance_status == "approved")
+        select(site.id).where(site.tenant_id.in_(tenant_ids), nso.eligible_clause())
     ).scalars())
 
 

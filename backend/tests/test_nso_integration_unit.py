@@ -81,10 +81,33 @@ def test_parse_pin(raw, expected):
     assert nso.parse_pin(raw) == expected
 
 
-def test_eligibility_rule():
-    assert nso.is_eligible("EX-1")
-    assert not nso.is_eligible(None)
-    assert not nso.is_eligible("")
+@pytest.mark.parametrize("status", ["legal_review", "legal_approved", "pushed_to_payments", "launched"])
+def test_pushed_to_legal_is_eligible_without_a_code(status):
+    assert nso.is_eligible({"cafe_code": None, "status": status})
+
+
+@pytest.mark.parametrize("status", ["draft_submitted", "approved", "loi_uploaded", "archived", "rejected", "legal_rejected"])
+def test_before_the_push_or_out_of_the_pipeline_needs_a_code(status):
+    assert not nso.is_eligible({"cafe_code": None, "status": status})
+    assert not nso.is_eligible({"cafe_code": "", "status": status})
+    assert nso.is_eligible({"cafe_code": "EX-1", "status": status})  # Finance-approved: today's rule
+
+
+def test_eligibility_tolerates_old_payloads():
+    assert not nso.is_eligible({})
+    assert nso.is_eligible({"cafe_code": "EX-1"})
+
+
+def test_payload_changes_lists_dotted_fields():
+    from app.services.integration_service import payload_changes
+    before = {"site": {"status": "legal_review", "cafe_code": None}, "licences": {"fssai_status": None}}
+    after = {"site": {"status": "legal_review", "cafe_code": "CA-1"}, "licences": {"fssai_status": "yes"}}
+    assert payload_changes(before, after) == [
+        {"field": "licences.fssai_status", "from": None, "to": "yes"},
+        {"field": "site.cafe_code", "from": None, "to": "CA-1"},
+    ]
+    assert payload_changes(None, after) is None  # the site's first event
+    assert payload_changes(after, after) == []  # sent again with no change
 
 
 def test_snapshot_reads_only_watched_columns():

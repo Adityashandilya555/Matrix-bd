@@ -43,7 +43,7 @@ The body is always a **full snapshot**, never a diff. Here is an example:
 | Field | Meaning |
 | --- | --- |
 | `company.id`, `site.id` | Stable keys. **Key your records on these**, never on names or the cafe code. |
-| `site.cafe_code` | The Finance-approved cafe code. It can change, and becomes `null` if approval is withdrawn. |
+| `site.cafe_code` | The Finance-approved cafe code. `null` until Finance approves it (a site is usually sent first while it is with Legal), and `null` again if approval is withdrawn. It can change. Identify a site by `site.id`, not by this code. |
 | `site.lat`, `site.lng` | Parsed from `google_pin` when possible, otherwise `null` |
 | `site.work_email` | Always `null` in schema version 1 |
 | `licences.fssai_status` | `pending`, `yes`, `no` or `na`. It is `null` until Legal publishes the licensing checklist. |
@@ -63,7 +63,9 @@ Dates are `YYYY-MM-DD` and timestamps are UTC ISO-8601.
 
 ## Which sites you receive
 
-A site is sent from the moment Finance approves its cafe code. If a site loses its approved code, you get one last `site.updated` with `cafe_code: null`, and nothing more until it is approved again.
+A site is sent from the moment its LOI is approved and it is pushed to Legal (`site.status` becomes `legal_review`), or earlier if Finance has already approved its cafe code. From then on you get a fresh `site.updated` each time a field below changes, for example when Legal publishes FSSAI as positive (`licences.fssai_status: "yes"`), when Finance approves the cafe code, and at project start, handover and launch.
+
+A site stays shared while its status is `legal_review`, `legal_approved`, `pushed_to_payments` or `launched`, or while it has an approved cafe code. If it leaves (it is archived, rejected or rejected by Legal, and has no approved code), you get one last `site.updated` showing that status, and nothing more until it comes back.
 
 ## Rules for your endpoint
 

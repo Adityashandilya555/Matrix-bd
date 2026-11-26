@@ -314,11 +314,13 @@ async def test_dns_failure_is_retried_not_dead(engine, maker, monkeypatch):  # n
     assert (await _status(engine, sid))[0][:2] == ("failed", 1)
 
 
-async def test_purge_keeps_the_newest_row_per_site(engine, maker):  # noqa: F811
+async def test_purge_keeps_the_first_and_newest_row_per_site(engine, maker):  # noqa: F811
     _, sid, _ = await _setup(engine, maker)
     async with maker() as db:
         site = await db.get(models.Site, sid)
         site.name = "Second"
+        await db.commit()
+        site.name = "Third"
         await db.commit()
     async with engine.begin() as conn:
         await conn.execute(text(
@@ -326,7 +328,8 @@ async def test_purge_keeps_the_newest_row_per_site(engine, maker):  # noqa: F811
         ), {"s": sid})
     await sender.purge_all_sent()
     rows = await _outbox(engine, sid)
-    assert [r.payload["site"]["name"] for r in rows] == ["Second"]
+    # The first row stays so the per-site history can say when it was first sent.
+    assert [r.payload["site"]["name"] for r in rows] == ["Queued", "Third"]
 
 
 async def test_second_rotation_is_refused_while_one_is_open(engine, maker):  # noqa: F811
@@ -497,45 +500,27 @@ def _for_site(rows, sid):
     return _only(d for d in rows if d["site"] and d["site"]["id"] == str(sid))
 
 
-async def test_deliveries_and_dead_rows_name_the_site_and_nso_reply(engine, maker):  # noqa: F811
+async def test_dead_rows_name_the_site_and_nso_reply(engine, maker):  # noqa: F811
     tid, sid = await _rejected(engine, maker)
     async with maker() as db:
-        cfg = await svc.get_config(db, str(tid))
         dead = await svc.list_dead(db, str(tid))
-    row = _for_site(cfg["recent_deliveries"], sid)
-    assert row["site"]["name"] == "Queued"
-    assert row["site"]["deleted"] is False
+        listed = (await svc.list_sites(db, str(tid)))["sites"]
+    row = _for_site(dead, sid)
+    assert row["site"]["name"] == "Queued" and row["site"]["deleted"] is False
     assert row["response_snippet"] == REJECTION
-    assert _only(d for d in cfg["recent_deliveries"] if d["event_type"] == "site.test")["site"] is None
-    assert _for_site(dead, sid)["response_snippet"] == REJECTION
-
-
-async def test_event_search_by_name_and_ca_code(engine, maker):  # noqa: F811
-    tid, sid = await _rejected(engine, maker)
-    async with engine.begin() as conn:
-        await conn.execute(text("update sites set ca_code = 'CA-SRCH-9' where id = :s"), {"s": sid})
-    async with maker() as db:
-        by_name = await svc.list_events(db, str(tid), "queu")
-        by_ca = await svc.list_events(db, str(tid), "ca-srch")
-        literal = await svc.list_events(db, str(tid), "%")
-        blank = await svc.list_events(db, str(tid), "  ")
-    assert [e["status"] for e in by_name] == ["dead"]
-    assert [e["id"] for e in by_ca] == [by_name[0]["id"]]
-    assert by_ca[0]["site"]["code"] == "CA-SRCH-9"  # the CA code is the display code once set
-    assert literal == []  # "%" is matched literally, not as a wildcard
-    assert blank == []
+    assert _only(r for r in listed if r["site"] is None)["state"] == "gave_up"  # the test event
 
 
 async def test_event_detail_is_the_exact_body_and_tenant_scoped(engine, maker):  # noqa: F811
     tid, sid = await _rejected(engine, maker)
     async with maker() as db:
-        row = _for_site((await svc.get_config(db, str(tid)))["recent_deliveries"], sid)
-        outbox_id = uuid.UUID(row["outbox_id"])
+        row = _for_site(await svc.list_dead(db, str(tid)), sid)
+        outbox_id = uuid.UUID(row["id"])
         detail = await svc.get_event(db, str(tid), outbox_id)
         with pytest.raises(HTTPException) as other_tenant:
             await svc.get_event(db, str(uuid.uuid4()), outbox_id)
     body = detail["body"]  # the envelope the sender posts
-    assert (body["event_id"], body["event_type"], body["seq"]) == (row["outbox_id"], "site.updated", row["seq"])
+    assert (body["event_id"], body["event_type"], body["seq"]) == (row["id"], "site.updated", row["seq"])
     assert body["site"]["name"] == "Queued"
     assert [(a["attempt_no"], a["http_status"]) for a in detail["attempts"]] == [(1, 400)]
     assert other_tenant.value.status_code == 404
@@ -549,8 +534,8 @@ async def test_deleted_site_keeps_the_name_it_was_sent_with(engine, maker):  # n
         await conn.execute(text("update integration_outbox set site_id = :n where site_id = :s"),
                            {"n": uuid.uuid4(), "s": sid})
     async with maker() as db:
-        cfg = await svc.get_config(db, str(tid))
-    row = _only(d for d in cfg["recent_deliveries"] if d["site"] and d["site"]["deleted"])
+        listed = (await svc.list_sites(db, str(tid)))["sites"]
+    row = _only(r for r in listed if r["site"] and r["site"]["deleted"])
     assert row["site"]["name"] == "Queued"
 
 
@@ -581,7 +566,7 @@ async def test_lookup_explains_an_unapproved_ca_code(engine, maker):  # noqa: F8
     async with maker() as db:
         found = await svc.lookup_site(db, str(tid), "EX-BLR-001")
     assert found["shareable"] is False
-    assert "Finance" in found["reason"]
+    assert "sent to Legal" in found["reason"]
 
 
 async def test_resend_queues_a_fresh_event_even_when_already_sent(engine, maker):  # noqa: F811
@@ -625,6 +610,117 @@ async def test_resend_refuses_unshareable_foreign_or_switched_off(engine, maker)
     assert await _outbox_count(engine, sid) == 0
 
 
+# ── Shared from the Legal push ───────────────────────────────────────────
+
+
+async def test_backfill_and_resend_include_a_pushed_site_without_a_ca_code(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker, ca_code=None, status="legal_review")
+    async with maker() as db:
+        out = await svc.backfill(db, str(tid), ADMIN)
+        await db.commit()
+    assert out == {"eligible": 1, "queued": 0}  # counted, and already queued by _setup
+    async with _client(lambda r: httpx.Response(200)) as client:
+        await _drain(client)  # Send again waits until that update has gone out
+    async with maker() as db:
+        resent = await svc.resend_site(db, str(tid), ADMIN, sid)
+        await db.commit()
+    assert resent["queued"] is True and resent["site"]["code"] is None
+    assert await _outbox_count(engine, sid) == 2
+
+
+async def test_resend_before_the_legal_push_explains_why(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker, ca_code=None, status="loi_uploaded")
+    async with maker() as db:
+        with pytest.raises(HTTPException) as exc:
+            await svc.resend_site(db, str(tid), ADMIN, sid)
+    assert exc.value.status_code == 409
+    assert "hasn't been sent to Legal yet" in exc.value.detail
+    assert await _outbox_count(engine, sid) == 0
+
+
+async def test_backfill_sends_the_final_update_for_a_site_archived_while_off(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker, ca_code=None, status="legal_review")
+    async with maker() as db:
+        await svc.save_config(db, str(tid), ADMIN, "https://nso.example.com/hook", False)
+        await db.commit()
+        site = await db.get(models.Site, sid)
+        site.status = "archived"  # sending is off: nothing is queued
+        await db.commit()
+    assert await _outbox_count(engine, sid) == 1
+    async with maker() as db:
+        await svc.save_config(db, str(tid), ADMIN, "https://nso.example.com/hook", True)
+        await db.commit()
+    async with maker() as db:
+        first = await svc.backfill(db, str(tid), ADMIN)
+        await db.commit()
+    async with maker() as db:
+        again = await svc.backfill(db, str(tid), ADMIN)
+        await db.commit()
+    rows = await _outbox(engine, sid)
+    assert [r.payload["site"]["status"] for r in rows] == ["legal_review", "archived"]
+    assert (first["queued"], again["queued"]) == (1, 0)  # the final update once, then nothing
+
+
+# ── One row per site, and its history ─────────────────────────────────────
+
+
+async def test_sites_list_has_one_row_per_site_with_its_state(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker)
+    other_tid, other_sid, _ = await _setup(engine, maker)
+    async with _client(lambda r: httpx.Response(200)) as client:
+        await _drain(client)
+    async with maker() as db:
+        site = await db.get(models.Site, sid)
+        site.name = "Renamed"
+        await db.commit()
+        await svc.send_test(db, str(tid), ADMIN)
+        await svc.send_test(db, str(tid), ADMIN)
+        await db.commit()
+    async with maker() as db:
+        listed = await svc.list_sites(db, str(tid))
+        found = await svc.list_sites(db, str(tid), "renam")
+        literal = await svc.list_sites(db, str(tid), "%")
+        other = await svc.list_sites(db, str(other_tid))
+    rows = {r["site_id"]: r for r in listed["sites"]}
+    assert listed["total"] == 2 and set(rows) == {str(sid), str(svc.TEST_SITE_ID)}
+    mine = rows[str(sid)]
+    assert mine["events"] == 2
+    assert mine["site"]["name"] == "Renamed"
+    assert mine["first_sent_at"] is not None  # the first event went out
+    assert mine["state"] == "sending" and mine["latest"]["status"] == "pending"
+    tests = rows[str(svc.TEST_SITE_ID)]
+    assert tests["site"] is None and tests["events"] == 2
+    assert [r["site_id"] for r in found["sites"]] == [str(sid)]  # search leaves the test row out
+    assert literal["sites"] == []  # "%" is matched literally
+    assert [r["site_id"] for r in other["sites"]] == [str(other_sid)]  # other workspace only
+
+
+async def test_site_history_says_what_changed_and_each_reply(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker)
+    async with _client(lambda r: httpx.Response(200)) as client:
+        await _drain(client)
+    async with maker() as db:
+        site = await db.get(models.Site, sid)
+        site.name = "Renamed"
+        await db.commit()
+    async with _client(lambda r: httpx.Response(400, text=REJECTION)) as client:
+        await _drain(client)
+    async with maker() as db:
+        history = await svc.site_history(db, str(tid), sid)
+        listed = _only(r for r in (await svc.list_sites(db, str(tid)))["sites"] if r["site_id"] == str(sid))
+        with pytest.raises(HTTPException) as other_tenant:
+            await svc.site_history(db, str(uuid.uuid4()), sid)
+    newest, first = history["events"]
+    assert history["state"] == "gave_up" and listed["state"] == "gave_up"
+    assert history["reason"] is None and history["site"]["name"] == "Renamed"
+    assert {"field": "site.name", "from": "Queued", "to": "Renamed"} in newest["changes"]
+    assert newest["first"] is False and newest["status"] == "dead"
+    assert newest["tries"][0]["response_snippet"] == REJECTION
+    assert first["first"] is True and first["changes"] is None
+    assert [t["http_status"] for t in first["tries"]] == [200]
+    assert other_tenant.value.status_code == 404
+
+
 async def test_resend_refuses_while_an_update_is_still_on_its_way(engine, maker):  # noqa: F811
     tid, sid, _ = await _setup(engine, maker)  # leaves one pending event
     async with maker() as db:
@@ -633,3 +729,37 @@ async def test_resend_refuses_while_an_update_is_still_on_its_way(engine, maker)
     assert exc.value.status_code == 409
     assert "already on its way" in exc.value.detail
     assert await _outbox_count(engine, sid) == 1
+
+
+async def test_first_event_nso_rejected_does_not_count_as_first_sent(engine, maker):  # noqa: F811
+    """Like the 18 production sites whose first event died on 2026-11-24."""
+    tid, sid, _ = await _setup(engine, maker)
+    async with _client(lambda r: httpx.Response(400, text=REJECTION)) as client:
+        await _drain(client)  # #1 dead
+    async with maker() as db:
+        await svc.resend_site(db, str(tid), ADMIN, sid)  # #2: the re-send after deploy
+        await db.commit()
+    async with _client(lambda r: httpx.Response(200)) as client:
+        await _drain(client)
+    async with maker() as db:
+        site = await db.get(models.Site, sid)
+        site.name = "Renamed"  # #3, #4: later updates
+        await db.commit()
+        site.name = "Renamed again"
+        await db.commit()
+    async with _client(lambda r: httpx.Response(200)) as client:
+        await _drain(client)
+    async with maker() as db:
+        history = await svc.site_history(db, str(tid), sid)
+    *_, resent, dead = history["events"]
+    assert dead["status"] == "dead" and dead["first"] is False
+    assert resent["first"] is True and resent["changes"] is None  # not "Sent again (no change)"
+
+    async with engine.begin() as conn:
+        await conn.execute(text(
+            "update integration_outbox set sent_at = now() - interval '40 days' where site_id = :s and status = 'sent'"
+        ), {"s": sid})
+    await sender.purge_all_sent()
+    rows = await _outbox(engine, sid)
+    # Kept: the dead one (never purged), the first NSO took, and the newest.
+    assert [r.payload["site"]["name"] for r in rows] == ["Queued", "Queued", "Renamed again"]

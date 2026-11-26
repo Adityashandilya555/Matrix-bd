@@ -4,7 +4,7 @@
 // and the server-side key being absent produces an explanation, not a form.
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const api = vi.hoisted(() => ({
@@ -15,7 +15,8 @@ const api = vi.hoisted(() => ({
   backfillNso: vi.fn(),
   listNsoDead: vi.fn(),
   replayNsoEvent: vi.fn(),
-  searchNsoEvents: vi.fn(),
+  listNsoSites: vi.fn(),
+  getNsoSiteHistory: vi.fn(),
   getNsoEvent: vi.fn(),
   lookupNsoSite: vi.fn(),
   resendNsoSite: vi.fn(),
@@ -27,12 +28,29 @@ import IntegrationsTab from '../integrations/IntegrationsTab.jsx';
 const counts = { pending: 0, sending: 0, sent: 0, failed: 0, dead: 0 };
 const cfg = (over = {}) => ({
   configured: false, keyConfigured: true, enabled: false, endpointUrl: null,
-  rotationInProgress: false, counts, recentDeliveries: [], ...over,
+  rotationInProgress: false, counts, ...over,
 });
 
 beforeEach(() => {
   Object.values(api).forEach((fn) => fn.mockReset());
   api.listNsoDead.mockResolvedValue([]);
+  api.listNsoSites.mockResolvedValue(page([]));
+});
+
+function page(sites, total = sites.length) {
+  return { total, page: 1, pageSize: 25, sites };
+}
+const latest = (over = {}) => ({
+  id: 'ev1', seq: 1, eventType: 'site.updated', status: 'sent', attempts: 1, lastHttpStatus: 200,
+  lastError: null, nextAttemptAt: null, createdAt: null, sentAt: null, ...over,
+});
+const siteRow = (site, over = {}) => ({
+  siteId: site ? site.id : '00000000-0000-0000-0000-000000000000', site, events: 1,
+  firstAt: null, firstSentAt: null, state: 'up_to_date', latest: latest(), ...over,
+});
+const historyEvent = (over = {}) => ({
+  id: 'ev1', seq: 1, eventType: 'site.updated', status: 'sent', attempts: 1, lastHttpStatus: 200,
+  lastError: null, nextAttemptAt: null, createdAt: null, sentAt: null, changes: null, first: false, tries: [], ...over,
 });
 
 describe('IntegrationsTab', () => {
@@ -129,71 +147,105 @@ describe('IntegrationsTab', () => {
     expect(screen.getByLabelText(/endpoint url/i)).toHaveValue('https://b.example/later');
   });
 
-  it('names the site, shows NSO\'s reply and opens the exact data sent', async () => {
+  it('lists each site once, with its state, and test events as one row', async () => {
     const site = { id: 's1', name: 'Indiranagar 100ft', code: 'BT-BLR-01', deleted: false };
-    api.getNsoIntegration.mockResolvedValue(cfg({
-      configured: true, enabled: true, endpointUrl: 'https://x.example',
-      recentDeliveries: [
-        { outboxId: 'ev9', attemptNo: 1, seq: 9, eventType: 'site.updated', httpStatus: 400, durationMs: 840,
-          responseSnippet: '{"error":"city is required"}', site, attemptedAt: null },
-        { outboxId: 'ev10', attemptNo: 1, seq: 10, eventType: 'site.test', httpStatus: 200, durationMs: 300,
-          responseSnippet: 'ok', site: null, attemptedAt: null },
+    api.getNsoIntegration.mockResolvedValue(cfg({ configured: true, enabled: true, endpointUrl: 'https://x.example' }));
+    api.listNsoSites.mockResolvedValue(page([
+      siteRow(site, { events: 5, state: 'retrying', latest: latest({ status: 'failed', lastHttpStatus: 503 }) }),
+      siteRow(null, { events: 4 }),
+    ]));
+    render(<IntegrationsTab />);
+    expect(await screen.findByText('Indiranagar 100ft')).toBeInTheDocument();
+    expect(screen.getByText('Test events')).toBeInTheDocument();
+    expect(screen.getByText('Retrying')).toBeInTheDocument();
+    expect(screen.getByText(/NSO answered 503 · next try/)).toBeInTheDocument();
+    expect(screen.getByText(/· 5 events/)).toBeInTheDocument();
+    expect(screen.getAllByText(/First queued .* not received yet/)).toHaveLength(2); // never delivered: not "First sent"
+    expect(api.listNsoSites).toHaveBeenCalledWith('', 1);
+  });
+
+  it('opens a site to show what changed each time, NSO\'s reply and the exact data sent', async () => {
+    const site = { id: 's1', name: 'Punjabi Bagh', code: 'CA-400', deleted: false };
+    api.getNsoIntegration.mockResolvedValue(cfg({ configured: true, enabled: true, endpointUrl: 'https://x.example' }));
+    api.listNsoSites.mockResolvedValue(page([siteRow(site, { events: 3 })]));
+    api.getNsoSiteHistory.mockResolvedValue({
+      site, state: 'up_to_date', reason: null, truncated: false,
+      events: [
+        historyEvent({ id: 'ev3', seq: 3, changes: [{ field: 'licences.fssai_status', from: null, to: 'yes' }],
+          tries: [{ attemptNo: 1, httpStatus: 200 }] }),
+        historyEvent({ id: 'ev2', seq: 2, status: 'dead', lastHttpStatus: 400,
+          changes: [{ field: 'site.status', from: 'legal_review', to: 'legal_approved' }],
+          tries: [{ attemptNo: 1, httpStatus: 400, responseSnippet: '{"error":"city is required"}' }] }),
+        historyEvent({ id: 'ev1', seq: 1, first: true, tries: [{ attemptNo: 1, httpStatus: 201 }] }),
       ],
-    }));
+    });
     api.getNsoEvent.mockResolvedValue({
-      id: 'ev9', seq: 9, eventType: 'site.updated', status: 'dead', site,
-      attempts: [{ attemptNo: 1, httpStatus: 400, responseSnippet: '{"error":"city is required"}', attemptedAt: null }],
-      body: { event_id: 'ev9', site: { cafe_code: 'CC1', name: 'Indiranagar 100ft' } },
+      id: 'ev3', seq: 3, eventType: 'site.updated', status: 'sent', site, attempts: [],
+      body: { event_id: 'ev3', site: { cafe_code: 'CA-400' } },
     });
     const user = userEvent.setup();
     render(<IntegrationsTab />);
-
-    expect(await screen.findByText('Indiranagar 100ft')).toBeInTheDocument();
-    expect(screen.getByText('Test event')).toBeInTheDocument();
+    const row = await screen.findByRole('button', { name: /Punjabi Bagh/ });
+    expect(row).toHaveAttribute('aria-expanded', 'false');
+    await user.click(row);
+    expect(row).toHaveAttribute('aria-expanded', 'true');
+    await waitFor(() => expect(api.getNsoSiteHistory).toHaveBeenCalledWith('s1'));
+    expect(await screen.findByText('FSSAI: — → yes')).toBeInTheDocument();
+    expect(screen.getByText('Status: legal_review → legal_approved')).toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'History' })).getByText('First sent')).toBeInTheDocument();
     expect(screen.getByText(/NSO said: \{"error":"city is required"\}/)).toBeInTheDocument();
-    expect(screen.queryByText(/NSO said: ok/)).not.toBeInTheDocument(); // replies shown for failures only
 
     await user.click(screen.getAllByRole('button', { name: 'View data' })[0]);
-    await waitFor(() => expect(api.getNsoEvent).toHaveBeenCalledWith('ev9'));
+    await waitFor(() => expect(api.getNsoEvent).toHaveBeenCalledWith('ev3'));
     const dialog = await screen.findByRole('dialog');
     // Keys stay as NSO received them (snake_case), not camelised.
-    expect(dialog.textContent).toContain('"cafe_code": "CC1"');
-    expect(dialog.textContent).toContain('"event_id": "ev9"');
+    expect(dialog.textContent).toContain('"cafe_code": "CA-400"');
   });
 
-  it('finds what was sent for a site', async () => {
+  it('searches the sites list by name or code', async () => {
     api.getNsoIntegration.mockResolvedValue(cfg({ configured: true, enabled: true, endpointUrl: 'https://x.example' }));
-    api.searchNsoEvents.mockResolvedValue([
-      { id: 'ev3', seq: 3, eventType: 'site.updated', status: 'sent', lastHttpStatus: 200, createdAt: null,
-        site: { id: 's2', name: 'Koramangala', code: null, deleted: false } },
-    ]);
     const user = userEvent.setup();
     render(<IntegrationsTab />);
     await user.type(await screen.findByLabelText(/site name or code/i), 'kora');
+    api.listNsoSites.mockResolvedValue(page([siteRow({ id: 's2', name: 'Koramangala', code: null, deleted: false })]));
     await user.click(screen.getByRole('button', { name: 'Search' }));
-    expect(api.searchNsoEvents).toHaveBeenCalledWith('kora');
+    await waitFor(() => expect(api.listNsoSites).toHaveBeenCalledWith('kora', 1));
     expect(await screen.findByText('Koramangala')).toBeInTheDocument();
-    expect(screen.getByText('Sent · 200')).toBeInTheDocument();
   });
 
-  it('sends a site\'s current data again from its row, but not the test event', async () => {
+  it('sends a site\'s current data again from its history, but not for test events', async () => {
     const site = { id: 's1', name: 'Punjabi Bagh', code: 'CA-400', deleted: false };
-    api.getNsoIntegration.mockResolvedValue(cfg({
-      configured: true, enabled: true, endpointUrl: 'https://x.example',
-      recentDeliveries: [
-        { outboxId: 'ev23', attemptNo: 1, seq: 23, eventType: 'site.updated', httpStatus: 200, site, attemptedAt: null },
-        { outboxId: 'ev25', attemptNo: 1, seq: 25, eventType: 'site.test', httpStatus: 200, site: null, attemptedAt: null },
-      ],
-    }));
+    api.getNsoIntegration.mockResolvedValue(cfg({ configured: true, enabled: true, endpointUrl: 'https://x.example' }));
+    api.listNsoSites.mockResolvedValue(page([siteRow(site), siteRow(null)]));
+    api.getNsoSiteHistory.mockImplementation(async (id) => (id === 's1'
+      ? { site, state: 'up_to_date', reason: null, truncated: false, events: [historyEvent({ first: true })] }
+      : { site: null, state: 'up_to_date', reason: null, truncated: false, events: [historyEvent({ eventType: 'site.test' })] }));
     api.resendNsoSite.mockResolvedValue({ queued: true, site });
     const user = userEvent.setup();
     render(<IntegrationsTab />);
-    await screen.findByText('Punjabi Bagh');
-    const again = screen.getAllByRole('button', { name: 'Send again' });
-    expect(again).toHaveLength(1);
-    await user.click(again[0]);
+    await user.click(await screen.findByRole('button', { name: /Test events/ }));
+    expect(await screen.findByText('Test event')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send again' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Punjabi Bagh/ }));
+    await user.click(await screen.findByRole('button', { name: 'Send again' }));
     await waitFor(() => expect(api.resendNsoSite).toHaveBeenCalledWith('s1'));
     expect(await screen.findByText(/Punjabi Bagh queued again/)).toBeInTheDocument();
+  });
+
+  it('says why a site in the list can\'t be sent now', async () => {
+    const site = { id: 's4', name: 'Old Site', code: 'CA-4', deleted: false };
+    api.getNsoIntegration.mockResolvedValue(cfg({ configured: true, enabled: true, endpointUrl: 'https://x.example' }));
+    api.listNsoSites.mockResolvedValue(page([siteRow(site)]));
+    api.getNsoSiteHistory.mockResolvedValue({
+      site, state: 'up_to_date', truncated: false, events: [historyEvent({ first: true })],
+      reason: "This site is archived or rejected, so it isn't shared with NSO.",
+    });
+    const user = userEvent.setup();
+    render(<IntegrationsTab />);
+    await user.click(await screen.findByRole('button', { name: /Old Site/ }));
+    expect(await screen.findByText(/archived or rejected/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send again' })).not.toBeInTheDocument();
   });
 
   it('checks a CA code, then sends that site', async () => {
@@ -220,13 +272,13 @@ describe('IntegrationsTab', () => {
     api.getNsoIntegration.mockResolvedValue(cfg({ configured: true, enabled: true, endpointUrl: 'https://x.example' }));
     api.lookupNsoSite.mockResolvedValue({
       site: { id: 's3', name: 'Draft Site', city: 'Pune', code: 'CA-9' }, shareable: false,
-      reason: "Finance hasn't approved this site's CA code yet, so it isn't shared with NSO.", lastEvent: null,
+      reason: "This site hasn't been sent to Legal yet, so it isn't shared with NSO.", lastEvent: null,
     });
     const user = userEvent.setup();
     render(<IntegrationsTab />);
     await user.type(await screen.findByLabelText('CA code'), 'CA-9');
     await user.click(screen.getByRole('button', { name: 'Check' }));
-    expect(await screen.findByText(/Finance hasn't approved/)).toBeInTheDocument();
+    expect(await screen.findByText(/hasn't been sent to Legal yet/)).toBeInTheDocument();
     expect(screen.getByText('Never sent to NSO.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Send to NSO' })).not.toBeInTheDocument();
   });
@@ -241,18 +293,16 @@ describe('IntegrationsTab', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('No site in this workspace has CA code CA-0.');
   });
 
-  it('offers no Send again while the integration is switched off', async () => {
+  it('offers no Send again while the integration is switched off, but still shows history', async () => {
+    const site = { id: 's2', name: 'Koramangala', code: 'CA-2', deleted: false };
     api.getNsoIntegration.mockResolvedValue(cfg({ configured: true, enabled: false, endpointUrl: 'https://x.example' }));
-    api.searchNsoEvents.mockResolvedValue([
-      { id: 'ev3', seq: 3, eventType: 'site.updated', status: 'sent', lastHttpStatus: 200, createdAt: null,
-        site: { id: 's2', name: 'Koramangala', code: 'CA-2', deleted: false } },
-    ]);
+    api.listNsoSites.mockResolvedValue(page([siteRow(site, { state: 'sending', latest: latest({ status: 'pending', lastHttpStatus: null }) })]));
+    api.getNsoSiteHistory.mockResolvedValue({ site, state: 'sending', reason: null, truncated: false, events: [historyEvent({ first: true })] });
     const user = userEvent.setup();
     render(<IntegrationsTab />);
-    await user.type(await screen.findByLabelText(/site name or code/i), 'kora');
-    await user.click(screen.getByRole('button', { name: 'Search' }));
-    expect(await screen.findByText('Koramangala')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'View data' })).toBeInTheDocument();
+    expect(await screen.findByText('Waiting: sending is switched off')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Koramangala/ }));
+    expect(await screen.findByRole('button', { name: 'View data' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Send again' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('CA code')).not.toBeInTheDocument();
   });

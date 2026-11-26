@@ -20,7 +20,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.db import models
@@ -66,13 +66,29 @@ def shared_cafe_code(ca_code: Optional[str], finance_status: Optional[str]) -> O
     return ca_code if ca_code and finance_status == "approved" else None
 
 
-def is_eligible(cafe_code: Optional[str]) -> bool:
-    """Whether a site is shared with the NSO platform at all.
+# Statuses from the Legal push onward, while the site is still in the pipeline.
+# legal_rejected, rejected and archived are outside it: a site that was shared
+# gets one last update showing that status, then nothing more.
+PIPELINE_STATUSES = frozenset({"legal_review", "legal_approved", "pushed_to_payments", "launched"})
 
-    v1 rule: it has a Finance-approved cafe code (see ``shared_cafe_code``).
-    Changing the rule means changing these two functions, then a backfill.
+
+def is_eligible(site: dict[str, Any]) -> bool:
+    """Whether a site is shared with the NSO platform, from its snapshot ``site`` dict.
+
+    Shared from the moment it is pushed to Legal (status in ``PIPELINE_STATUSES``),
+    or earlier if Finance has already approved its cafe code (``shared_cafe_code``).
+    ``eligible_clause`` is the same rule as SQL; change both together, then backfill.
     """
-    return bool(cafe_code)
+    return bool(site.get("cafe_code")) or site.get("status") in PIPELINE_STATUSES
+
+
+def eligible_clause():
+    """``is_eligible`` as a WHERE clause on ``sites``."""
+    s = models.Site
+    return or_(
+        s.status.in_(PIPELINE_STATUSES),
+        and_(s.ca_code.isnot(None), s.ca_code != "", s.finance_status == "approved"),
+    )
 
 
 def _iso(value: date | datetime | None) -> Optional[str]:
