@@ -174,7 +174,8 @@ const show = (v) => (v === null || v === undefined || v === '' ? '—' : String(
 function whatChanged(ev) {
   if (ev.eventType === 'site.test') return 'Test event';
   if (ev.eventType === 'site.deleted') return 'Site deleted';
-  if (ev.first) return 'First sent';
+  // "First sent" only for an event NSO actually received.
+  if (ev.first) return ev.status === 'sent' ? 'First sent' : 'First event';
   if (!ev.changes) return 'Update';
   const shown = ev.changes.filter((c) => !QUIET_FIELDS.has(c.field));
   if (!shown.length) return 'Sent again (no change)';
@@ -224,7 +225,10 @@ function SiteHistory({ siteId, version, actions }) {
           );
         })}
       </ol>
-      {h.truncated && <div style={{ fontSize: 12, color: T.textMuted }}>Showing the latest 100 events.</div>}
+      <div style={{ fontSize: 12, color: T.textMuted }}>
+        {h.truncated ? 'Showing the latest 100 events. ' : ''}
+        Delivered updates older than 30 days are cleared (the first one is kept), so one line can cover several updates.
+      </div>
     </div>
   );
 }
@@ -242,7 +246,7 @@ function SiteRow({ row, open, onToggle, version, actions }) {
         <span style={{ flex: '1 1 260px', minWidth: 0 }}>
           {row.site ? <SiteCell site={row.site} /> : <span style={{ fontWeight: 600 }}>Test events</span>}
           <span style={{ display: 'block', color: T.textMuted, fontSize: 11.5, marginTop: 2 }}>
-            First sent {when(row.firstSentAt || row.firstAt)} · Last update {when(row.latest.createdAt)} · {row.events} {row.events === 1 ? 'event' : 'events'}
+            {row.firstSentAt ? `First sent ${when(row.firstSentAt)}` : `First queued ${when(row.firstAt)} · not received yet`} · Last update {when(row.latest.createdAt)} · {row.events} {row.events === 1 ? 'event' : 'events'}
           </span>
         </span>
         <span style={{ flex: '0 1 220px', minWidth: 150 }}><StateCell state={row.state} latest={row.latest} enabled={actions.enabled} /></span>

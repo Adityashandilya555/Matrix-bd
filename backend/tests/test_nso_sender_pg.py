@@ -314,11 +314,13 @@ async def test_dns_failure_is_retried_not_dead(engine, maker, monkeypatch):  # n
     assert (await _status(engine, sid))[0][:2] == ("failed", 1)
 
 
-async def test_purge_keeps_the_newest_row_per_site(engine, maker):  # noqa: F811
+async def test_purge_keeps_the_first_and_newest_row_per_site(engine, maker):  # noqa: F811
     _, sid, _ = await _setup(engine, maker)
     async with maker() as db:
         site = await db.get(models.Site, sid)
         site.name = "Second"
+        await db.commit()
+        site.name = "Third"
         await db.commit()
     async with engine.begin() as conn:
         await conn.execute(text(
@@ -326,7 +328,8 @@ async def test_purge_keeps_the_newest_row_per_site(engine, maker):  # noqa: F811
         ), {"s": sid})
     await sender.purge_all_sent()
     rows = await _outbox(engine, sid)
-    assert [r.payload["site"]["name"] for r in rows] == ["Second"]
+    # The first row stays so the per-site history can say when it was first sent.
+    assert [r.payload["site"]["name"] for r in rows] == ["Queued", "Third"]
 
 
 async def test_second_rotation_is_refused_while_one_is_open(engine, maker):  # noqa: F811

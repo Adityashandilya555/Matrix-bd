@@ -359,7 +359,8 @@ async def purge_sent(limit: int = PURGE_BATCH) -> int:
 
     The newest live row per site is always kept: capture compares against it
     to skip duplicates and to know whether NSO has the site (lost-eligibility
-    update, tombstones).
+    update, tombstones). The oldest row per site is kept too, so the admin's
+    per-site history can still say when the site was first sent.
     """
     async with SessionLocal() as db, db.begin():
         result = await db.execute(text(
@@ -369,6 +370,8 @@ async def purge_sent(limit: int = PURGE_BATCH) -> int:
             " AND EXISTS (SELECT 1 FROM integration_outbox n WHERE n.tenant_id = o.tenant_id"
             "   AND n.integration = o.integration AND n.site_id = o.site_id"
             "   AND n.status <> 'dead' AND n.seq > o.seq)"
+            " AND EXISTS (SELECT 1 FROM integration_outbox f WHERE f.tenant_id = o.tenant_id"
+            "   AND f.integration = o.integration AND f.site_id = o.site_id AND f.seq < o.seq)"
             " LIMIT :n)"
         ), {"d": RETENTION.days, "n": limit})
         return result.rowcount or 0

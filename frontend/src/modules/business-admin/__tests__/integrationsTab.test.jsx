@@ -160,6 +160,7 @@ describe('IntegrationsTab', () => {
     expect(screen.getByText('Retrying')).toBeInTheDocument();
     expect(screen.getByText(/NSO answered 503 · next try/)).toBeInTheDocument();
     expect(screen.getByText(/· 5 events/)).toBeInTheDocument();
+    expect(screen.getAllByText(/First queued .* not received yet/)).toHaveLength(2); // never delivered: not "First sent"
     expect(api.listNsoSites).toHaveBeenCalledWith('', 1);
   });
 
