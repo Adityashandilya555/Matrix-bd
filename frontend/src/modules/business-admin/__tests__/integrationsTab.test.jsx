@@ -17,6 +17,8 @@ const api = vi.hoisted(() => ({
   replayNsoEvent: vi.fn(),
   searchNsoEvents: vi.fn(),
   getNsoEvent: vi.fn(),
+  lookupNsoSite: vi.fn(),
+  resendNsoSite: vi.fn(),
 }));
 vi.mock('../../../services/api/integrationsApi.js', () => api);
 
@@ -172,5 +174,70 @@ describe('IntegrationsTab', () => {
     expect(api.searchNsoEvents).toHaveBeenCalledWith('kora');
     expect(await screen.findByText('Koramangala')).toBeInTheDocument();
     expect(screen.getByText('Sent · 200')).toBeInTheDocument();
+  });
+
+  it('sends a site\'s current data again from its row, but not the test event', async () => {
+    const site = { id: 's1', name: 'Punjabi Bagh', code: 'CA-400', deleted: false };
+    api.getNsoIntegration.mockResolvedValue(cfg({
+      configured: true, enabled: true, endpointUrl: 'https://x.example',
+      recentDeliveries: [
+        { outboxId: 'ev23', attemptNo: 1, seq: 23, eventType: 'site.updated', httpStatus: 200, site, attemptedAt: null },
+        { outboxId: 'ev25', attemptNo: 1, seq: 25, eventType: 'site.test', httpStatus: 200, site: null, attemptedAt: null },
+      ],
+    }));
+    api.resendNsoSite.mockResolvedValue({ queued: true, site });
+    const user = userEvent.setup();
+    render(<IntegrationsTab />);
+    await screen.findByText('Punjabi Bagh');
+    const again = screen.getAllByRole('button', { name: 'Send again' });
+    expect(again).toHaveLength(1);
+    await user.click(again[0]);
+    await waitFor(() => expect(api.resendNsoSite).toHaveBeenCalledWith('s1'));
+    expect(await screen.findByText(/Punjabi Bagh queued again/)).toBeInTheDocument();
+  });
+
+  it('checks a CA code, then sends that site', async () => {
+    api.getNsoIntegration.mockResolvedValue(cfg({ configured: true, enabled: true, endpointUrl: 'https://x.example' }));
+    const site = { id: 's9', name: 'Rajouri Garden', city: 'Delhi', code: 'CA-401' };
+    api.lookupNsoSite.mockResolvedValue({
+      site, shareable: true, reason: null,
+      lastEvent: { seq: 7, status: 'sent', lastHttpStatus: 200, sentAt: null, createdAt: null },
+    });
+    api.resendNsoSite.mockResolvedValue({ queued: true, site });
+    const user = userEvent.setup();
+    render(<IntegrationsTab />);
+    await user.type(await screen.findByLabelText('CA code'), 'ca-401');
+    await user.click(screen.getByRole('button', { name: 'Check' }));
+    expect(api.lookupNsoSite).toHaveBeenCalledWith('ca-401');
+    expect(await screen.findByText('Rajouri Garden')).toBeInTheDocument();
+    expect(screen.getByText(/Last event #7: Sent \(200\)/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Send to NSO' }));
+    await waitFor(() => expect(api.resendNsoSite).toHaveBeenCalledWith('s9'));
+    expect(await screen.findByText(/Queued\. It goes out/)).toBeInTheDocument();
+  });
+
+  it('explains a CA code that can\'t be sent and offers no Send button', async () => {
+    api.getNsoIntegration.mockResolvedValue(cfg({ configured: true, enabled: true, endpointUrl: 'https://x.example' }));
+    api.lookupNsoSite.mockResolvedValue({
+      site: { id: 's3', name: 'Draft Site', city: 'Pune', code: 'CA-9' }, shareable: false,
+      reason: "Finance hasn't approved this site's CA code yet, so it isn't shared with NSO.", lastEvent: null,
+    });
+    const user = userEvent.setup();
+    render(<IntegrationsTab />);
+    await user.type(await screen.findByLabelText('CA code'), 'CA-9');
+    await user.click(screen.getByRole('button', { name: 'Check' }));
+    expect(await screen.findByText(/Finance hasn't approved/)).toBeInTheDocument();
+    expect(screen.getByText('Never sent to NSO.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send to NSO' })).not.toBeInTheDocument();
+  });
+
+  it('shows the reason when a CA code is not found', async () => {
+    api.getNsoIntegration.mockResolvedValue(cfg({ configured: true, enabled: true, endpointUrl: 'https://x.example' }));
+    api.lookupNsoSite.mockRejectedValue({ detail: 'No site in this workspace has CA code CA-0.' });
+    const user = userEvent.setup();
+    render(<IntegrationsTab />);
+    await user.type(await screen.findByLabelText('CA code'), 'CA-0');
+    await user.click(screen.getByRole('button', { name: 'Check' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('No site in this workspace has CA code CA-0.');
   });
 });
