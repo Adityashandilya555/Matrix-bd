@@ -637,6 +637,8 @@ async def test_backfill_and_resend_include_a_pushed_site_without_a_ca_code(engin
         out = await svc.backfill(db, str(tid), ADMIN)
         await db.commit()
     assert out == {"eligible": 1, "queued": 0}  # counted, and already queued by _setup
+    async with _client(lambda r: httpx.Response(200)) as client:
+        await _drain(client)  # Send again waits until that update has gone out
     async with maker() as db:
         resent = await svc.resend_site(db, str(tid), ADMIN, sid)
         await db.commit()
@@ -734,3 +736,13 @@ async def test_site_history_says_what_changed_and_each_reply(engine, maker):  # 
     assert first["first"] is True and first["changes"] is None
     assert first["status"] == "dead" and first["tries"][0]["response_snippet"] == REJECTION
     assert other_tenant.value.status_code == 404
+
+
+async def test_resend_refuses_while_an_update_is_still_on_its_way(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker)  # leaves one pending event
+    async with maker() as db:
+        with pytest.raises(HTTPException) as exc:
+            await svc.resend_site(db, str(tid), ADMIN, sid)
+    assert exc.value.status_code == 409
+    assert "already on its way" in exc.value.detail
+    assert await _outbox_count(engine, sid) == 1
