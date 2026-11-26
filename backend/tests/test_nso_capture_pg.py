@@ -53,7 +53,8 @@ def maker(engine):
     return async_sessionmaker(engine, sync_session_class=MatrixSession, expire_on_commit=False, autoflush=False)
 
 
-async def _world(engine, *, enabled=True, ca_code="EX-BLR-001", endpoint=True, finance="approved"):
+async def _world(engine, *, enabled=True, ca_code="EX-BLR-001", endpoint=True, finance="approved",
+                 status="draft_submitted"):
     """Tenant + user + site (+ endpoint) written with Core, so no hook fires."""
     tid, uid, sid = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     tag = tid.hex[:10]
@@ -65,9 +66,9 @@ async def _world(engine, *, enabled=True, ca_code="EX-BLR-001", endpoint=True, f
             "insert into users (id, tenant_id, email, name, role) values (:u, :t, :e, 'Exec', 'executive')"
         ), {"u": uid, "t": tid, "e": f"{tag}@example.com"})
         await conn.execute(text(
-            "insert into sites (id, tenant_id, name, city, submitted_by, ca_code, finance_status, google_maps_pin) "
-            "values (:s, :t, 'Indiranagar', 'Bengaluru', :u, :c, :f, '12.9716, 77.6412')"
-        ), {"s": sid, "t": tid, "u": uid, "c": ca_code, "f": finance})
+            "insert into sites (id, tenant_id, name, city, submitted_by, ca_code, finance_status, google_maps_pin, status) "
+            "values (:s, :t, 'Indiranagar', 'Bengaluru', :u, :c, :f, '12.9716, 77.6412', :st)"
+        ), {"s": sid, "t": tid, "u": uid, "c": ca_code, "f": finance, "st": status})
         if endpoint:
             await conn.execute(text(
                 "insert into integration_endpoints (tenant_id, integration, enabled, endpoint_url, secret_ciphertext) "
@@ -365,3 +366,56 @@ async def test_fssai_is_sent_only_once_legal_publishes(engine, maker):
         await db.commit()
     rows = await _outbox(engine, sid)
     assert [r.payload["licences"]["fssai_status"] for r in rows] == [None, "yes"]
+
+
+# ── Shared from the Legal push, before Finance approves a CA code ─────────
+
+
+async def test_legal_push_shares_a_site_without_a_ca_code(engine, maker):
+    _, _, sid = await _world(engine, ca_code=None, status="loi_uploaded")
+    async with maker() as db:
+        site = await db.get(models.Site, sid)
+        site.name = "Before the push"  # not shared yet
+        await db.commit()
+        assert await _outbox(engine, sid) == []
+        site.status = "legal_review"  # what the staging push writes
+        site.legal_review_at = datetime.now(timezone.utc)
+        await db.commit()
+    rows = await _outbox(engine, sid)
+    assert len(rows) == 1
+    assert rows[0].payload["site"]["cafe_code"] is None
+    assert rows[0].payload["site"]["status"] == "legal_review"
+    assert rows[0].payload["site"]["name"] == "Before the push"
+
+
+async def test_fssai_positive_is_sent_for_a_pushed_site(engine, maker):
+    _, _, sid = await _world(engine, ca_code=None, status="legal_review")
+    async with maker() as db:
+        site = await db.get(models.Site, sid)
+        site.name = "Pushed"
+        await db.commit()
+        lic = models.SiteLicensing(site_id=sid, fssai="yes", stage="draft")  # executive draft: not sent
+        db.add(lic)
+        await db.commit()
+        lic.stage = "published"  # Legal publishes
+        await db.commit()
+    rows = await _outbox(engine, sid)
+    assert [r.payload["licences"]["fssai_status"] for r in rows] == [None, "yes"]
+
+
+async def test_leaving_the_pipeline_sends_one_last_update_and_revival_shares_again(engine, maker):
+    _, _, sid = await _world(engine, ca_code=None, status="legal_review")
+    async with maker() as db:
+        site = await db.get(models.Site, sid)
+        site.name = "Shared"
+        await db.commit()
+        site.status = "archived"
+        await db.commit()
+        site.name = "Archived edit"  # no longer shared: nothing
+        await db.commit()
+        site.status = "legal_review"  # revived
+        await db.commit()
+    rows = await _outbox(engine, sid)
+    assert [(r.payload["site"]["status"], r.payload["site"]["name"]) for r in rows] == [
+        ("legal_review", "Shared"), ("archived", "Shared"), ("legal_review", "Archived edit"),
+    ]

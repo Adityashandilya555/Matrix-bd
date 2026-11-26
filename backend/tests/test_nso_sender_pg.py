@@ -581,7 +581,7 @@ async def test_lookup_explains_an_unapproved_ca_code(engine, maker):  # noqa: F8
     async with maker() as db:
         found = await svc.lookup_site(db, str(tid), "EX-BLR-001")
     assert found["shareable"] is False
-    assert "Finance" in found["reason"]
+    assert "sent to Legal" in found["reason"]
 
 
 async def test_resend_queues_a_fresh_event_even_when_already_sent(engine, maker):  # noqa: F811
@@ -623,3 +623,88 @@ async def test_resend_refuses_unshareable_foreign_or_switched_off(engine, maker)
             await svc.resend_site(db, str(other_tid), ADMIN, other_sid)
     assert (unapproved.value.status_code, foreign.value.status_code, off.value.status_code) == (409, 404, 409)
     assert await _outbox_count(engine, sid) == 0
+
+
+# ── Shared from the Legal push ───────────────────────────────────────────
+
+
+async def test_backfill_and_resend_include_a_pushed_site_without_a_ca_code(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker, ca_code=None, status="legal_review")
+    async with maker() as db:
+        out = await svc.backfill(db, str(tid), ADMIN)
+        await db.commit()
+    assert out == {"eligible": 1, "queued": 0}  # counted, and already queued by _setup
+    async with maker() as db:
+        resent = await svc.resend_site(db, str(tid), ADMIN, sid)
+        await db.commit()
+    assert resent["queued"] is True and resent["site"]["code"] is None
+    assert await _outbox_count(engine, sid) == 2
+
+
+async def test_resend_before_the_legal_push_explains_why(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker, ca_code=None, status="loi_uploaded")
+    async with maker() as db:
+        with pytest.raises(HTTPException) as exc:
+            await svc.resend_site(db, str(tid), ADMIN, sid)
+    assert exc.value.status_code == 409
+    assert "hasn't been sent to Legal yet" in exc.value.detail
+    assert await _outbox_count(engine, sid) == 0
+
+
+# ── One row per site, and its history ─────────────────────────────────────
+
+
+async def test_sites_list_has_one_row_per_site_with_its_state(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker)
+    other_tid, other_sid, _ = await _setup(engine, maker)
+    async with _client(lambda r: httpx.Response(200)) as client:
+        await _drain(client)
+    async with maker() as db:
+        site = await db.get(models.Site, sid)
+        site.name = "Renamed"
+        await db.commit()
+        await svc.send_test(db, str(tid), ADMIN)
+        await svc.send_test(db, str(tid), ADMIN)
+        await db.commit()
+    async with maker() as db:
+        listed = await svc.list_sites(db, str(tid))
+        found = await svc.list_sites(db, str(tid), "renam")
+        literal = await svc.list_sites(db, str(tid), "%")
+        other = await svc.list_sites(db, str(other_tid))
+    rows = {r["site_id"]: r for r in listed["sites"]}
+    assert listed["total"] == 2 and set(rows) == {str(sid), str(svc.TEST_SITE_ID)}
+    mine = rows[str(sid)]
+    assert mine["events"] == 2
+    assert mine["site"]["name"] == "Renamed"
+    assert mine["first_sent_at"] is not None  # the first event went out
+    assert mine["state"] == "sending" and mine["latest"]["status"] == "pending"
+    tests = rows[str(svc.TEST_SITE_ID)]
+    assert tests["site"] is None and tests["events"] == 2
+    assert [r["site_id"] for r in found["sites"]] == [str(sid)]  # search leaves the test row out
+    assert literal["sites"] == []  # "%" is matched literally
+    assert [r["site_id"] for r in other["sites"]] == [str(other_sid)]  # other workspace only
+
+
+async def test_site_history_says_what_changed_and_each_reply(engine, maker):  # noqa: F811
+    tid, sid, _ = await _setup(engine, maker)
+    async with _client(lambda r: httpx.Response(400, text=REJECTION)) as client:
+        await _drain(client)
+    async with maker() as db:
+        site = await db.get(models.Site, sid)
+        site.name = "Renamed"
+        await db.commit()
+    async with _client(lambda r: httpx.Response(200)) as client:
+        await _drain(client)
+    async with maker() as db:
+        history = await svc.site_history(db, str(tid), sid)
+        listed = _only(r for r in (await svc.list_sites(db, str(tid)))["sites"] if r["site_id"] == str(sid))
+        with pytest.raises(HTTPException) as other_tenant:
+            await svc.site_history(db, str(uuid.uuid4()), sid)
+    newest, first = history["events"]
+    assert history["state"] == "up_to_date" and listed["state"] == "up_to_date"
+    assert history["reason"] is None and history["site"]["name"] == "Renamed"
+    assert {"field": "site.name", "from": "Queued", "to": "Renamed"} in newest["changes"]
+    assert newest["first"] is False and [t["http_status"] for t in newest["tries"]] == [200]
+    assert first["first"] is True and first["changes"] is None
+    assert first["status"] == "dead" and first["tries"][0]["response_snippet"] == REJECTION
+    assert other_tenant.value.status_code == 404
