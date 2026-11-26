@@ -28,7 +28,6 @@ from app.services.audit_service import write_audit_event
 # Same rule as the DB check chk_integration_endpoints_https.
 _HTTPS_URL = re.compile(r"^https://[^/?#\s]+")
 ROTATION_OVERLAP = timedelta(hours=24)
-RECENT_DELIVERIES = 20
 BACKFILL_CHUNK = 50
 
 
@@ -78,7 +77,6 @@ def _url_for_audit(url: str) -> str:
 
 
 TEST_SITE_ID = uuid.UUID(int=0)
-EVENT_SEARCH_LIMIT = 50
 
 
 def _site_ref(site_id: uuid.UUID, payload: Optional[dict], name: Optional[str], code: Optional[str]) -> Optional[dict]:
@@ -108,32 +106,16 @@ def _site_join(stmt):
     return stmt.outerjoin(s, (s.id == ob.site_id) & (s.tenant_id == ob.tenant_id))
 
 
-def _delivery_out(row: Any) -> dict[str, Any]:
-    d = row.IntegrationDelivery
-    return {
-        "outbox_id": str(d.outbox_id), "event_type": row.event_type, "seq": row.seq, "attempt_no": d.attempt_no,
-        "http_status": d.http_status, "duration_ms": d.duration_ms, "error": d.error,
-        "response_snippet": d.response_snippet, "attempted_at": d.attempted_at,
-        "site": _site_ref(row.site_id, {"site": row.site_payload}, row.site_name, row.site_code),
-    }
-
-
 async def get_config(db: AsyncSession, tenant_id: str) -> dict[str, Any]:
-    """Current settings, queue counts and recent deliveries. Never the secret."""
+    """Current settings and queue counts. Never the secret.
+
+    Per-site deliveries are served by ``list_sites`` / ``site_history``."""
     endpoint = await _endpoint(db, tenant_id)
     tid = uuid.UUID(str(tenant_id))
     ob = models.IntegrationOutbox
     counts = dict((await db.execute(
         select(ob.status, func.count()).where(ob.tenant_id == tid, ob.integration == nso.INTEGRATION).group_by(ob.status)
     )).all())
-    d = models.IntegrationDelivery
-    recent = (await db.execute(
-        _site_join(
-            select(d, ob.event_type, ob.seq, ob.site_id, ob.payload["site"].label("site_payload"), *_site_cols())
-            .join(ob, ob.id == d.outbox_id)
-        )
-        .where(d.tenant_id == tid).order_by(d.attempted_at.desc()).limit(RECENT_DELIVERIES)
-    )).all()
     now = datetime.now(timezone.utc)
     return {
         "configured": endpoint is not None,
@@ -145,7 +127,6 @@ async def get_config(db: AsyncSession, tenant_id: str) -> dict[str, Any]:
             endpoint and endpoint.previous_secret_expires_at and endpoint.previous_secret_expires_at > now
         ),
         "counts": {k: counts.get(k, 0) for k in ("pending", "sending", "sent", "failed", "dead")},
-        "recent_deliveries": [_delivery_out(row) for row in recent],
     }
 
 
@@ -390,35 +371,6 @@ def _like(term: str) -> str:
     return "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
 
-async def list_events(db: AsyncSession, tenant_id: str, q: str = "") -> list[dict[str, Any]]:
-    """The latest events for sites whose name or code matches ``q``, newest first.
-
-    Each row carries its status and the last HTTP result, so "what did we send
-    for site X, and did NSO take it?" is one lookup.
-    """
-    term = q.strip()
-    if not term:
-        return []
-    ob = models.IntegrationOutbox
-    s = models.Site
-    pattern = _like(term[:100])
-    sent = ob.payload["site"]
-    rows = (await db.execute(
-        _site_join(select(ob, *_site_cols()))
-        .where(
-            ob.tenant_id == uuid.UUID(str(tenant_id)), ob.integration == nso.INTEGRATION, ob.site_id != TEST_SITE_ID,
-            s.name.ilike(pattern) | s.ca_code.ilike(pattern) | s.code.ilike(pattern)
-            | sent["name"].astext.ilike(pattern) | sent["cafe_code"].astext.ilike(pattern),
-        )
-        .order_by(ob.created_at.desc()).limit(EVENT_SEARCH_LIMIT)
-    )).all()
-    return [{
-        "id": str(r.id), "seq": r.seq, "event_type": r.event_type, "status": r.status,
-        "attempts": r.attempts, "last_http_status": r.last_http_status, "created_at": r.created_at,
-        "sent_at": r.sent_at, "site": _site_ref(r.site_id, r.payload, row.site_name, row.site_code),
-    } for row in rows for r in (row.IntegrationOutbox,)]
-
-
 async def get_event(db: AsyncSession, tenant_id: str, outbox_id: uuid.UUID) -> dict[str, Any]:
     """One event: the exact JSON body Matrix sends for it, and every attempt with NSO's reply."""
     ob = models.IntegrationOutbox
@@ -573,6 +525,10 @@ async def site_history(db: AsyncSession, tenant_id: str, site_id: uuid.UUID) -> 
     )).scalar_one_or_none()
     chain = shown + older
     latest = shown[0]
+
+    def baseline(i: int) -> Optional[models.IntegrationOutbox]:
+        """The nearest older event NSO may have taken (dead events never reached it)."""
+        return next((e for e in chain[i + 1:] if e.status != "dead"), None)
     return {
         "site": _site_ref(site_id, latest.payload, site.name if site else None,
                           display_code(site) if site else None),
@@ -584,8 +540,10 @@ async def site_history(db: AsyncSession, tenant_id: str, site_id: uuid.UUID) -> 
             "attempts": e.attempts, "last_http_status": e.last_http_status, "last_error": e.last_error,
             "next_attempt_at": e.next_attempt_at, "created_at": e.created_at, "sent_at": e.sent_at,
             "changes": (None if e.event_type != nso.EVENT_UPDATED
-                        else payload_changes(chain[i + 1].payload if i + 1 < len(chain) else None, e.payload)),
-            "first": i + 1 == len(chain),
+                        else payload_changes(prev.payload if prev else None, e.payload)),
+            # The first event NSO could have taken: not dead, nothing older that
+            # wasn't, and the history isn't cut off at HISTORY_LIMIT.
+            "first": e.status != "dead" and prev is None and not older,
             "tries": attempts.get(e.id, []),
-        } for i, e in enumerate(shown)],
+        } for i, e in enumerate(shown) for prev in (baseline(i),)],
     }

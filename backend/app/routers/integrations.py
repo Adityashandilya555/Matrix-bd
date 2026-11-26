@@ -93,14 +93,6 @@ async def site_history(site_id: uuid.UUID, db: DbDep, _admin: AdminUser, tenant_
     return await svc.site_history(db, tenant_id, site_id)
 
 
-@router.get("/events")
-async def list_events(
-    db: DbDep, _admin: AdminUser, tenant_id: TenantId, q: Annotated[str, Query(max_length=100)] = "",
-) -> list[dict[str, Any]]:
-    """Latest events for sites whose name or code matches ``q``."""
-    return await svc.list_events(db, tenant_id, q)
-
-
 @router.get("/events/{outbox_id}")
 async def get_event(outbox_id: uuid.UUID, db: DbDep, _admin: AdminUser, tenant_id: TenantId) -> dict[str, Any]:
     """The exact data sent for one event, and NSO's reply to each attempt."""

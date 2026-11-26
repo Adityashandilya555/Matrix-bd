@@ -28,7 +28,7 @@ import IntegrationsTab from '../integrations/IntegrationsTab.jsx';
 const counts = { pending: 0, sending: 0, sent: 0, failed: 0, dead: 0 };
 const cfg = (over = {}) => ({
   configured: false, keyConfigured: true, enabled: false, endpointUrl: null,
-  rotationInProgress: false, counts, recentDeliveries: [], ...over,
+  rotationInProgress: false, counts, ...over,
 });
 
 beforeEach(() => {

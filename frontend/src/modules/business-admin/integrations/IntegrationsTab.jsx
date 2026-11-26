@@ -176,7 +176,7 @@ function whatChanged(ev) {
   if (ev.eventType === 'site.deleted') return 'Site deleted';
   // "First sent" only for an event NSO actually received.
   if (ev.first) return ev.status === 'sent' ? 'First sent' : 'First event';
-  if (!ev.changes) return 'Update';
+  if (!ev.changes) return ev.status === 'dead' ? 'Not taken by NSO' : 'Update';
   const shown = ev.changes.filter((c) => !QUIET_FIELDS.has(c.field));
   if (!shown.length) return 'Sent again (no change)';
   return shown.map((c) => `${FIELD_LABEL[c.field] || c.field}: ${show(c.from)} → ${show(c.to)}`).join(' · ');

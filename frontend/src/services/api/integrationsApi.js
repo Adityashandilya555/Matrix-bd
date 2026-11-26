@@ -10,7 +10,6 @@
 //   POST    /business-admin/integrations/nso/sites/{id}/resend      send its current data again
 //   GET     /business-admin/integrations/nso/sites?q=&page=  one row per site sent, with its state
 //   GET     /business-admin/integrations/nso/sites/{id}/history every event for one site, what changed
-//   GET     /business-admin/integrations/nso/events?q=     latest events for matching sites
 //   GET     /business-admin/integrations/nso/events/{id}   the exact body sent + NSO's replies
 import { createApiClient } from './axiosClient.js';
 import { camelize } from './vendorCase.js';
