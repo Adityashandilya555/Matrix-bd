@@ -9,7 +9,7 @@
 // server is the real boundary: get_current_user confines vendor tokens to
 // /vendor/* and the auth routes (app/core/deps.py).
 import React from 'react';
-import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { signOut } from '../../services/api/supabaseAuth.js';
 import { deactivateOverride } from '../../services/api/adminOverride.js';
 import { getVendorMe } from '../../services/api/vendorPortalApi.js';
@@ -42,6 +42,11 @@ class VendorErrorBoundary extends React.Component {
 function PortalShell({ onLogout }) {
   const [me, setMe] = React.useState({ status: 'loading' });
   const navigate = useNavigate();
+  // .vp-root is the scroll container and stays mounted across portal routes:
+  // start each page at the top (My sites → a site must not open mid-page).
+  const { pathname } = useLocation();
+  const rootRef = React.useRef(null);
+  React.useEffect(() => { if (rootRef.current) rootRef.current.scrollTop = 0; }, [pathname]);
 
   const load = React.useCallback(() => {
     setMe({ status: 'loading' });
@@ -76,7 +81,7 @@ function PortalShell({ onLogout }) {
 
   return (
     <VendorContext.Provider value={ctx}>
-      <div className="vp-root" style={accent ? { '--vp-accent': accent } : undefined}>
+      <div ref={rootRef} className="vp-root" style={accent ? { '--vp-accent': accent } : undefined}>
         <header className="vp-top"><div className="vp-top-in">
           <button type="button" className="vp-brand" style={{ border: 0, background: 'none', cursor: 'pointer', color: 'inherit', font: 'inherit' }}
             onClick={() => navigate('/vendor')}>

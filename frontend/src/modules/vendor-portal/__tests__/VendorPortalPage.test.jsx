@@ -19,6 +19,7 @@ vi.mock('../../../services/api/vendorPortalApi.js', () => ({
 vi.mock('../../../services/api/supabaseAuth.js', () => ({ signOut: vi.fn() }));
 
 const { default: VendorPortalPage } = await import('../VendorPortalPage.jsx');
+const vendorApi = await import('../../../services/api/vendorPortalApi.js');
 
 const token = (role) => `x.${btoa(JSON.stringify({ app_metadata: { role } }))}.y`;
 const ME = (vendorRole) => ({
@@ -73,6 +74,21 @@ describe('VendorPortalPage', () => {
     renderAt('/vendor/staff');
     expect(await screen.findByText('Koramangala 5th Block')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Team' })).toBeNull();
+  });
+
+  // index.html locks the page to the viewport, so .vp-root is the scroll pane;
+  // it stays mounted across routes, so each new page must start at the top.
+  it('scrolls its own pane and opens each page at the top', async () => {
+    getVendorMe.mockResolvedValue(ME('owner'));
+    vendorApi.getVendorProject.mockReturnValue(new Promise(() => {}));  // site page stays loading
+    act(() => setAuthToken(token('vendor')));
+    const { container } = renderAt();
+    const card = await screen.findByRole('button', { name: /Koramangala 5th Block/ });
+    const pane = container.querySelector('.vp-root');
+    Object.defineProperty(pane, 'scrollTop', { value: 480, writable: true });
+    await act(async () => { card.click(); });
+    expect(vendorApi.getVendorProject).toHaveBeenCalledWith('p1');
+    expect(pane.scrollTop).toBe(0);
   });
 
   it('shows a retry when the account cannot be loaded', async () => {
