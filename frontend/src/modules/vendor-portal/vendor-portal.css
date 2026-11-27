@@ -7,11 +7,15 @@
   --vp-ok: #1C7A4C; --vp-ok-soft: rgba(28, 122, 76, .12);
   --vp-warn: #A86400; --vp-warn-soft: rgba(168, 100, 0, .13);
   --vp-bad: #B8352A; --vp-bad-soft: rgba(184, 53, 42, .12);
-  min-height: 100vh; background: var(--zm-bg); color: var(--zm-fg);
+  background: var(--zm-bg); color: var(--zm-fg);
   font-family: inherit; font-size: 14px; line-height: 1.5;
+  /* index.html locks html/body/#root to the viewport (overflow: hidden), so the
+     standalone portal scrolls itself, like the Matrix shell's main pane. */
+  height: 100vh; height: 100dvh; overflow-y: auto;
 }
-/* Embedded inside the Matrix shell (Project → Vendor fit-out): no page chrome. */
-.vp-root.vp-embedded { min-height: 0; background: transparent; }
+/* Embedded inside the Matrix shell (Project → Vendor fit-out): no page chrome,
+   and the shell's own pane does the scrolling. */
+.vp-root.vp-embedded { height: auto; overflow: visible; background: transparent; }
 .vp-top { position: sticky; top: 0; z-index: 5; background: var(--zm-surface); border-bottom: 1px solid var(--zm-line); }
 .vp-top-in, .vp-wrap { max-width: 1160px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 .vp-top-in { display: flex; align-items: center; gap: 14px; min-height: 56px; flex-wrap: wrap; padding-block: 6px; }
